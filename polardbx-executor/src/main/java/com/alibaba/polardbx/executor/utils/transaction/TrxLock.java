@@ -46,6 +46,18 @@ public class TrxLock {
         this.data = data;
     }
 
+    public TrxLock(String lockId, String mode, String type, String physicalTable, String index, String data) {
+        this.lockId = lockId;
+        this.mode = mode;
+        this.type = type;
+        this.physicalTable = physicalTable;
+        this.data = data;
+        this.index = index;
+        this.space = null;
+        this.page = null;
+        this.rec = null;
+    }
+
     // For MDL
     public TrxLock(String lockId, String type, String physicalTable) {
         this.lockId = lockId;

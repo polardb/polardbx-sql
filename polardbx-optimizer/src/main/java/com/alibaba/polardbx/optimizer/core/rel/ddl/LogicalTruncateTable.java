@@ -16,11 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.TruncateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.TruncateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.TruncateTableWithGsiPreparedData;
@@ -33,8 +39,7 @@ import java.util.Map;
 public class LogicalTruncateTable extends BaseDdlOperation {
 
     private SqlTruncateTable sqlTruncateTable;
-    private TruncateTablePreparedData truncateTablePreparedData;
-    private TruncateTableWithGsiPreparedData truncateTableWithGsiPreparedData;
+    protected TruncateTableWithGsiPreparedData truncateTableWithGsiPreparedData;
 
     public LogicalTruncateTable(TruncateTable truncateTable) {
         super(truncateTable);
@@ -49,29 +54,32 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         return truncateTableWithGsiPreparedData != null && truncateTableWithGsiPreparedData.hasGsi();
     }
 
-    public TruncateTablePreparedData getTruncateTablePreparedData() {
-        return truncateTablePreparedData;
-    }
-
     public TruncateTableWithGsiPreparedData getTruncateTableWithGsiPreparedData() {
         return truncateTableWithGsiPreparedData;
     }
 
-    public void prepareData() {
-        // A normal logical table or a primary table with GSIs.
-        truncateTablePreparedData = preparePrimaryData();
+    public void prepareData(ExecutionContext ec) {
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(tableName);
 
-        final GsiMetaBean gsiMetaBean =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
+        // A normal logical table or a primary table with GSIs.
+        truncateTableWithGsiPreparedData = new TruncateTableWithGsiPreparedData();
+        truncateTableWithGsiPreparedData.setPrimaryTablePreparedData(preparePrimaryData(isNewPartDb, ec));
+        truncateTableWithGsiPreparedData.setSchemaName(schemaName);
+        truncateTableWithGsiPreparedData.setTableName(tableName);
+        truncateTableWithGsiPreparedData.setTableVersion(tableMeta.getVersion());
+        final GsiMetaBean gsiMetaBean = sm.getGsi(tableName, IndexStatus.ALL);
 
         if (gsiMetaBean.withGsi(tableName)) {
-            truncateTableWithGsiPreparedData = new TruncateTableWithGsiPreparedData();
-            truncateTableWithGsiPreparedData.setPrimaryTablePreparedData(truncateTablePreparedData);
-
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
+                if (gsiEntry.getValue().indexStatus != IndexStatus.PUBLIC) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "can not truncate table when table has non-public gsi");
+                }
                 TruncateGlobalIndexPreparedData indexTablePreparedData =
-                    prepareGsiData(truncateTablePreparedData.getTableName(), gsiEntry.getKey());
+                    prepareGsiData(tableName, gsiEntry.getKey(), isNewPartDb, ec);
                 truncateTableWithGsiPreparedData.addIndexTablePreparedData(indexTablePreparedData);
             }
         }
@@ -86,21 +94,32 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         return sqlTruncateTable.getTargetTable();
     }
 
-    private TruncateTablePreparedData preparePrimaryData() {
+    private TruncateTablePreparedData preparePrimaryData(boolean isNewPartDb, ExecutionContext ec) {
         TruncateTablePreparedData preparedData = new TruncateTablePreparedData();
 
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
 
+        if (isNewPartDb) {
+            TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+            preparedData.setPartitionInfo(tableMeta.getPartitionInfo());
+        }
+
         return preparedData;
     }
 
-    private TruncateGlobalIndexPreparedData prepareGsiData(String primaryTableName, String indexTableName) {
+    private TruncateGlobalIndexPreparedData prepareGsiData(String primaryTableName, String indexTableName,
+                                                           boolean isNewPartDb, ExecutionContext ec) {
         TruncateGlobalIndexPreparedData preparedData = new TruncateGlobalIndexPreparedData();
 
         TruncateTablePreparedData indexTablePreparedData = new TruncateTablePreparedData();
         indexTablePreparedData.setSchemaName(schemaName);
         indexTablePreparedData.setTableName(indexTableName);
+
+        if (isNewPartDb) {
+            TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(indexTableName);
+            indexTablePreparedData.setPartitionInfo(tableMeta.getPartitionInfo());
+        }
 
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(indexTableName);

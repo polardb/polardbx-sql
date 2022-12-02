@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dql.auto.join;
 
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.google.common.collect.Lists;
@@ -29,7 +30,7 @@ import java.util.List;
 import static com.alibaba.polardbx.qatest.dql.sharding.join.JoinUtils.cartesianProduct;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
-@RunWith(CommonCaseRunner.class)
+
 @FileStoreIgnore
 public class StreamLookupJoinTest extends AutoReadBaseTestCase {
 
@@ -69,7 +70,10 @@ public class StreamLookupJoinTest extends AutoReadBaseTestCase {
             "select * from (select one.* from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk) T inner join select_base_three_multi_db_one_tb three on T.pk=three.pk order by three.pk limit 10;",
             //two BkaJoin with order by
             "select * from (select one.* from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk order by one.pk limit 50,100 ) T inner join select_base_three_multi_db_one_tb three on T.pk=three.pk;",
-            "select * from (select one.* from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk order by one.pk limit 50,100 ) T inner join select_base_three_multi_db_one_tb three on T.pk=three.pk order by three.pk limit 10;"
+            "select * from (select one.* from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk order by one.pk limit 50,100 ) T inner join select_base_three_multi_db_one_tb three on T.pk=three.pk order by three.pk limit 10;",
+            // BkaJoin with for update
+            "select * from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk for update;",
+            "select * from (select one.* from select_base_one_multi_db_multi_tb one inner join select_base_two_one_db_multi_tb two on one.pk=two.pk) T inner join select_base_three_multi_db_one_tb three on T.pk=three.pk for update;"
         );
         return cartesianProduct(hints.toArray(), sqls.toArray());
     }

@@ -48,29 +48,19 @@ public class RelDrdsJsonWriter implements RelWriter {
     private Map<String, Object> currentNode;
     private Object                            executionContext = null;
 
-    public RelDrdsJsonWriter(Map<Integer, ParameterContext> params){
-        this(CalcitePlanOptimizerTrace.getSqlExplainLevel(), params, null, null);
-    }
-
-    public RelDrdsJsonWriter(Map<Integer, ParameterContext> params,
-                             Function<RexNode, Object> funcEvaluator,
-                             Object executionContext){
-        this(CalcitePlanOptimizerTrace.getSqlExplainLevel(), params, funcEvaluator, executionContext);
-    }
-
+    private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace = null;
     public RelDrdsJsonWriter(SqlExplainLevel detailLevel,
                              Map<Integer, ParameterContext> params,
                              Function<RexNode, Object> funcEvaluator,
-                             Object executionContext){
+                             Object executionContext,
+                             CalcitePlanOptimizerTrace calcitePlanOptimizerTrace){
         this.detailLevel = detailLevel;
         this.params = params;
         this.funcEvaluator = funcEvaluator;
         this.executionContext = executionContext;
+        this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
     }
 
-    public RelDrdsJsonWriter(){
-        this(null);
-    }
 
     // ~ Methods
     // ----------------------------------------------------------------
@@ -115,7 +105,8 @@ public class RelDrdsJsonWriter implements RelWriter {
         }
 
         // Runtime statistics displayed in EXPLAIN ANALYZE
-        Map<RelNode, RuntimeStatisticsSketch> statistics = CalcitePlanOptimizerTrace.getOptimizerTracer().get().getRuntimeStatistics();
+        Map<RelNode, RuntimeStatisticsSketch> statistics = calcitePlanOptimizerTrace == null ? null :
+            calcitePlanOptimizerTrace.getOptimizerTracer().getRuntimeStatistics();
         if (statistics != null) {
             RuntimeStatisticsSketch sketch = statistics.get(rel);
             if (sketch != null) {

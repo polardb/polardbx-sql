@@ -24,11 +24,14 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import lombok.Value;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -43,21 +46,34 @@ import java.util.stream.Collectors;
  */
 public class LocalityDesc {
 
-    private static final String PREFIX = "dn=";
+    //TODO: locality="dn=dn1,dn2;balance_single_table=on/off;storage_group=g1;"
+    private static final String DN_PREFIX = "dn=";
+
+    private static final String BALANCE_PREFIX = "balance_single_table=";
 
     // list of datanode instance
     private List<String> dnList;
 
+    private Boolean balanceSingleTable;
+
     public LocalityDesc() {
         this.dnList = new ArrayList<>();
+        this.balanceSingleTable = false;
+    }
+
+    public LocalityDesc(List<String> dnList) {
+        this.dnList = dnList.stream().sorted().collect(Collectors.toList());
+        this.balanceSingleTable = false;
     }
 
     public static LocalityDesc parse(String str) {
         LocalityDesc result = new LocalityDesc();
-
+        if (str == null) {
+            return result;
+        }
         str = StringUtils.trim(str);
 
-        // check json format
+        // json
         if (str.startsWith("{")) {
             LocalityJSON json = JSON.parseObject(str, LocalityJSON.class);
             str = json.getLocality();
@@ -65,20 +81,59 @@ public class LocalityDesc {
 
         if (TStringUtil.isBlank(str)) {
             return result;
-        } else if (!str.startsWith(PREFIX)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "invalid locality: \"" + str + "\"");
-        } else {
-            str = StringUtils.trim(StringUtils.removeStart(str, PREFIX));
-            if (!StringUtils.isBlank(str)) {
-                List<String> dns = Arrays.asList(str.split(","));
-                result.dnList = dns.stream().map(String::trim).collect(Collectors.toList());
-            }
-            return result;
         }
+
+        List<String> options = Arrays.asList(str.split(";"));
+        for (int i = 0; i < options.size(); i++) {
+            String option = options.get(i);
+            if (option.startsWith(DN_PREFIX)) {
+                String dnString = StringUtils.trim(StringUtils.removeStart(option, DN_PREFIX));
+                if (!dnString.isEmpty()) {
+                    String[] dns = StringUtils.trim(StringUtils.removeStart(option, DN_PREFIX)).split(",");
+                    result.dnList =
+                        Arrays.asList(dns).stream().map(String::trim).sorted().distinct().collect(Collectors.toList());
+                }
+            } else if (option.startsWith(BALANCE_PREFIX)) {
+                Map<String, Boolean> flagMap = new HashMap<String, Boolean>() {{
+                    put("true", true);
+                    put("false", false);
+                    put("on", true);
+                    put("off", false);
+                }};
+                String balanceFlag = StringUtils.trim(StringUtils.removeStart(option, BALANCE_PREFIX));
+                if (flagMap.containsKey(balanceFlag)) {
+                    result.balanceSingleTable = flagMap.get(balanceFlag);
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                        "invalid locality: '%s', balance_single_table option value illegal '%s', must be 'true' or 'false'",
+                        str, balanceFlag));
+                }
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                    String.format("invalid locality: '%s', must start with '%s' or '%s' or be empty string.",
+                        str, DN_PREFIX, BALANCE_PREFIX));
+            }
+        }
+        return result;
     }
 
     public List<String> getDnList() {
         return this.dnList;
+    }
+
+    public Boolean getBalanceSingleTable() {
+        return balanceSingleTable;
+    }
+
+    //localityDesc 1 >= localityDesc 2
+    public boolean compactiableWith(LocalityDesc localityDesc) {
+        if (dnList == null || dnList.isEmpty()) {
+            return true;
+        } else if (localityDesc.holdEmptyDnList()) {
+            return true;
+        } else {
+            return dnList.containsAll(localityDesc.getDnList());
+        }
     }
 
     public boolean matchStorageInstance(String storage) {
@@ -95,17 +150,36 @@ public class LocalityDesc {
             .findFirst();
     }
 
-    public boolean isEmpty() {
+    public boolean holdEmptyDnList() {
         return this.dnList == null || this.dnList.isEmpty();
+    }
+
+    public String getDnString() {
+        String result = "";
+        if (!this.holdEmptyDnList()) {
+            result += "dn=" + StringUtils.join(this.dnList, ",");
+        }
+        return result;
+    }
+
+    public Boolean match(LocalityDesc localityDesc) {
+        return this.getDnString().equals(localityDesc.getDnString());
     }
 
     @Override
     public String toString() {
-        if (this.dnList == null || this.dnList.size() == 0) {
-            return "";
-        } else {
-            return "dn=" + StringUtils.join(this.dnList, ",");
+        String result = "";
+        List<String> options = new ArrayList<>();
+        if (this.balanceSingleTable) {
+            options.add("balance_single_table=on");
         }
+        if (!this.holdEmptyDnList()) {
+            options.add("dn=" + StringUtils.join(this.dnList, ","));
+        }
+        if (!options.isEmpty()) {
+            result = StringUtils.join(options, ",");
+        }
+        return result;
     }
 
     public String showCreate() {

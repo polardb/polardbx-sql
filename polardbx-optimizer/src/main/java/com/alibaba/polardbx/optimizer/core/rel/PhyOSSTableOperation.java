@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -32,6 +33,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 
+import java.util.List;
 import java.util.Map;
 
 // todo
@@ -98,5 +100,12 @@ public class PhyOSSTableOperation extends AbstractRelNode implements IPhyQueryOp
          *  中计算完成，所以这里就不再需要依赖逻辑SQL级别的参数化参数（即传入参数 param）进行重新计算
          */
         return new Pair<>(dbIndex, this.param);
+    }
+
+    @Override
+    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           List<List<String>> phyTableNamesOutput,
+                                                                           ExecutionContext executionContext) {
+        throw new NotSupportException();
     }
 }

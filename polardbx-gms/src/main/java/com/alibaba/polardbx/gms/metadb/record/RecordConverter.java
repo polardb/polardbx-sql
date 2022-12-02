@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.metadb.record;
 
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
@@ -91,7 +92,7 @@ public class RecordConverter {
             record.jdbcTypeName = (String) jdbcExtInfo.get(infoSchemaRecord.columnName).get(
                 ColumnsAccessor.JDBC_TYPE_NAME);
             record.fieldLength = (long) jdbcExtInfo.get(infoSchemaRecord.columnName).get(ColumnsAccessor.FIELD_LENGTH);
-            record.status = TableStatus.ABSENT.getValue();
+            record.status = ColumnStatus.ABSENT.getValue();
             record.version = 1;
             record.flag = 0;
             records.add(record);

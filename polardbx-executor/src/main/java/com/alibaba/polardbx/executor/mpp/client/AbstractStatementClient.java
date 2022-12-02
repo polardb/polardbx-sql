@@ -191,8 +191,8 @@ public abstract class AbstractStatementClient implements Closeable {
                 response.getException());
         }
         return new RuntimeException(
-            format("Error %s at %s returned %s: %s", task, request.getUri(), response.getStatusCode(),
-                response.getStatusMessage()));
+            format("Error %s at %s returned %s", task, request.getUri(), response.getStatusCode()),
+            response.getException());
     }
 
     public String getQueryId() {

@@ -55,21 +55,19 @@ public class GeneralRule extends AbstractRule {
             return true;
         }
 
-        boolean hasDatabasePrivilege = Optional.ofNullable(permission.getDatabase())
-            .flatMap(db -> Optional.ofNullable(accountInfo.getDbPriv(db)))
-            .map(dbPrivilege -> dbPrivilege.hasPrivilege(permission.getPrivilege()))
-            .orElse(false);
-        if (hasDatabasePrivilege) {
-            return true;
+        if (permission.getDatabase() != null) {
+            PolarDbPriv dbPriv = accountInfo.getDbPriv(permission.getDatabase());
+            if (dbPriv != null && dbPriv.hasPrivilege(permission.getPrivilege())) {
+                return true;
+            }
         }
 
-        boolean hasTablePrivilege = Optional.ofNullable(permission.getTable())
-            .flatMap(table -> Optional.ofNullable(accountInfo.getTbPriv(permission.getDatabase(),
-                permission.getTable())))
-            .map(tablePrivilege -> tablePrivilege.hasPrivilege(permission.getPrivilege()))
-            .orElse(false);
-        if (hasTablePrivilege) {
-            return true;
+        if (permission.getTable() != null) {
+            PolarTbPriv tbPriv = accountInfo.getTbPriv(permission.getDatabase(),
+                permission.getTable());
+            if (tbPriv != null && tbPriv.hasPrivilege(permission.getPrivilege())) {
+                return true;
+            }
         }
 
         return false;

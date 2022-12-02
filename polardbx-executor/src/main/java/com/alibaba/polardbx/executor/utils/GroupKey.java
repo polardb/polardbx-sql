@@ -142,7 +142,9 @@ public class GroupKey implements Comparable {
                 }
             }
             if (thisObject instanceof String && that.groupKeys[i] instanceof String) {
-                return thisObject.equals(that.groupKeys[i]);
+                if (!thisObject.equals(that.groupKeys[i]))
+                    return false;
+                // or continue check others
             } else if (ExecUtils.comp(thisObject, that.groupKeys[i], dataType, true) != 0) {
                 return false;
             }

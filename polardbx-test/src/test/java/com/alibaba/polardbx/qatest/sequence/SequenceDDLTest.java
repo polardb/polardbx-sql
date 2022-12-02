@@ -59,14 +59,14 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
 
     @Before
     public void initData() throws Exception {
-        dropSeqence(seqName1);
-        dropSeqence(seqName2);
+        dropSequence(seqName1);
+        dropSequence(seqName2);
     }
 
     @After
     public void afterData() throws Exception {
-        dropSeqence(seqName1);
-        dropSeqence(seqName2);
+        dropSequence(seqName1);
+        dropSequence(seqName2);
     }
 
     /**
@@ -77,6 +77,7 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
         String sql = String.format("create sequence %s start with 100", seqName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
+        // New Sequence by default
         assertExistsSequence(seqName1, 100);
     }
 
@@ -86,7 +87,7 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
     @Test
     public void testDeleteSequence() {
 
-        String sql = String.format("create sequence %s start with 0", seqName1);
+        String sql = String.format("create group sequence %s start with 0", seqName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         assertExistsSequence(seqName1, 0);
@@ -112,10 +113,11 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
         String sql = String.format("create sequence %s start with 10", seqName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
+        // New Sequence by default
         assertExistsSequence(seqName1, 10);
 
         try {
-            sql = String.format("select %s.nextval  from dual", seqName1);
+            sql = String.format("select %s.nextval from dual", seqName1);
             ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
             Assert.assertTrue(rs.next());
             long seqVal = rs.getLong(seqName1 + ".nextVal");
@@ -124,7 +126,6 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
             Assert.assertTrue(rs.next());
             Assert.assertEquals(rs.getLong(seqName1 + ".nextVal"), seqVal + 1);
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
             Assert.fail(e.getMessage());
         }
@@ -157,26 +158,24 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
     }
 
     public void assertExistsSequence(String name, long num) {
-        String sql = "show sequences";
+        String simpleSeqName = getSimpleTableName(name);
+
+        String sql = String.format("show sequences where name = '%s'", simpleSeqName);
 
         boolean existName = false;
         boolean valueRight = false;
-        try {
-            Connection connection = StringUtils.isBlank(schemaPrefix) ? tddlConnection : tddlConnection2;
-            ResultSet rs = JdbcUtil.executeQuerySuccess(connection, sql);
-            while (rs.next()) {
-                if (rs.getString("name").equals(getSimpleTableName(name))) {
-                    existName = true;
-                    if (rs.getLong("value") == num) {
-                        valueRight = true;
-                    }
+
+        Connection connection = StringUtils.isBlank(schemaPrefix) ? tddlConnection : tddlConnection2;
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(connection, sql)) {
+            if (rs.next()) {
+                existName = true;
+                if (rs.getLong("value") == num) {
+                    valueRight = true;
                 }
             }
             Assert.assertTrue(existName);
             Assert.assertTrue(valueRight);
-
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
     }

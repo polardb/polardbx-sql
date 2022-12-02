@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -52,6 +56,7 @@ public class TableScanExec extends SourceExec implements Closeable {
     protected TableScanClient.SplitResultSet consumeResultSet;
     protected volatile boolean isFinish = false;
     private final SpillerFactory spillerFactory;
+    private final boolean useParameterDelegate;
 
     public TableScanExec(LogicalView logicalView, ExecutionContext context, TableScanClient scanClient,
                          long maxRowCount, SpillerFactory spillerFactory, List<DataType> dataTypeList) {
@@ -62,14 +67,35 @@ public class TableScanExec extends SourceExec implements Closeable {
         this.scanClient.registerSouceExec(this);
         this.spillerFactory = spillerFactory;
         this.dataTypeList = dataTypeList;
+        this.useParameterDelegate = ExecUtils.useParameterDelegate(context);
+
     }
 
     @Override
     public void addSplit(Split split) {
+        getJdbcByDeletegate(split);
         if (log.isDebugEnabled()) {
             log.debug(context.getTraceId() + ":lv=" + this.logicalView.getRelatedId() + " addSplit:" + split);
         }
         scanClient.addSplit(split);
+    }
+
+    protected void getJdbcByDeletegate(Split split) {
+        if (useParameterDelegate) {
+            JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
+            List<List<ParameterContext>> params = jdbcSplit.getParams();
+            for (List<ParameterContext> parameterContexts : params) {
+                for (ParameterContext parameterContext : parameterContexts) {
+                    if (parameterContext.getParameterMethod() == ParameterMethod.setDelegate) {
+                        Object[] rets = parameterContext.getArgs();
+                        Integer index = (Integer) rets[0];
+                        ParameterContext rel = context.getParams().getCurrentParameter().get(index);
+                        parameterContext.setParameterMethod(rel.getParameterMethod());
+                        parameterContext.setArgs(rel.getArgs());
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -179,7 +205,7 @@ public class TableScanExec extends SourceExec implements Closeable {
 
             while (count < chunkLimit && !isFinish) {
                 if (!consumeResultSet.next()) {
-                    consumeResultSet.close(true);
+                    consumeResultSet.close();
                     consumeResultSet = scanClient.popResultSet();
                     if (consumeResultSet == null) {
                         notifyFinish();
@@ -218,7 +244,7 @@ public class TableScanExec extends SourceExec implements Closeable {
     }
 
     protected void appendRow(TableScanClient.SplitResultSet consumeResultSet) throws SQLException {
-        ResultSetCursorExec.buildOneRow(consumeResultSet.getResultSet(), dataTypes, blockBuilders);
+        ResultSetCursorExec.buildOneRow(consumeResultSet.getResultSet(), dataTypes, blockBuilders, context);
     }
 
     @Override
@@ -234,7 +260,7 @@ public class TableScanExec extends SourceExec implements Closeable {
     public synchronized void forceClose() {
         scanClient.close(this);
         if (consumeResultSet != null) {
-            consumeResultSet.close(true);
+            consumeResultSet.close();
             consumeResultSet = null;
         }
     }

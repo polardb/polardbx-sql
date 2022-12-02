@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class SQLVariantRefExpr extends SQLExprImpl {
 
@@ -90,33 +91,20 @@ public class SQLVariantRefExpr extends SQLExprImpl {
     }
 
     @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((name == null) ? 0 : name.hashCode());
-        return result;
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        SQLVariantRefExpr that = (SQLVariantRefExpr) o;
+        return global == that.global && session == that.session && index == that.index && name.equals(that.name);
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null) {
-            return false;
-        }
-        if (!(obj instanceof SQLVariantRefExpr)) {
-            return false;
-        }
-        SQLVariantRefExpr other = (SQLVariantRefExpr) obj;
-        if (name == null) {
-            if (other.name != null) {
-                return false;
-            }
-        } else if (!name.equals(other.name)) {
-            return false;
-        }
-        return true;
+    public int hashCode() {
+        return Objects.hash(name, global, session, index);
     }
 
     public boolean isGlobal() {

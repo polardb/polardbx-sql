@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.planner.common;
 
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
@@ -32,11 +35,17 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
@@ -55,11 +64,17 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableRecord;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SimpleSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ToDrdsRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -163,24 +178,17 @@ public abstract class BasePlannerTest {
     private Set<String> ddlFlag = Sets.newHashSet();
 
     // a map maps unit test name to it's sql, ddl statistics and config
-    private static Map<Class, Map<String, Object>>totalMap = new HashMap<>();
+    private static Map<Class, Map<String, Object>> totalMap = new HashMap<>();
 
     private Map<String, Object> statisticMaps = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
     protected Map<String, Object> configMaps = new HashMap<>();
-    /**
-     * it is ashamed that we use such a nasty map
-     *
-     * explain {schema->{  tableName->{statistics, {     column, info}}}}
-     */
-    private Map<String, Map<String, Map<String, List<Pair<String, Object>>>>> statisticsClassifier =
-        new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
-    private String caseName;
+    protected String caseName;
 
-    private String expectedPlan;
+    protected String expectedPlan;
 
-    private String sql;
+    protected String sql;
 
     protected int sqlIndex;
 
@@ -191,7 +199,7 @@ public abstract class BasePlannerTest {
     private String actual;
 
     protected String appName = "optest";
-    private static final long ROW_COUNT = 100;
+    public static final long ROW_COUNT = 100;
     private static final boolean fixFlag = false;
 
     private Map<String, OptimizerContext> appNameOptiContextMaps = new HashMap<String, OptimizerContext>();
@@ -214,12 +222,27 @@ public abstract class BasePlannerTest {
     protected ExecutionContext ec = new ExecutionContext();
     protected boolean useNewPartDb = false;
     private int corMaxNum = 10;
+    private String targetEnvFile = this.getClass().getSimpleName();
 
     public BasePlannerTest(String dbname) {
         appName = dbname;
+        try {
+            loadStatistic();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         initBasePlannerTestEnv();
         initAppNameConfig(dbname);
         modeSimple = true;
+    }
+
+    /**
+     * for common test
+     */
+    public BasePlannerTest(String caseName, String targetEnvFile) {
+        this.caseName = caseName;
+        this.targetEnvFile = targetEnvFile;
+        initTestEnv();
     }
 
     public BasePlannerTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
@@ -260,6 +283,7 @@ public abstract class BasePlannerTest {
             e.printStackTrace();
         }
         initAppNameConfig(getAppName());
+        initAppNameConfig("information_schema");
         prepareSchemaByDdl();
     }
 
@@ -370,6 +394,7 @@ public abstract class BasePlannerTest {
         }
         context = initOptiContext(appName, dbNumber);
         appNameOptiContextMaps.put(appName, context);
+        LocalityManager.setMockMode(true);
         OptimizerHelper.clear();
         OptimizerHelper.init(new IServerConfigManager() {
             @Override
@@ -391,13 +416,19 @@ public abstract class BasePlannerTest {
             }
 
             @Override
+            public void remoteExecuteDdlTask(String schemaName, Long jobId, Long taskId) {
+
+            }
+
+            @Override
             public long submitRebalanceDDL(String schemaName, String sql) {
                 return 0;
             }
 
             @Override
-            public long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback,
-                                     String sql) {
+            public long submitSubDDL(String schemaName, DdlContext parentDdlContext, long parentJobId,
+                                     long parentTaskId, boolean forRollback,
+                                     String sql, ParamManager paramManager) {
                 return 0;
             }
 
@@ -417,7 +448,7 @@ public abstract class BasePlannerTest {
 
         List<Group> groups = new LinkedList<>();
         for (int i = 0; i < dbNumber; i++) {
-            groups.add(fakeGroup(appName, appName + String.format("_%04d",i)));
+            groups.add(fakeGroup(appName, appName + String.format("_%04d", i)));
         }
 //        groups.add(fakeGroup(appName, appName + "_0000"));
 //        groups.add(fakeGroup(appName, appName + "_0001"));
@@ -444,13 +475,6 @@ public abstract class BasePlannerTest {
 
         OptimizerContext.loadContext(context);
 
-        StatisticManager statisticManager = new StatisticManager(appName,
-            new MockStatisticDatasource(appName, statisticsClassifier.get(appName), ROW_COUNT));
-        statisticManager.init();
-
-        context.setStatisticManager(statisticManager);
-
-        ConfigDataMode.setMode(ConfigDataMode.Mode.MOCK);
         if (useNewPartDb) {
             DbInfoManager.getInstance().addNewMockPartitionDb(appName);
         } else {
@@ -460,10 +484,10 @@ public abstract class BasePlannerTest {
         return context;
     }
 
-    private Group fakeGroup(String appname, String name) {
+    private static Group fakeGroup(String appname, String name) {
         Group g = new Group();
         g.setAppName(appname);
-        g.setSchemaName(appName);
+        g.setSchemaName(appname);
         g.setName(name);
         return g;
     }
@@ -564,7 +588,7 @@ public abstract class BasePlannerTest {
             final String mainTableDefinition = sqlCreateTable.rewriteForGsi().toString();
             final MySqlCreateTableStatement astCreateIndexTable =
                 (MySqlCreateTableStatement) SQLUtils.parseStatements(mainTableDefinition,
-                    JdbcConstants.MYSQL)
+                        JdbcConstants.MYSQL)
                     .get(0);
 
             final List<IndexRecord> allIndexRecords = new ArrayList<>();
@@ -614,7 +638,7 @@ public abstract class BasePlannerTest {
         if (statisticMaps.get(logicalTableName + ".sampleRate") != null) {
             Number sampleRate = (Number) statisticMaps.get(logicalTableName + ".sampleRate");
             if (sampleRate != null) {
-                statisticManager.getCacheLine(logicalTableName)
+                statisticManager.getCacheLine(appName, logicalTableName)
                     .setSampleRate(sampleRate.floatValue());
             }
         }
@@ -733,7 +757,8 @@ public abstract class BasePlannerTest {
                 new SqlAddIndex(SqlParserPos.ZERO, indexName, indexDef));
             indexDef.setPrimaryTableDefinition(mainTableDefinition);
 
-            final SqlAlterTable addIndex = new SqlAlterTable(tableName,
+            final SqlAlterTable addIndex = new SqlAlterTable(null,
+                tableName,
                 columnOpts,
                 "",
                 tableOptions,
@@ -770,6 +795,8 @@ public abstract class BasePlannerTest {
                     (MySqlCreateTableStatement) FastsqlUtils.parseSql(sqlCreateIndexTable.getSourceSql()).get(0);
                 indexTm = new TableMetaParser().parse(indexStat, ec);
                 indexTm.setHasPrimaryKey(indexTm.isHasPrimaryKey());
+                indexTm.setSchemaName(schema);
+                indexTr = gsiTableRules.get(indexTableName);
             } else {
 
                 CreateGlobalIndexPreparedData createGlobalIndexPreparedData =
@@ -778,9 +805,9 @@ public abstract class BasePlannerTest {
                 TableMeta primaryTbMeta = logicalCreateTable.getCreateTablePreparedData().getTableMeta();
                 List<ColumnMeta> allColMetas = primaryTbMeta.getAllColumns();
                 List<ColumnMeta> pkColMetas = new ArrayList<>(primaryTbMeta.getPrimaryKey());
-
+                primaryTbMeta.setSchemaName(schema);
                 PartitionInfo indexPartitionInfo = PartitionInfoBuilder
-                    .buildPartitionInfoByPartDefAst(appName, indexTableName, null,
+                    .buildPartitionInfoByPartDefAst(appName, indexTableName, null, null,
                         (SqlPartitionBy) createGlobalIndexPreparedData.getIndexDefinition().getPartitioning(),
                         createGlobalIndexPreparedData.getPartBoundExprInfo(),
                         pkColMetas, allColMetas, PartitionTableType.GSI_TABLE,
@@ -800,6 +827,7 @@ public abstract class BasePlannerTest {
                         .get(0);
                 indexTm = new TableMetaParser().parse(indexStat, ec);
                 indexTm.setHasPrimaryKey(true);
+                indexTm.setSchemaName(schema);
             }
 
             final List<IndexRecord> indexRecords = new ArrayList<>();
@@ -899,7 +927,7 @@ public abstract class BasePlannerTest {
     }
 
     private boolean isDDLInit() {
-        String fileName = String.format("%s.ddl.yml", this.getClass().getSimpleName());
+        String fileName = String.format("%s.ddl.yml", targetEnvFile);
         return ddlFlag.contains(fileName);
     }
 
@@ -929,7 +957,7 @@ public abstract class BasePlannerTest {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create table", e);
         }
-        String fileName = String.format("%s.ddl.yml", this.getClass().getSimpleName());
+        String fileName = String.format("%s.ddl.yml", targetEnvFile);
         ddlFlag.add(fileName);
 
     }
@@ -946,29 +974,31 @@ public abstract class BasePlannerTest {
             this.configMaps = yaml.loadAs(in, Map.class);
             IOUtils.closeQuietly(in);
         } else {
-            this.configMaps = (Map<String, Object>)totalMap.get(this.getClass()).get("CONFIG");
+            this.configMaps = (Map<String, Object>) totalMap.get(this.getClass()).get("CONFIG");
         }
     }
 
     @SuppressWarnings("unchecked")
     private void loadDdl() {
         if (totalMap.get(this.getClass()) == null) {
-            String fileName = String.format("%s.ddl.yml", this.getClass().getSimpleName());
+            String fileName = String.format("%s.ddl.yml", targetEnvFile);
             InputStream in = this.getClass().getResourceAsStream(fileName);
             Yaml yaml = new Yaml();
             this.ddlMaps = yaml.loadAs(in, Map.class);
             IOUtils.closeQuietly(in);
         } else {
-            this.ddlMaps = (Map<String, String>)totalMap.get(this.getClass()).get("DDL");
+            this.ddlMaps = (Map<String, String>) totalMap.get(this.getClass()).get("DDL");
         }
 
     }
 
-    private void loadStatistic() throws Exception{
-        this.statisticsClassifier = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+    protected void loadStatistic() throws Exception {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        Map<String, Map<String, Map<String, List<Pair<String, Object>>>>> statisticsClassifier =
+            MockStatisticDatasource.statisticsClassifier;
         try {
             if (totalMap.get(this.getClass()) == null) {
-                String fileName = String.format("%s.statistic.yml", this.getClass().getSimpleName());
+                String fileName = String.format("%s.statistic.yml", targetEnvFile);
                 InputStream in = this.getClass().getResourceAsStream(fileName);
 
                 Yaml yaml = new Yaml();
@@ -977,7 +1007,7 @@ public abstract class BasePlannerTest {
                 this.statisticMaps.putAll(m);
                 IOUtils.closeQuietly(in);
             } else {
-                this.statisticMaps = (Map<String, Object>)totalMap.get(this.getClass()).get("STATISTICS");
+                this.statisticMaps = (Map<String, Object>) totalMap.get(this.getClass()).get("STATISTICS");
             }
         } catch (Exception e) {
             // pass
@@ -1066,6 +1096,8 @@ public abstract class BasePlannerTest {
                 throw new Exception("unexpected statistics key: " + name);
             }
         }
+        StatisticManager.sds = MockStatisticDatasource.getInstance();
+        StatisticManager.getInstance().clearAndReloadData();
     }
 
     private static List<Map<String, String>> loadSqls(String fileName, Class clazz) {
@@ -1163,6 +1195,10 @@ public abstract class BasePlannerTest {
     private static final Map<String, String> caseContent = Maps.newHashMap();
     private static final Map<String, String> casePath = Maps.newHashMap();
 
+    public String replacePlanStr(String planStr) {
+        return planStr;
+    }
+
     protected void execSqlAndVerifyPlan(String testMethodName, Integer sqlIdx, String targetSql, String targetPlan,
                                         String expect, String nodetree) {
         String planStr;
@@ -1177,8 +1213,6 @@ public abstract class BasePlannerTest {
                 e.printStackTrace(pw);
                 planStr = w.toString();
             }
-        } finally {
-            CalcitePlanOptimizerTrace.setSqlExplainLevel(SqlExplainLevel.EXPPLAN_ATTRIBUTES);
         }
         planStr = planStr.trim();
 
@@ -1189,6 +1223,9 @@ public abstract class BasePlannerTest {
         System.out.println("link: xx.xx(" + testMethodName + ":" + lineNum + ")");
 
         planStr = planStr.replaceAll("_\\$[0-9a-f]{4}", "");
+
+        // customize replace
+        planStr = replacePlanStr(planStr);
 
 //        targetPlan = new RandomTableSuffixRemover(appName).replaceRealPhysicalTableNames(targetSql, targetPlan);
         final String[] targetPlanVal = new String[1];
@@ -1285,6 +1322,11 @@ public abstract class BasePlannerTest {
     protected abstract String getPlan(String testSql);
 
     public String removeSubqueryHashCode(String planStr, RelNode plan, Map<Integer, ParameterContext> param) {
+        return removeSubqueryHashCode(planStr, plan, param, CalcitePlanOptimizerTrace.DEFAULT_LEVEL);
+    }
+
+    public String removeSubqueryHashCode(String planStr, RelNode plan, Map<Integer, ParameterContext> param,
+                                         SqlExplainLevel sqlExplainLevel) {
         StringBuilder stringBuilder = new StringBuilder();
         for (RexDynamicParam rexDynamicParam : OptimizerUtils.findSubquery(plan)) {
             if (rexDynamicParam.getIndex() == -2) {
@@ -1295,7 +1337,7 @@ public abstract class BasePlannerTest {
                 stringBuilder.append(">> individual correlate subquery :");
             }
             planStr = planStr.replaceAll(rexDynamicParam.getRel().hashCode() + "", "");
-            String subLogicalPlanString = RelUtils.toString(rexDynamicParam.getRel(), param);
+            String subLogicalPlanString = RelUtils.toString(sqlExplainLevel, rexDynamicParam.getRel(), param);
             subLogicalPlanString = stripHashCode(subLogicalPlanString, rexDynamicParam.getRel());
             for (String row : StringUtils.split(subLogicalPlanString, "\r\n")) {
                 stringBuilder.append(System.lineSeparator());
@@ -1310,7 +1352,7 @@ public abstract class BasePlannerTest {
             ;
             for (RelNode relNode : PlannerContext.getPlannerContext(plan).getCacheNodes()) {
 
-                String subLogicalPlanString = RelUtils.toString(relNode, param);
+                String subLogicalPlanString = RelUtils.toString(sqlExplainLevel, relNode, param);
                 for (String row : StringUtils.split(subLogicalPlanString, "\r\n")) {
                     stringBuilder.append(System.lineSeparator());
                     stringBuilder.append(row);
@@ -1349,7 +1391,7 @@ public abstract class BasePlannerTest {
     protected PartitionInfo buildPartitionInfoByLogCreateTbl(LogicalCreateTable logicalCreateTable,
                                                              ExecutionContext executionContext) {
 
-        logicalCreateTable.prepareData(new ExecutionContext());
+        logicalCreateTable.prepareData(new ExecutionContext(appName));
         PartitionTableType tblType = PartitionTableType.SINGLE_TABLE;
         if (logicalCreateTable.isPartitionTable()) {
             tblType = PartitionTableType.PARTITION_TABLE;
@@ -1366,11 +1408,13 @@ public abstract class BasePlannerTest {
         String tableGroupName = null;
         PartitionInfo partitionInfo = null;
         tableMeta = preparedData.getTableMeta();
+        tableMeta.setSchemaName(appName);
         tbName = preparedData.getTableName();
         allColMetas = tableMeta.getAllColumns();
         pkColMetas = new ArrayList<>(tableMeta.getPrimaryKey());
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
+                null,
                 (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(), pkColMetas,
                 allColMetas, tblType, executionContext);
 

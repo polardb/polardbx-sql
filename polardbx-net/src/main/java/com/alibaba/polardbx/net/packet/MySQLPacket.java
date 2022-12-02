@@ -182,6 +182,29 @@ public abstract class MySQLPacket {
     public static final int SERVER_MORE_RESULTS_EXISTS = 0x0008;
 
     /**
+     * The returned EOF-packet should set this flag, if we support cursor mode
+     * and the request packet sets the {@Link #READ_ONLY_CURSOR_FLAG}
+     */
+    public static final int SERVER_STATUS_CURSOR_EXISTS = 0x0040;
+
+    /**
+     * The returned EOF-packet should set this flag, if we support cursor mode
+     * and the last row of data is sent already.
+     */
+    public static final int SERVER_LAST_ROW_SENT = 0x0080;
+
+    /**
+     * A COM_STMT_EXECUTE packet may set READ_ONLY_CURSOR_FLAG,
+     * indicating that server should run in cursor mode.
+     */
+    public static final byte READ_ONLY_CURSOR_FLAG = 0x01;
+
+    /**
+     * CURSOR_TYPE_NO_CURSOR means no cursor mode.
+     */
+    public static final byte CURSOR_TYPE_NO_CURSOR = 0x00;
+
+    /**
      * Max length of packet payload
      */
     protected static final int MAX_PACKET_PAYLOAD_LENGTH = 0x1000000 - 1;

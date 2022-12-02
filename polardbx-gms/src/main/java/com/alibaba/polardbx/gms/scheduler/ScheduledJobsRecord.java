@@ -31,25 +31,26 @@ import java.util.Map;
 
 public class ScheduledJobsRecord implements SystemTableRecord {
 
-    private long    scheduleId;
-    private Date    createTime;
-    private Date    updateTime;
-    private String  tableSchema;
-    private String  tableName;
-    private String  scheduleName;
-    private String  scheduleComment;
-    private String  executorType;
-    private String  scheduleContext;
-    private String  executorContents;
-    private String  status;
-    private String  scheduleType;
-    private String  scheduleExpr;
-    private String  timeZone;
+    private long scheduleId;
+    private Date createTime;
+    private Date updateTime;
+    private String tableSchema;
+    private String tableName;
+    private String scheduleName;
+    private String scheduleComment;
+    private String executorType;
+    private String scheduleContext;
+    private String executorContents;
+    private String status;
+    private String scheduleType;
+    private String scheduleExpr;
+    private String timeZone;
     private long lastFireTime;
     private long nextFireTime;
     private long starts;
     private long ends;
-    private String  schedulePolicy;
+    private String schedulePolicy;
+    private String tableGroupName;
 
     @Override
     public ScheduledJobsRecord fill(ResultSet rs) throws SQLException {
@@ -73,6 +74,7 @@ public class ScheduledJobsRecord implements SystemTableRecord {
         this.starts = rs.getLong("starts");
         this.ends = rs.getLong("ends");
         this.schedulePolicy = rs.getString("schedule_policy");
+        this.tableGroupName = rs.getString("table_group_name");
 
         return this;
     }
@@ -83,11 +85,11 @@ public class ScheduledJobsRecord implements SystemTableRecord {
 //        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.scheduleId);
 //        MetaDbUtil.setParameter(++index, params, ParameterMethod.setTimestamp1, this.createTime);
 //        MetaDbUtil.setParameter(++index, params, ParameterMethod.setTimestamp1, this.updateTime);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString,    this.tableSchema);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString,    this.tableName);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableSchema);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.scheduleName);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString,    this.scheduleComment);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString,    this.executorType);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.scheduleComment);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.executorType);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.scheduleContext);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.executorContents);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.status);
@@ -99,6 +101,7 @@ public class ScheduledJobsRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.starts);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.ends);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.schedulePolicy);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableGroupName);
         return params;
     }
 
@@ -252,5 +255,17 @@ public class ScheduledJobsRecord implements SystemTableRecord {
 
     public void setSchedulePolicy(final String schedulePolicy) {
         this.schedulePolicy = schedulePolicy;
+    }
+
+    public String getTableGroupName() {
+        return tableGroupName;
+    }
+
+    public void setTableGroupName(String tableGroupName) {
+        this.tableGroupName = tableGroupName;
+    }
+
+    public String toString() {
+        return executorType + "," + getStatus() + "," + getScheduleComment();
     }
 }

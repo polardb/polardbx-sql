@@ -165,7 +165,8 @@ public class RepoSchemaManager extends AbstractLifecycle implements SchemaManage
             true,
             "");
 
-        return new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
+        return new TableMeta(getSchemaName(), DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(),
+            true,
             TableStatus.PUBLIC, 0, 0);
     }
 
@@ -220,8 +221,8 @@ public class RepoSchemaManager extends AbstractLifecycle implements SchemaManage
     }
 
     @Override
-    public TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
-        return delegate.getTableMetaFromConnection(tableName, conn);
+    public TableMeta getTableMetaFromConnection(String schemaName, String tableName, Connection conn) {
+        return delegate.getTableMetaFromConnection(schemaName, tableName, conn);
     }
 
     @Override

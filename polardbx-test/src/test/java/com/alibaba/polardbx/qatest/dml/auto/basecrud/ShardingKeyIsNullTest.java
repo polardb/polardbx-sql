@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteCHNTableName;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.SQLException;
@@ -32,8 +33,9 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * 拆分建可以为空
  */
-
+@RunWith(Parameterized.class)
 public class ShardingKeyIsNullTest extends AutoCrudBasedLockTestCase {
+
 
     @Parameterized.Parameters(name = "{index}:table={0}")
     public static List<String[]> prepareData() {

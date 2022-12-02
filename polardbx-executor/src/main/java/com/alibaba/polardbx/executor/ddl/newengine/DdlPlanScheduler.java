@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.newengine;
 
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper.getInstConfigAsLong;
 
 public class DdlPlanScheduler {
 
@@ -52,11 +54,12 @@ public class DdlPlanScheduler {
             new ThreadPoolExecutor.DiscardPolicy());
 
     private DdlPlanScheduler() {
+        Long DELAY = getInstConfigAsLong(LOGGER, ConnectionProperties.DDL_PLAN_SCHEDULER_DELAY, 60L);
         scannerThread.scheduleWithFixedDelay(
             AsyncTask.build(new DdlPlanScanner()),
             0L,
-            1L,
-            TimeUnit.MINUTES
+            DELAY,
+            TimeUnit.SECONDS
         );
     }
 

@@ -33,6 +33,7 @@ import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroup;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroups;
 import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionMovePartitions;
 import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
@@ -40,23 +41,19 @@ import com.alibaba.polardbx.executor.balancer.action.DropPhysicalDbTask;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CleanRemovedDbGroupMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainCDCTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainNodeValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropDbGroupHideMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseReleaseXLockTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateGroupInfoTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateNodeStatusTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.*;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncThenReleaseXLockTask;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.locality.LocalityDetailInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.NodeInfo;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
+import com.alibaba.polardbx.gms.tablegroup.*;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
@@ -83,11 +80,13 @@ import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -103,6 +102,7 @@ import java.util.stream.Collectors;
 public class PolicyDrainNode implements BalancePolicy {
 
     private final static Logger LOG = SQLRecorderLogger.ddlLogger;
+    private List<BalanceAction> actions;
 
     @Override
     public String name() {
@@ -174,8 +174,9 @@ public class PolicyDrainNode implements BalancePolicy {
         node.setMaxActions(options.maxActions);
         node.setMaxPartitionSize((int) options.maxPartitionSize);
 
-        schemaNameList.stream()
-            .forEach(schema -> moveDataActions.add(new ActionDrainDatabase(schema, node.toString())));
+        for(String schema: schemaNameList){
+            moveDataActions.add(new ActionDrainDatabase(schema, options.drainNode, node.toString(), stats.get(schema)));
+        }
 
         moveDataActions.add(drainCDC);
         moveDataActions.add(updateStatusRemoved);
@@ -184,6 +185,10 @@ public class PolicyDrainNode implements BalancePolicy {
 
     protected void doValidate(DrainNodeInfo drainNodeInfo) {
         drainNodeInfo.validate();
+    }
+
+    protected void doValidate(DrainNodeInfo drainNodeInfo, Boolean validateDeleteable) {
+        drainNodeInfo.validate(validateDeleteable);
     }
 
     /**
@@ -204,7 +209,7 @@ public class PolicyDrainNode implements BalancePolicy {
         }
         Map<String, Long> groupDataSizeMap = groupList.stream()
             .flatMap(x -> x.getGroupDataSizeMap().entrySet().stream())
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getValue()));
 
         List<MoveInDn> moveInDnList;
         if (!dnDiskInfo.isEmpty()) {
@@ -248,7 +253,7 @@ public class PolicyDrainNode implements BalancePolicy {
                 PolicyDrainNode.MoveInDn candidate = moveInDnList.get(moveInDnIndex);
                 if (candidate.moveInGroup(schemaName, groupName, dataSize)) {
                     action = new ActionMoveGroup(schemaName, Arrays.asList(groupName),
-                        candidate.getDnDiskInfo().getInstance(), options.debug);
+                        candidate.getDnDiskInfo().getInstance(), options.debug, stats);
                     break;
                 }
             }
@@ -264,7 +269,7 @@ public class PolicyDrainNode implements BalancePolicy {
         }
 
         // lock
-        final String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schemaName);
+        final String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schemaName);
         final String schemaXLock = schemaName;
         ActionLockResource lock =
             new ActionLockResource(schemaName, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
@@ -276,20 +281,23 @@ public class PolicyDrainNode implements BalancePolicy {
         return Arrays.asList(lock, new ActionMoveGroups(schemaName, actions), moveDatabaseXLockTaskAction);
     }
 
-    private List<MoveInDn> prepareMoveInDns(DrainNodeInfo drainNodeInfo, List<DnDiskInfo> dnDiskInfo, String schemaName) {
+    private List<MoveInDn> prepareMoveInDns(DrainNodeInfo drainNodeInfo, List<DnDiskInfo> dnDiskInfo,
+                                            String schemaName) {
         List<MoveInDn> moveInDnList;
         List<GroupDetailInfoExRecord> detailInfoExRecords = TableGroupLocation.getOrderedGroupList(schemaName);
-        Set<String> storageIds = detailInfoExRecords.stream().map(o->o.storageInstId.toLowerCase()).collect(Collectors.toSet());
+        Set<String> storageIds =
+            detailInfoExRecords.stream().map(o -> o.storageInstId.toLowerCase()).collect(Collectors.toSet());
         if (!dnDiskInfo.isEmpty()) {
             // choose dn list from disk_info
             moveInDnList = dnDiskInfo.stream()
                 .filter(x -> !drainNodeInfo.containsDnInst(x.getInstance()))
                 .map(MoveInDn::new)
                 .collect(Collectors.toList());
-            for (MoveInDn moveInDn:moveInDnList) {
+            for (MoveInDn moveInDn : moveInDnList) {
                 if (!storageIds.contains(moveInDn.getDnDiskInfo().getInstance().toLowerCase())) {
                     throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                        String.format("dn: [%s] is not available for schema: [%s]", moveInDn.getDnDiskInfo().getInstance(),
+                        String.format("dn: [%s] is not available for schema: [%s]",
+                            moveInDn.getDnDiskInfo().getInstance(),
                             schemaName));
                 }
             }
@@ -305,7 +313,7 @@ public class PolicyDrainNode implements BalancePolicy {
                     .map(MoveInDn::new)
                     .collect(Collectors.toList());
 
-            moveInDnList.removeIf(o->!storageIds.contains(o.getDnDiskInfo().getInstance().toLowerCase()));
+            moveInDnList.removeIf(o -> !storageIds.contains(o.getDnDiskInfo().getInstance().toLowerCase()));
         }
         if (moveInDnList.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "no available data-node to move in");
@@ -344,11 +352,44 @@ public class PolicyDrainNode implements BalancePolicy {
                 .map(GroupDetailInfoRecord::getGroupName)
                 .collect(Collectors.toList());
 
+
+
+        // query locality and reset locality involving drain node
         // move partitions
-        List<BalanceAction> actionMovePartitions = new ArrayList<>();
+        List<LocalityDetailInfoRecord> localityDetailInfoRecords = PolicyUtils.getLocalityDetails(schemaName);
+        List<LocalityDetailInfoRecord> toRemoveLocalityItems =
+            localityDetailInfoRecords.stream().filter(x -> (x.getLocality() != null && !x.getLocality().isEmpty()))
+                .filter(x -> drainNodeInfo.intersectDnInstList(LocalityDesc.parse(x.getLocality()).getDnList()))
+                .collect(Collectors.toList());
+
+        List<TableGroupConfig> tableGroupConfigList = TableGroupUtils.getAllTableGroupInfoByDb(schemaName);
+        Set<String> toSyncTableGroupSet = new HashSet<>();
+        for (TableGroupConfig tableGroupConfig : tableGroupConfigList) {
+            if (drainNodeInfo.intersectDnInstList(tableGroupConfig.getLocalityDesc().getDnList())) {
+                toSyncTableGroupSet.add(tableGroupConfig.getTableGroupRecord().tg_name);
+            } else {
+                for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
+                    if (drainNodeInfo.intersectDnInstList(
+                        LocalityDesc.parse(partitionGroupRecord.getLocality()).getDnList())) {
+                        toSyncTableGroupSet.add(tableGroupConfig.getTableGroupRecord().tg_name);
+                        break;
+                    }
+                }
+            }
+        }
+
+        List<String> toSyncTableGroup = new ArrayList<>(toSyncTableGroupSet);
+        List<List<String>> toSyncTables = tableGroupConfigList.stream()
+            .filter(tableGroupConfig -> toSyncTableGroup.contains(tableGroupConfig.getTableGroupRecord().tg_name))
+            .map(tableGroupConfig -> tableGroupConfig.getTables().stream().map(o -> o.getTableName())
+                .collect(Collectors.toList()))
+            .collect(Collectors.toList());
+        List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
+        Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Set<PartitionStat> moved = Sets.newHashSet();
         List<MoveInDn> availableInstList = prepareMoveInDns(drainNodeInfo, dnDiskInfo, schemaName);
         List<Pair<PartitionStat, String>> movePartitions = new ArrayList<>();
+
         for (PartitionStat partition : stats.getPartitionStats()) {
             int tgType = partition.getTableGroupRecord().getTg_type();
             if (tgType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
@@ -372,9 +413,11 @@ public class PolicyDrainNode implements BalancePolicy {
         GeneralUtil.emptyIfNull(movePartitions).stream()
             .collect(Collectors.groupingBy(Pair::getValue, Collectors.mapping(Pair::getKey, Collectors.toList())))
             .forEach((toInst, partList) -> {
-                actionMovePartitions.addAll(ActionMovePartition.createMoveToInsts(schemaName, partList, toInst));
+                actionMovePartitions.addAll(ActionMovePartition.createMoveToInsts(schemaName, partList, toInst, stats));
             });
 
+        GeneralUtil.emptyIfNull(actionMovePartitions).stream()
+            .forEach(o -> movePartitionActions.computeIfAbsent(o.getTableGroupName(), m -> new ArrayList<>()).add(o));
         // remove broadcast tables
         ActionDropBroadcastTable dropBroadcastTable =
             new ActionDropBroadcastTable(schemaName, drainNodeInfo.getDnInstIdList());
@@ -399,9 +442,25 @@ public class PolicyDrainNode implements BalancePolicy {
         ActionTaskAdapter cleanRemovedDbGroupMetaAction =
             new ActionTaskAdapter(schemaName, cleanRemovedDbGroupMetaTask);
 
+        CleanRemovedDbLocalityMetaTask cleanRemovedDbLocalityMetaTask =
+            new CleanRemovedDbLocalityMetaTask(schemaName, toRemoveLocalityItems);
+        ActionTaskAdapter cleanRemovedDbLocalityMetaAction =
+            new ActionTaskAdapter(schemaName, cleanRemovedDbLocalityMetaTask);
+
+        List<ActionTaskAdapter> syncTableGroupsAction = new ArrayList<>();
+        for (int i = 0; i < toSyncTableGroup.size(); i++) {
+            TableGroupSyncTask tableGroupSyncTask = new TableGroupSyncTask(schemaName, toSyncTableGroup.get(i));
+            TablesSyncTask tablesSyncTask = new TablesSyncTask(schemaName, toSyncTables.get(i));
+            syncTableGroupsAction.add(new ActionTaskAdapter(schemaName, tablesSyncTask));
+            syncTableGroupsAction.add(new ActionTaskAdapter(schemaName, tableGroupSyncTask));
+        }
+
         List<TableGroupConfig> tableGroupConfigs = new ArrayList<>();
         GeneralUtil.emptyIfNull(stats.getTableGroupStats()).stream()
             .forEach(o -> {
+                if (o.getTableGroupConfig() != null && o.getTableGroupConfig().getTables() != null) {
+                    o.getTableGroupConfig().getTables().clear();
+                }
                 tableGroupConfigs.add(o.getTableGroupConfig());
             });
         DrainNodeValidateTask drainNodeValidateTask = new DrainNodeValidateTask(schemaName, tableGroupConfigs);
@@ -409,7 +468,7 @@ public class PolicyDrainNode implements BalancePolicy {
         ActionTaskAdapter drainNodeValidateTaskAdapter = new ActionTaskAdapter(schemaName, drainNodeValidateTask);
 
         // lock
-        final String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schemaName);
+        final String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schemaName);
         final String schemaXLock = schemaName;
         ActionLockResource lock =
             new ActionLockResource(schemaName, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
@@ -421,14 +480,18 @@ public class PolicyDrainNode implements BalancePolicy {
             DbGroupInfoRecord.GROUP_TYPE_BEFORE_REMOVE);
         ActionTaskAdapter actionUpdateGroupStatus = new ActionTaskAdapter(schemaName, task);
 
-        TopologySyncThenReleaseXLockTask topologySyncThenReleaseXLockTask = new TopologySyncThenReleaseXLockTask(schemaName, schemaXLock);
-        ActionTaskAdapter actionTopologySyncThenReleaseXLockTask = new ActionTaskAdapter(schemaName, topologySyncThenReleaseXLockTask);
+        TopologySyncThenReleaseXLockTask topologySyncThenReleaseXLockTask =
+            new TopologySyncThenReleaseXLockTask(schemaName, schemaXLock);
+        ActionTaskAdapter actionTopologySyncThenReleaseXLockTask =
+            new ActionTaskAdapter(schemaName, topologySyncThenReleaseXLockTask);
         // combine actions
         actions.add(lock);
         actions.add(drainNodeValidateTaskAdapter);
         actions.add(actionUpdateGroupStatus);
         actions.add(actionTopologySyncThenReleaseXLockTask);
-        actions.addAll(actionMovePartitions);
+        actions.add(cleanRemovedDbLocalityMetaAction);
+        actions.addAll(syncTableGroupsAction);
+        actions.add(new ActionMovePartitions(schemaName, movePartitionActions));
         actions.add(dropBroadcastTable);
         actions.add(hideToRemovedGroupMetaAction);
         actions.add(syncNewTopologyAction);
@@ -509,12 +572,20 @@ public class PolicyDrainNode implements BalancePolicy {
             return dnInstIdList.contains(dnInst);
         }
 
+        public boolean intersectDnInstList(List<String> dnInstList) {
+            return !Collections.disjoint(dnInstList, dnInstIdList);
+        }
+
+        public void validate() {
+            validate(true);
+        }
+
         /**
          * Validate the drain_node info
          * 1. Whether all dn instance are existed
          * 2. Whether all dn instance could be removed
          */
-        public void validate() {
+        public void validate(Boolean validateDeleteable) {
             if (CollectionUtils.isEmpty(dnInstIdList)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "empty dn list");
             }
@@ -522,25 +593,30 @@ public class PolicyDrainNode implements BalancePolicy {
             Map<String, StorageInstHaContext> allStorage =
                 StorageHaManager.getInstance().refreshAndGetStorageInstHaContextCache();
 
-            Set<String> nonDeletableStorage;
-            try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
-                nonDeletableStorage = DbTopologyManager.getNonDeletableStorageInst(metaDbConn);
-            } catch (Throwable ex) {
-                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "failed to fetch the non deletable storage list");
-            }
-
-            for (String dnInst : dnInstIdList) {
-                StorageInstHaContext storage = allStorage.get(dnInst);
-                if (storage == null) {
+            if(validateDeleteable) {
+                Set<String> nonDeletableStorage;
+                try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                    nonDeletableStorage = DbTopologyManager.getNonDeletableStorageInst(metaDbConn);
+                } catch (Throwable ex) {
                     throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                        "storage not found: " + dnInst);
+                        "failed to fetch the non deletable storage list");
                 }
 
-                // check if dn is allowed to be deleted
-                boolean deletable = DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, dnInst, storage.getStorageKind());
-                if (!deletable) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                        "storage not deletable: " + dnInst);
+                for (String dnInst : dnInstIdList) {
+                    StorageInstHaContext storage = allStorage.get(dnInst);
+                    if (storage == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                                "storage not found: " + dnInst);
+                    }
+
+                    // check if dn is allowed to be deleted
+                    boolean deletable =
+                    DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, dnInst,
+                            storage.getStorageKind());
+                    if (!deletable) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                                "storage not deletable: " + dnInst);
+                    }
                 }
             }
 

@@ -66,6 +66,9 @@ public class TableLookupRemoveRule extends RelOptRule {
             if (lockMode != null && lockMode != SqlSelect.LockMode.UNDEF) {
                 return false;
             }
+            if (logicalViewFinder.getResult().get(0).useSelectPartitions()) {
+                return false;
+            }
         }
 
         final LogicalProject project = tableLookup.getProject();

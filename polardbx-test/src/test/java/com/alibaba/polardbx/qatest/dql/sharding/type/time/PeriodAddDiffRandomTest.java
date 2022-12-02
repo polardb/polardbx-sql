@@ -22,7 +22,6 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 public class PeriodAddDiffRandomTest extends TimeTestBase {

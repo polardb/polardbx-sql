@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.scaleout.backfill;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -43,11 +44,13 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
                                  PhyTableOperation planSelectWithMin,
                                  PhyTableOperation planSelectWithMinAndMax,
                                  PhyTableOperation planSelectMaxPk,
+                                 PhyTableOperation planSelectSample,
+                                 PhyTableOperation planSelectMinAndMaxSample,
                                  List<Integer> primaryKeysId,
                                  Map<String, Set<String>> sourcePhyTables) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
+            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
     }
 
@@ -77,6 +80,10 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
                 info.getPrimaryKeys(), true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
+                false, false),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
+                true, true),
             info.getPrimaryKeysId(),
             sourcePhyTables);
     }

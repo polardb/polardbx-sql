@@ -21,6 +21,7 @@ import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
+import com.alibaba.polardbx.server.QueryResultHandler;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.LogUtils;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -94,6 +95,36 @@ public class ReloadHandler {
             if (m.matches()) {
                 SyncManagerHelper
                     .sync(new ReloadSyncAction(ReloadUtils.ReloadType.USERS, c.getSchema()), c.getSchema());
+                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                return;
+            }
+
+            pattern = "RELOAD[\\s]+FILESTORAGE";
+            r = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+            m = r.matcher(stmt);
+            if (m.matches()) {
+                SyncManagerHelper
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FILESTORAGE, c.getSchema()), c.getSchema());
+                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                return;
+            }
+
+            pattern = "RELOAD[\\s]+FUNCTIONS";
+            r = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+            m = r.matcher(stmt);
+            if (m.matches()) {
+                SyncManagerHelper
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FUNCTIONS, c.getSchema()), c.getSchema());
+                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                return;
+            }
+
+            pattern = "RELOAD[\\s]+PROCEDURES";
+            r = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+            m = r.matcher(stmt);
+            if (m.matches()) {
+                SyncManagerHelper
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.PROCEDURES, c.getSchema()), c.getSchema());
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return;
             }

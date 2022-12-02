@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppResultCursor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.ExplainExecutorUtil;
@@ -46,7 +47,7 @@ import java.util.stream.Collectors;
 
 public class PlanExecutor extends AbstractLifecycle {
 
-    public ResultCursor execute(ExecutionPlan plan, ExecutionContext context) {
+    public static ResultCursor execute(ExecutionPlan plan, ExecutionContext context) {
         final ExplainResult explain = context.getExplain();
 
         // Only used for Async DDL.
@@ -98,7 +99,7 @@ public class PlanExecutor extends AbstractLifecycle {
                 @Override
                 public void visit(RelNode node, int ordinal, RelNode parent) {
                     if (node instanceof HashAgg || node instanceof SortWindow || node instanceof LogicalUnion
-                            || node instanceof HashGroupJoin) {
+                        || node instanceof HashGroupJoin) {
                         if (mq == null) {
                             ec.getRecordRowCnt().put(node.getRelatedId(), 100);
                         } else {
@@ -132,6 +133,13 @@ public class PlanExecutor extends AbstractLifecycle {
         // 包装为可以传输的ResultCursor
         if (cursor instanceof ResultCursor) {
             resultCursor = (ResultCursor) cursor;
+        } else if (cursor instanceof GatherCursor) {
+            resultCursor = new ResultCursor(cursor);
+            if (cursorMeta == null) {
+                resultCursor.setCursorMeta(CursorMeta.build(cursor.getReturnColumns()));
+            } else {
+                resultCursor.setCursorMeta(cursorMeta);
+            }
         } else {
             resultCursor = new ResultCursor(cursor);
             resultCursor.setCursorMeta(cursorMeta);

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.server.conn;
 
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
@@ -42,7 +43,6 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
-import com.alibaba.polardbx.server.ServerConnection;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -95,7 +95,7 @@ public class InnerConnection implements Connection {
 
     public InnerConnection(String schemaName) throws SQLException {
         this.schemaName = schemaName;
-        this.id = ServerConnection.fetchNextConnId();
+        this.id = ClusterAcceptIdGenerator.getInstance().nextId();
         this.mdlContext = MdlManager.addContext(id);
         this.mdlContextLock = new Object();
 

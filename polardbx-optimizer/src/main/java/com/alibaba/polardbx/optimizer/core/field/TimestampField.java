@@ -135,6 +135,23 @@ public class TimestampField extends AbstractTemporalField {
                 OriginalTemporalValue temporalValue = (OriginalTemporalValue) value;
                 MysqlDateTime mysqlDateTime = temporalValue.getMysqlDateTime();
                 return storeTemporal(mysqlDateTime, sessionProperties, mysqlDateTime.getSqlType());
+            } else if (value instanceof Timestamp) {
+                // Bad case: Use jdbc-style temporal value (java.sql.Timestamp)
+                ZoneId zoneId = sessionProperties.getTimezone();
+                MysqlDateTime mysqlDateTime = MySQLTimeConverter.convertTimestampToDatetime((Timestamp) value, zoneId);
+                mysqlDateTime.setSqlType(Types.TIMESTAMP);
+
+                // Use mysqlDatetime rather than timeVal for temporal calculating.
+                return storeMysqlDatetime(mysqlDateTime, sessionProperties);
+            } else if (value instanceof Date) {
+                // Bad case: Use jdbc-style temporal value (java.sql.Date)
+                ZoneId zoneId = sessionProperties.getTimezone();
+                MysqlDateTime mysqlDateTime =
+                    MySQLTimeConverter.toMySqlDatetime(zoneId, ((Date) value).getTime() / 1000L, 0);
+                mysqlDateTime.setSqlType(Types.DATE);
+
+                // Use mysqlDatetime rather than timeVal for temporal calculating.
+                return storeMysqlDatetime(mysqlDateTime, sessionProperties);
             } else if (value instanceof Slice) {
                 // for parameterized value.
                 return storeSlice((Slice) value, sessionProperties);
@@ -142,9 +159,6 @@ public class TimestampField extends AbstractTemporalField {
                 return storeString((String) value, sessionProperties);
             } else if (value instanceof byte[]) {
                 return storeBytes((byte[]) value, sessionProperties);
-            } else if (value == null) {
-                setNull();
-                return TypeConversionStatus.TYPE_OK;
             } else if (value == null) {
                 setNull();
                 return TypeConversionStatus.TYPE_OK;
@@ -471,11 +485,11 @@ public class TimestampField extends AbstractTemporalField {
             break;
         case 3:
         case 4:
-            nano = (((int) bytes[5]) + ((int) (bytes[4]) << 8)) * 100_000;
+            nano = ((Byte.toUnsignedInt(bytes[5])) + (Byte.toUnsignedInt(bytes[4]) << 8)) * 100_000;
             break;
         case 5:
         case 6:
-            if ((Byte.toUnsignedInt(bytes[5]) & 128) != 0) {
+            if ((Byte.toUnsignedInt(bytes[4]) & 128) != 0) {
                 nano = (int) ((Integer.toUnsignedLong(255) << 24)
                     | (Integer.toUnsignedLong(Byte.toUnsignedInt(bytes[4])) << 16)
                     | (Integer.toUnsignedLong(Byte.toUnsignedInt(bytes[5])) << 8)

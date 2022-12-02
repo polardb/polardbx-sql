@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
@@ -42,6 +42,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.commons.lang3.StringUtils;
@@ -175,6 +176,12 @@ public class ShowProcesslistSyncAction implements ISyncAction {
             }
 
         }
+
+        if (executingProcedure(sc.getId())) {
+            command = "Query";
+            info = addProcedureInfo(sc.getId(), info);
+        }
+
         String dumpState = sc.getDumpState();
         if (StringUtils.isNotEmpty(dumpState)) {
             command = "Binlog Dump";
@@ -258,6 +265,17 @@ public class ShowProcesslistSyncAction implements ISyncAction {
             cost.getCpu(), cost.getMemory(), cost.getIo(), cost.getNet(),
             workloadType, route, worker, sc.getTraceId()});
 
+    }
+
+    private boolean executingProcedure(long connId) {
+        return RuntimeProcedureManager.getInstance().search(connId) != null;
+    }
+
+    private String addProcedureInfo(long connId, String info) {
+        if (info == null || "NULL".equalsIgnoreCase(info)) {
+            info = "executing pl logic";
+        }
+        return "CALL " + RuntimeProcedureManager.getInstance().search(connId).getName() + ": " + info;
     }
 
 }

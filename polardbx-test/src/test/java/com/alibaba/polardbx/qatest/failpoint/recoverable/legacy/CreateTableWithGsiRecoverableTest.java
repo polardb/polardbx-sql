@@ -37,7 +37,6 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.GSI_PRIMARY_TABLE_NAME;
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 
 /**
  * @author chenmo.cm

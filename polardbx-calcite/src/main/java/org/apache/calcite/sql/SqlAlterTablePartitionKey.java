@@ -52,7 +52,7 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
                                      SqlNode tablePartitionBy,
                                      SqlNode tbpartitions) {
 
-        super(tableName, null, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
+        super(null, tableName, null, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
         this.name = tableName;
         this.originTableName = tableName;
         this.dbPartitionBy = dbPartitionBy;

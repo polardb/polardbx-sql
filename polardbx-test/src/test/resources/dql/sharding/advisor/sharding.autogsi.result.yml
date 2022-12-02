@@ -1,0 +1,2 @@
+- alter table sharding_advisor_autogsi.nn2 PARTITION BY KEY(`n_gg`) PARTITIONS 3;
+- alter table sharding_advisor_autogsi.nn1 PARTITION BY KEY(`n_gg`) PARTITIONS 3;

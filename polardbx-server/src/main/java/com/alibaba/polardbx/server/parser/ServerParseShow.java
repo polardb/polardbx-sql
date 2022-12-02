@@ -52,6 +52,8 @@ public final class ServerParseShow {
     public static final int CACHE_STATS = 25;
     public static final int ARCHIVE = 26;
     public static final int FILE_STORAGE = 27;
+    public static final int FULL_DATABASES = 28;
+    public static final int PROCEDURE_CACHE = 29;
 
     public static int parse(String stmt, int offset) {
         return parse(ByteString.from(stmt), offset);
@@ -534,6 +536,17 @@ public final class ServerParseShow {
                     case '\r':
                     case '\n':
                         continue;
+                    case 'D':
+                    case 'd':
+                    {
+                        int res = dataCheck(stmt, offset);
+                        if (res == DATABASES) {
+                            return FULL_DATABASES;
+                        } else {
+                            return OTHER;
+                        }
+                    }
+
                     default:
                         return OTHER;
                     }

@@ -87,16 +87,25 @@ public class FetchAllTransSyncAction implements ISyncAction {
                 });
             } else {
                 for (IConnection connection : tran.getConnectionHolder().getAllConnection()) {
-                    IConnection realConneciton  = connection.getRealConnection();
+                    IConnection realConneciton = connection.getRealConnection();
                     if (realConneciton instanceof TGroupDirectConnection) {
                         String group = ((TGroupDirectConnection) realConneciton).getGroupDataSource().getDbGroupKey();
+                        Long id = null;
+                        try {
+                            id = realConneciton.getId();
+                        } catch (Throwable t) {
+                            // When we get id from XConnection, an exception may be thrown
+                            // if the connection is closed, and we move to the next transaction.
+                            break;
+                        }
+
                         if (fetchSql) {
                             result.addRow(new Object[] {
-                                tran.getId(), group, realConneciton.getId(), frontendConnId, tran.getStartTime(),
+                                tran.getId(), group, id, frontendConnId, tran.getStartTime(),
                                 sqlSubString});
                         } else {
                             result.addRow(new Object[] {
-                                tran.getId(), group, realConneciton.getId(), frontendConnId, tran.getStartTime()});
+                                tran.getId(), group, id, frontendConnId, tran.getStartTime()});
                         }
 
                     }

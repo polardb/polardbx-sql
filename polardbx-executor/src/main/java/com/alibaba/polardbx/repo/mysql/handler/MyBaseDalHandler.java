@@ -126,7 +126,7 @@ public class MyBaseDalHandler extends BaseDalHandler {
             if (dal.single()) {
                 ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, executionContext);
                 Cursor cursor = myRepo.getCursorFactory().repoCursor(executionContext, dal.getInput(null).get(0));
-                return reorgLogicalColumnOrder(showColumnsContext, cursor);
+                return reorgLogicalColumnOrder(showColumnsContext, cursor, executionContext);
             }
 
             return buildMultiCursor(executionContext, dal);
@@ -136,7 +136,7 @@ public class MyBaseDalHandler extends BaseDalHandler {
         }
     }
 
-    private Cursor reorgLogicalColumnOrder(ShowColumnsContext context, Cursor cursor) {
+    private Cursor reorgLogicalColumnOrder(ShowColumnsContext context, Cursor cursor, ExecutionContext ec) {
         if (context != null) {
             ArrayResultCursor resultCursor = new ArrayResultCursor(context.tableName);
 
@@ -189,6 +189,7 @@ public class MyBaseDalHandler extends BaseDalHandler {
                 }
             }
 
+            rows = ResultSetHelper.filterOutHiddenColumns(context.schemaName, context.tableName, rows, ec);
             ResultSetHelper.reorgLogicalColumnOrder(context.schemaName, context.tableName, rows, resultCursor);
 
             return resultCursor;

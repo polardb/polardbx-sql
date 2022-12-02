@@ -48,19 +48,38 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  */
 
 public class InsertSelectTest extends CrudBasedLockTestCase {
+    //原来的单线程执行
+    private static final String HINT1 = "";
+    //多线程执行
+    private static final String HINT2 = "/*+TDDL:CMD_EXTRA(INSERT_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+    //MPP执行
+    private static final String HINT3 = "/*+TDDL:CMD_EXTRA(INSERT_SELECT_MPP=true)*/ ";
+
+    private final String HINT;
 
     List<ColumnEntity> columns = new ArrayList<ColumnEntity>();
     String selectColumn = "integer_test,date_test,timestamp_test,datetime_test,varchar_test,float_test,blob_test";
     String tableNameForCheck1;
     String tableNameForCheck2;
 
-    @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
+    @Parameterized.Parameters(name = "{index}:hint={0},table0={1},table1={2}")
     public static List<String[]> prepareData() {
-        return Arrays.asList(ExecuteTableName.allBaseTypeTwoTable(ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC));
+        List<String[]> allTests = new ArrayList<>();
+        List<String[]> tableNames =
+            Arrays.asList(ExecuteTableName.allBaseTypeTwoTable(ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC));
+
+        tableNames.forEach(strings -> allTests.add(new String[] {HINT1, strings[0], strings[1]}));
+        tableNames.forEach(strings -> allTests.add(new String[] {HINT2, strings[0], strings[1]}));
+        //广播表不支持MPP
+        tableNames.stream().filter(strings -> !strings[1].contains("broadcast"))
+            .forEach(strings -> allTests.add(new String[] {HINT3, strings[0], strings[1]}));
+
+        return allTests;
     }
 
-    public InsertSelectTest(String baseOneTableName,
+    public InsertSelectTest(String tHint, String baseOneTableName,
                             String baseTwoTableName) throws SQLException {
+        HINT = tHint;
         this.baseOneTableName = baseOneTableName;
         this.baseTwoTableName = baseTwoTableName;
     }
@@ -116,7 +135,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + " select varchar_test,pk+1000,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10",
@@ -136,7 +155,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectPkNoFunctionTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10",
@@ -156,7 +175,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithSelectNoPkTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(pk,blob_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select distinct(integer_test)+100,blob_test,float_test,date_test,datetime_test,timestamp_test from %s",
 
@@ -177,7 +196,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithSelectNoPkButWithWhereTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(pk,varchar_test,blob_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select distinct(integer_test)+100,varchar_test,blob_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10",
                 baseTwoTableName, baseOneTableName);
@@ -196,7 +215,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithInsertNoPkTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert into %s(varchar_test,integer_test,blob_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10",
@@ -219,7 +238,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             columns, PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(integer_test,date_test,datetime_test,timestamp_test,float_test,blob_test) "
                     + "select integer_test,date_test,datetime_test,timestamp_test,float_test,blob_test from %s order by pk limit 200",
                 baseTwoTableName, baseOneTableName);
@@ -238,7 +257,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectPartlyColumnTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(pk,integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select pk+100,integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test from %s ",
                 baseTwoTableName, baseOneTableName);
@@ -259,7 +278,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         // 准备完全相同的数据
         String sql = "";
         if (!baseOneTableName.equals(baseTwoTableName)) {
-            sql = String
+            sql = HINT + String
                 .format(
                     "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                         + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s ",
@@ -268,7 +287,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
                 sql, null);
         }
 
-        sql = String
+        sql = HINT + String
             .format(
                 "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s ",
@@ -291,7 +310,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         // 准备完全相同的数据
         String sql = "";
 
-        sql = String
+        sql = HINT + String
             .format(
                 "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s on duplicate key update float_test=1.0",
@@ -318,7 +337,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         // 准备完全相同的数据
         String sql = "";
 
-        sql = String
+        sql = HINT + String
             .format(
                 "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s on duplicate key update float_test=values(float_test) + values(integer_test)",
@@ -346,15 +365,15 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         }
         // 准备完全相同的数据
         String sql = "";
-        sql = String
+        sql = HINT + String
             .format("insert into %s(integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test from %s ",
                 baseTwoTableName,
                 baseOneTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
             sql, null);
-        sql = String
-            .format("insert  into %s(integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
+        sql = HINT + String
+            .format("insert into %s(integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select a.integer_test, a.pk + 100, a.datetime_test, a.timestamp_test,a.varchar_test,b.float_test,b.blob_test from %s as a join %s as b where a.pk=b.pk+1 ",
                 baseTwoTableName,
                 baseOneTableName,
@@ -373,7 +392,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithGroupByTest() {
 
-        String sql = String.format("insert ignore into %s(integer_test,varchar_test) "
+        String sql = HINT + String.format("insert ignore into %s(integer_test,varchar_test) "
                 + "select count(pk),varchar_test from %s group by varchar_test order by integer_test",
             baseTwoTableName, baseOneTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
@@ -390,7 +409,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithAliasTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select integer_test idd,datetime_test gmtc,timestamp_test gmtt,varchar_test namen,float_test,blob_test from %s where pk > 10",
                 baseTwoTableName, baseOneTableName);
@@ -409,7 +428,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithAliasPKTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(pk, integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select pk pk1, integer_test,datetime_test gmtc,timestamp_test gmtt ,varchar_test namen,float_test,blob_test from %s where pk > 10",
@@ -428,12 +447,28 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithSubQueryTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where pk in (select pk from %s where integer_test>100)",
                 baseTwoTableName, baseOneTableName,
                 baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        String cnSql = "select * from " + tableNameForCheck2;
+        String dnSql = "select * from " + baseTwoTableName;
+        assertBroadcastTableSame(dnSql, cnSql);
+        selectContentSameAssert(dnSql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void insertSelectWithColumnSubQueryTest() {
+
+        String sql = HINT + String.format(
+            "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
+                + "select varchar_test,pk,blob_test,(select integer_test from %s where pk = 18),float_test,date_test,datetime_test,timestamp_test from %s where pk in (select pk from %s where integer_test>100)",
+            baseTwoTableName, baseOneTableName,
+            baseOneTableName, baseOneTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
 
         String cnSql = "select * from " + tableNameForCheck2;
@@ -448,7 +483,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithNullTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where varchar_test is NULL",
@@ -467,7 +502,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithLimitTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10 order by integer_test limit 2",
@@ -486,7 +521,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithoutColumnTest() {
 
-        String sql = String.format("insert ignore into %s select pk, integer_test, varchar_test, char_test, "
+        String sql = HINT + String.format("insert ignore into %s select pk, integer_test, varchar_test, char_test, "
                 + "blob_test, tinyint_test, tinyint_1bit_test, smallint_test, mediumint_test, bit_test, bigint_test, "
                 + "float_test, double_test, decimal_test, date_test, time_test, datetime_test, timestamp_test, "
                 + "year_test, mediumtext_test from %s where pk > 10",
@@ -505,7 +540,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithoutColumn2Test() {
 
-        String sql = String.format("insert ignore into %s "
+        String sql = HINT + String.format("insert ignore into %s "
                 + "select * from %s where pk > 10", baseTwoTableName,
             baseOneTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
@@ -527,7 +562,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             tddlConnection, columnDataGenerator);
 //		normaltblPrepare(1, 20,baseOneTableName, mysqlConnection, tddlConnection);
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test,pk) "
                     + "select integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test,null from %s where pk > 10",
@@ -546,7 +581,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWithNullAutoIncrementColumnTest() {
 
-        String sql = String.format(
+        String sql = HINT + String.format(
             "insert ignore into %s(pk, varchar_test) select null, 'abc'",
             baseTwoTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
@@ -563,7 +598,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectWith0AutoIncrementColumnTest() {
 
-        String sql = String.format(
+        String sql = HINT + String.format(
             "insert ignore into %s(pk, varchar_test) select 0, \"gxw\"",
             baseTwoTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
@@ -581,7 +616,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
      */
     @Test
     public void batchInsertSelectTest() {
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test from %s where pk > ?",
                 baseTwoTableName, baseOneTableName);
@@ -607,7 +642,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
      */
     @Test
     public void batchInsertSelectColumnParamTest() {
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(pk, integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select pk, integer_test,datetime_test,timestamp_test,varchar_test,?,? from %s where pk > ?",
@@ -635,7 +670,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertSelectColumnParamTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert ignore into %s(pk,integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
                     + "select pk,integer_test,datetime_test,timestamp_test,varchar_test,?,? from %s where pk > ?",
@@ -660,7 +695,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void testInsertSelectWithGroupConcat() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(integer_test,varchar_test) "
                     + "select max(integer_test), group_concat(distinct varchar_test separator '|') from %s where pk > 10 group by varchar_test",
                 baseTwoTableName, baseOneTableName);
@@ -680,7 +715,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void testInsertSelectWithGroupConcatRunError() {
 
-        String sql = String
+        String sql = HINT + String
             .format("insert into %s(integer_test,varchar_test) "
                     + "select max(integer_test), group_concat(distinct varchar_test order by integer_test separator '|') from %s where pk > 100 group by integer_test",
                 baseTwoTableName, baseOneTableName);
@@ -698,7 +733,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertWhenSelectResultAlwaysEmptyTest() {
 
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + "select varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s where pk > 10 and pk <10",
@@ -716,7 +751,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
     @Test
     public void insertWhenUnionAllTest() {
 
-        String sql = String.format("insert into %s(pk,integer_test,varchar_test) "
+        String sql = HINT + String.format("insert into %s(pk,integer_test,varchar_test) "
                 + "select 30, 2, 'gxw' union all select 40,5,'gxw1'",
             baseTwoTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
@@ -736,7 +771,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             columns, PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
-        String sql = String.format(
+        String sql = HINT + String.format(
             "insert into %s(pk, varchar_test) select distinct(integer_test) + 1000 as idd ,varchar_test from %s where integer_test>15 or integer_test<5 union distinct "
                 + "(select pk + 300,varchar_test from %s where 8<pk  order by pk limit 10) order by varchar_test, idd limit 100",
             baseTwoTableName,
@@ -760,7 +795,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             tddlConnection, columnDataGenerator);
 //		normaltblPrepare(1, 20,baseTwoTableName, mysqlConnection, tddlConnection);
 
-        String sql = String.format(
+        String sql = HINT + String.format(
             "insert into %s (pk, varchar_test) select distinct(integer_test) + 1000 as idd ,varchar_test from %s where integer_test>15 or integer_test<5 union all "
                 + "(select pk + 300,varchar_test from %s where 8<pk and pk<12 order by integer_test limit 10) order by varchar_test, idd limit 100",
             baseTwoTableName,
@@ -792,18 +827,21 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insertSelectSelfTest() throws SQLException {
+        if (HINT.equalsIgnoreCase(HINT3)) {
+            //MPP自己表插入时无法保证数目，没有使用快照读
+            return;
+        }
 
         // initialize data
-        String sql = String
+        String sql = HINT + String
             .format(
                 "insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + " select varchar_test,pk+1000,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s",
                 baseTwoTableName, baseOneTableName);
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
-            sql, null);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         // insert select from self. Using MERGE_UNION_SIZE hint to make sure there's only one connection to each group.
-        sql = String.format(
+        sql = HINT + String.format(
             "insert into %s(varchar_test,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                 + " select /*+TDDL: cmd_extra(MERGE_UNION_SIZE=0)*/"
                 + "varchar_test,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s",
@@ -812,10 +850,44 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         int beforeCount = getCountOfTable(baseTwoTableName);
 
         int expectedCount = beforeCount;
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             JdbcUtil.executeSuccess(tddlConnection, sql);
             expectedCount *= 2;
         }
+
+        int afterCount = getCountOfTable(baseTwoTableName);
+        Assert.assertEquals(expectedCount, afterCount);
+    }
+
+    @Test
+    public void insertSelectSelfWithJoinTest() throws SQLException {
+        if (HINT.equalsIgnoreCase(HINT3) || HINT.equalsIgnoreCase(HINT1)) {
+            //MPP自己表插入时无法保证数目，没有使用快照读
+            //普通插入batch size大于select条数，没有测试必要
+            return;
+        }
+
+        // 准备完全相同的数据
+        String sql = "";
+        sql = HINT + String
+            .format("insert into %s(integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
+                    + "select integer_test,pk,datetime_test,timestamp_test,varchar_test,float_test,blob_test from %s ",
+                baseTwoTableName,
+                baseOneTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = HINT + String
+            .format("insert into %s(integer_test,datetime_test,timestamp_test,varchar_test,float_test,blob_test) "
+                    + "select a.integer_test, a.datetime_test, a.timestamp_test,a.varchar_test,b.float_test,b.blob_test from %s as a join %s as b where a.pk=b.pk ",
+                baseTwoTableName,
+                baseOneTableName,
+                baseTwoTableName);
+
+        int expectedCount = getCountOfTable(baseTwoTableName);
+        for (int i = 0; i < 6; i++) {
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+        }
+        expectedCount += expectedCount * 6;
 
         int afterCount = getCountOfTable(baseTwoTableName);
         Assert.assertEquals(expectedCount, afterCount);
@@ -834,7 +906,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             columns, PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
-        String sql = String.format(
+        String sql = HINT + String.format(
             "INSERT INTO %s (integer_test, pk, varchar_test) \n"
                 + "SELECT 30, (select pk + 10000 from %s where pk = 3) pk, 'aa' FROM dual WHERE EXISTS (select * from %s where integer_test>15 OR integer_test<5) \n"
                 + "UNION ALL ( SELECT 31, (select pk + 20000 from %s where pk = 3) pk, 'bb' FROM dual WHERE EXISTS (select * from %s where 8<pk AND pk<12) )\n",
@@ -852,27 +924,30 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
 
     @Test
     public void insertSelectOnduplicatedUpdateTest() throws SQLException {
+        if (HINT.equalsIgnoreCase(HINT3)) {
+            //MPP自己表插入时无法保证数目，没有使用快照读
+            return;
+        }
 
         // initialize data
-        String sql = String
+        String sql = HINT + String
             .format(
                 "/*+TDDL:cmd_extra(INSERT_SELECT_BATCH_SIZE=10)*/ insert into %s(varchar_test,pk,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
                     + " select varchar_test,pk+1000,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test from %s ",
                 baseTwoTableName, baseOneTableName);
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
-            sql, null);
+        JdbcUtil.executeSuccess(tddlConnection, sql);
 
         // insert select from self. Using MERGE_UNION_SIZE hint to make sure there's only one connection to each group.
-        sql = String.format(
+        sql = HINT + String.format(
             "insert into %s(varchar_test,blob_test,integer_test,float_test,date_test,datetime_test,timestamp_test) "
-                + " select varchar_test,blob_test,integer_test,float_test,date_test,datetime_test,"
+                + " select /*+TDDL: cmd_extra(MERGE_UNION_SIZE=0)*/ varchar_test,blob_test,integer_test,float_test,date_test,datetime_test,"
                 + "timestamp_test from %s on duplicate key update datetime_test=now()",
             baseTwoTableName, baseTwoTableName);
 
         int beforeCount = getCountOfTable(baseTwoTableName);
 
         int expectedCount = beforeCount;
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             JdbcUtil.executeSuccess(tddlConnection, sql);
             expectedCount *= 2;
         }
@@ -888,6 +963,10 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
      */
     @Test
     public void trxTest() throws Exception {
+        if (HINT.equalsIgnoreCase(HINT3)) {
+            //MPP自己表插入时无法保证数目，没有使用快照读
+            return;
+        }
 
         Connection connection = null;
         try {
@@ -897,7 +976,7 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
             tableDataPrepare(baseTwoTableName, 1, 20, columns, PK_COLUMN_NAME, mysqlConnection, connection,
                 columnDataGenerator);
 
-            String sql = String.format(
+            String sql = HINT + String.format(
                 "insert into %s(pk, varchar_test) select distinct(integer_test) + 1000 as idd ,varchar_test from %s where integer_test>15 or integer_test<5 union distinct "
                     + "(select pk + 300,varchar_test from %s where 8<pk  order by pk limit 10) order by varchar_test, idd limit 100",
                 baseTwoTableName, baseOneTableName, baseTwoTableName);

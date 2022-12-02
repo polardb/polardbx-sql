@@ -80,7 +80,27 @@ public class SqlPartitionBy extends SqlCall {
         } else if (partByObj instanceof SqlPartitionByList) {
             isColumnsPartition = ((SqlPartitionByList)partByObj).isColumns();
         }
+
         for (SqlNode partCol : this.getColumns()) {
+            SqlCreateTable.PartitionColumnFinder columnFinder = new SqlCreateTable.PartitionColumnFinder();
+            partCol.accept(columnFinder);
+            if (columnFinder.getPartColumn() == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
+                    .format("Not allowed to use unknown column[%s] as partition column",partCol.toString()));
+            } else {
+                if (isColumnsPartition) {
+                    if (columnFinder.isContainPartFunc()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
+                            .format("Not allowed to use partition column[%s] with partition function in  key or range/list columns policy",partCol.toString()));
+                    }
+                } else {
+                    if (columnFinder.isUseNestingPartFunc()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
+                            .format("Not allowed to use nesting partition function [%s] in hash/range/list policy",partCol.toString()));
+                    }
+                }
+            }
+
             RelDataType dataType = validator.deriveType(scope, partCol);
             if (dataType == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,

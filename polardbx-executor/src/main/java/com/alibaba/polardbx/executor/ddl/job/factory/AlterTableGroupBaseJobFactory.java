@@ -16,18 +16,26 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +57,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     protected final Map<String, List<Pair<String, String>>> orderedTargetTablesLocations;
     protected final ExecutionContext executionContext;
     protected final ComplexTaskMetaManager.ComplexTaskType taskType;
+    private final static Logger LOG = SQLRecorderLogger.ddlEngineLogger;
 
     public AlterTableGroupBaseJobFactory(DDL ddl, AlterTableGroupBasePreparedData preparedData,
                                          Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
@@ -85,7 +94,8 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
                 new AlterTableGroupSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
                     newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
                     targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
-                    orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, false, executionContext);
+                    orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, false, taskType,
+                    executionContext);
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
@@ -118,6 +128,9 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
+        if (StringUtils.isNotEmpty(preparedData.getTargetTableGroup())) {
+            resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTargetTableGroup()));
+        }
         for (String relatedPart : preparedData.getRelatedPartitions()) {
             resources.add(concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()),
                 relatedPart));
@@ -131,9 +144,28 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
 
     protected Map<String, Long> getTablesVersion() {
         Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (AlterTableGroupItemPreparedData itemPreparedData : tablesPrepareData.values()) {
-            tablesVersion.putIfAbsent(itemPreparedData.getPrimaryTableName(),itemPreparedData.getTableVersion());
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            TablesAccessor tablesAccessor = new TablesAccessor();
+            tablesAccessor.setConnection(conn);
+            for (AlterTableGroupItemPreparedData itemPreparedData : tablesPrepareData.values()) {
+                tablesVersion.putIfAbsent(itemPreparedData.getPrimaryTableName(), itemPreparedData.getTableVersion());
+                TablesRecord tablesRecord =
+                    tablesAccessor.query(preparedData.getSchemaName(), itemPreparedData.getPrimaryTableName(), false);
+                LOG.warn(
+                    String.format("%s current tableVersion in Ec:%d", itemPreparedData.getPrimaryTableName(),
+                        itemPreparedData.getTableVersion()));
+                if (tablesRecord != null) {
+                    LOG.warn(
+                        String.format("current tablesRecord details in prepare phase: %s", tablesRecord.toString()));
+                } else {
+                    LOG.warn(String.format("current tablesRecord details: %s.%s %s", preparedData.getSchemaName(),
+                        itemPreparedData.getPrimaryTableName(), " not exists"));
+                }
+            }
+        } catch (Throwable t) {
+            throw new TddlNestableRuntimeException(t);
         }
+
         return tablesVersion;
     }
 }

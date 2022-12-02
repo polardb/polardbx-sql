@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.join;
 
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
@@ -48,12 +48,28 @@ public class EquiJoinUtils {
 
     public static List<EquiJoinKey> buildEquiJoinKeys(Join join, RelNode outer, RelNode inner,
                                                       RexCall condition, JoinRelType joinType) {
-        return buildEquiJoinKeys(join, outer, inner, condition, joinType, false);
+        return createEquiJoinKeys(false, join, outer, inner, condition, joinType, false);
+    }
+
+    public static List<LookupEquiJoinKey> buildLookupEquiJoinKeys(Join join, RelNode outer, RelNode inner,
+                                                                  RexCall condition, JoinRelType joinType,
+                                                                  boolean includeNullSafeEqual) {
+        List<EquiJoinKey> equiJoinKeys = createEquiJoinKeys(
+            true, join, outer, inner, condition, joinType, includeNullSafeEqual);
+
+        return equiJoinKeys.stream().map(x -> (LookupEquiJoinKey) x).collect(Collectors.toList());
     }
 
     public static List<EquiJoinKey> buildEquiJoinKeys(Join join, RelNode outer, RelNode inner,
                                                       RexCall condition, JoinRelType joinType,
                                                       boolean includeNullSafeEqual) {
+        return createEquiJoinKeys(
+            false, join, outer, inner, condition, joinType, includeNullSafeEqual);
+    }
+
+    public static List<EquiJoinKey> createEquiJoinKeys(boolean isLookupView, Join join, RelNode outer, RelNode inner,
+                                                       RexCall condition, JoinRelType joinType,
+                                                       boolean includeNullSafeEqual) {
         final SqlOperator operator = condition.getOperator();
         final List<RexNode> operands = condition.getOperands();
 
@@ -89,14 +105,7 @@ public class EquiJoinUtils {
                 DataType unifiedType = CalciteUtils.getUnifiedDataType(innerType, outerType);
 
                 RelMetadataQuery mq = join.getCluster().getMetadataQuery();
-                final RelColumnOrigin columnOrigin;
-                synchronized (mq) {
-                    if (join instanceof MaterializedSemiJoin || joinType == JoinRelType.RIGHT) {
-                        columnOrigin = mq.getColumnOrigin(join.getLeft(), leftIndex);
-                    } else {
-                        columnOrigin = mq.getColumnOrigin(join.getRight(), rightIndex);
-                    }
-                }
+
                 // check lookupGsi
                 // check Materialized SemiJoin
                 for (RelNode lookupSide : Arrays.asList(outer, inner)) {
@@ -116,8 +125,37 @@ public class EquiJoinUtils {
                         }
                     }
                 }
-                return Collections.singletonList(new EquiJoinKey(outerIndex, innerIndex, unifiedType, nullSafeEqual,
-                    columnOrigin != null));
+
+                if (isLookupView) {
+                    final RelColumnOrigin columnOrigin;
+                    String lookupColumnName = null;
+                    synchronized (mq) {
+                        if (join instanceof MaterializedSemiJoin || joinType == JoinRelType.RIGHT) {
+                            columnOrigin = mq.getColumnOrigin(join.getLeft(), leftIndex);
+                            if (columnOrigin != null) {
+                                lookupColumnName = columnOrigin.getOriginTable().getRowType().getFieldNames()
+                                    .get(columnOrigin.getOriginColumnOrdinal());
+                            } else {
+                                lookupColumnName = join.getLeft().getRowType().getFieldNames().get(leftIndex);
+                            }
+                        } else {
+                            columnOrigin = mq.getColumnOrigin(join.getRight(), rightIndex);
+                            if (columnOrigin != null) {
+                                lookupColumnName = columnOrigin.getOriginTable().getRowType().getFieldNames()
+                                    .get(columnOrigin.getOriginColumnOrdinal());
+                            } else {
+                                lookupColumnName = join.getRight().getRowType().getFieldNames().get(rightIndex);
+                            }
+                        }
+                    }
+
+                    return Collections.singletonList(
+                        new LookupEquiJoinKey(outerIndex, innerIndex, unifiedType, nullSafeEqual,
+                            columnOrigin != null, lookupColumnName));
+                } else {
+                    return Collections.singletonList(
+                        new EquiJoinKey(outerIndex, innerIndex, unifiedType, nullSafeEqual));
+                }
             } else {
                 return new ArrayList<>();
             }
@@ -125,7 +163,8 @@ public class EquiJoinUtils {
             return operands.stream()
                 .filter(op -> op instanceof RexCall)
                 .flatMap(
-                    op -> buildEquiJoinKeys(join, outer, inner, (RexCall) op, joinType, includeNullSafeEqual).stream())
+                    op -> createEquiJoinKeys(isLookupView,
+                        join, outer, inner, (RexCall) op, joinType, includeNullSafeEqual).stream())
                 .collect(Collectors.toList());
         } else {
             return new ArrayList<>();
@@ -178,7 +217,8 @@ public class EquiJoinUtils {
             RelDataType innerType = inner.getRowType().getFieldList().get(innerIndex).getType();
             DataType unifiedType = CalciteUtils.getUnifiedDataType(outerType, innerType);
 
-            results.add(new EquiJoinKey(outerIndex, innerIndex, unifiedType, false, false));
+            results.add(new EquiJoinKey(
+                outerIndex, innerIndex, unifiedType, false));
         }
 
         return results;

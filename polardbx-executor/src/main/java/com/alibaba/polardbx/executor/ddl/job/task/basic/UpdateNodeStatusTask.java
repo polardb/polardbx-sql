@@ -108,7 +108,6 @@ public class UpdateNodeStatusTask extends BaseDdlTask {
             }
 
             metaDbConn.commit();
-            metaDbConn.setAutoCommit(true);
 
             if (notify) {
                 MetaDbConfigManager.getInstance().sync(MetaDbDataIdBuilder.getStorageInfoDataId(instId));

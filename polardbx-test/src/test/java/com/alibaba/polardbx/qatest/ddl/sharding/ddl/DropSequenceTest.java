@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Test;
@@ -55,7 +55,7 @@ public class DropSequenceTest extends DDLBaseNewDBTestCase {
         String sql = "create table " + tableName + " (id int, name varchar(20))dbpartition by hash(id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         Assert.assertNotNull(sequence);
 
         dropTableIfExists(tableName);
@@ -71,14 +71,14 @@ public class DropSequenceTest extends DDLBaseNewDBTestCase {
     @Test
     public void testDropAUTOSequence() throws Exception {
         String seqName = schemaPrefix + "AUTO_SEQ_seq";
-        dropSeqence(seqName);
+        dropSequence(seqName);
         String sql = String.format("create sequence %s", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         Assert.assertNotNull(sequence);
 
-        dropSeqence(seqName);
+        dropSequence(seqName);
 
         sequence = showSequence(seqName);
         Assert.assertNull(sequence);
@@ -101,7 +101,7 @@ public class DropSequenceTest extends DDLBaseNewDBTestCase {
         sql = String.format("insert into %s(name) values('1')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         Assert.assertNotNull(sequence);
 
         dropTableIfExists(tableName);

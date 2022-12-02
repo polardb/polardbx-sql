@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dql.sharding.charset;
 
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
@@ -36,12 +37,20 @@ public class CharsetFunctionTest extends CharsetTestBase {
 
     @Test
     public void testCharset() {
+        if (PropertiesUtil.usePrepare()) {
+            // current prepare mode does not support charset
+            return;
+        }
         String sql = "select charset(_latin1'abc' collate latin1_general_cs)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
     @Test
     public void testCollation() {
+        if (PropertiesUtil.usePrepare()) {
+            // current prepare mode does not support collation
+            return;
+        }
         String sql = "select collation(_latin1'abc' collate latin1_general_cs)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }

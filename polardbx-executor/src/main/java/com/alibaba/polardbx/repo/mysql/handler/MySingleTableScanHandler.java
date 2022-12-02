@@ -16,17 +16,19 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.common.model.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.LogicalViewResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.rel.RelNode;
 
@@ -41,15 +43,32 @@ public class MySingleTableScanHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        Cursor cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
+        Cursor cursor = null;
         if (logicalPlan instanceof SingleTableOperation) {
+            PhyTableOperationUtil
+                .enableIntraGroupParallelism(((SingleTableOperation) logicalPlan).getSchemaName(), executionContext);
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
             cursor = new LogicalViewResultCursor((AbstractCursor) cursor, executionContext, true);
         } else if (logicalPlan instanceof DirectTableOperation) {
             SqlType sqlType = executionContext.getSqlType();
+            PhyTableOperationUtil
+                .enableIntraGroupParallelism(((DirectTableOperation) logicalPlan).getSchemaName(), executionContext);
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
             if (sqlType != null && SqlTypeUtils.isSelectSqlType(sqlType)) {
                 cursor = new LogicalViewResultCursor((AbstractCursor) cursor, executionContext, true);
             }
+        } else if (logicalPlan instanceof DirectShardingKeyTableOperation) {
+            PhyTableOperationUtil
+                .enableIntraGroupParallelism(((DirectShardingKeyTableOperation) logicalPlan).getSchemaName(),
+                    executionContext);
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
         } else if (logicalPlan instanceof PhyTableOperation) {
+            boolean onePartiionOnly = ((PhyTableOperation) logicalPlan).isOnlyOnePartitionAfterPruning();
+            if (onePartiionOnly) {
+                PhyTableOperationUtil
+                    .enableIntraGroupParallelism(((PhyTableOperation) logicalPlan).getSchemaName(), executionContext);
+            }
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
             RuntimeStatistics runtimeStat = (RuntimeStatistics) executionContext.getRuntimeStatistics();
             if (runtimeStat != null && runtimeStat.isFromAllAtOnePhyTable()) {
                 SqlType sqlType = executionContext.getSqlType();
@@ -57,6 +76,9 @@ public class MySingleTableScanHandler extends HandlerCommon {
                     cursor = new LogicalViewResultCursor((AbstractCursor) cursor, executionContext, true);
                 }
             }
+        } else {
+            // For PhyDdlTableOperation
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
         }
         return cursor;
     }

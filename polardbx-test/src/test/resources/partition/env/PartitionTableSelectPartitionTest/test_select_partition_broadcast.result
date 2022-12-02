@@ -1,0 +1,201 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE IF NOT EXISTS tbl_with_gsi1 (
+  a int NOT NULL,
+  b int NOT NULL,
+  c int NOT NULL,
+  d int NOT NULL,
+  GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+     PARTITION p4 VALUES LESS THAN (maxvalue)
+  ),
+  GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+    PARTITION p4 VALUES LESS THAN (maxvalue)
+  )
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+CREATE TABLE IF NOT EXISTS tbl_with_gsi2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+CREATE TABLE IF NOT EXISTS tbl_with_gsi3 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+CREATE TABLE IF NOT EXISTS tbl_bro1 (
+  a int NOT NULL,
+  b int NOT NULL,
+  c int NOT NULL,
+  d int NOT NULL
+) broadcast;
+CREATE TABLE IF NOT EXISTS tbl_bro2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) broadcast;
+CREATE TABLE IF NOT EXISTS tbl_sin1 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) single;
+CREATE TABLE IF NOT EXISTS tbl_sin2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) single;
+begin;
+insert into tbl_with_gsi1 values (11,111,300,111);
+insert into tbl_with_gsi1 values (22,222,300,222);
+insert into tbl_with_gsi1 values (33,333,300,333);
+insert into tbl_with_gsi1 values (44,444,300,444);
+insert into tbl_with_gsi2 values (11,111,300,111);
+insert into tbl_with_gsi2 values (22,222,300,222);
+insert into tbl_with_gsi2 values (33,333,300,333);
+insert into tbl_with_gsi2 values (44,444,300,444);
+insert into tbl_with_gsi3 values (11,111,300,111);
+insert into tbl_with_gsi3 values (22,222,300,222);
+insert into tbl_with_gsi3 values (33,333,300,333);
+insert into tbl_with_gsi3 values (44,444,300,444);
+insert into tbl_with_gsi3 values (11,111,300,111);
+insert into tbl_with_gsi3 values (22,222,300,222);
+insert into tbl_with_gsi3 values (33,333,300,333);
+insert into tbl_with_gsi3 values (44,444,300,444);
+insert into tbl_bro1 values (11,111,300,111);
+insert into tbl_bro1 values (22,222,300,222);
+insert into tbl_bro1 values (33,333,300,333);
+insert into tbl_bro1 values (44,444,300,444);
+insert into tbl_bro2 values (11,111,300,111);
+insert into tbl_bro2 values (22,222,300,222);
+insert into tbl_bro2 values (33,333,300,333);
+insert into tbl_bro2 values (44,444,300,444);
+insert into tbl_sin1 values (11,111,300,111);
+insert into tbl_sin1 values (22,222,300,222);
+insert into tbl_sin1 values (33,333,300,333);
+insert into tbl_sin1 values (44,444,300,444);
+insert into tbl_sin2 values (11,111,300,111);
+insert into tbl_sin2 values (22,222,300,222);
+insert into tbl_sin2 values (33,333,300,333);
+insert into tbl_sin2 values (44,444,300,444);
+select t1.a,t1.b from tbl_with_gsi1 t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+a,b
+11,111
+22,222
+33,333
+44,444
+select t1.a,t1.b from tbl_with_gsi1 partition(p1) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+a,b
+select t1.a,t1.b from tbl_with_gsi1 partition(p2) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+a,b
+11,111
+select t1.a,t1.b from tbl_with_gsi1 partition(p3) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+a,b
+22,222
+select t1.a,t1.b from tbl_with_gsi1 partition(p4) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+a,b
+33,333
+44,444
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+a,b
+33,333
+44,444
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p4) t4 on t4.a=t3.a order by t1.a;
+a,b
+33,333
+44,444
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t3.a order by t1.a;
+a,b
+33,333
+44,444
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t2.a order by t1.a;
+a,b
+33,333
+44,444
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_sin1 t4 on t4.a=t2.a order by t1.a;
+a,b
+33,333
+44,444
+## error_msg: $# non partitioned table #$
+select a,b from tbl_sin1 partition(p1);
+non partitioned table
+## error_msg: $# non partitioned table #$
+select a,b from tbl_bro1 partition(p1);
+non partitioned table
+## error_msg: $# non partitioned table #$
+update tbl_bro1 partition(p1) set a=200 where a=11;
+non partitioned table
+## error_msg: $# non partitioned table #$
+delete tbl_bro1 partition(p1) where a=11;
+non partitioned table
+## error_msg: $# non partitioned table #$
+select t1.a,t1.b from tbl_bro1 partition(p1) t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+non partitioned table
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl_with_gsi1[p4],tbl_bro1,tbl_bro2", sql="SELECT `tbl_bro1`.`a`, `tbl_bro1`.`b` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` INNER JOIN `tbl_bro1` AS `tbl_bro1` ON (`tbl_with_gsi1`.`a` = `tbl_bro1`.`a`) INNER JOIN `tbl_bro2` AS `tbl_bro2` ON ((`tbl_with_gsi1`.`a` = `tbl_bro2`.`a`) AND (`tbl_bro1`.`a` = `tbl_bro2`.`a`)) ORDER BY `tbl_bro1`.`a`")
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p4) t4 on t4.a=t3.a order by t1.a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl_with_gsi1[p4],tbl_with_gsi2[p4],tbl_bro1,tbl_bro2", sql="SELECT `tbl_bro1`.`a`, `tbl_bro1`.`b` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` INNER JOIN `tbl_with_gsi2` AS `tbl_with_gsi2` ON (`tbl_with_gsi1`.`a` = `tbl_with_gsi2`.`a`) INNER JOIN `tbl_bro1` AS `tbl_bro1` ON ((`tbl_with_gsi1`.`a` = `tbl_bro1`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro1`.`a`)) INNER JOIN `tbl_bro2` AS `tbl_bro2` ON (((`tbl_with_gsi1`.`a` = `tbl_bro2`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro2`.`a`)) AND (`tbl_bro1`.`a` = `tbl_bro2`.`a`)) ORDER BY `tbl_bro1`.`a`")
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t3.a order by t1.a;
+Logical ExecutionPlan
+Project(a="a0", b="b")
+  BKAJoin(condition="a1 = a AND a0 = a AND a = a", type="inner")
+    Project(a="a0", a0="a", b="b", a1="a00")
+      MergeSort(sort="a ASC")
+        LogicalView(tables="tbl_bro1,tbl_with_gsi2[p1,p2,p3,p4],tbl_bro2", shardCount=4, sql="SELECT `tbl_bro1`.`a`, `tbl_bro1`.`b`, `tbl_with_gsi2`.`a` AS `a0`, `tbl_bro2`.`a` AS `a00` FROM `tbl_bro1` AS `tbl_bro1` INNER JOIN (`tbl_with_gsi2` AS `tbl_with_gsi2` INNER JOIN `tbl_bro2` AS `tbl_bro2` ON (`tbl_with_gsi2`.`a` = `tbl_bro2`.`a`)) ON ((`tbl_bro1`.`a` = `tbl_bro2`.`a`) AND (`tbl_bro1`.`a` = `tbl_with_gsi2`.`a`)) ORDER BY `tbl_bro1`.`a`")
+    Gather(concurrent=true)
+      LogicalView(tables="tbl_with_gsi1[p4]", sql="SELECT `a` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` WHERE (`a` IN (...))")
+rollback;

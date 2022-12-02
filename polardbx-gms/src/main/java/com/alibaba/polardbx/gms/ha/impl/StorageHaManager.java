@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.gms.ha.impl;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -56,6 +58,7 @@ import com.google.common.collect.Sets;
 import lombok.val;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.checkerframework.checker.units.qual.A;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -71,6 +74,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -118,7 +122,7 @@ public class StorageHaManager extends AbstractLifecycle {
     protected int refreshStorageInfoOfMetaDbTarkInterval = checkStorageTaskPeriod * 12; // 60s
     protected ScheduledExecutorService refreshStorageInfoOfMetaDbExecutor = null;
     protected int storageHaManagerExecutorPoolSize = 8;
-    protected int storageHaManagerExecutorQueueSize = 4096;
+    protected int storageHaManagerExecutorQueueSize = 40960;
     protected ThreadPoolExecutor storageHaManagerTaskExecutor = null;
     protected int parallelSwitchDsCountPerStorageInst = 4;
     protected CheckStorageHaTask checkStorageHaTask = new CheckStorageHaTask(this);
@@ -322,6 +326,10 @@ public class StorageHaManager extends AbstractLifecycle {
                 final int expected = haInfo.getXPort();
                 MetaDbLogUtil.META_DB_LOG.info("Got xport of galaxy vip node " + addr + " is " + expected);
                 return expected;
+            } else if (XConfig.OPEN_XRPC_PROTOCOL) {
+                final int expected = haInfo.getXPort();
+                MetaDbLogUtil.META_DB_LOG.info("Got xport of xrpc vip node " + addr + " is " + expected);
+                return expected;
             }
         } else if (!isVip && haInfo != null) {
             final int expected = haInfo.getXPort();
@@ -336,7 +344,7 @@ public class StorageHaManager extends AbstractLifecycle {
         return -1;
     }
 
-    public HaSwitchParams getStorageHaSwitchParamsWithReadLock(String storageInstId) {
+    public HaSwitchParams getStorageHaSwitchParamsWithReadLock(String storageInstId, boolean autoUnlock) {
         StorageInstHaContext storageInstHaContext = storageHaCtxCache.get(storageInstId);
         if (storageInstHaContext == null) {
             List<String> newStorageInstIdList = new ArrayList<>();
@@ -352,8 +360,13 @@ public class StorageHaManager extends AbstractLifecycle {
         try {
             storageInstHaContext.getHaLock().readLock().lock();
             params = getStorageHaSwitchParams(storageInstId);
+            params.autoUnlock = autoUnlock;
         } finally {
-            storageInstHaContext.getHaLock().readLock().unlock();
+            if (autoUnlock) {
+                storageInstHaContext.getHaLock().readLock().unlock();
+            } else {
+                params.haLock = storageInstHaContext.getHaLock();
+            }
         }
         return params;
     }
@@ -382,12 +395,14 @@ public class StorageHaManager extends AbstractLifecycle {
         haSwitchParams.phyDbName = null;
         haSwitchParams.storageKind = storageInstHaContext.storageKind;
         haSwitchParams.instId = storageInstHaContext.instId;
+
         return haSwitchParams;
     }
 
-    public List<HaSwitchParams> getStorageHaSwitchParamsForInitGroupDs(Set<String> instIds,
+    public void getStorageHaSwitchParamsForInitGroupDs(Set<String> instIds,
                                                                        String dbName,
-                                                                       String groupName) {
+                                                                       String groupName,
+                                                                       List<HaSwitchParams> outputHaSwitchParamsWithReadLock) {
 
         List<GroupDetailInfoRecord> groupDetailInfoRecords = null;
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
@@ -403,7 +418,10 @@ public class StorageHaManager extends AbstractLifecycle {
             throw GeneralUtil.nestedException(ex);
         }
 
-        List<HaSwitchParams> haSwitchParams = new ArrayList<>();
+        if (outputHaSwitchParamsWithReadLock == null) {
+            return;
+        }
+
         String phyDbName = null;
         try {
             phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
@@ -418,7 +436,7 @@ public class StorageHaManager extends AbstractLifecycle {
                 if (SystemDbHelper.DEFAULT_DB_NAME.equals(dbName)) {
                     storageInstId = metaDbStorageHaCtx.getStorageInstId();
                 }
-                HaSwitchParams haSwitchParam = getStorageHaSwitchParamsWithReadLock(storageInstId);
+                HaSwitchParams haSwitchParam = getStorageHaSwitchParamsWithReadLock(storageInstId, false);
                 if (haSwitchParam == null) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                         String.format("No find any storage ha info for [%s/%s/%s/%s]", groupDetailInfoRecord.instId,
@@ -426,7 +444,7 @@ public class StorageHaManager extends AbstractLifecycle {
                             storageInstId));
                 }
                 haSwitchParam.phyDbName = phyDbName;
-                haSwitchParams.add(haSwitchParam);
+                outputHaSwitchParamsWithReadLock.add(haSwitchParam);
             } catch (Throwable ex) {
                 if (InstIdUtil.getInstId() == groupDetailInfoRecord.instId) {
                     throw ex;
@@ -438,7 +456,7 @@ public class StorageHaManager extends AbstractLifecycle {
                 }
             }
         }
-        return haSwitchParams;
+        return;
     }
 
     public synchronized void registerLearnerStorageInstId() {
@@ -896,6 +914,10 @@ public class StorageHaManager extends AbstractLifecycle {
 
     protected static class StorageHaSwitchTask implements Runnable {
 
+        protected static int HA_WRITE_LOCK_WAIT_TIMEOUT = 20;// unit: sec
+        protected static int HA_WRITE_LOCK_RETRY_TIME = 2;// unit: sec
+        protected static int SLEEP_TIME_AFTER_FETCH_TIMEOUT = 5000;// unit: milli sec
+
         protected String storageInstId;
         protected StorageInstHaContext haContext;
         protected StorageHaManager storageHaManager;
@@ -926,8 +948,12 @@ public class StorageHaManager extends AbstractLifecycle {
                 boolean success = false;
                 long startTs = System.currentTimeMillis();
                 Throwable ex = null;
+                AtomicBoolean isFetchWriteLock = new AtomicBoolean(false);
                 try {
-                    haContext.getHaLock().writeLock().lock();
+                    fetchWriteLockOfHaParams(isFetchWriteLock);
+                    if (!isFetchWriteLock.get()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format("Failed to fetch the write lock of HaParams of dn[%s]", haContext.getStorageInstId()));
+                    }
                     success = submitGroupHaSwitchTasks(haContext, newStorageNodeHaInfoMap, storageHaManager);
                 } catch (Throwable e) {
                     if (haContext.storageKind == StorageInfoRecord.INST_KIND_META_DB) {
@@ -937,7 +963,9 @@ public class StorageHaManager extends AbstractLifecycle {
                     }
                 } finally {
                     changeHaStatus(success);
-                    haContext.getHaLock().writeLock().unlock();
+                    if (isFetchWriteLock.get()) {
+                        haContext.getHaLock().writeLock().unlock();
+                    }
                     long switchEndTs = System.currentTimeMillis();
                     doStorageInstHaLog(success, this.allGrpListToBeSwitched.size(), this.switchTaskCount,
                         startTs, switchEndTs, this.oldAddress, this.newAvailableAddr, this.newXport);
@@ -945,6 +973,30 @@ public class StorageHaManager extends AbstractLifecycle {
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_LOG.error(ex);
             }
+        }
+
+        private void fetchWriteLockOfHaParams(AtomicBoolean isFetchWriteLock) throws InterruptedException {
+            boolean fetchLockSucc = haContext.getHaLock().writeLock().tryLock(HA_WRITE_LOCK_WAIT_TIMEOUT, TimeUnit.SECONDS);
+            if (!fetchLockSucc) {
+                MetaDbLogUtil.META_DB_LOG.warn(String.format("Failed to fetch the write lock of HaParams of dn[%s] at 1st time, and now do retry", haContext.getStorageInstId()));
+                /**
+                 * Failed to fetch the write lock of dn HaContext, and do retry
+                 */
+                for (int i = 0; i < HA_WRITE_LOCK_RETRY_TIME; i++) {
+                    try {
+                        Thread.sleep(SLEEP_TIME_AFTER_FETCH_TIMEOUT);
+                    } catch (Throwable e) {
+                        // ignore
+                    }
+                    fetchLockSucc = haContext.getHaLock().writeLock().tryLock(HA_WRITE_LOCK_WAIT_TIMEOUT, TimeUnit.SECONDS);
+                    if (fetchLockSucc) {
+                        break;
+                    }
+                    MetaDbLogUtil.META_DB_LOG.warn(String.format("Failed to fetch the write lock of HaParams of dn[%s] at (%d)th time, and now do retry", haContext.getStorageInstId(), i + 1));
+                }
+            }
+            isFetchWriteLock.set(fetchLockSucc);
+            return;
         }
 
         private void changeHaStatus(boolean success) {
@@ -1099,7 +1151,11 @@ public class StorageHaManager extends AbstractLifecycle {
 
         @Override
         public void run() {
-            doCheckRoleForStorageNodes();
+            try {
+                doCheckRoleForStorageNodes();
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.error(ex);
+            }
         }
 
         protected void doCheckRoleForStorageNodes() {
@@ -1438,7 +1494,6 @@ public class StorageHaManager extends AbstractLifecycle {
                 haStorageInstInfo +=
                     String.format("{dnId=%s,shouldHa=%s,leader=%s}", storageInstId, shouldHa, newLeader);
             }
-
         }
 
         String logMsg = String
@@ -1446,6 +1501,8 @@ public class StorageHaManager extends AbstractLifecycle {
                 haCheckEx == null, haStorageInstInfo);
         if (logWarning) {
             CHECK_HA_LOGGER.warn(logMsg);
+            MetaDbLogUtil.META_DB_LOG.warn(logMsg);
+            EventLogger.log(EventType.DN_HA, String.format("Find dn is to do ha, haInfo is [%s]", logMsg));
         } else {
             CHECK_HA_LOGGER.info(logMsg);
         }
@@ -1477,9 +1534,12 @@ public class StorageHaManager extends AbstractLifecycle {
         }
 
         protected void runInner() {
-
             // check and submit task for all storage insts
-            doCheckAndSubmitTaskIfNeed(this.storageHaManager.storageHaCtxCache);
+            try {
+                doCheckAndSubmitTaskIfNeed(this.storageHaManager.storageHaCtxCache);
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.error(ex);
+            }
         }
 
         protected void doCheckAndSubmitTaskIfNeed(Map<String, StorageInstHaContext> storageInstIdAndHaContextMap) {
@@ -1494,14 +1554,19 @@ public class StorageHaManager extends AbstractLifecycle {
 
                 // Check role for all storage node of curr inst (can optimise to use multi-thread to speed up )
                 Map<String, StorageInstHaContext> storageHaCache = storageInstIdAndHaContextMap;
-                CountDownLatch countDownLatch = new CountDownLatch(storageHaCache.size());
+                List<CheckStorageRoleInfoTask> checkHaTasks = new ArrayList<>();
                 for (Map.Entry<String, StorageInstHaContext> storageInstItem : storageHaCache.entrySet()) {
                     CheckStorageRoleInfoTask checkRoleInfoTask =
                         new CheckStorageRoleInfoTask(storageInstItem.getKey(), storageInstItem.getValue(),
                             storageInstNewRoleInfoMap);
+                    checkHaTasks.add(checkRoleInfoTask);
+                }
+                CountDownLatch countDownLatch = new CountDownLatch(checkHaTasks.size());
+                for (int i = 0; i < checkHaTasks.size(); i++) {
+                    CheckStorageRoleInfoTask task = checkHaTasks.get(i);
                     this.storageHaManager.storageHaManagerTaskExecutor.submit(() -> {
                         try {
-                            checkRoleInfoTask.run();
+                            task.run();
                         } finally {
                             countDownLatch.countDown();
                         }
@@ -1598,7 +1663,11 @@ public class StorageHaManager extends AbstractLifecycle {
                 haCheckEx = ex;
                 MetaDbLogUtil.META_DB_LOG.error(ex);
             } finally {
-                StorageHaManager.logHaTask(endTs - beginTs, storageInstNewRoleInfoMap, shouldHaFlags, haCheckEx);
+                try {
+                    StorageHaManager.logHaTask(endTs - beginTs, storageInstNewRoleInfoMap, shouldHaFlags, haCheckEx);
+                } catch (Throwable ex) {
+                    MetaDbLogUtil.META_DB_LOG.error(ex);
+                }
             }
         }
 

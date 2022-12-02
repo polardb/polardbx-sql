@@ -32,8 +32,20 @@ public class IntersectStepIntervalMerger implements StepIntervalMerger {
 
     protected PartitionPruneStepCombine intersectStep;
     protected PartitionInfo partInfo;
+
+    /**
+     * rangeBoundDatumCollection[0]: all the bound exprs of the pruneStep which sqlOperator is LESS_THEN_OR_EQUALS or LESS_THAN
+     * rangeBoundDatumCollection[1]: all the bound exprs of the pruneStep which sqlOperator is GREATER_THEN_OR_EQUALS or GREATER_THAN
+     */
     protected List<List<SearchExprInfo>> rangeBoundDatumCollection;
+
+    /**
+     * rangeStepCollection[0]: all the pruneStep which sqlOperator is LESS_THEN_OR_EQUALS or LESS_THAN
+     * rangeStepCollection[1]: all the pruneStep which sqlOperator is GREATER_THEN_OR_EQUALS or GREATER_THAN
+     */
     protected List<List<PartitionPruneStep>> rangeStepCollection;
+
+    protected List<StepIntervalInfo> stopMergingIntervalList = new ArrayList<>();
 
     public IntersectStepIntervalMerger(PartitionPruneStepCombine intersectStep) {
         this.intersectStep = intersectStep;
@@ -45,7 +57,11 @@ public class IntersectStepIntervalMerger implements StepIntervalMerger {
         StepIntervalInfo mergedRng = PartitionPruneStepIntervalAnalyzer
             .mergeIntervalsForIntersectStep(this.partInfo, context, pruningCtx, this.rangeBoundDatumCollection,
                 this.rangeStepCollection);
+
         resultRngs.add(mergedRng);
+        if (!stopMergingIntervalList.isEmpty()) {
+            resultRngs.addAll(stopMergingIntervalList);
+        }
         return resultRngs;
     }
 
@@ -76,4 +92,8 @@ public class IntersectStepIntervalMerger implements StepIntervalMerger {
         this.rangeStepCollection = rangeStepCollection;
     }
 
+    public void setStopMergingIntervalList(
+        List<StepIntervalInfo> stopMergingIntervalList) {
+        this.stopMergingIntervalList = stopMergingIntervalList;
+    }
 }

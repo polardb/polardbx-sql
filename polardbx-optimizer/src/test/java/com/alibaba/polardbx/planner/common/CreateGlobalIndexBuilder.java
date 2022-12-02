@@ -121,7 +121,7 @@ public class CreateGlobalIndexBuilder {
         indexDef.setPrimaryTableDefinition(gsiPreparedData.getPrimaryTableDefinition());
 
         final SqlAlterTable sqlAlterTable =
-            new SqlAlterTable(primaryTableName, new HashMap<>(), "", null, alters, SqlParserPos.ZERO);
+            new SqlAlterTable(null, primaryTableName, new HashMap<>(), "", null, alters, SqlParserPos.ZERO);
 
         this.originSqlTemplate = sqlAlterTable;
         this.sequenceBean = null;
@@ -237,7 +237,7 @@ public class CreateGlobalIndexBuilder {
          */
         final MySqlCreateTableStatement indexTableStmt =
             (MySqlCreateTableStatement) SQLUtils.parseStatements(gsiPreparedData.getPrimaryTableDefinition(),
-                JdbcConstants.MYSQL)
+                    JdbcConstants.MYSQL)
                 .get(0)
                 .clone();
 
@@ -552,6 +552,7 @@ public class CreateGlobalIndexBuilder {
             null,
             null,
             null,
+            null,
             null);
 
         result.setUniqueShardingKey(unique);
@@ -731,6 +732,7 @@ public class CreateGlobalIndexBuilder {
             createIndexTable,
             false,
             sequenceBean,
+            null,
             null,
             null,
             null,

@@ -92,8 +92,12 @@ public class Conv extends AbstractScalarFunction {
         }
         if (truncatedIndex >= 0) {
             n = n.substring(0, truncatedIndex);
-            if ("-".equals(n) || "".equals(n)) {
+            if ("-".equals(n)) {
                 return null;
+            }
+            // empty string should return 0 instead of null
+            if ("".equals(n)) {
+                return "0";
             }
         }
 

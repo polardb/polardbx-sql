@@ -25,9 +25,11 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexVisitorImpl;
+import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterBuildFunction;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterFunction;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -73,8 +75,15 @@ public class Rex2VectorizedExpressionChecker extends RexVisitorImpl<Boolean> {
 
     @Override
     public Boolean visitCall(RexCall call) {
-        if (call.op == TddlOperatorTable.IN) {
-            return true;
+        if (call.op == TddlOperatorTable.IN
+            && call.getOperands().size() > 1
+            && !(call.getOperands().get(0) instanceof RexFieldAccess)
+            && call.getOperands().get(1) instanceof RexCall
+            && ((RexCall) call.getOperands().get(1)).op instanceof SqlRowOperator) {
+
+            // In format of IN (...) and all operands are Dynamic Param.
+            List<RexNode> rowOperands = ((RexCall) call.getOperands().get(1)).getOperands();
+            return rowOperands.stream().allMatch(r -> r instanceof RexDynamicParam);
         } else {
             return !call.getType().isStruct() &&
                 !(call.getOperator() instanceof SqlRuntimeFilterBuildFunction) &&

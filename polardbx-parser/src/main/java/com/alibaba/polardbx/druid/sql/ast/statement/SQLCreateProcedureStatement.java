@@ -27,30 +27,29 @@ import java.util.List;
 
 public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQLCreateStatement {
 
-    private SQLName            definer;
+    private SQLName definer;
 
-    private boolean            create     = true;
-    private boolean            orReplace;
-    private SQLName            name;
-    private SQLStatement       block;
+    private boolean create = true;
+    private boolean orReplace;
+    private SQLName name;
+    private SQLStatement block;
     private List<SQLParameter> parameters = new ArrayList<SQLParameter>();
 
     // for oracle
-    private String             javaCallSpec;
+    private String javaCallSpec;
 
-    private SQLName            authid;
+    private SQLName authid;
 
     // for mysql
-    private boolean            deterministic;
-    private boolean            containsSql;
-    private boolean            noSql;
-    private boolean            readSqlData;
-    private boolean            modifiesSqlData;
-    private boolean            languageSql;
+    private boolean deterministic;
+    private SqlDataAccess sqlDataAccess = SqlDataAccess.CONTAINS_SQL;
+    private boolean languageSql;
 
-    private String             wrappedSource;
+    private String wrappedSource;
 
-    private SQLCharExpr        comment;
+    private SQLCharExpr comment;
+
+    private SqlSecurity sqlSecurity = SqlSecurity.DEFINER;
 
     @Override
     public void accept0(SQLASTVisitor visitor) {
@@ -91,6 +90,14 @@ public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQL
         this.block = block;
     }
 
+    public SqlSecurity getSqlSecurity() {
+        return sqlSecurity;
+    }
+
+    public void setSqlSecurity(SqlSecurity sqlSecurity) {
+        this.sqlSecurity = sqlSecurity;
+    }
+
     public SQLName getAuthid() {
         return authid;
     }
@@ -113,7 +120,7 @@ public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQL
     public SQLName getDefiner() {
         return definer;
     }
-    
+
     public void setDefiner(SQLName definer) {
         this.definer = definer;
     }
@@ -142,37 +149,6 @@ public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQL
         this.deterministic = deterministic;
     }
 
-    public boolean isContainsSql() {
-        return containsSql;
-    }
-
-    public void setContainsSql(boolean containsSql) {
-        this.containsSql = containsSql;
-    }
-
-    public boolean isNoSql() {
-        return noSql;
-    }
-
-    public void setNoSql(boolean noSql) {
-        this.noSql = noSql;
-    }
-
-    public boolean isReadSqlData() {
-        return readSqlData;
-    }
-
-    public void setReadSqlData(boolean readSqlData) {
-        this.readSqlData = readSqlData;
-    }
-
-    public boolean isModifiesSqlData() {
-        return modifiesSqlData;
-    }
-
-    public void setModifiesSqlData(boolean modifiesSqlData) {
-        this.modifiesSqlData = modifiesSqlData;
-    }
 
     public SQLParameter findParameter(long hash) {
         for (SQLParameter param : this.parameters) {
@@ -209,5 +185,13 @@ public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQL
 
     public void setWrappedSource(String wrappedSource) {
         this.wrappedSource = wrappedSource;
+    }
+
+    public SqlDataAccess getSqlDataAccess() {
+        return sqlDataAccess;
+    }
+
+    public void setSqlDataAccess(SqlDataAccess sqlDataAccess) {
+        this.sqlDataAccess = sqlDataAccess;
     }
 }

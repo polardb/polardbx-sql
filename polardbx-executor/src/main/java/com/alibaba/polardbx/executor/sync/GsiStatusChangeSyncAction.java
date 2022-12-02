@@ -26,6 +26,10 @@ import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+
+import java.text.MessageFormat;
 
 public class GsiStatusChangeSyncAction implements ISyncAction {
     protected final static Logger logger = LoggerFactory.getLogger(GsiStatusChangeSyncAction.class);

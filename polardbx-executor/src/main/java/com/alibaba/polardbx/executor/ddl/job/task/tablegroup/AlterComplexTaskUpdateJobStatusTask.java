@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
+import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -47,12 +48,11 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     ComplexTaskMetaManager.ComplexTaskStatus afterTableStatus;
     boolean subTask;
     List<String> relatedLogicalTables;
-    String tableGroupName;
-    String logicalTableName;
+    String objectName;
 
     @JSONCreator
     public AlterComplexTaskUpdateJobStatusTask(String schemaName,
-                                               String logicalTableName,
+                                               String objectName,
                                                List<String> relatedLogicalTables,
                                                boolean subTask,
                                                ComplexTaskMetaManager.ComplexTaskStatus beforeJobStatus,
@@ -66,7 +66,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
         this.beforeTableStatus = beforeTableStatus;
         this.afterTableStatus = afterTableStatus;
         this.subTask = subTask;
-        this.logicalTableName = logicalTableName;
+        this.objectName = objectName;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -74,7 +74,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         if (subTask && beforeJobStatus != afterJobStatus) {
             ComplexTaskMetaManager
-                .updateSubTasksStatusByJobIdAndObjName(getJobId(), schemaName, logicalTableName, beforeJobStatus,
+                .updateSubTasksStatusByJobIdAndObjName(getJobId(), schemaName, objectName, beforeJobStatus,
                     afterJobStatus,
                     metaDbConnection);
         } else {
@@ -100,7 +100,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
                 String.format(
                     "Update table status[ schema:%s, table:%s, before state:%s, after state:%s]",
                     schemaName,
-                    logicalTableName,
+                    objectName,
                     beforeJobStatus.name(),
                     afterJobStatus.name()));
         } else {
@@ -120,10 +120,9 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         // sync to restore the status of table meta
-        for (String relatedTable : relatedLogicalTables) {
-            SyncManagerHelper.sync(
-                new TableMetaChangePreemptiveSyncAction(schemaName, relatedTable, 500L, 500L, TimeUnit.MICROSECONDS));
-        }
+        SyncManagerHelper.sync(
+            new TablesMetaChangePreemptiveSyncAction(schemaName, relatedLogicalTables, 1500L, 1500L,
+                TimeUnit.MICROSECONDS));
     }
 
     @Override
@@ -134,7 +133,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         if (subTask && beforeJobStatus != afterJobStatus) {
             ComplexTaskMetaManager
-                .updateSubTasksStatusByJobIdAndObjName(getJobId(), schemaName, logicalTableName, afterJobStatus,
+                .updateSubTasksStatusByJobIdAndObjName(getJobId(), schemaName, objectName, afterJobStatus,
                     beforeJobStatus,
                     metaDbConnection);
         } else {
@@ -160,7 +159,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
                 .format(
                     "Rollback table status[ schema:%s, table:%s, before state:%s, after state:%s]",
                     schemaName,
-                    logicalTableName,
+                    objectName,
                     beforeJobStatus.name(),
                     afterJobStatus.name()));
         } else {

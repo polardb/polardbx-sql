@@ -32,10 +32,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMoveDatabaseDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterComplexTaskUpdateJobStatusTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableChangeTopologyRefreshMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupCleanupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupMovePartitionRefreshMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRefreshMetaBaseTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableSetTableGroupRefreshMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.CleanupEmptyTableGroupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
@@ -72,9 +74,14 @@ public class ComplexTaskFactory {
                                                   boolean stayAtDeleteOnly,
                                                   boolean stayAtWriteOnly,
                                                   boolean stayAtWriteReorg,
-                                                  boolean skipBackFill, ExecutionContext executionContext) {
+                                                  boolean skipBackFill,
+                                                  ExecutionContext executionContext,
+                                                  boolean isBroadcast,
+                                                  ComplexTaskMetaManager.ComplexTaskType taskType) {
         List<DdlTask> taskList = new ArrayList<>();
 
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
@@ -131,20 +138,23 @@ public class ComplexTaskFactory {
 
         //sync for creating status
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         if (stayAtCreating) {
             return taskList;
         }
         taskList.add(deleteOnlyTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         if (stayAtDeleteOnly) {
             return taskList;
         }
 
         taskList.add(writeOnlyTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
 
         if (stayAtWriteOnly) {
             return taskList;
@@ -152,11 +162,14 @@ public class ComplexTaskFactory {
 
         if (!skipBackFill) {
             taskList
-                .add(new AlterTableGroupBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables));
+                .add(new AlterTableGroupBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables,
+                    isBroadcast,
+                    ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION == taskType));
         }
         taskList.add(writeReOrgTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
 
         if (stayAtWriteReorg) {
             return taskList;
@@ -164,7 +177,8 @@ public class ComplexTaskFactory {
 
         taskList.add(readyToPublicTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         return taskList;
     }
 
@@ -196,13 +210,24 @@ public class ComplexTaskFactory {
             }
         } else {
             // for alter table set tableGroup, only need to care about the table in "alter table" only
-            if (!primaryLogicalTables.contains(tableName)) {
-                logicalTableNames.add(tableName);
-                primaryLogicalTables.add(tableName);
+            String logicalTable = tableName;
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTable);
+            if (tableMeta.isGsi()) {
+                //all the gsi table version change will be behavior by primary table
+                assert
+                    tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+                logicalTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            }
+            if (!primaryLogicalTables.contains(logicalTable)) {
+                logicalTableNames.add(logicalTable);
+                primaryLogicalTables.add(logicalTable);
             }
         }
 
         List<DdlTask> taskList = new ArrayList<>();
+
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
@@ -247,10 +272,14 @@ public class ComplexTaskFactory {
             alterTableGroupRefreshTableGroupMetaTask =
                 new AlterTableSetTableGroupRefreshMetaTask(schemaName, tableGroupName, partitionInfo.getTableGroupId(),
                     tableName);
+            CleanupEmptyTableGroupTask cleanupEmptyTableGroupTask =
+                new CleanupEmptyTableGroupTask(schemaName,
+                    sourceTableGroupConfigInfo.getTableGroupRecord().getTg_name());
             BaseDdlTask synTargetTableGroup =
                 new TableGroupSyncTask(schemaName, tableGroupName);
             BaseDdlTask synSourceTableGroup =
                 new TableGroupSyncTask(schemaName, sourceTableGroupConfigInfo.getTableGroupRecord().getTg_name());
+            synTableGroupTasks.add(cleanupEmptyTableGroupTask);
             synTableGroupTasks.add(synTargetTableGroup);
             synTableGroupTasks.add(synSourceTableGroup);
         } else {
@@ -265,10 +294,12 @@ public class ComplexTaskFactory {
 
         taskList.add(DoingReorgTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         taskList.add(sourceWriteOnlyTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
 
         taskList.add(alterTableGroupRefreshTableGroupMetaTask);
         taskList.addAll(synTableGroupTasks);
@@ -277,7 +308,124 @@ public class ComplexTaskFactory {
 
         // make sure the tablegroup is reload before table, we can't update table version inside TablesSyncTask
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
+
+        taskList.add(alterTableGroupCleanupTask);
+
+        return taskList;
+    }
+
+    public static List<DdlTask> bringUpAlterTableChangeTopology(String schemaName,
+                                                                String targetTableGroupName,
+                                                                String tableName,
+                                                                ComplexTaskMetaManager.ComplexTaskType complexTaskType,
+                                                                ExecutionContext executionContext) {
+
+        List<String> logicalTableNames = new ArrayList<>();
+        // not include GSI tables
+        Set<String> primaryLogicalTables = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        // for alter table set tableGroup, only need to care about the table in "alter table" only
+        String logicalTable = tableName;
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTable);
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            logicalTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+        }
+        if (!primaryLogicalTables.contains(logicalTable)) {
+            logicalTableNames.add(logicalTable);
+            primaryLogicalTables.add(logicalTable);
+        }
+
+        List<DdlTask> taskList = new ArrayList<>();
+
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
+        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
+        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+
+        AlterComplexTaskUpdateJobStatusTask DoingReorgTask =
+            new AlterComplexTaskUpdateJobStatusTask(
+                schemaName,
+                targetTableGroupName,
+                logicalTableNames,
+                false,
+                ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG,
+                ComplexTaskMetaManager.ComplexTaskStatus.SOURCE_WRITE_ONLY,
+                ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
+                ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY);
+        AlterComplexTaskUpdateJobStatusTask sourceWriteOnlyTask =
+            new AlterComplexTaskUpdateJobStatusTask(
+                schemaName,
+                targetTableGroupName,
+                logicalTableNames,
+                false,
+                ComplexTaskMetaManager.ComplexTaskStatus.SOURCE_WRITE_ONLY,
+                ComplexTaskMetaManager.ComplexTaskStatus.SOURCE_DELETE_ONLY,
+                ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
+                ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY);
+
+        BaseDdlTask alterTableRefreshMetaTask = null;
+        List<BaseDdlTask> synTableGroupTasks = new ArrayList<>();
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+        TableGroupConfig sourceTableGroupConfigInfo =
+            oc.getTableGroupInfoManager().getTableGroupConfigById(partitionInfo.getTableGroupId());
+        assert sourceTableGroupConfigInfo != null && sourceTableGroupConfigInfo.getTableGroupRecord() != null;
+        String sourceTableGroup = sourceTableGroupConfigInfo.getTableGroupRecord().getTg_name();
+        if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP) {
+            alterTableRefreshMetaTask =
+                new AlterTableSetTableGroupRefreshMetaTask(schemaName, targetTableGroupName,
+                    partitionInfo.getTableGroupId(),
+                    tableName);
+        } else if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION ||
+            complexTaskType == ComplexTaskMetaManager.ComplexTaskType.MODIFY_PARTITION) {
+            alterTableRefreshMetaTask =
+                new AlterTableChangeTopologyRefreshMetaTask(schemaName, sourceTableGroup, targetTableGroupName,
+                    tableName);
+        }
+
+        CleanupEmptyTableGroupTask cleanupEmptyTableGroupTask =
+            new CleanupEmptyTableGroupTask(schemaName, sourceTableGroup);
+        BaseDdlTask synTargetTableGroup =
+            new TableGroupSyncTask(schemaName, targetTableGroupName);
+        BaseDdlTask synSourceTableGroup =
+            new TableGroupSyncTask(schemaName, sourceTableGroup);
+        synTableGroupTasks.add(cleanupEmptyTableGroupTask);
+        synTableGroupTasks.add(synTargetTableGroup);
+        synTableGroupTasks.add(synSourceTableGroup);
+
+        AlterTableGroupCleanupTask alterTableGroupCleanupTask = new AlterTableGroupCleanupTask(schemaName);
+
+        taskList.add(DoingReorgTask);
+        taskList
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
+        taskList.add(sourceWriteOnlyTask);
+        taskList
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
+
+        taskList.add(alterTableRefreshMetaTask);
+        taskList.addAll(synTableGroupTasks);
+        DdlTask updateTablesVersionTask = new UpdateTablesVersionTask(schemaName, logicalTableNames);
+        taskList.add(updateTablesVersionTask);
+
+        // make sure the tablegroup is reload before table, we can't update table version inside TablesSyncTask
+        taskList
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
 
         taskList.add(alterTableGroupCleanupTask);
 
@@ -291,6 +439,9 @@ public class ComplexTaskFactory {
 
         List<String> logicalTableNames = ScaleOutPlanUtil.getLogicalTables(schemaName);
         List<DdlTask> taskList = new ArrayList<>();
+
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
@@ -339,17 +490,21 @@ public class ComplexTaskFactory {
 
         taskList.add(DoingReorgTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         taskList.add(readOnlyTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         taskList.add(moveDatabaseSwitchDataSourcesTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         taskList.add(cdcMoveDatabaseDdlMarkTask);
         taskList.add(toPublicTask);
         taskList
-            .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+            .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         taskList.add(moveDatabaseCleanupTask);
 
         return taskList;
@@ -366,6 +521,9 @@ public class ComplexTaskFactory {
                                                boolean stayAtWriteReorg,
                                                ExecutionContext executionContext) {
         List<DdlTask> taskList = new ArrayList<>();
+
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
@@ -422,19 +580,22 @@ public class ComplexTaskFactory {
 
         //sync for creating status
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         if (stayAtCreating) {
             return taskList;
         }
         taskList.add(deleteOnlyTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         if (stayAtDeleteOnly) {
             return taskList;
         }
         taskList.add(writeOnlyTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         if (stayAtWriteOnly) {
             return taskList;
         }
@@ -444,14 +605,16 @@ public class ComplexTaskFactory {
                 sourceAndTargetGroupMap));
         taskList.add(writeReOrgTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
 
         if (stayAtWriteReorg) {
             return taskList;
         }
         taskList.add(readyToPublicTask);
         taskList.add(
-            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+            new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS));
         return taskList;
     }
 

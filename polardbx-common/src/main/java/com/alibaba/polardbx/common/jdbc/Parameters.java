@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
+import com.alibaba.fastjson.annotation.JSONField;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -76,6 +77,7 @@ public class Parameters implements Serializable {
     }
 
     @JsonIgnore
+    @JSONField(serialize = false)
     public Map<Integer, ParameterContext> getFirstParameter() {
         if (!batch) {
             return params;
@@ -84,6 +86,7 @@ public class Parameters implements Serializable {
     }
 
     @JsonIgnore
+    @JSONField(serialize = false)
     public List<Map<Integer, ParameterContext>> getBatchParameters() {
         if (isBatch() && this.batchParams != null) {
             return this.batchParams;

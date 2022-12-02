@@ -18,9 +18,12 @@ package com.alibaba.polardbx.executor.utils.transaction;
 
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Timestamp;
 import java.util.Collection;
@@ -34,6 +37,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet.Transaction.FAKE_GROUP_FOR_DDL;
+import static com.alibaba.polardbx.gms.privilege.PolarPrivUtil.META_DB;
 import static java.lang.Math.min;
 
 /**
@@ -42,6 +46,8 @@ import static java.lang.Math.min;
  * @author wuzhe
  */
 public class DeadlockParser {
+
+    private static final Logger logger = LoggerFactory.getLogger(DeadlockParser.class);
 
     private static final Pattern DEADLOCK_LOG_PATTERN = Pattern.compile(
         "([-]+\\nLATEST DETECTED DEADLOCK.*?WE ROLL BACK TRANSACTION \\([0-9]+\\))", Pattern.DOTALL);
@@ -107,10 +113,12 @@ public class DeadlockParser {
         final Map<String, String> physicalToLogical = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         deadlockLog = injectLogicalTables(deadlockLog, physicalToLogical);
 
-        /*
-        3. Privilege check
-        */
-        return checkPrivilege(deadlockLog, physicalToLogical.values(), executionContext);
+        // User should not see deadlocks in meta-db.
+        if (containsMetaDb(deadlockLog)) {
+            return NO_DEADLOCKS_DETECTED;
+        }
+
+        return deadlockLog;
     }
 
     /**
@@ -429,6 +437,31 @@ public class DeadlockParser {
             return deadlockLog;
         }
 
+        // GOD can see everything.
+        try {
+            if (ec.getPrivilegeContext().getPolarUserInfo().getAccountType().isGod()) {
+                return deadlockLog;
+            }
+        } catch (Throwable t) {
+            // Ignore errors.
+            logger.warn("Check GOD failed", t);
+        }
+
+        // User should not see deadlocks in meta-db.
+        if (containsMetaDb(deadlockLog)) {
+            return NO_DEADLOCKS_DETECTED;
+        }
+
+        // Super user can always see deadlock info.
+        try {
+            if (ec.isSuperUser()) {
+                return deadlockLog;
+            }
+        } catch (Throwable t) {
+            // Ignore errors.
+            logger.warn("Check super user failed", t);
+        }
+
         for (String logicalDbAndTable : logicalDbAndTables) {
             final Matcher matcher = DB_TABLE_PATTERN2.matcher(logicalDbAndTable);
             if (matcher.find()) {
@@ -460,5 +493,20 @@ public class DeadlockParser {
             return null;
         }
         return originalText.replaceAll("DRDS /[0-9]{0,3}\\.[0-9]{0,3}\\.[0-9]{0,3}\\.[0-9]{0,3}", "");
+    }
+
+    public static boolean containsMetaDb(String deadlockLog) {
+        final Matcher matcher = DB_TABLE_PATTERN.matcher(deadlockLog);
+        while (matcher.find()) {
+            // There has to be only two groups,
+            // one is {physical DB name}, the other is {physical table name}
+            if (matcher.groupCount() == 2) {
+                final String physicalDb = matcher.group(1);
+                if (META_DB.equalsIgnoreCase(physicalDb)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.transaction.jdbc;
 
-import com.alibaba.polardbx.rpc.pool.XConnection;
-import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ConnectionStats;
 import com.alibaba.polardbx.common.jdbc.IConnection;
-import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ReadViewConn;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -48,8 +48,13 @@ public class DeferredConnection extends ReadViewConn {
 
     protected final boolean serverDiscards;
     protected final IConnection conn;
+    /**
+     * The trace id of the last sql executed by this physical connection.
+     */
+    protected String traceId = null;
 
-    protected List<String> deferSqls;
+    //    protected List<String> deferSqls;
+    protected List<BytesSql> deferBytesSqls;
     protected int discardResults;
 
     public DeferredConnection(IConnection conn, final boolean serverDiscards) {
@@ -57,12 +62,20 @@ public class DeferredConnection extends ReadViewConn {
         this.serverDiscards = serverDiscards;
     }
 
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
+    }
+
     @Override
     public void executeLater(String sql) throws SQLException {
-        if (deferSqls == null) {
-            deferSqls = new ArrayList<>(2);
+        if (deferBytesSqls == null) {
+            deferBytesSqls = new ArrayList<>(2);
         }
-        deferSqls.add(sql);
+        deferBytesSqls.add(BytesSql.buildBytesSql(sql));
     }
 
     private static int findStart(String sql) {
@@ -97,8 +110,30 @@ public class DeferredConnection extends ReadViewConn {
         return pos;
     }
 
+    protected final void beforeExecuting(byte[] hint) throws SQLException {
+        if (deferBytesSqls == null || deferBytesSqls.isEmpty()) {
+            return;
+        }
+
+        if (discardResults > 0) {
+            GeneralUtil.nestedException("A deferred PreparedStatement hasn't executed.");
+        }
+        if (conn.isWrapperFor(XConnection.class)) {
+            final XConnection xconn = conn.unwrap(XConnection.class);
+            for (BytesSql deferSql : deferBytesSqls) {
+                // Run with prefix.
+                xconn.execUpdate(deferSql, hint, null, true);
+                // No need to discard.
+            }
+            deferBytesSqls.clear(); // Note we must remove them, because we have actually enqueued them.
+        } else {
+            // should not happen
+            GeneralUtil.nestedException("wrong prcessing beforeExecuting path :" + conn + "," + deferBytesSqls);
+        }
+    }
+
     protected final String beforeExecuting(String sql) throws SQLException {
-        if (deferSqls == null || deferSqls.isEmpty()) {
+        if (deferBytesSqls == null || deferBytesSqls.isEmpty()) {
             return sql;
         }
 
@@ -113,12 +148,12 @@ public class DeferredConnection extends ReadViewConn {
             final XConnection xconn = conn.unwrap(XConnection.class);
             final String prefix = sql.substring(0, actualPos);
 
-            for (String deferSql : deferSqls) {
+            for (BytesSql deferSql : deferBytesSqls) {
                 // Run with prefix.
                 xconn.execUpdate(prefix + deferSql, null, true);
                 // No need to discard.
             }
-            deferSqls.clear(); // Note we must remove them, because we have actually enqueued them.
+            deferBytesSqls.clear(); // Note we must remove them, because we have actually enqueued them.
             return sql;
         }
 
@@ -126,11 +161,11 @@ public class DeferredConnection extends ReadViewConn {
         builder.append(sql.substring(0, actualPos));
         if (serverDiscards) {
             builder.append("SET @@rds_result_skip_counter = ");
-            builder.append(deferSqls.size());
+            builder.append(deferBytesSqls.size());
             builder.append(';');
         }
-        for (String deferSql : deferSqls) {
-            builder.append(deferSql);
+        for (BytesSql deferSql : deferBytesSqls) {
+            builder.append(deferSql.toString());
             builder.append(';');
             discardResults++;
         }
@@ -140,15 +175,39 @@ public class DeferredConnection extends ReadViewConn {
     }
 
     protected final void afterExecuted() {
-        if (deferSqls != null) {
-            deferSqls.clear();
+        if (deferBytesSqls != null) {
+            deferBytesSqls.clear();
         }
         discardResults = 0;
     }
 
     @Override
     public void flushUnsent() throws SQLException {
-        if (deferSqls == null || deferSqls.isEmpty()) {
+        // Use pipeline in XConnection.
+        if (conn.isWrapperFor(XConnection.class)) {
+            if (deferBytesSqls == null || deferBytesSqls.size() == 0) {
+                return;
+            }
+
+            if (discardResults > 0) {
+                GeneralUtil.nestedException("A deferred PreparedStatement hasn't executed.");
+            }
+
+            final XConnection xconn = conn.unwrap(XConnection.class);
+
+            try {
+                for (BytesSql deferSql : deferBytesSqls) {
+                    // Run with prefix.
+                    xconn.execUpdate(deferSql, null, null, true);
+                    // No need to discard.
+                }
+            } finally {
+                deferBytesSqls.clear(); // Note we must remove them, because we have actually enqueued them.
+            }
+            return;
+        }
+
+        if (deferBytesSqls == null || deferBytesSqls.isEmpty()) {
             return;
         }
 
@@ -156,40 +215,24 @@ public class DeferredConnection extends ReadViewConn {
             GeneralUtil.nestedException("A deferred PreparedStatement hasn't executed.");
         }
 
-        // Use pipeline in XConnection.
-        if (conn.isWrapperFor(XConnection.class)) {
-            final XConnection xconn = conn.unwrap(XConnection.class);
-
-            try {
-                for (String deferSql : deferSqls) {
-                    // Run with prefix.
-                    xconn.execUpdate(deferSql, null, true);
-                    // No need to discard.
-                }
-            } finally {
-                deferSqls.clear(); // Note we must remove them, because we have actually enqueued them.
-            }
-            return;
-        }
-
         StringBuilder builder = new StringBuilder();
         if (serverDiscards) {
             // Return 1 result for avoid blocking
             builder.append("SET @@rds_result_skip_counter = ");
-            builder.append(deferSqls.size() - 1);
+            builder.append(deferBytesSqls.size() - 1);
         }
-        for (String deferSql : deferSqls) {
+        for (BytesSql deferSql : deferBytesSqls) {
             if (builder.length() > 0) {
                 builder.append(';');
             }
-            builder.append(deferSql);
+            builder.append(deferSql.toString());
         }
 
         // Run deferred queries in separate statement.
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(builder.toString());
         } finally {
-            deferSqls.clear();
+            deferBytesSqls.clear();
         }
     }
 
@@ -198,80 +241,101 @@ public class DeferredConnection extends ReadViewConn {
         conn.setEncoding(encoding);
     }
 
+    @Override
     public void abort(Executor executor) throws SQLException {
         conn.abort(executor);
     }
 
+    @Override
     public void clearWarnings() throws SQLException {
         conn.clearWarnings();
     }
 
+    @Override
     public void close() throws SQLException {
+        traceId = null;
+        super.close();
         conn.close();
     }
 
+    @Override
     public void commit() throws SQLException {
         conn.commit();
     }
 
+    @Override
     public Array createArrayOf(String typeName, Object[] elements) throws SQLException {
         return conn.createArrayOf(typeName, elements);
     }
 
+    @Override
     public Blob createBlob() throws SQLException {
         return conn.createBlob();
     }
 
+    @Override
     public Clob createClob() throws SQLException {
         return conn.createClob();
     }
 
+    @Override
     public NClob createNClob() throws SQLException {
         return conn.createNClob();
     }
 
+    @Override
     public SQLXML createSQLXML() throws SQLException {
         return conn.createSQLXML();
     }
 
+    @Override
     public Statement createStatement() throws SQLException {
         return new DeferredStatement(this, conn.createStatement());
     }
 
+    @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency,
                                      int resultSetHoldability) throws SQLException {
         return new DeferredStatement(this,
             conn.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability));
     }
 
+    @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
         return new DeferredStatement(this, conn.createStatement(resultSetType, resultSetConcurrency));
     }
 
+    @Override
     public Struct createStruct(String typeName, Object[] attributes) throws SQLException {
         return conn.createStruct(typeName, attributes);
     }
 
+    @Override
     public boolean getAutoCommit() throws SQLException {
         return conn.getAutoCommit();
     }
 
+    @Override
     public String getCatalog() throws SQLException {
         return conn.getCatalog();
     }
 
+    @Override
     public Properties getClientInfo() throws SQLException {
         return conn.getClientInfo();
     }
 
+    @Override
     public String getClientInfo(String name) throws SQLException {
         return conn.getClientInfo(name);
     }
 
+    @Override
     public int getHoldability() throws SQLException {
         return conn.getHoldability();
     }
 
+    @Override
     public DatabaseMetaData getMetaData() throws SQLException {
         return conn.getMetaData();
     }
@@ -281,42 +345,52 @@ public class DeferredConnection extends ReadViewConn {
         return conn.getNetworkTimeout();
     }
 
+    @Override
     public String getSchema() throws SQLException {
         return conn.getSchema();
     }
 
+    @Override
     public int getTransactionIsolation() throws SQLException {
         return conn.getTransactionIsolation();
     }
 
+    @Override
     public Map<String, Class<?>> getTypeMap() throws SQLException {
         return conn.getTypeMap();
     }
 
+    @Override
     public SQLWarning getWarnings() throws SQLException {
         return conn.getWarnings();
     }
 
+    @Override
     public boolean isClosed() throws SQLException {
         return conn.isClosed();
     }
 
+    @Override
     public boolean isReadOnly() throws SQLException {
         return conn.isReadOnly();
     }
 
+    @Override
     public boolean isValid(int timeout) throws SQLException {
         return conn.isValid(timeout);
     }
 
+    @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
         return conn.isWrapperFor(iface);
     }
 
+    @Override
     public String nativeSQL(String sql) throws SQLException {
         return conn.nativeSQL(sql);
     }
 
+    @Override
     public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency,
                                          int resultSetHoldability) throws SQLException {
         flushUnsent();
@@ -324,6 +398,7 @@ public class DeferredConnection extends ReadViewConn {
         return conn.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
     }
 
+    @Override
     public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
 
         flushUnsent();
@@ -331,6 +406,7 @@ public class DeferredConnection extends ReadViewConn {
         return conn.prepareCall(sql, resultSetType, resultSetConcurrency);
     }
 
+    @Override
     public CallableStatement prepareCall(String sql) throws SQLException {
 
         flushUnsent();
@@ -338,6 +414,7 @@ public class DeferredConnection extends ReadViewConn {
         return conn.prepareCall(sql);
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency,
                                               int resultSetHoldability) throws SQLException {
         String deferredSql = beforeExecuting(sql);
@@ -351,6 +428,7 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql, int resultSetType,
                                               int resultSetConcurrency) throws SQLException {
         String deferredSql = beforeExecuting(sql);
@@ -364,6 +442,7 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) throws SQLException {
         String deferredSql = beforeExecuting(sql);
 
@@ -375,6 +454,7 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql, int[] columnIndexes) throws SQLException {
         String deferredSql = beforeExecuting(sql);
 
@@ -386,6 +466,7 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql, String[] columnNames) throws SQLException {
         String deferredSql = beforeExecuting(sql);
 
@@ -397,6 +478,7 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public PreparedStatement prepareStatement(String sql) throws SQLException {
         String deferredSql = beforeExecuting(sql);
 
@@ -408,34 +490,42 @@ public class DeferredConnection extends ReadViewConn {
         }
     }
 
+    @Override
     public void releaseSavepoint(Savepoint savepoint) throws SQLException {
         conn.releaseSavepoint(savepoint);
     }
 
+    @Override
     public void rollback() throws SQLException {
         conn.rollback();
     }
 
+    @Override
     public void rollback(Savepoint savepoint) throws SQLException {
         conn.rollback(savepoint);
     }
 
+    @Override
     public void setAutoCommit(boolean autoCommit) throws SQLException {
         conn.setAutoCommit(autoCommit);
     }
 
+    @Override
     public void setCatalog(String catalog) throws SQLException {
         conn.setCatalog(catalog);
     }
 
+    @Override
     public void setClientInfo(Properties properties) throws SQLClientInfoException {
         conn.setClientInfo(properties);
     }
 
+    @Override
     public void setClientInfo(String name, String value) throws SQLClientInfoException {
         conn.setClientInfo(name, value);
     }
 
+    @Override
     public void setHoldability(int holdability) throws SQLException {
         conn.setHoldability(holdability);
     }
@@ -445,30 +535,37 @@ public class DeferredConnection extends ReadViewConn {
         conn.setNetworkTimeout(executor, milliseconds);
     }
 
+    @Override
     public void setReadOnly(boolean readOnly) throws SQLException {
         conn.setReadOnly(readOnly);
     }
 
+    @Override
     public Savepoint setSavepoint() throws SQLException {
         return conn.setSavepoint();
     }
 
+    @Override
     public Savepoint setSavepoint(String name) throws SQLException {
         return conn.setSavepoint(name);
     }
 
+    @Override
     public void setSchema(String schema) throws SQLException {
         conn.setSchema(schema);
     }
 
+    @Override
     public void setTransactionIsolation(int level) throws SQLException {
         conn.setTransactionIsolation(level);
     }
 
+    @Override
     public void setTypeMap(Map<String, Class<?>> map) throws SQLException {
         conn.setTypeMap(map);
     }
 
+    @Override
     public <T> T unwrap(Class<T> iface) throws SQLException {
         return conn.unwrap(iface);
     }
@@ -476,56 +573,6 @@ public class DeferredConnection extends ReadViewConn {
     @Override
     public void kill() throws SQLException {
         conn.kill();
-    }
-
-    @Override
-    public long getLastInsertId() {
-        return conn.getLastInsertId();
-    }
-
-    @Override
-    public void setLastInsertId(long id) {
-        conn.setLastInsertId(id);
-    }
-
-    @Override
-    public long getReturnedLastInsertId() {
-        return conn.getReturnedLastInsertId();
-    }
-
-    @Override
-    public void setReturnedLastInsertId(long id) {
-        conn.setReturnedLastInsertId(id);
-    }
-
-    @Override
-    public List<Long> getGeneratedKeys() {
-        return conn.getGeneratedKeys();
-    }
-
-    @Override
-    public void setGeneratedKeys(List<Long> ids) {
-        conn.setGeneratedKeys(ids);
-    }
-
-    @Override
-    public ITransactionPolicy getTrxPolicy() {
-        return conn.getTrxPolicy();
-    }
-
-    @Override
-    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
-        conn.setTrxPolicy(trxPolicy);
-    }
-
-    @Override
-    public BatchInsertPolicy getBatchInsertPolicy(Map<String, Object> extraCmds) {
-        return conn.getBatchInsertPolicy(extraCmds);
-    }
-
-    @Override
-    public void setBatchInsertPolicy(BatchInsertPolicy policy) {
-        conn.setBatchInsertPolicy(policy);
     }
 
     @Override
@@ -554,6 +601,26 @@ public class DeferredConnection extends ReadViewConn {
     }
 
     @Override
+    public boolean isBytesSqlSupported() throws SQLException {
+        return conn.isBytesSqlSupported();
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(BytesSql sql, byte[] hint) throws SQLException {
+        if (conn.isBytesSqlSupported()) {
+            beforeExecuting(hint);
+            try {
+                return new DeferredPreparedStatement(this, conn.prepareStatement(sql, hint));
+            } catch (Throwable e) {
+                discardResults = 0;
+                throw e;
+            }
+        } else {
+            throw new NotSupportException("bytes sql not supported in DeferredConnection:" + conn.getClass().getName());
+        }
+    }
+
+    @Override
     public Map<String, Object> getServerVariables() {
         return conn.getServerVariables();
     }
@@ -561,36 +628,6 @@ public class DeferredConnection extends ReadViewConn {
     @Override
     public void setServerVariables(Map<String, Object> serverVariables) throws SQLException {
         conn.setServerVariables(serverVariables);
-    }
-
-    @Override
-    public long getFoundRows() {
-        return conn.getFoundRows();
-    }
-
-    @Override
-    public void setFoundRows(long foundRows) {
-        conn.setFoundRows(foundRows);
-    }
-
-    @Override
-    public long getAffectedRows() {
-        return conn.getAffectedRows();
-    }
-
-    @Override
-    public void setAffectedRows(long affectedRows) {
-        conn.setAffectedRows(affectedRows);
-    }
-
-    @Override
-    public String getUser() {
-        return conn.getUser();
-    }
-
-    @Override
-    public void setUser(String userName) {
-        conn.setUser(userName);
     }
 
     @Override

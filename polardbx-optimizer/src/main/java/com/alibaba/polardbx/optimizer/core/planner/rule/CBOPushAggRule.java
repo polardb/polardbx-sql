@@ -44,6 +44,7 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.fun.SqlCheckSumMergeFunction;
 import org.apache.calcite.sql.fun.SqlCountAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.fun.SqlSumAggFunction;
@@ -85,6 +86,9 @@ public class CBOPushAggRule extends RelOptRule {
             }
         }
         if (logicalView.isSingleGroup()) {
+            if (CBOUtil.isCheckSum(logicalAggregate) && !(logicalView instanceof OSSTableScan)) {
+                return;
+            }
             LogicalAggregate newLogicalAggregate = logicalAggregate.copy(
                 logicalView.getPushedRelNode(), logicalAggregate.getGroupSet(), logicalAggregate.getAggCallList());
             LogicalView newLogicalView = logicalView.copy(logicalAggregate.getTraitSet());
@@ -132,7 +136,7 @@ public class CBOPushAggRule extends RelOptRule {
             return null;
         }
 
-        TwoPhaseAggComponent twoPhaseAggComponent = splitAgg(logicalAggregate);
+        TwoPhaseAggComponent twoPhaseAggComponent = splitAgg(logicalAggregate, logicalView instanceof OSSTableScan);
         if (twoPhaseAggComponent == null) {
             return null;
         }
@@ -222,6 +226,10 @@ public class CBOPushAggRule extends RelOptRule {
     }
 
     public static TwoPhaseAggComponent splitAgg(Aggregate agg) {
+        return splitAgg(agg, true);
+    }
+
+    public static TwoPhaseAggComponent splitAgg(Aggregate agg, boolean canSplitOrcHash) {
         TddlTypeFactoryImpl tddlTypeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
         List<RexNode> childExps = new ArrayList<>();
         final int aggGroupSetCardinality = agg.getGroupSet().cardinality();
@@ -336,6 +344,26 @@ public class CBOPushAggRule extends RelOptRule {
                     groupConcatAggregateCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
                         -1, groupConcatAggregateCall.getOrderList());
                 globalAggCalls.add(newGroupConcatAggregateCall);
+
+                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+                partialAggCalls.add(aggCall);
+                break;
+            case CHECK_SUM:
+                if (!canSplitOrcHash) {
+                    return null;
+                }
+                SqlCheckSumMergeFunction crcAggFunction = new SqlCheckSumMergeFunction();
+
+                AggregateCall crcHashAggregateCall = AggregateCall.create(crcAggFunction,
+                    aggCall.isDistinct(),
+                    aggCall.isApproximate(),
+                    ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                    aggCall.filterArg,
+                    aggCall.getType(),
+                    aggCall.getName());
+
+                globalAggCalls.add(crcHashAggregateCall);
 
                 childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
 

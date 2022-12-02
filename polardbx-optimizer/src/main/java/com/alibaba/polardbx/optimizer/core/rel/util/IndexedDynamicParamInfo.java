@@ -23,6 +23,7 @@ import java.util.Objects;
  */
 public class IndexedDynamicParamInfo implements DynamicParamInfo {
     private final int paramIndex;
+    private int dynamicKey;
 
     public IndexedDynamicParamInfo(int paramIndex) {
         this.paramIndex = paramIndex;
@@ -47,5 +48,13 @@ public class IndexedDynamicParamInfo implements DynamicParamInfo {
     @Override
     public int hashCode() {
         return Objects.hash(getParamIndex());
+    }
+
+    public int getDynamicKey() {
+        return dynamicKey;
+    }
+
+    public void setDynamicKey(int dynamicKey) {
+        this.dynamicKey = dynamicKey;
     }
 }

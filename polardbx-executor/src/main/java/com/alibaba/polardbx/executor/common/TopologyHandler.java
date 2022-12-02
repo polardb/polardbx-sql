@@ -390,7 +390,11 @@ public class TopologyHandler extends AbstractLifecycle {
                 repoInst.setReadWeight(r);
 
                 String addr = atomDs.getHost() + ':' + atomDs.getPort();
+                String dnId = atomDs.getDnId();
+                String repoInstId =  dnId + '@' + addr;
                 repoInst.setAddress(addr);
+                repoInst.setDnId(dnId);
+                repoInst.setRepoInstId(repoInstId);
 
                 if (repoInstMaps.containsKey(addr)) {
                     continue;
@@ -409,7 +413,7 @@ public class TopologyHandler extends AbstractLifecycle {
         return repoInstMaps;
     }
 
-    public Map<String, RepoInst> getGroupRepoInstMapsForzigzig() {
+    public Map<String, RepoInst> getGroupRepoInstMapsForzigzag() {
         Map<String, RepoInst> groupRepoInstMaps = new HashMap<String, RepoInst>();
 
         List<Group> allGroupsInMatrix = new ArrayList<>();
@@ -418,9 +422,25 @@ public class TopologyHandler extends AbstractLifecycle {
             IGroupExecutor groupExecutor = get(group.getName());
             TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
             String groupName = ds.getDbGroupKey();
-            String address = ds.getOneAtomAddress(ConfigDataMode.isMasterMode());
+            TAtomDataSource atomDs = ds.getOneAtomDs(ConfigDataMode.isMasterMode());
+
+            String address;
+            String dnId;
+            String repoInstId;
+            if (atomDs != null) {
+                address = atomDs.getHost() + ':' + atomDs.getPort();
+                dnId = atomDs.getDnId();
+            } else {
+                address = TGroupDataSource.INVALID_ADDRESS;
+                dnId = "empty";
+            }
+            repoInstId =  dnId + '@' + address;
+
             RepoInst repoInst = new RepoInst();
             repoInst.setAddress(address);
+            repoInst.setDnId(dnId);
+            repoInst.setRepoInstId(repoInstId);
+
             groupRepoInstMaps.put(groupName, repoInst);
         }
         return groupRepoInstMaps;

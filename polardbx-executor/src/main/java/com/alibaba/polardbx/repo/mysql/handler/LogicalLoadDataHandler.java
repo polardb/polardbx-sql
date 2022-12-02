@@ -58,6 +58,7 @@ import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -94,10 +95,15 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
 
         LogicalInsert logicalInsert = (LogicalInsert) logicalPlan;
         checkInsertLimitation(logicalInsert, executionContext);
-        if (!OptimizerContext.getContext(logicalInsert.getSchemaName()).getPartitionInfoManager()
+        String schemaName = logicalInsert.getSchemaName();
+        if (schemaName == null) {
+            schemaName = executionContext.getSchemaName();
+        }
+        if (!OptimizerContext.getContext(schemaName).getPartitionInfoManager()
             .isNewPartDbTable(logicalInsert.getLogicalTableName())) {
             buildSimpleShard(logicalInsert, executionContext.getLoadDataContext());
         }
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
 
         int affectRows;
         long oldLastInsertId = executionContext.getConnection().getLastInsertId();
@@ -140,17 +146,16 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
     @Override
     protected int executeInsert(LogicalInsert logicalInsert, ExecutionContext executionContext,
                                 HandlerParams handlerParams) {
-
         LoadDataContext loadDataContext = executionContext.getLoadDataContext();
-
+        String schemaName = executionContext.getSchemaName();
         boolean hasIndex = GlobalIndexMeta.hasIndex(
-            logicalInsert.getLogicalTableName(), executionContext.getSchemaName(), executionContext);
+            logicalInsert.getLogicalTableName(), schemaName, executionContext);
         boolean ignoreIsSimpleInsert = executionContext.getParamManager().getBoolean(
             ConnectionParams.LOAD_DATA_IGNORE_IS_SIMPLE_INSERT);
         final boolean gsiConcurrentWrite =
             executionContext.getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE);
-
-        final TddlRuleManager or = OptimizerContext.getContext(executionContext.getSchemaName()).getRuleManager();
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
+        final TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         final boolean isBroadcast = or.isBroadCast(logicalInsert.getLogicalTableName());
         final boolean inSingleDb = or.isTableInSingleDb(logicalInsert.getLogicalTableName());
         loadDataContext.setInSingleDb(inSingleDb);
@@ -261,7 +266,7 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
         }
 
         boolean useTrans = executionContext.getTransaction() instanceof IDistributedTransaction;
-        int realParallsim = executionContext.getParamManager().getInt(ConnectionParams.PARALLELISM);
+        int realParallism = executionContext.getParamManager().getInt(ConnectionParams.PARALLELISM);
         final TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         boolean isSingleTable = or.isTableInSingleDb(logicalInsert.getLogicalTableName());
         final Set<String> dbNames;
@@ -276,17 +281,18 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
         }
 
         List<String> groupNames = Lists.newArrayList(dbNames);
+        List<String> groupConnIdSet = PhyTableOperationUtil.buildGroConnSetFromGroups(executionContext, groupNames);
         CursorMeta cursorMeta = CalciteUtils.buildDmlCursorMeta();
 
-        if (realParallsim <= 0) {
+        if (realParallism <= 0) {
             if (isSingleTable) {
-                realParallsim = 1;
+                realParallism = 1;
             } else {
-                realParallsim = groupNames.size();
+                realParallism = groupConnIdSet.size();
             }
         } else {
             if (useTrans) {
-                realParallsim = Math.min(groupNames.size(), realParallsim);
+                realParallism = Math.min(groupConnIdSet.size(), realParallism);
             }
         }
 
@@ -295,22 +301,21 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
         Map<String, BlockingQueue<Object>> multiQueus = new HashMap<>();
         if (useTrans) {
             List<BlockingQueue<Object>> blockingQueueList = new ArrayList<>();
-
-            for (int i = 0; i < groupNames.size(); i++) {
-                if (i < realParallsim) {
+            for (int i = 0; i < groupConnIdSet.size(); i++) {
+                if (i < realParallism) {
                     BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
                     AdaptiveLoadDataCursor cursor = new AdaptiveLoadDataCursor(
                         executionContext, queue, cursorMeta, multiQueus);
                     indexCursors.add(cursor);
-                    multiQueus.put(groupNames.get(i), queue);
+                    multiQueus.put(groupConnIdSet.get(i), queue);
                     blockingQueueList.add(queue);
                 } else {
-                    int index = (i - realParallsim) % realParallsim;
-                    multiQueus.put(groupNames.get(i), blockingQueueList.get(index));
+                    int index = (i - realParallism) % realParallism;
+                    multiQueus.put(groupConnIdSet.get(i), blockingQueueList.get(index));
                 }
             }
 
-            for (int i = 0; i < realParallsim; i++) {
+            for (int i = 0; i < realParallism; i++) {
                 ShardConsumer shardConsumer = new ShardConsumer(
                     executionContext.getLoadDataContext(), executionContext, logicalInsert, multiQueus);
                 shardConsumers.add(shardConsumer);
@@ -318,7 +323,7 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
         } else {
             BlockingQueue<Object> relNodeBlockingQueue = new LinkedBlockingQueue<>();
             multiQueus.put(DEFAULT_GROUP, relNodeBlockingQueue);
-            for (int i = 0; i < realParallsim; i++) {
+            for (int i = 0; i < realParallism; i++) {
                 ShardConsumer shardConsumer = new ShardConsumer(
                     executionContext.getLoadDataContext(), executionContext, logicalInsert, multiQueus);
                 shardConsumers.add(shardConsumer);
@@ -368,52 +373,56 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
             this.future = executionContext.getExecutorService().submitListenableFuture(
                 executionContext.getSchemaName(), executionContext.getTraceId(), -1,
                 () -> {
-                    MDC.setContextMap(mdcContext);
-                    try {
-                        while (true) {
-                            if (cursorClosed) {
-                                break;
-                            }
-
-                            if (loadDataContext.getThrowable() != null) {
-                                throw loadDataContext.getThrowable();
-                            }
-
-                            Object object = relNodeBlockingQueue.take();
-                            if (object == END) {
-                                relNodeBlockingQueue.add(END);
-                                break;
-                            }
-
-                            if (object instanceof Long) {
-                                loadDataContext.getDataCacheManager().releaseMemory((Long) object);
-                                continue;
-                            }
-                            currentCusor = ExecutorContext.getContext(
-                                executionContext.getSchemaName()).getTopologyExecutor().execByExecPlanNode(
-                                (PhyTableOperation) object, executionContext);
-                            int num =
-                                ExecUtils.getAffectRowsByCursor(currentCusor);
-                            affectNum += num;
-                            loadDataContext.getLoadDataAffectRows().addAndGet(num);
-                        }
-                    } catch (Throwable t) {
-                        exceptionsWhenClose.add(t);
-                        logger.error("AdaptiveParallelLoadDataCursor failed", t);
-                        try {
-                            loadDataContext.finish(t);
-                        } catch (Throwable ignore) {
-                            //ignore
-                        }
-                        if (concurrentQueues != null) {
-                            concurrentQueues.values().stream().forEach(q -> {
-                                q.clear();
-                                q.add(END);
-                            });
-                        }
-                    }
+                    this.takePhyOpAndThenExec(mdcContext);
                     return null;
                 }, executionContext.getRuntimeStatistics());
+        }
+
+        private void takePhyOpAndThenExec(Map mdcContext) {
+            MDC.setContextMap(mdcContext);
+            try {
+                while (true) {
+                    if (cursorClosed) {
+                        break;
+                    }
+
+                    if (loadDataContext.getThrowable() != null) {
+                        throw loadDataContext.getThrowable();
+                    }
+
+                    Object object = relNodeBlockingQueue.take();
+                    if (object == END) {
+                        relNodeBlockingQueue.add(END);
+                        break;
+                    }
+
+                    if (object instanceof Long) {
+                        loadDataContext.getDataCacheManager().releaseMemory((Long) object);
+                        continue;
+                    }
+                    currentCusor = ExecutorContext.getContext(
+                        executionContext.getSchemaName()).getTopologyExecutor().execByExecPlanNode(
+                        (PhyTableOperation) object, executionContext);
+                    int num =
+                        ExecUtils.getAffectRowsByCursor(currentCusor);
+                    affectNum += num;
+                    loadDataContext.getLoadDataAffectRows().addAndGet(num);
+                }
+            } catch (Throwable t) {
+                exceptionsWhenClose.add(t);
+                logger.error("AdaptiveParallelLoadDataCursor failed", t);
+                try {
+                    loadDataContext.finish(t);
+                } catch (Throwable ignore) {
+                    //ignore
+                }
+                if (concurrentQueues != null) {
+                    concurrentQueues.values().stream().forEach(q -> {
+                        q.clear();
+                        q.add(END);
+                    });
+                }
+            }
         }
 
         @Override
@@ -454,6 +463,10 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
         }
     }
 
+    private String getGroupConnIdStr(PhyTableOperation phyOp, ExecutionContext ec) {
+        return PhyTableOperationUtil.buildGroConnIdStr(phyOp, ec);
+    }
+
     public class ShardConsumer {
 
         private final Logger
@@ -482,7 +495,6 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
                     MDC.setContextMap(mdcContext);
                     return run();
                 }, executionContext.getRuntimeStatistics());
-
         }
 
         public Object run() {
@@ -530,11 +542,11 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
                                 if (i == allPhyPlan.size() - 1) {
                                     calcSize = div + averageSize;
                                 } else {
-                                    calcSize = div;
+                                    calcSize = averageSize;
                                 }
                                 PhyTableOperation phyTableOperation = (PhyTableOperation) allPhyPlan.get(i);
                                 BlockingQueue<Object> blockingQueue =
-                                    concurrentQueues.get(phyTableOperation.getDbIndex());
+                                    concurrentQueues.get(getGroupConnIdStr(phyTableOperation, executionContext));
                                 blockingQueue.add(phyTableOperation);
                                 blockingQueue.add(calcSize);
                             }

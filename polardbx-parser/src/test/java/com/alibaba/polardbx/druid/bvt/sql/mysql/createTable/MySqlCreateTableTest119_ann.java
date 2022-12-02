@@ -29,15 +29,15 @@ public class MySqlCreateTableTest119_ann extends MysqlTest {
 
     public void test_0() throws Exception {
         String sql = "CREATE TABLE face_feature (\n" +
-                "  id varchar COMMENT 'id',\n" +
-                "  facefea array<short>(256) COMMENT 'feature',\n" +
-                "  ANN INDEX facefea_index1 (facefea) DistanceMeasure = DotProduct ALGORITHM = IVF\n" +
-                "  PRIMARY KEY (id)\n" +
-                ")\n" +
-                "PARTITION BY HASH KEY (id) PARTITION NUM 8\n" +
-                "TABLEGROUP vector_demo_group\n" +
-                "OPTIONS (UPDATETYPE='batch')\n" +
-                "COMMENT '';";
+            "  id varchar COMMENT 'id',\n" +
+            "  facefea array<short>(256) COMMENT 'feature',\n" +
+            "  ANN INDEX facefea_index1 (facefea) DistanceMeasure = DotProduct ALGORITHM = IVF\n" +
+            "  PRIMARY KEY (id)\n" +
+            ")\n" +
+            "PARTITION BY HASH KEY (id) PARTITION NUM 8\n" +
+            "TABLEGROUP vector_demo_group\n" +
+            "OPTIONS (UPDATETYPE='batch')\n" +
+            "COMMENT '';";
 
         List<SQLStatement> statementList = SQLUtils.parseStatements(sql, JdbcConstants.MYSQL);
         SQLCreateTableStatement stmt = (SQLCreateTableStatement) statementList.get(0);
@@ -46,14 +46,14 @@ public class MySqlCreateTableTest119_ann extends MysqlTest {
         assertEquals(4, stmt.getTableElementList().size());
 
         assertEquals("CREATE TABLE face_feature (\n" +
-                "\tid varchar COMMENT 'id',\n" +
-                "\tfacefea ARRAY<short>(256) COMMENT 'feature',\n" +
-                "\tINDEX facefea_index1 ANN(facefea) ALGORITHM = IVF DistanceMeasure = DotProduct,\n" +
-                "\tPRIMARY KEY (id)\n" +
-                ")\n" +
-                "OPTIONS (UPDATETYPE = 'batch') COMMENT ''\n" +
-                "PARTITION BY HASH KEY(id) PARTITION NUM 8\n" +
-                "TABLEGROUP vector_demo_group;", stmt.toString());
+            "\tid varchar COMMENT 'id',\n" +
+            "\tfacefea ARRAY<short>(256) COMMENT 'feature',\n" +
+            "\tINDEX facefea_index1 ANN(facefea) ALGORITHM = IVF DistanceMeasure = DotProduct,\n" +
+            "\tPRIMARY KEY (id)\n" +
+            ")\n" +
+            "OPTIONS (UPDATETYPE = 'batch') COMMENT ''\n" +
+            "PARTITION BY HASH KEY(id) PARTITION NUM 8\n" +
+            "TABLEGROUP = vector_demo_group;", stmt.toString());
 
         MySqlTableIndex idx = (MySqlTableIndex) stmt.findIndex("facefea");
         assertNotNull(idx);

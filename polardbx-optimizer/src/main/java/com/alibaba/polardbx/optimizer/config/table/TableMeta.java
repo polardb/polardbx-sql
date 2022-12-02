@@ -16,6 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
+import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
@@ -26,12 +33,10 @@ import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupOutlineRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -76,6 +81,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -87,6 +93,15 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     private static final long serialVersionUID = 5168519373619656091L;
     private String digest;
+    /**
+     * the table group version of table
+     */
+    private List<String> tableGroupDigest = null;
+
+    /**
+     * the schema version of table
+     */
+    private List<String> schemaDigest = null;
 
     // id in metadb
     private long id;
@@ -127,11 +142,12 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     private boolean hasPrimaryKey = true;
 
+    private TableColumnMeta tableColumnMeta = null;
+
     private List<ColumnMeta> autoUpdateColumns = null;
     private GsiMetaManager.GsiTableMetaBean gsiTableMetaBean = null;
     private Map<String, GsiIndexMetaBean> gsiPublished = null;
 
-    private TableGroupOutlineRecord tableGroupOutlineRecord = null;
     private ComplexTaskOutlineRecord complexTaskOutlineRecord = null;
     private ComplexTaskMetaManager.ComplexTaskTableMetaBean complexTaskTableMetaBean = null;
 
@@ -151,11 +167,13 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
-    public TableMeta(String tableName, List<ColumnMeta> allColumnsOrderByDefined, IndexMeta primaryIndex,
+    public TableMeta(String schemaName, String tableName, List<ColumnMeta> allColumnsOrderByDefined,
+                     IndexMeta primaryIndex,
                      List<IndexMeta> secondaryIndexes, boolean hasPrimaryKey, TableStatus status, long version,
                      long flag) {
-        this.hasPrimaryKey = hasPrimaryKey;
+        this.schemaName = schemaName;
         this.tableName = tableName;
+        this.hasPrimaryKey = hasPrimaryKey;
         if (hasPrimaryKey && primaryIndex != null) {
             this.primaryIndexes.put(primaryIndex.getPhysicalIndexName(), primaryIndex);
             for (ColumnMeta c : primaryIndex.getKeyColumns()) {
@@ -228,8 +246,19 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return primaryIndexes.isEmpty() ? null : primaryIndexes.values().iterator().next();
     }
 
+    private boolean indexContainsMultiWriteTargetColumn(IndexMeta indexMeta, ColumnMeta multiWriteTargetColumnMeta) {
+        if (multiWriteTargetColumnMeta == null) {
+            return false;
+        }
+        return indexMeta.getKeyColumns().stream()
+            .anyMatch(cm -> cm.getName().equalsIgnoreCase(multiWriteTargetColumnMeta.getName()));
+    }
+
     public List<IndexMeta> getSecondaryIndexes() {
-        return new ArrayList<>(secondaryIndexes.values());
+        ColumnMeta multiWriteTargetColumnMeta = getColumnMultiWriteTargetColumnMeta();
+        return secondaryIndexes.values().stream()
+            .filter(im -> !indexContainsMultiWriteTargetColumn(im, multiWriteTargetColumnMeta))
+            .collect(Collectors.toList());
     }
 
     public List<IndexMeta> getUniqueIndexes(boolean includingPrimaryIndex) {
@@ -239,8 +268,10 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             uniqueIndexes.add(getPrimaryIndex());
         }
 
+        ColumnMeta multiWriteTargetColumnMeta = getColumnMultiWriteTargetColumnMeta();
         for (IndexMeta indexMeta : getSecondaryIndexes()) {
-            if (!indexMeta.isPrimaryKeyIndex() && indexMeta.isUniqueIndex()) {
+            if (!indexMeta.isPrimaryKeyIndex() && indexMeta.isUniqueIndex() && !indexContainsMultiWriteTargetColumn(
+                indexMeta, multiWriteTargetColumnMeta)) {
                 uniqueIndexes.add(indexMeta);
             }
         }
@@ -248,7 +279,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public Map<String, IndexMeta> getSecondaryIndexesMap() {
-        return secondaryIndexes;
+        Map<String, IndexMeta> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        ColumnMeta multiWriteTargetColumnMeta = getColumnMultiWriteTargetColumnMeta();
+        for (Entry<String, IndexMeta> entry : secondaryIndexes.entrySet()) {
+            if (!indexContainsMultiWriteTargetColumn(entry.getValue(), multiWriteTargetColumnMeta)) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
     }
 
     public Collection<ColumnMeta> getPrimaryKey() {
@@ -277,22 +315,41 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public List<ColumnMeta> getAllColumns() {   //兼容以前
-        return allColumnsOrderByDefined.stream()
-            .filter(column -> column.getStatus() == TableStatus.PUBLIC)
-            .collect(Collectors.toList());
+        return allColumnsOrderByDefined.stream().filter(column -> column.getStatus() == ColumnStatus.PUBLIC
+            || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE).collect(Collectors.toList());
     }
 
     public List<ColumnMeta> getWriteColumns() {  //可写的columns
         return allColumnsOrderByDefined.stream()
-            .filter(column -> column.getStatus() == TableStatus.PUBLIC || column.getStatus() == TableStatus.WRITE_ONLY
-                || column.getStatus() == TableStatus.WRITE_REORG)
+            .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
+                || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE
+                || column.getStatus() == ColumnStatus.WRITE_ONLY || column.getStatus() == ColumnStatus.WRITE_REORG)
             .collect(Collectors.toList());
     }
 
     public List<ColumnMeta> getReadColumns() {   //可读的columns
         return allColumnsOrderByDefined.stream()
-            .filter(column -> column.getStatus() == TableStatus.PUBLIC)
+            .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
+                || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE)
             .collect(Collectors.toList());
+    }
+
+    public ColumnMeta getColumnMultiWriteSourceColumnMeta() {
+        for (ColumnMeta columnMeta : allColumnsOrderByDefined) {
+            if (columnMeta.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE) {
+                return columnMeta;
+            }
+        }
+        return null;
+    }
+
+    public ColumnMeta getColumnMultiWriteTargetColumnMeta() {
+        for (ColumnMeta columnMeta : allColumnsOrderByDefined) {
+            if (columnMeta.getStatus() == ColumnStatus.MULTI_WRITE_TARGET) {
+                return columnMeta;
+            }
+        }
+        return null;
     }
 
     public IndexMeta getIndexMeta(String indexName) {
@@ -311,6 +368,23 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             indexes.add(this.getPrimaryIndex());
         }
         indexes.addAll(this.getSecondaryIndexes());
+        return indexes;
+    }
+
+    public Set<String> getLocalIndexNames() {
+        Set<String> indexes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexes.addAll(
+            this.getAllIndexes().stream().map(IndexMeta::getPhysicalIndexName).collect(Collectors.toList()));
+        return indexes;
+    }
+
+    public List<IndexMeta> getAllIndexes() {
+        List<IndexMeta> indexes = new ArrayList<IndexMeta>();
+        IndexMeta index = this.getPrimaryIndex();
+        if (index != null) {
+            indexes.add(this.getPrimaryIndex());
+        }
+        indexes.addAll(secondaryIndexes.values());
         return indexes;
     }
 
@@ -374,8 +448,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         if (ConfigDataMode.isFastMock()) {
             return 10;
         }
-        StatisticResult statisticResult =
-            OptimizerContext.getContext(schemaName).getStatisticManager().getRowCount(tableName);
+        StatisticResult statisticResult = StatisticManager.getInstance().getRowCount(schemaName, tableName);
         long rowCount = statisticResult.getLongValue();
         return rowCount <= 0 ? 1 : rowCount;
     }
@@ -451,6 +524,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return autoUpdateColumns;
     }
 
+    public TableColumnMeta getTableColumnMeta() {
+        return tableColumnMeta;
+    }
+
+    public void setTableColumnMeta(TableColumnMeta tableColumnMeta) {
+        this.tableColumnMeta = tableColumnMeta;
+    }
+
     public GsiMetaManager.GsiTableMetaBean getGsiTableMetaBean() {
         return gsiTableMetaBean;
     }
@@ -484,6 +565,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public boolean withGsi(String indexName) {
         return withGsi() && hasGsi(indexName);
+    }
+
+    public boolean hasGsiIgnoreCase(String indexName) {
+        Set<String> gsiNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        getGsiTableMetaBean().indexMap.forEach((key, value) -> {
+            gsiNames.add(TddlSqlToRelConverter.unwrapGsiName(key));
+        });
+        return gsiNames.contains(indexName);
     }
 
     public boolean withClustered() {
@@ -529,14 +618,6 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return false;
     }
 
-    public TableGroupOutlineRecord getTableGroupOutlineRecord() {
-        return tableGroupOutlineRecord;
-    }
-
-    public void setTableGroupOutlineRecord(TableGroupOutlineRecord tableGroupOutlineRecord) {
-        this.tableGroupOutlineRecord = tableGroupOutlineRecord;
-    }
-
     public ComplexTaskOutlineRecord getComplexTaskOutlineRecord() {
         return complexTaskOutlineRecord;
     }
@@ -580,6 +661,30 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public String getDigest() {
         return this.digest;
+    }
+
+    public String getTableGroupDigest(Long trxId) {
+        return this.tableGroupDigest.get((int) (trxId % TableGroupVersionManager.segmentLockSize));
+    }
+
+    public String getSchemaDigest(Long trxId) {
+        return this.schemaDigest.get((int) (trxId % SchemaVersionManager.segmentLockSize));
+    }
+
+    public List<String> getTableGroupDigestList() {
+        return this.tableGroupDigest;
+    }
+
+    public void setTableGroupDigestList(List<String> tableGroupDigest) {
+        this.tableGroupDigest = tableGroupDigest;
+    }
+
+    public List<String> getSchemaDigestList() {
+        return this.schemaDigest;
+    }
+
+    public void setSchemaDigestList(List<String> schemaDigest) {
+        this.schemaDigest = schemaDigest;
     }
 
     @Override

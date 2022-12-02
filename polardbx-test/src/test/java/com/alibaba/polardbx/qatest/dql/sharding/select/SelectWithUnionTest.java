@@ -27,7 +27,6 @@ import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentLengthSameAssert;
 
 /**

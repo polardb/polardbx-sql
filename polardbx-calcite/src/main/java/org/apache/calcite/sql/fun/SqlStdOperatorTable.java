@@ -43,6 +43,7 @@ import org.apache.calcite.sql.SqlRankFunction;
 import org.apache.calcite.sql.SqlSampleSpec;
 import org.apache.calcite.sql.SqlSetOperator;
 import org.apache.calcite.sql.SqlSpecialOperator;
+import org.apache.calcite.sql.SqlSyntax;
 import org.apache.calcite.sql.SqlUnnestOperator;
 import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.SqlValuesOperator;
@@ -184,6 +185,8 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * is to take its default value..
    */
   public static final SqlSpecialOperator DEFAULT = new SqlDefaultOperator();
+
+  public static final SqlSpecialOperator ALTER_TYPE = new SqlAlterTypeOperator();
 
   /** <code>FILTER</code> operator filters which rows are included in an
    *  aggregate function. */
@@ -946,7 +949,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * <code>STDDEV_POP</code> aggregate function.
    */
   public static final SqlAggFunction STDDEV_POP =
-      new SqlAvgAggFunction(SqlKind.STDDEV_POP);
+      new SqlStddevPopAggFunction();
 
   /**
    * <code>REGR_SXX</code> aggregate function.
@@ -976,31 +979,37 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * <code>STDDEV_SAMP</code> aggregate function.
    */
   public static final SqlAggFunction STDDEV_SAMP =
-      new SqlAvgAggFunction(SqlKind.STDDEV_SAMP);
+      new SqlStddevSampAggFunction();
 
   /**
    * <code>STDDEV</code> aggregate function.
    */
   public static final SqlAggFunction STDDEV =
-      new SqlAvgAggFunction("STDDEV", SqlKind.STDDEV_SAMP);
+      new SqlStddevAggFunction();
+
+  /**
+   * <code>STD</code> aggregate function.
+   */
+  public static final SqlAggFunction STD =
+      new SqlStdAggFunction();
 
   /**
    * <code>VAR_POP</code> aggregate function.
    */
   public static final SqlAggFunction VAR_POP =
-      new SqlAvgAggFunction(SqlKind.VAR_POP);
+      new SqlVarPopAggFunction();
 
   /**
    * <code>VAR_SAMP</code> aggregate function.
    */
   public static final SqlAggFunction VAR_SAMP =
-      new SqlAvgAggFunction(SqlKind.VAR_SAMP);
+      new SqlVarSampAggFunction();
 
   /**
    * <code>VARIANCE</code> aggregate function.
    */
   public static final SqlAggFunction VARIANCE =
-      new SqlAvgAggFunction("VARIANCE", SqlKind.VAR_SAMP);
+      new SqlVarianceAggFunction();
 
   //-------------------------------------------------------------
   // WINDOW Aggregate Functions
@@ -1094,6 +1103,12 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    */
   public static final SqlRankFunction RANK =
       new SqlRankFunction(SqlKind.RANK, ReturnTypes.RANK, true);
+
+  public static final SqlCheckSumFunction CHECK_SUM =
+      new SqlCheckSumFunction();
+
+  public static final SqlCheckSumMergeFunction CHECK_SUM_MERGE_FUNCTION =
+      new SqlCheckSumMergeFunction();
 
   /**
    * <code>ROW_NUMBER</code> window function.
@@ -1389,6 +1404,15 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
   public static final SqlFunction POWER =
       new SqlFunction(
           "POWER",
+          SqlKind.OTHER_FUNCTION,
+          ReturnTypes.DOUBLE_NULLABLE,
+          InferTypes.FIRST_KNOWN,
+          OperandTypes.NUMERIC_NUMERIC,
+          SqlFunctionCategory.NUMERIC);
+
+  public static final SqlFunction SPECIAL_POW =
+      new SqlFunction(
+          "SPECIAL_POW",
           SqlKind.OTHER_FUNCTION,
           ReturnTypes.DOUBLE_NULLABLE,
           InferTypes.FIRST_KNOWN,
@@ -2416,13 +2440,22 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
     }
   }
 
-  public static boolean isVectorized(SqlOperator sqlOperator) {
-    return VECTORIZED_OPERATORS.contains(sqlOperator);
-  }
+    public static boolean isVectorized(SqlOperator sqlOperator) {
+        return VECTORIZED_OPERATORS.contains(sqlOperator);
+    }
 
-  public static boolean isTypeCoercionEnable(SqlOperator sqlOperator) {
-    return TYPE_COERCION_ENABLE_OPERATORS.contains(sqlOperator);
-  }
+    public static boolean isTypeCoercionEnable(SqlOperator sqlOperator) {
+        return TYPE_COERCION_ENABLE_OPERATORS.contains(sqlOperator);
+    }
+
+    public void enableTypeCoercion(SqlOperator sqlOperator) {
+        TYPE_COERCION_ENABLE_OPERATORS.add(sqlOperator);
+    }
+
+    public void disableTypeCoercion(String name, SqlSyntax sqlSyntax) {
+        TYPE_COERCION_ENABLE_OPERATORS.removeIf(
+            operator -> name.equals(operator.getName()) && sqlSyntax == operator.getSyntax());
+    }
 }
 
 // End SqlStdOperatorTable.java

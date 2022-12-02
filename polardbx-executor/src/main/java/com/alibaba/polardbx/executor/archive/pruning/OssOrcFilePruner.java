@@ -65,7 +65,7 @@ public class OssOrcFilePruner {
         String fileName = ossOrcFileMeta.getFileName();
 
         if (ossOrcFileMeta.getCommitTs() == null) {
-            // commitTs == null means files was not committed
+            // commitTs == null means file was not committed
             return PruningResult.SKIP;
         }
 

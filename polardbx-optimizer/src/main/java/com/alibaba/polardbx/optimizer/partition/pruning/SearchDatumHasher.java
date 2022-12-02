@@ -36,8 +36,8 @@ import java.nio.charset.Charset;
  */
 public class SearchDatumHasher {
 
-    protected static final long INIT_HASH_VALUE_1 = 1L;
-    protected static final long INIT_HASH_VALUE_2 = 4L;
+    public static final long INIT_HASH_VALUE_1 = 1L;
+    public static final long INIT_HASH_VALUE_2 = 4L;
     public static final long MAX_HASH_VALUE = Long.MAX_VALUE - 1;
     public static final long MIN_HASH_VALUE = Long.MIN_VALUE + 1;
 
@@ -129,9 +129,6 @@ public class SearchDatumHasher {
 
     /**
      * The hashCode of each col will be in the range [Long.MIN+1, Long.MAX-1]
-     *
-     * @param searchValDatum
-     * @return
      */
     public Long[] calcHashCodeForKeyStrategy(SearchDatumInfo searchValDatum) {
         Long[] finalHashCodeArr = new Long[searchValDatum.datumInfo.length];

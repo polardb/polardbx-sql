@@ -102,6 +102,12 @@ public class SimpleRuleProcessorTest {
                 1024);
             parseDb("(#{0},1,48#.hashCode().abs().longValue() % 48).intdiv(1)", AtomIncreaseType.STRING, 1, 48);
             parseDb("(#{0},1,8#.hashCode().abs().longValue() % 8).intdiv(1)", AtomIncreaseType.STRING, 1, 8);
+
+            // only db partition
+            parseDb("(#{0},1,4#).longValue() % 4)", AtomIncreaseType.NUMBER, 1, 4);
+            parseDb("(#{0},1,4#).longValue().abs() % 4)", AtomIncreaseType.NUMBER_ABS, 1, 4);
+            parseDb("(#{0},1,8#.hashCode().abs().longValue() % 8)", AtomIncreaseType.STRING, 1, 8);
+
             // Db number special date rule
             Assert.assertEquals(match,
                 SimpleRuleProcessor.isSpecialDateMethod(

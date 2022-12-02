@@ -29,6 +29,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSlot;
@@ -52,6 +53,11 @@ public class PushBloomFilterRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        LogicalView logicalView = call.rel(1);
+        final RelMetadataQuery mq = logicalView.getCluster().getMetadataQuery();
+        if (mq.collations(logicalView) != null && mq.collations(logicalView).size() != 0) {
+            return false;
+        }
         return PlannerContext.getPlannerContext(call).getExecutionContext()
             .getParamManager()
             .getBoolean(ConnectionParams.STORAGE_SUPPORTS_BLOOM_FILTER);

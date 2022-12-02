@@ -25,16 +25,24 @@ import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -51,7 +59,10 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang.StringUtils;
 
@@ -59,6 +70,8 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * @author lingce.ldm
@@ -112,7 +125,6 @@ public class PushJoinRule extends RelOptRule {
         }
 
         String schemaName = leftView.getSchemaName();
-
         TddlRuleManager tddlRuleManager =
             PlannerContext.getPlannerContext(leftView).getExecutionContext().getSchemaManager(schemaName)
                 .getTddlRuleManager();
@@ -127,6 +139,8 @@ public class PushJoinRule extends RelOptRule {
         String rightTable = rightView.getShardingTable();
         final PlannerContext plannerContext = PlannerContext.getPlannerContext(join);
         final Map<String, Object> extraCmds = plannerContext.getExtraCmds();
+
+        SqlKind sqlKind = plannerContext.getSqlKind();
         String pushPolicy = null;
         if (!extraCmds.containsKey(ConnectionParams.PUSH_POLICY.getName())) {
             pushPolicy = ConnectionParams.ConnectionParamValues.PUSH_POLICY_FULL;
@@ -149,6 +163,34 @@ public class PushJoinRule extends RelOptRule {
         if (leftView.isNewPartDbTbl() && rightView.isNewPartDbTbl()) {
             PartitionInfo leftPartitionInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(leftTable);
             PartitionInfo rightPartitionInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(rightTable);
+
+            /**
+             * If any broadcast tbl use partition selection syntax like 'xxx_bro partition(p1)',
+             * then forbid pushing join
+             */
+            if (leftPartitionInfo.isBroadcastTable()) {
+                if (leftView.useSelectPartitions()) {
+                    return false;
+                }
+
+                if (!rightPartitionInfo.isBroadcastTable()) {
+                    if (leftView.getLockMode() != SqlSelect.LockMode.UNDEF || sqlKind.belongsTo(SqlKind.DML)) {
+                        return false;
+                    }
+                }
+
+            }
+            if (rightPartitionInfo.isBroadcastTable()) {
+                if (rightView.useSelectPartitions()) {
+                    return false;
+                }
+
+                if (!leftPartitionInfo.isBroadcastTable()) {
+                    if (rightView.getLockMode() != SqlSelect.LockMode.UNDEF || sqlKind.belongsTo(SqlKind.DML)) {
+                        return false;
+                    }
+                }
+            }
 
             switch (joinType) {
             case INNER:
@@ -185,11 +227,8 @@ public class PushJoinRule extends RelOptRule {
                 return true;
             }
 
-            if ( (leftView.getPartitions() != null) || rightView.getPartitions() != null) {
-                /**
-                 * Forbid to push join where any logical table use "partition()" syntax to specify partitions
-                 * , the join-push optimization of use "partition()" syntax will be supported later.
-                 */
+            boolean allowPushDownWithParts = checkAllowPushDownForPartitions(leftView, rightView);
+            if (!allowPushDownWithParts) {
                 return false;
             }
 
@@ -626,7 +665,8 @@ public class PushJoinRule extends RelOptRule {
         List<Comparative> comps = new ArrayList<>();
         RexNode newLeftFilter = RexUtil.composeConjunction(builder, filters, true);
         for (String col : cols) {
-            Comparative comp = TddlRuleManager.getComparative(newLeftFilter, rowType, col, null);
+            Partitioner partitioner = OptimizerContext.getContext(null).getPartitioner();
+            Comparative comp = partitioner.getComparative(newLeftFilter, rowType, col, null);
             if (comp == null) {
                 return null;
             }
@@ -634,5 +674,48 @@ public class PushJoinRule extends RelOptRule {
             comps.add(comp);
         }
         return comps;
+    }
+
+    private boolean checkAllowPushDownForPartitions(LogicalView leftView, LogicalView rightView) {
+
+        SqlNodeList lParts = (SqlNodeList) leftView.getPartitions();
+        SqlNodeList rParts = (SqlNodeList) rightView.getPartitions();
+
+        if (lParts == null && rParts == null) {
+            return true;
+        } else if (lParts == null && rParts != null) {
+            return false;
+        }  else if (lParts != null && rParts == null) {
+            return false;
+        }
+
+        Set<String> lPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        Set<String> rPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+        for (int i = 0; i < lParts.size(); i++) {
+            SqlIdentifier partNameId = (SqlIdentifier) lParts.get(i);
+            String partNameStr = partNameId.getLastName();
+            if (!lPartNameSet.contains(partNameStr)) {
+                lPartNameSet.add(partNameStr);
+            }
+        }
+
+        for (int i = 0; i < rParts.size(); i++) {
+            SqlIdentifier partNameId = (SqlIdentifier) rParts.get(i);
+            String partNameStr = partNameId.getLastName();
+            if (!rPartNameSet.contains(partNameStr)) {
+                rPartNameSet.add(partNameStr);
+            }
+        }
+
+        if (lPartNameSet.size() != rPartNameSet.size()) {
+            return false;
+        }
+
+        if (!lPartNameSet.containsAll(rPartNameSet)) {
+            return false;
+        }
+
+        return true;
     }
 }

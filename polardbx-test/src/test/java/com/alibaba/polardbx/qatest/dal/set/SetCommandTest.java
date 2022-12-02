@@ -28,7 +28,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectErrorAssert;
@@ -219,5 +218,21 @@ public class SetCommandTest extends DirectConnectionBaseTestCase {
         } finally {
             JdbcUtils.close(statement);
         }
+    }
+
+    @Test
+    public void setUserDefVarFromExpr() {
+        String setTableName = "SET @tbl_name = 'test'";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, setTableName, null);
+        selectContentSameAssert("SELECT @tbl_name", null, mysqlConnection, tddlConnection);
+
+        String setStr =
+            "SET @str = CONCAT(\"CREATE VIEW bug13095_v1(c1) AS SELECT stuff FROM \", CONCAT(@tbl_name, \"123\"));\n";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, setStr, null);
+        selectContentSameAssert("SELECT @str", null, mysqlConnection, tddlConnection);
+
+        setStr = "SET @str = CONCAT(\"INSERT INTO \", @tbl_name, \" VALUES('row1'),('row2'),('row3')\" )";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, setStr, null);
+        selectContentSameAssert("SELECT @str", null, mysqlConnection, tddlConnection);
     }
 }

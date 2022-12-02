@@ -71,7 +71,7 @@ public enum CharsetName {
     /**
      * UTF-8 Unicode (MySQL style)
      */
-    UTF8MB4(UTF8MB4_GENERAL_CI,
+    UTF8MB4(UTF8MB4_0900_AI_CI,
         ImmutableList
             .of(UTF8MB4_GENERAL_CI, UTF8MB4_BIN, UTF8MB4_UNICODE_CI, UTF8MB4_0900_AI_CI, UTF8MB4_UNICODE_520_CI),
         ImmutableList.of(

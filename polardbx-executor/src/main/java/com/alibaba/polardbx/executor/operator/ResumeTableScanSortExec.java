@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -36,6 +33,10 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Lists;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -74,11 +75,12 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
         this.memoryPool =
             MemoryPoolUtils.createOperatorTmpTablePool(getExecutorName(), context.getMemoryPool());
         this.allocator = memoryPool.getMemoryAllocatorCtx();
-        this.remainData = new CacheSortedRow();
+        this.remainData = new CacheSortedRow(allocator, dataTypes, context);
     }
 
     @Override
     public void addSplit(Split split) {
+        getJdbcByDeletegate(split);
         if (log.isDebugEnabled()) {
             log.debug(context.getTraceId() + ":lv=" + this.logicalView.getRelatedId() + " addSplit:" + split);
         }
@@ -93,7 +95,7 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
     public synchronized boolean resume() {
         Preconditions.checkState(isFinish, logicalView.getRelatedId() + " not finish previous stage");
         if (consumeResultSet != null) {
-            consumeResultSet.close(true);
+            consumeResultSet.close();
             consumeResultSet = null;
         }
 
@@ -153,10 +155,10 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
     @Override
     public void doSuspend() {
         if (consumeResultSet != null) {
-            consumeResultSet.close(true);
+            consumeResultSet.close();
             consumeResultSet = null;
         }
-        scanClient.cancelAllThreads();
+        scanClient.cancelAllThreads(false);
     }
 
     @Override
@@ -168,7 +170,7 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
         }
         if (!remainData.chunks.isEmpty()) {
             sortedStreams.add(WorkProcessor.fromIterator(remainData.getSortedRows()));
-            this.remainData = new CacheSortedRow();
+            this.remainData = new CacheSortedRow(allocator, dataTypes, context);
         }
         return sortedStreams;
     }
@@ -189,7 +191,7 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
                     skipped--;
                 } else {
                     if (row.isPresent() && fetched > 0) {
-                        ResultSetCursorExec.buildOneRow(row.get(), dataTypes, blockBuilders);
+                        ResultSetCursorExec.buildOneRow(row.get(), dataTypes, blockBuilders, context);
                         fetched--;
                     } else {
                         isFinish = true;
@@ -224,25 +226,44 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
         this.remainData = null;
     }
 
-    private class CacheSortedRow {
+    public static class CacheSortedRow {
 
         List<Chunk> chunks;
 
-        CacheSortedRow() {
+        private long chunkSize = -1;
+
+        ChunkBuilder rowBuilder;
+
+        MemoryAllocatorCtx allocator;
+
+        private DataType[] dataTypes;
+
+        private ExecutionContext context;
+
+        public CacheSortedRow(
+            MemoryAllocatorCtx allocator, DataType[] dataTypes, ExecutionContext context) {
             this.chunks = new ArrayList<>();
+            this.allocator = allocator;
+            this.dataTypes = dataTypes;
+            this.rowBuilder = new ChunkBuilder(
+                Arrays.stream(dataTypes).collect(Collectors.toList()), 1, context);
+            this.context = context;
         }
 
-        void addRow(Row row) throws SQLException {
+        public void addRow(Row row) throws SQLException {
             rowBuilder.declarePosition();
             ResultSetCursorExec.buildOneRow(
-                row, dataTypes, rowBuilder.getBlockBuilders());
+                row, dataTypes, rowBuilder.getBlockBuilders(), context);
             Chunk chunk = rowBuilder.build();
-            allocator.allocateReservedMemory(chunk.getSizeInBytes());
+            if (chunkSize == -1) {
+                chunkSize = chunk.getSizeInBytes();
+            }
+            allocator.allocateReservedMemory(chunkSize);
             chunks.add(chunk);
             rowBuilder.reset();
         }
 
-        Iterator<Row> getSortedRows() {
+        public Iterator<Row> getSortedRows() {
             return new AbstractIterator<Row>() {
                 private Iterator<Chunk> chunkIterator = chunks.iterator();
 
@@ -250,13 +271,19 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
                 public Row computeNext() {
                     if (chunkIterator.hasNext()) {
                         Chunk chunk = chunkIterator.next();
-                        allocator.releaseReservedMemory(chunk.getSizeInBytes(), false);
+                        allocator.releaseReservedMemory(chunkSize, false);
+                        chunkIterator.remove();
                         return chunk.rowAt(0);
                     } else {
                         return endOfData();
                     }
                 }
             };
+        }
+
+        @VisibleForTesting
+        public List<Chunk> getChunks() {
+            return chunks;
         }
     }
 

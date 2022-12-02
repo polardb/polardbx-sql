@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.gms.scheduler.ScheduleDateTimeConverter;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
@@ -41,7 +42,7 @@ import java.util.Set;
  *
  * @author guxu
  */
-public class InformationSchemaLocalPartitionsScheduleHandler extends BaseVirtualViewSubClassHandler{
+public class InformationSchemaLocalPartitionsScheduleHandler extends BaseVirtualViewSubClassHandler {
     public InformationSchemaLocalPartitionsScheduleHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
@@ -52,19 +53,22 @@ public class InformationSchemaLocalPartitionsScheduleHandler extends BaseVirtual
     }
 
     /**
-     *
      * @param virtualView the origin virtualView to be handled
      * @param executionContext context may be useful for some handler
      * @param cursor empty cursor with types defined
-     * @return
      */
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
 
-        InformationSchemaLocalPartitionsSchedule localPartitionView = (InformationSchemaLocalPartitionsSchedule) virtualView;
+        InformationSchemaLocalPartitionsSchedule localPartitionView =
+            (InformationSchemaLocalPartitionsSchedule) virtualView;
 
         List<ScheduledJobsRecord> recordList = ScheduledJobsManager.queryScheduledJobsRecord();
-        for(ScheduledJobsRecord rs: recordList){
+        for (ScheduledJobsRecord rs : recordList) {
+
+            if (!ScheduledJobExecutorType.LOCAL_PARTITION.name().equalsIgnoreCase(rs.getExecutorType())) {
+                continue;
+            }
 
             if (!CanAccessTable.verifyPrivileges(rs.getTableSchema(), rs.getTableName(), executionContext)) {
                 continue;
@@ -85,7 +89,6 @@ public class InformationSchemaLocalPartitionsScheduleHandler extends BaseVirtual
 
         return cursor;
     }
-
 
     Set<String> getFilterValues(VirtualView virtualView, int index, ExecutionContext executionContext) {
         List<Object> indexList = virtualView.getIndex().get(index);

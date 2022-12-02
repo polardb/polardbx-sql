@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -23,6 +24,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.SQLException;
@@ -40,7 +43,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @author chenhui
  * @since 5.1.7
  */
-
+@RunWith(Parameterized.class)
 public class SetTypeTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 
@@ -57,7 +60,7 @@ public class SetTypeTest extends AutoCrudBasedLockTestCase {
     public void prepare() throws SQLException {
 
         if (baseOneTableName.startsWith("broadcast")) {
-            //JdbcUtil.setTxPolicy(ITransactionPolicy.FREE, tddlConnection);
+            JdbcUtil.setTxPolicy(ITransactionPolicy.FREE, tddlConnection);
         }
 
         String sql = "delete from  " + baseOneTableName;

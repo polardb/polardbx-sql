@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
@@ -109,11 +110,13 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         this.tableTopology = indexTableBuilder.getTableTopology();
     }
 
-    private void physicalLocationAlignWithPrimaryTable(PartitionInfo primaryPartitionInfo, PartitionInfo indexPartitionInfo) {
+    private void physicalLocationAlignWithPrimaryTable(PartitionInfo primaryPartitionInfo,
+                                                       PartitionInfo indexPartitionInfo) {
         assert primaryPartitionInfo.equals(indexPartitionInfo);
         assert indexPartitionInfo.isGsi();
-        for (int i=0;i<primaryPartitionInfo.getPartitionBy().getPartitions().size();i++) {
-            PartitionLocation primaryLocation = primaryPartitionInfo.getPartitionBy().getPartitions().get(i).getLocation();
+        for (int i = 0; i < primaryPartitionInfo.getPartitionBy().getPartitions().size(); i++) {
+            PartitionLocation primaryLocation =
+                primaryPartitionInfo.getPartitionBy().getPartitions().get(i).getLocation();
             PartitionLocation indexLocation = indexPartitionInfo.getPartitionBy().getPartitions().get(i).getLocation();
             indexLocation.setGroupKey(primaryLocation.getGroupKey());
         }
@@ -333,6 +336,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         indexTablePreparedData.setTbPartitionBy(sqlCreateIndex.getTbPartitionBy());
         indexTablePreparedData.setTbPartitions(sqlCreateIndex.getTbPartitions());
         indexTablePreparedData.setPartitioning(sqlCreateIndex.getPartitioning());
+        indexTablePreparedData.setTableGroupName(sqlCreateIndex.getTableGroupName());
     }
 
     @Override
@@ -376,5 +380,19 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         index.getIndexDefinition().setParent(index);
         index.setParent(indexTableStmt);
         indexTableStmt.getTableElementList().add(index);
+    }
+
+    @Override
+    protected void genUniqueIndexForUGSI(MySqlCreateTableStatement indexTableStmt,
+                                         List<SQLSelectOrderByItem> pkList) {
+        final MySqlUnique uniqueIndex = new MySqlUnique();
+        uniqueIndex.getIndexDefinition().setType("UNIQUE");
+        uniqueIndex.getIndexDefinition().setKey(true);
+        uniqueIndex.getIndexDefinition().setName(new SQLIdentifierExpr(TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME));
+        uniqueIndex.getIndexDefinition().getColumns().addAll(pkList);
+        uniqueIndex.getIndexDefinition().getOptions().setIndexType("BTREE");
+        uniqueIndex.getIndexDefinition().setParent(uniqueIndex);
+        uniqueIndex.setParent(indexTableStmt);
+        indexTableStmt.getTableElementList().add(uniqueIndex);
     }
 }

@@ -32,13 +32,14 @@ package com.alibaba.polardbx.executor.mpp.execution;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
-public class StageId {
+public class StageId implements Serializable {
     private final String queryId;
     private final int id;
 

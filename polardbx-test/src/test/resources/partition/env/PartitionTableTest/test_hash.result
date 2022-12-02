@@ -129,7 +129,7 @@ WHERE a = 10
 	AND c = '2020-12-12'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p2]", sql="SELECT `a`, `b`, `c` FROM `tbl` AS `tbl` WHERE (((`a` = ?) AND (`b` = ?)) AND (`c` = ?)) ORDER BY `a`")
+LogicalView(tables="tbl[p4]", sql="SELECT `a`, `b`, `c` FROM `tbl` AS `tbl` WHERE (((`a` = ?) AND (`b` = ?)) AND (`c` = ?)) ORDER BY `a`")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a = 10

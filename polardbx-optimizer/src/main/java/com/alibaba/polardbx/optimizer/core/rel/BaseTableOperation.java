@@ -88,9 +88,12 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
         }
     }
 
+    public void initOperation() {
+    }
+
     @Override
     public String getNativeSql() {
-        return sqlTemplate;
+        return bytesSql.toString(null);
     }
 
     public void setParamIndex(List<Integer> paramIndex) {
@@ -171,6 +174,8 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
 
     public abstract <T> List<T> getTableNames();
 
+    public abstract List<String> getLogicalTableNames();
+
     @Override
     protected String getExplainName() {
         return "LogicalView";
@@ -189,6 +194,10 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
 
     public void setLockMode(LockMode lockMode) {
         this.lockMode = lockMode;
+    }
+
+    public LockMode getLockMode() {
+        return this.lockMode;
     }
 
     class ExplainInfo<T> {

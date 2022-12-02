@@ -573,6 +573,9 @@ public abstract class SqlImplementor {
         } else {
           sqlDynamicParam = new SqlDynamicParam(caseParam.getIndex(), caseParam.getType().getSqlTypeName(), POS,
               caseParam.getValue());
+          if(caseParam.getRel()!=null){
+            sqlDynamicParam.setDynamicKey(caseParam.getRel().getRelatedId());
+          }
         }
 
         if (caseParam.getDynamicType() == RexDynamicParam.DYNAMIC_TYPE_VALUE.SINGLE_PARALLEL) {
@@ -1160,6 +1163,37 @@ public abstract class SqlImplementor {
         }
       }
 
+      if (rel instanceof LogicalProject) {
+        LogicalProject topProject = (LogicalProject) rel;
+        if (topProject.getInput() instanceof LogicalSort) {
+          LogicalSort logicalSort = (LogicalSort) topProject.getInput();
+          if (logicalSort.getInput() instanceof LogicalFilter) {
+            LogicalFilter logicalFilter = (LogicalFilter) logicalSort.getInput();
+            if (logicalFilter.getInput() instanceof LogicalAggregate) {
+              LogicalAggregate logicalAggregate = (LogicalAggregate) logicalFilter.getInput();
+              if (logicalAggregate.getInput() instanceof LogicalProject) {
+                needNew = true;
+              }
+            }
+          }
+        }
+      }
+
+      boolean havingUseAlias = false;
+      if (rel instanceof LogicalFilter) {
+        LogicalFilter logicalFilter = (LogicalFilter) rel;
+        if (logicalFilter.getInput() instanceof LogicalAggregate) {
+          LogicalAggregate logicalAggregate = (LogicalAggregate) logicalFilter.getInput();
+          if (logicalAggregate.getInput() instanceof LogicalProject) {
+            if (needNew == false) {
+              havingUseAlias = true;
+            }
+          }
+        }
+      }
+
+      final boolean useAlias = havingUseAlias;
+
       SqlSelect select;
       Expressions.FluentList<Clause> clauseList = Expressions.list();
       if (needNew) {
@@ -1178,7 +1212,11 @@ public abstract class SqlImplementor {
             final SqlNode selectItem = selectList.get(ordinal);
             switch (selectItem.getKind()) {
             case AS:
-              return ((SqlCall) selectItem).operand(0);
+              if (useAlias) {
+                return ((SqlCall) selectItem).operand(1);
+              } else {
+                return ((SqlCall) selectItem).operand(0);
+              }
             }
             return selectItem;
           }

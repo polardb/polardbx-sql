@@ -47,6 +47,7 @@ import java.sql.Connection;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,15 +60,20 @@ import java.util.stream.Collectors;
  */
 public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaManager {
 
-    private SchemaManager actualSchemaManager;
+    protected SchemaManager actualSchemaManager;
 
-    private WhatIfTddlRuleManager whatIfTddlRuleManager;
+    protected WhatIfTddlRuleManager whatIfTddlRuleManager;
 
-    private Map<String, TableMeta> tables = new HashMap<>();
+    protected Map<String, TableMeta> tables = new HashMap<>();
+
+    private Set<String> broadcastTables;
 
     private Set<CandidateIndex> candidateIndexSet;
 
-    private ExecutionContext executionContext;
+    protected ExecutionContext executionContext;
+
+    public WhatIfSchemaManager() {
+    }
 
     public WhatIfSchemaManager(SchemaManager actualSchemaManager, Set<CandidateIndex> candidateIndexSet,
                                ExecutionContext executionContext) {
@@ -83,6 +89,12 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
         this.executionContext = executionContext;
     }
 
+    public WhatIfSchemaManager(SchemaManager actualSchemaManager, Set<CandidateIndex> candidateIndexSet,
+                               Set<String> broadcastTables, ExecutionContext executionContext) {
+        this(actualSchemaManager, candidateIndexSet, executionContext);
+        this.broadcastTables = broadcastTables;
+    }
+
     @Override
     protected void doInit() {
         String schemaName = actualSchemaManager.getSchemaName();
@@ -95,6 +107,9 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
             .map(x -> x.getTableName().toLowerCase())
             .collect(Collectors.toSet());
 
+        if (broadcastTables != null) {
+            tableNames.addAll(broadcastTables);
+        }
         for (String tableName : tableNames) {
             TableMeta tableMeta = getTable(tableName);
             TableMeta whatIfTableMeta = buildWhatIfTableMeta(tableMeta);
@@ -143,7 +158,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
     }
 
     @Override
-    public TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
+    public TableMeta getTableMetaFromConnection(String schema, String tableName, Connection conn) {
         throw new UnsupportedOperationException();
     }
 
@@ -241,6 +256,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
         gsiSecondaryIndexes.add(candidateGsi.getIndexMeta());
 
         TableMeta gsiTableMeta = new TableMeta(
+            schemaName,
             candidateGsi.getIndexName(),
             indexColumns.stream().map(name -> whatIfTableMeta.getColumnIgnoreCase(name))
                 .collect(Collectors.toList()),
@@ -273,6 +289,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
         String tableName = tableMeta.getTableName();
 
         TableMeta whatIfTableMeta = new TableMeta(
+            schemaName,
             tableMeta.getTableName(),
             tableMeta.getAllColumns(),
             tableMeta.getPrimaryIndex(),
@@ -327,7 +344,8 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
                             .getPartitioning();
 
                     PartitionInfo partitionInfo = PartitionInfoBuilder
-                        .buildPartitionInfoByPartDefAst(schemaName, gsiTableMeta.getTableName(), null, partitionBy,
+                        .buildPartitionInfoByPartDefAst(schemaName, gsiTableMeta.getTableName(), null, null,
+                            partitionBy,
                             null,
                             null,
                             gsiTableMeta.getAllColumns(),

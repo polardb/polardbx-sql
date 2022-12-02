@@ -37,6 +37,7 @@ import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalar
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.type.RelDataType;
@@ -122,7 +123,7 @@ public class Rex2ExprVisitor extends RexVisitorImpl<IExpression> {
          *  index = -2, it means the content of RexDynamicParam is scalar subquery;
          *  index = -3, it means the content of RexDynamicParam is apply subquery.
          */
-        if (dynamicParam.getIndex() == -3) {
+        if (dynamicParam.getIndex() == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
             DynamicParamExpression dynamicParamExpression = null;
             if (dynamicParam.getSubqueryKind() == null) {
                 dynamicParamExpression = new DynamicParamExpression(dynamicParam.getRel());
@@ -139,8 +140,13 @@ public class Rex2ExprVisitor extends RexVisitorImpl<IExpression> {
                 dynamicExpressions.add(dynamicParamExpression);
             }
             return dynamicParamExpression;
+        } else if (dynamicParam.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
+            DynamicParamExpression dynamicParamExpression = new DynamicParamExpression(dynamicParam.getRel(),
+                dynamicParam, dynamicParam.getSubqueryKind(),  dynamicParam.getSubqueryOp());
+            return dynamicParamExpression;
         }
-        return new DynamicParamExpression(dynamicParam.getIndex(), contextProvider);
+        return new DynamicParamExpression(dynamicParam.getIndex(), contextProvider,
+            dynamicParam.getSubIndex(), dynamicParam.getSkIndex());
     }
 
     @Override

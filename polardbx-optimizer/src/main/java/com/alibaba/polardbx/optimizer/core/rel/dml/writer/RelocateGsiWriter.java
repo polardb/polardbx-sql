@@ -44,7 +44,8 @@ public class RelocateGsiWriter extends RelocateWriter implements GsiWriter {
     public RelocateGsiWriter(RelOptTable targetTable, DistinctWriter deleteWriter,
                              DistinctWriter insertWriter,
                              DistinctWriter modifyWriter, Mapping skTargetMapping, Mapping skSourceMapping,
-                             List<ColumnMeta> skMetas, boolean modifySkOnly, TableMeta gsiMeta) {
+                             List<ColumnMeta> skMetas, boolean modifySkOnly, boolean usePartFieldChecker,
+                             TableMeta gsiMeta) {
         super(targetTable,
             deleteWriter,
             insertWriter,
@@ -52,7 +53,8 @@ public class RelocateGsiWriter extends RelocateWriter implements GsiWriter {
             skTargetMapping,
             skSourceMapping,
             skMetas,
-            modifySkOnly);
+            modifySkOnly,
+            usePartFieldChecker);
         this.gsiMeta = gsiMeta;
     }
 

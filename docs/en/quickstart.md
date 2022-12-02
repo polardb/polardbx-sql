@@ -157,8 +157,8 @@ Try the following SQLs to enjoy the features of PolarDB-X. More details see: [Po
 # Check GMS 
 select * from information_schema.schemata;
 
-# Check partition table
-create database polarx_example partition_mode='partitioning';
+# Check create database
+create database polarx_example mode=auto;
 
 use polarx_example;
 

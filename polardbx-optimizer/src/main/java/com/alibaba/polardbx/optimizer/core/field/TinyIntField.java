@@ -16,34 +16,37 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
+import com.alibaba.polardbx.common.charset.CollationHandlers;
+import com.alibaba.polardbx.common.collation.CollationHandler;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
+import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.common.charset.CharsetHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.LongType;
-import com.alibaba.polardbx.optimizer.core.datatype.TinyIntType;
-import com.alibaba.polardbx.optimizer.core.datatype.UTinyIntType;
 import com.alibaba.polardbx.rpc.result.XResult;
 import com.google.common.primitives.UnsignedLongs;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.sql.ResultSet;
 import java.sql.Types;
+import java.util.Arrays;
 
 /**
  * MySQL tiny int data type (8bit)
  */
-public class TinyIntField extends IntField {
+public class TinyIntField extends AbstractNumericField {
     public static final Decimal DECIMAL_INT_8_MAX_VALUE = Decimal.fromLong(INT_8_MAX);
     public static final Decimal DECIMAL_INT_8_MIN_VALUE = Decimal.fromLong(INT_8_MIN);
     public static final Decimal DECIMAL_UNSIGNED_INT_8_MAX_VALUE =
@@ -377,6 +380,27 @@ public class TinyIntField extends IntField {
     }
 
     @Override
+    public Slice stringValue(SessionProperties sessionProperties) {
+        String numberStr = String.valueOf(longValue());
+        return Slices.utf8Slice(numberStr);
+    }
+
+    @Override
+    public MysqlDateTime datetimeValue(int timeParseFlags, SessionProperties sessionProperties) {
+        long longValue = longValue();
+        MysqlDateTime t =
+            NumericTimeParser.parseNumeric(longValue, MySQLTimeTypeUtil.DATETIME_SQL_TYPE, timeParseFlags);
+        return t;
+    }
+
+    @Override
+    public MysqlDateTime timeValue(int timeParseFlags, SessionProperties sessionProperties) {
+        long longValue = longValue();
+        MysqlDateTime t = NumericTimeParser.parseNumeric(longValue, Types.TIME, timeParseFlags);
+        return t;
+    }
+
+    @Override
     public byte[] rawBytes() {
         return new byte[] {pointer};
     }
@@ -389,6 +413,38 @@ public class TinyIntField extends IntField {
     @Override
     public MySQLStandardFieldType standardFieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_TINY;
+    }
+
+
+    @Override
+    public CollationHandler getCollationHandler() {
+        return CollationHandlers.COLLATION_HANDLER_LATIN1_SWEDISH_CI;
+    }
+
+    @Override
+    public void reset() {
+        pointer = (byte) 0;
+        isNull = false;
+    }
+
+    @Override
+    public void setNull() {
+        reset();
+        isNull = true;
+    }
+
+    @Override
+    public void hash(long[] numbers) {
+        long nr1 = numbers[0];
+        long nr2 = numbers[1];
+        if (isNull()) {
+            nr1 ^= (nr1 << 1) | 1;
+            numbers[0] = nr1;
+        } else {
+            int length = packetLength();
+            CollationHandler collationHandler = getCollationHandler();
+            collationHandler.hashcode(new byte[] {pointer}, length, numbers);
+        }
     }
 
     @Override

@@ -18,26 +18,16 @@ package com.alibaba.polardbx.optimizer.core.planner;
 
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
-import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.exception.OptimizerException;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.UncheckedExecutionException;
-import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
-import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -46,17 +36,16 @@ import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.alibaba.polardbx.rule.MappingRule;
-import com.alibaba.polardbx.rule.TableRule;
-import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.apache.calcite.rel.RelNode;
@@ -66,6 +55,7 @@ import org.apache.calcite.sql.SqlNodeList;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -73,6 +63,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author lingce.ldm 2017-11-22 14:38
@@ -83,26 +74,35 @@ public final class PlanCache {
 
     private Cache<CacheKey, ExecutionPlan> cache;
 
-    private final String schemaName;
-
     private static final int MAX_ERROR_COUNT = 16;
 
     private long currentCapacity;
 
-    public PlanCache(String schemaName) {
-        this.schemaName = schemaName;
+    private static final PlanCache pc = new PlanCache();
+
+    public static PlanCache getInstance() {
+        return pc;
+    }
+
+    private PlanCache() {
         this.currentCapacity = TddlConstants.DEFAULT_OPTIMIZER_CACHE_SIZE;
         this.cache = buildCache(this.currentCapacity);
+    }
+
+    public PlanCache(long capacity) {
+        this.currentCapacity = capacity;
+        this.cache = buildCache(currentCapacity);
     }
 
     private Cache<CacheKey, ExecutionPlan> buildCache(long maxSize) {
         int planCacheExpireTime;
         if (ConfigDataMode.isMasterMode()) {
-            planCacheExpireTime = 12 * 3600 * 1000; // 12h
+            planCacheExpireTime = DynamicConfig.getInstance().planCacheExpireTime(); // 12h
         } else {
             planCacheExpireTime = 300 * 1000; // 5min
         }
         return CacheBuilder.newBuilder()
+            .recordStats()
             .maximumSize(maxSize)
             .expireAfterWrite(planCacheExpireTime, TimeUnit.MILLISECONDS)
             .softValues()
@@ -112,10 +112,11 @@ public final class PlanCache {
     /**
      * 执行过的语句可以在prepare协议下获取执行计划
      */
-    public ExecutionPlan getForPrepare(final SqlParameterized sqlParameterized, final PlannerContext plannerContext,
+    public ExecutionPlan getForPrepare(String schema, final SqlParameterized sqlParameterized,
+                                       final ExecutionContext ec,
                                        boolean testMode)
         throws ExecutionException {
-        CacheKey cacheKey = getCacheKey(sqlParameterized, plannerContext, testMode);
+        CacheKey cacheKey = getCacheKey(schema, sqlParameterized, ec, testMode);
         ExecutionPlan plan = null;
         try {
             plan = cache.getIfPresent(cacheKey);
@@ -130,12 +131,13 @@ public final class PlanCache {
         }
     }
 
-    public ExecutionPlan get(final SqlParameterized sqlParameterized, final PlannerContext plannerContext,
+    public ExecutionPlan get(String schema, final SqlParameterized sqlParameterized,
+                             final ExecutionContext ec,
                              boolean testMode)
         throws ExecutionException {
         try {
             ExecutionPlan plan =
-                getFromCache(sqlParameterized, sqlParameterized.getParameters(), plannerContext, testMode);
+                getFromCache(schema, sqlParameterized, sqlParameterized.getParameters(), ec, testMode);
             boolean valid = ensureValid(plan.getCacheKey(), plan);
             return valid ? plan : null;
         } catch (Throwable e) {
@@ -149,30 +151,29 @@ public final class PlanCache {
         return super.clone();
     }
 
-    private ExecutionPlan getFromCache(SqlParameterized sqlParameterized, final List<?> params,
-                                       final PlannerContext plannerContext,
+    private ExecutionPlan getFromCache(String schema, SqlParameterized sqlParameterized, final List<?> params,
+                                       final ExecutionContext ec,
                                        boolean testMode) throws ExecutionException {
         final AtomicBoolean beCached = new AtomicBoolean(true);
-        CacheKey cacheKey = getCacheKey(sqlParameterized, plannerContext, testMode);
+        CacheKey cacheKey = getCacheKey(schema, sqlParameterized, ec, testMode);
         final Callable<ExecutionPlan> valueLoader = () -> {
+            ContextParameters contextParameters = new ContextParameters(testMode);
             SqlNodeList astList = new FastsqlParser()
-                .parse(sqlParameterized.getSql(), params, plannerContext.getExecutionContext());
+                .parse(ByteString.from(sqlParameterized.getSql()), params, contextParameters, ec);
             // parameterizedSql can not be a multiStatement.
             SqlNode ast = astList.get(0);
             beCached.set(false);
-            boolean isUseHint = plannerContext.getExecutionContext().isUseHint();
+            boolean isUseHint = ec.isUseHint();
             if (isUseHint || !PlanManagerUtil.cacheSqlKind(ast.getKind())) {
                 // Do not cache SQL with Outline Hint.
                 return PlaceHolderExecutionPlan.INSTANCE;
             } else {
                 // NOTE: BuildFinalPlanVisitor will change ast, so need compute tableSet in advance
                 Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(ast);
-                int tableSetHashCode =
-                    PlanManagerUtil.computeTablesHashCode(tableSet, schemaName, plannerContext.getExecutionContext());
-
+                int tablesVersion = PlanManagerUtil.computeTablesVersion(tableSet, schema, ec);
+                PlannerContext plannerContext = PlannerContext.fromExecutionContext(ec);
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
-                if (plannerContext.getExecutionContext() != null
-                    && plannerContext.getExecutionContext().getLoadDataContext() != null) {
+                if (ec.getLoadDataContext() != null) {
                     //load data
                     LogicalInsert logicalInsert = (LogicalInsert) executionPlan.getPlan();
                     logicalInsert.getSqlTemplate();
@@ -184,12 +185,12 @@ public final class PlanCache {
                 }
 
                 Map<String, TableMeta> tableMetaSet =
-                    PlanManagerUtil.getTableMetaSetByTableSet(tableSet, plannerContext.getExecutionContext());
-                executionPlan.saveCacheState(tableSet, tableSetHashCode, cacheKey, tableMetaSet);
+                    PlanManagerUtil.getTableMetaSetByTableSet(tableSet, ec);
+                executionPlan.saveCacheState(tableSet, tablesVersion, cacheKey, tableMetaSet);
 
                 // set privilegeVerifyItems to logicalPlan and clear
                 // privilegeVerifyItems in privilegeContext
-                PrivilegeContext pc = plannerContext.getExecutionContext().getPrivilegeContext();
+                PrivilegeContext pc = ec.getPrivilegeContext();
                 if (pc != null && pc.getPrivilegeVerifyItems() != null) {
                     executionPlan.setPrivilegeVerifyItems(pc.getPrivilegeVerifyItems());
                     pc.setPrivilegeVerifyItems(null);
@@ -215,13 +216,9 @@ public final class PlanCache {
             plan.getHitCount().incrementAndGet();
         }
         plan.setHitCache(beCached.get());
-        savePlanCachedKey(plannerContext, plan, cacheKey);
+        savePlanCachedKey(ec, plan, cacheKey);
 
         return plan;
-    }
-
-    public void clean() {
-        cache.invalidateAll();
     }
 
     private boolean ensureValid(CacheKey cacheKey, ExecutionPlan executionPlan) {
@@ -230,6 +227,11 @@ public final class PlanCache {
                 cache.invalidate(cacheKey);
             }
         } else {
+            if (OptimizerContext.getContext(cacheKey.getSchema()) == null
+                || OptimizerContext.getContext(cacheKey.getSchema()).getLatestSchemaManager() == null) {
+                cache.invalidate(cacheKey);
+                return false;
+            }
             for (TableMeta t : cacheKey.metas) {
                 TableMeta newVersionMeta =
                     OptimizerContext.getContext(t.getSchemaName()).getLatestSchemaManager()
@@ -251,11 +253,25 @@ public final class PlanCache {
         }
     }
 
+    public void forceInvalidateAll() {
+        cache.invalidateAll();
+    }
+
+    public void invalidateBySchema(String schema) {
+        for (Map.Entry<CacheKey, ExecutionPlan> entry : cache.asMap().entrySet()) {
+            CacheKey cacheKey = entry.getKey();
+            if (cacheKey.getSchema().equalsIgnoreCase(schema)) {
+                cache.invalidate(cacheKey);
+            }
+        }
+    }
+
     /**
      * this implementation of this method will affect sql filter by query.
      */
-    public static CacheKey getCacheKey(
-        SqlParameterized sqlParameterized, PlannerContext plannerContext, boolean testMode) {
+    public static CacheKey getCacheKey(String schema,
+                                       SqlParameterized sqlParameterized, ExecutionContext ec,
+                                       boolean testMode) {
         Set<Pair<String, String>> tableNames = sqlParameterized.getTables();
         List<TableMeta> tables = new ArrayList<>(tableNames.size());
 
@@ -272,15 +288,14 @@ public final class PlanCache {
             } else {
                 versionInfo.append(',');
             }
-            TableMeta table = plannerContext.getExecutionContext()
+            TableMeta table = ec
                 .getSchemaManager(t.getKey()).getTableWithNull(t.getValue());
             if (table != null) {
                 tables.add(table);
                 versionInfo.append(table.getVersion());
             }
         }
-        return new CacheKey(sqlParameterized, versionInfo.toString(), tables, testMode,
-            plannerContext.getExecutionContext().isAutoCommit());
+        return new CacheKey(schema, sqlParameterized, versionInfo.toString(), tables, testMode, ec.isAutoCommit());
     }
 
     /**
@@ -306,6 +321,7 @@ public final class PlanCache {
     public static class CacheKey {
         private static final long NO_TYPE_DIGEST = Long.MIN_VALUE;
 
+        private final String schema;
         final String parameterizedSql;
         final long typeDigest;
 
@@ -318,24 +334,36 @@ public final class PlanCache {
 
         final boolean autoCommit;
 
-        public CacheKey(String parameterizedSql, String versionInfo, List<TableMeta> metas, boolean testing,
+        private final List<Object> parameters;
+
+        public CacheKey(String schema, String parameterizedSql, String versionInfo, List<TableMeta> metas,
+                        boolean testing,
                         boolean autoCommit) {
+            this.schema = schema.toLowerCase(Locale.ROOT);
             this.parameterizedSql = parameterizedSql;
             this.typeDigest = NO_TYPE_DIGEST;
             this.versionInfo = versionInfo;
             this.testing = testing;
             this.metas = metas;
             this.autoCommit = autoCommit;
+            parameters = null;
         }
-
-        public CacheKey(SqlParameterized sqlParameterized, String versionInfo, List<TableMeta> metas, boolean testing,
+        public CacheKey(String schema, SqlParameterized sqlParameterized, String versionInfo, List<TableMeta> metas,
+                        boolean testing,
                         boolean autoCommit) {
+            this.schema = schema.toLowerCase(Locale.ROOT);
             this.parameterizedSql = sqlParameterized.getSql();
             this.typeDigest = sqlParameterized.getDigest();
             this.versionInfo = versionInfo;
             this.testing = testing;
             this.metas = metas;
             this.autoCommit = autoCommit;
+            // record the parameters when it is small enough
+            if (sqlParameterized.getParaMemory() >= 0) {
+                parameters = sqlParameterized.getParameters();
+            } else {
+                parameters = null;
+            }
         }
 
         @Override
@@ -352,12 +380,13 @@ public final class PlanCache {
                 (typeDigest == cacheKey.typeDigest || typeDigest == NO_TYPE_DIGEST
                     || cacheKey.typeDigest == NO_TYPE_DIGEST) &&
                 versionInfo.equals(cacheKey.versionInfo) &&
-                autoCommit == cacheKey.autoCommit;
+                autoCommit == cacheKey.autoCommit &&
+                schema.equals(cacheKey.schema);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(parameterizedSql, typeDigest, versionInfo, testing, autoCommit);
+            return Objects.hash(schema, parameterizedSql, typeDigest, versionInfo, testing, autoCommit);
         }
 
         public List<TableMeta> getTableMetas() {
@@ -370,6 +399,10 @@ public final class PlanCache {
 
         public long getTypeDigest() {
             return typeDigest;
+        }
+
+        public List<Object> getParameters() {
+            return parameters;
         }
 
         /**
@@ -387,73 +420,9 @@ public final class PlanCache {
             return parameterizedSql.hashCode();
         }
 
-    }
-
-    /**
-     * if use latest schema manager
-     */
-    private static int computeTablesHashCode(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
-                                             ExecutionContext executionContext) {
-        // plan manager only compute table column Meta HashCode, which lack of tableRule information
-        int preHashCode = PlanManagerUtil.computeTablesHashCode(schemaTables, defaultSchemaName, executionContext);
-        if (preHashCode == PlanManager.ERROR_TABLES_HASH_CODE) {
-            return PlanManager.ERROR_TABLES_HASH_CODE;
+        public String getSchema() {
+            return schema;
         }
-
-        HashCombiner hash = new HashCombiner();
-        hash.append(preHashCode);
-        // plus tableRule information here
-        for (Pair<String, String> pair : schemaTables) {
-            String schema = (pair.getKey() != null ? pair.getKey() : defaultSchemaName);
-            String table = pair.getValue();
-            if (InformationSchema.NAME.equalsIgnoreCase(schema)
-                || MysqlSchema.NAME.equalsIgnoreCase(schema)
-                || MetaDbSchema.NAME.equalsIgnoreCase(schema)) {
-                return schema.hashCode();
-            }
-            try {
-                TableRule tableRule = OptimizerContext.getContext(schema).getRuleManager().getTableRule(table);
-
-                hash.append(tableRule.isBroadcast());
-                hash.append(tableRule.isAllowFullTableScan());
-
-                hash.append(tableRule.getDbNamePattern());
-                hash.append(tableRule.getTbNamePattern());
-
-                String[] dbRuleStrs = tableRule.getDbRuleStrs();
-                if (dbRuleStrs != null) {
-                    for (String s : dbRuleStrs) {
-                        hash.append(s);
-                    }
-                }
-
-                String[] tbRuleStrs = tableRule.getTbRulesStrs();
-                if (tbRuleStrs != null) {
-                    for (String s : tbRuleStrs) {
-                        hash.append(s);
-                    }
-                }
-
-                ShardFunctionMeta dbShardFuncTionMeta = tableRule.getDbShardFunctionMeta();
-                if (dbShardFuncTionMeta != null) {
-                    hash.append(dbShardFuncTionMeta.getRuleShardFuncionName());
-                }
-
-                ShardFunctionMeta tbShardFuncTionMeta = tableRule.getTbShardFunctionMeta();
-                if (tbShardFuncTionMeta != null) {
-                    hash.append(tbShardFuncTionMeta.getRuleShardFuncionName());
-                }
-
-                List<MappingRule> extPartitions = tableRule.getExtPartitions();
-                if (extPartitions != null) {
-                    hash.append(extPartitions);
-                }
-            } catch (Throwable e) {
-                logger.debug("plan cache compute tables hash code error", e);
-                return PlanManager.ERROR_TABLES_HASH_CODE;
-            }
-        }
-        return hash.result();
     }
 
     /**
@@ -543,11 +512,10 @@ public final class PlanCache {
         }
     }
 
-    public static void savePlanCachedKey(PlannerContext plannerContext, ExecutionPlan plan, CacheKey cacheKey) {
-        ExecutionContext executionContext = plannerContext.getExecutionContext();
+    public static void savePlanCachedKey(ExecutionContext ec, ExecutionPlan plan, CacheKey cacheKey) {
         plan.saveCacheState(plan.getTableSet(), plan.getTableSetHashCode(), cacheKey, plan.getTableMetaSnapshots());
-        if (executionContext != null) {
-            executionContext.setSqlTemplateId(cacheKey.getTemplateId());
+        if (ec != null) {
+            ec.setSqlTemplateId(cacheKey.getTemplateId());
         }
     }
 
@@ -625,6 +593,21 @@ public final class PlanCache {
 
     public long getCacheKeyCount() {
         return this.cache.size();
+    }
+
+    public Map<String, AtomicInteger> getCacheKeyCountGroupBySchema() {
+        Map<String, AtomicInteger> rs = Maps.newHashMap();
+        Set<CacheKey> cacheKeys = Sets.newHashSet();
+        cacheKeys.addAll(cache.asMap().keySet());
+
+        for (CacheKey cacheKey : cacheKeys) {
+            if (rs.get(cacheKey.getSchema()) == null) {
+                rs.put(cacheKey.getSchema(), new AtomicInteger(1));
+            } else {
+                rs.get(cacheKey.getSchema()).incrementAndGet();
+            }
+        }
+        return rs;
     }
 
     public long getCurrentCapacity() {

@@ -1,0 +1,257 @@
+SQL:
+  - sql: |
+      select * from nn1 where id = 12
+    plan: |
+      record
+  - sql: |
+      select * from nn1 where id in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 466, 467, 468, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569, 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635, 636, 637, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 656, 657, 658, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669, 670, 671, 672, 673, 674, 675, 676, 677, 678, 679, 680, 681, 682, 683, 684, 685, 686, 687, 688, 689, 690, 691, 692, 693, 694, 695, 696, 697, 698, 699, 700, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716, 717, 718, 719, 720, 721, 722, 723, 724, 725, 726, 727, 728, 729, 730, 731, 732, 733, 734, 735, 736, 737, 738, 739, 740, 741, 742, 743, 744, 745, 746, 747, 748, 749, 750, 751, 752, 753, 754, 755, 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 785, 786, 787, 788, 789, 790, 791, 792, 793, 794, 795, 796, 797, 798, 799, 800, 801, 802, 803, 804, 805, 806, 807, 808, 809, 810, 811, 812, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840, 841, 842, 843, 844, 845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 860, 861, 862, 863, 864, 865, 866, 867, 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878, 879, 880, 881, 882, 883, 884, 885, 886, 887, 888, 889, 890, 891, 892, 893, 894, 895, 896, 897, 898, 899, 900, 901, 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 920, 921, 922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 932, 933, 934, 935, 936, 937, 938, 939, 940, 941, 942, 943, 944, 945, 946, 947, 948, 949, 950, 951, 952, 953, 954, 955, 956, 957, 958, 959, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 970, 971, 972, 973, 974, 975, 976, 977, 978, 979, 980, 981, 982, 983, 984, 985, 986, 987, 988, 989, 990, 991, 992, 993, 994, 995, 996, 997, 998, 999, 1000);
+    plan: |
+      not record
+  - sql: |
+      select * from nn1 where c_json->'$.k1' ="v1"
+    plan: |
+      record
+  - sql: |
+      select * from nn1 where c_decimal_pr < 10 and c_varchar like "%tmp" and c_json->'$.k1' ="v1"
+    plan: |
+      record
+  - sql: |
+      select * from nn1 where (c_decimal_pr = 0.1 or c_decimal_pr = 1.1 or c_decimal_pr = 2.1 or c_decimal_pr = 3.1 or c_decimal_pr = 4.1 or c_decimal_pr = 5.1 or c_decimal_pr = 6.1 or c_decimal_pr = 7.1 or c_decimal_pr = 8.1 or c_decimal_pr = 9.1 or c_decimal_pr = 10.1 or c_decimal_pr = 11.1 or c_decimal_pr = 12.1 or c_decimal_pr = 13.1 or c_decimal_pr = 14.1 or c_decimal_pr = 15.1 or c_decimal_pr = 16.1 or c_decimal_pr = 17.1 or c_decimal_pr = 18.1 or c_decimal_pr = 19.1 or c_decimal_pr = 20.1 or c_decimal_pr = 21.1 or c_decimal_pr = 22.1 or c_decimal_pr = 23.1 or c_decimal_pr = 24.1 or c_decimal_pr = 25.1 or c_decimal_pr = 26.1 or c_decimal_pr = 27.1 or c_decimal_pr = 28.1 or c_decimal_pr = 29.1 or c_decimal_pr = 30.1 or c_decimal_pr = 31.1 or c_decimal_pr = 32.1 or c_decimal_pr = 33.1 or c_decimal_pr = 34.1 or c_decimal_pr = 35.1 or c_decimal_pr = 36.1 or c_decimal_pr = 37.1 or c_decimal_pr = 38.1 or c_decimal_pr = 39.1 or c_decimal_pr = 40.1 or c_decimal_pr = 41.1 or c_decimal_pr = 42.1 or c_decimal_pr = 43.1 or c_decimal_pr = 44.1 or c_decimal_pr = 45.1 or c_decimal_pr = 46.1 or c_decimal_pr = 47.1 or c_decimal_pr = 48.1 or c_decimal_pr = 49.1 or c_decimal_pr = 50.1 or c_decimal_pr = 51.1 or c_decimal_pr = 52.1 or c_decimal_pr = 53.1 or c_decimal_pr = 54.1 or c_decimal_pr = 55.1 or c_decimal_pr = 56.1 or c_decimal_pr = 57.1 or c_decimal_pr = 58.1 or c_decimal_pr = 59.1 or c_decimal_pr = 60.1 or c_decimal_pr = 61.1 or c_decimal_pr = 62.1 or c_decimal_pr = 63.1 or c_decimal_pr = 64.1 or c_decimal_pr = 65.1 or c_decimal_pr = 66.1 or c_decimal_pr = 67.1 or c_decimal_pr = 68.1 or c_decimal_pr = 69.1 or c_decimal_pr = 70.1 or c_decimal_pr = 71.1 or c_decimal_pr = 72.1 or c_decimal_pr = 73.1 or c_decimal_pr = 74.1 or c_decimal_pr = 75.1 or c_decimal_pr = 76.1 or c_decimal_pr = 77.1 or c_decimal_pr = 78.1 or c_decimal_pr = 79.1 or c_decimal_pr = 80.1 or c_decimal_pr = 81.1 or c_decimal_pr = 82.1 or c_decimal_pr = 83.1 or c_decimal_pr = 84.1 or c_decimal_pr = 85.1 or c_decimal_pr = 86.1 or c_decimal_pr = 87.1 or c_decimal_pr = 88.1 or c_decimal_pr = 89.1 or c_decimal_pr = 90.1 or c_decimal_pr = 91.1 or c_decimal_pr = 92.1 or c_decimal_pr = 93.1 or c_decimal_pr = 94.1 or c_decimal_pr = 95.1 or c_decimal_pr = 96.1 or c_decimal_pr = 97.1 or c_decimal_pr = 98.1 or c_decimal_pr = 99.1 or c_decimal_pr = 100.1 or c_decimal_pr = 101.1 or c_decimal_pr = 102.1 or c_decimal_pr = 103.1 or c_decimal_pr = 104.1 or c_decimal_pr = 105.1 or c_decimal_pr = 106.1 or c_decimal_pr = 107.1 or c_decimal_pr = 108.1 or c_decimal_pr = 109.1 or c_decimal_pr = 110.1 or c_decimal_pr = 111.1 or c_decimal_pr = 112.1 or c_decimal_pr = 113.1 or c_decimal_pr = 114.1 or c_decimal_pr = 115.1 or c_decimal_pr = 116.1 or c_decimal_pr = 117.1 or c_decimal_pr = 118.1 or c_decimal_pr = 119.1 or c_decimal_pr = 120.1 or c_decimal_pr = 121.1 or c_decimal_pr = 122.1 or c_decimal_pr = 123.1 or c_decimal_pr = 124.1 or c_decimal_pr = 125.1 or c_decimal_pr = 126.1 or c_decimal_pr = 127.1 or c_decimal_pr = 128.1 or c_decimal_pr = 129.1 or c_decimal_pr = 130.1 or c_decimal_pr = 131.1 or c_decimal_pr = 132.1 or c_decimal_pr = 133.1 or c_decimal_pr = 134.1 or c_decimal_pr = 135.1 or c_decimal_pr = 136.1 or c_decimal_pr = 137.1 or c_decimal_pr = 138.1 or c_decimal_pr = 139.1 or c_decimal_pr = 140.1 or c_decimal_pr = 141.1 or c_decimal_pr = 142.1 or c_decimal_pr = 143.1 or c_decimal_pr = 144.1 or c_decimal_pr = 145.1 or c_decimal_pr = 146.1 or c_decimal_pr = 147.1 or c_decimal_pr = 148.1 or c_decimal_pr = 149.1 or c_decimal_pr = 150.1 or c_decimal_pr = 151.1 or c_decimal_pr = 152.1 or c_decimal_pr = 153.1 or c_decimal_pr = 154.1 or c_decimal_pr = 155.1 or c_decimal_pr = 156.1 or c_decimal_pr = 157.1 or c_decimal_pr = 158.1 or c_decimal_pr = 159.1 or c_decimal_pr = 160.1 or c_decimal_pr = 161.1 or c_decimal_pr = 162.1 or c_decimal_pr = 163.1 or c_decimal_pr = 164.1 or c_decimal_pr = 165.1 or c_decimal_pr = 166.1 or c_decimal_pr = 167.1 or c_decimal_pr = 168.1 or c_decimal_pr = 169.1 or c_decimal_pr = 170.1 or c_decimal_pr = 171.1 or c_decimal_pr = 172.1 or c_decimal_pr = 173.1 or c_decimal_pr = 174.1 or c_decimal_pr = 175.1 or c_decimal_pr = 176.1 or c_decimal_pr = 177.1 or c_decimal_pr = 178.1 or c_decimal_pr = 179.1 or c_decimal_pr = 180.1 or c_decimal_pr = 181.1 or c_decimal_pr = 182.1 or c_decimal_pr = 183.1 or c_decimal_pr = 184.1 or c_decimal_pr = 185.1 or c_decimal_pr = 186.1 or c_decimal_pr = 187.1 or c_decimal_pr = 188.1 or c_decimal_pr = 189.1 or c_decimal_pr = 190.1 or c_decimal_pr = 191.1 or c_decimal_pr = 192.1 or c_decimal_pr = 193.1 or c_decimal_pr = 194.1 or c_decimal_pr = 195.1 or c_decimal_pr = 196.1 or c_decimal_pr = 197.1 or c_decimal_pr = 198.1 or c_decimal_pr = 199.1 or c_decimal_pr = 200.1 or c_decimal_pr = 201.1 or c_decimal_pr = 202.1 or c_decimal_pr = 203.1 or c_decimal_pr = 204.1 or c_decimal_pr = 205.1 or c_decimal_pr = 206.1 or c_decimal_pr = 207.1 or c_decimal_pr = 208.1 or c_decimal_pr = 209.1 or c_decimal_pr = 210.1 or c_decimal_pr = 211.1 or c_decimal_pr = 212.1 or c_decimal_pr = 213.1 or c_decimal_pr = 214.1 or c_decimal_pr = 215.1 or c_decimal_pr = 216.1 or c_decimal_pr = 217.1 or c_decimal_pr = 218.1 or c_decimal_pr = 219.1 or c_decimal_pr = 220.1 or c_decimal_pr = 221.1 or c_decimal_pr = 222.1 or c_decimal_pr = 223.1 or c_decimal_pr = 224.1 or c_decimal_pr = 225.1 or c_decimal_pr = 226.1 or c_decimal_pr = 227.1 or c_decimal_pr = 228.1 or c_decimal_pr = 229.1 or c_decimal_pr = 230.1 or c_decimal_pr = 231.1 or c_decimal_pr = 232.1 or c_decimal_pr = 233.1 or c_decimal_pr = 234.1 or c_decimal_pr = 235.1 or c_decimal_pr = 236.1 or c_decimal_pr = 237.1 or c_decimal_pr = 238.1 or c_decimal_pr = 239.1 or c_decimal_pr = 240.1 or c_decimal_pr = 241.1 or c_decimal_pr = 242.1 or c_decimal_pr = 243.1 or c_decimal_pr = 244.1 or c_decimal_pr = 245.1 or c_decimal_pr = 246.1 or c_decimal_pr = 247.1 or c_decimal_pr = 248.1 or c_decimal_pr = 249.1 or c_decimal_pr = 250.1 or c_decimal_pr = 251.1 or c_decimal_pr = 252.1 or c_decimal_pr = 253.1 or c_decimal_pr = 254.1 or c_decimal_pr = 255.1 or c_decimal_pr = 256.1 or c_decimal_pr = 257.1 or c_decimal_pr = 258.1 or c_decimal_pr = 259.1 or c_decimal_pr = 260.1 or c_decimal_pr = 261.1 or c_decimal_pr = 262.1 or c_decimal_pr = 263.1 or c_decimal_pr = 264.1 or c_decimal_pr = 265.1 or c_decimal_pr = 266.1 or c_decimal_pr = 267.1 or c_decimal_pr = 268.1 or c_decimal_pr = 269.1 or c_decimal_pr = 270.1 or c_decimal_pr = 271.1 or c_decimal_pr = 272.1 or c_decimal_pr = 273.1 or c_decimal_pr = 274.1 or c_decimal_pr = 275.1 or c_decimal_pr = 276.1 or c_decimal_pr = 277.1 or c_decimal_pr = 278.1 or c_decimal_pr = 279.1 or c_decimal_pr = 280.1 or c_decimal_pr = 281.1 or c_decimal_pr = 282.1 or c_decimal_pr = 283.1 or c_decimal_pr = 284.1 or c_decimal_pr = 285.1 or c_decimal_pr = 286.1 or c_decimal_pr = 287.1 or c_decimal_pr = 288.1 or c_decimal_pr = 289.1 or c_decimal_pr = 290.1 or c_decimal_pr = 291.1 or c_decimal_pr = 292.1 or c_decimal_pr = 293.1 or c_decimal_pr = 294.1 or c_decimal_pr = 295.1 or c_decimal_pr = 296.1 or c_decimal_pr = 297.1 or c_decimal_pr = 298.1 or c_decimal_pr = 299.1 or c_decimal_pr = 300.1 or c_decimal_pr = 301.1 or c_decimal_pr = 302.1 or c_decimal_pr = 303.1 or c_decimal_pr = 304.1 or c_decimal_pr = 305.1 or c_decimal_pr = 306.1 or c_decimal_pr = 307.1 or c_decimal_pr = 308.1 or c_decimal_pr = 309.1 or c_decimal_pr = 310.1 or c_decimal_pr = 311.1 or c_decimal_pr = 312.1 or c_decimal_pr = 313.1 or c_decimal_pr = 314.1 or c_decimal_pr = 315.1 or c_decimal_pr = 316.1 or c_decimal_pr = 317.1 or c_decimal_pr = 318.1 or c_decimal_pr = 319.1 or c_decimal_pr = 320.1 or c_decimal_pr = 321.1 or c_decimal_pr = 322.1 or c_decimal_pr = 323.1 or c_decimal_pr = 324.1 or c_decimal_pr = 325.1 or c_decimal_pr = 326.1 or c_decimal_pr = 327.1 or c_decimal_pr = 328.1 or c_decimal_pr = 329.1 or c_decimal_pr = 330.1 or c_decimal_pr = 331.1 or c_decimal_pr = 332.1 or c_decimal_pr = 333.1 or c_decimal_pr = 334.1 or c_decimal_pr = 335.1 or c_decimal_pr = 336.1 or c_decimal_pr = 337.1 or c_decimal_pr = 338.1 or c_decimal_pr = 339.1 or c_decimal_pr = 340.1 or c_decimal_pr = 341.1 or c_decimal_pr = 342.1 or c_decimal_pr = 343.1 or c_decimal_pr = 344.1 or c_decimal_pr = 345.1 or c_decimal_pr = 346.1 or c_decimal_pr = 347.1 or c_decimal_pr = 348.1 or c_decimal_pr = 349.1 or c_decimal_pr = 350.1 or c_decimal_pr = 351.1 or c_decimal_pr = 352.1 or c_decimal_pr = 353.1 or c_decimal_pr = 354.1 or c_decimal_pr = 355.1 or c_decimal_pr = 356.1 or c_decimal_pr = 357.1 or c_decimal_pr = 358.1 or c_decimal_pr = 359.1 or c_decimal_pr = 360.1 or c_decimal_pr = 361.1 or c_decimal_pr = 362.1 or c_decimal_pr = 363.1 or c_decimal_pr = 364.1 or c_decimal_pr = 365.1 or c_decimal_pr = 366.1 or c_decimal_pr = 367.1 or c_decimal_pr = 368.1 or c_decimal_pr = 369.1 or c_decimal_pr = 370.1 or c_decimal_pr = 371.1 or c_decimal_pr = 372.1 or c_decimal_pr = 373.1 or c_decimal_pr = 374.1 or c_decimal_pr = 375.1 or c_decimal_pr = 376.1 or c_decimal_pr = 377.1 or c_decimal_pr = 378.1 or c_decimal_pr = 379.1 or c_decimal_pr = 380.1 or c_decimal_pr = 381.1 or c_decimal_pr = 382.1 or c_decimal_pr = 383.1 or c_decimal_pr = 384.1 or c_decimal_pr = 385.1 or c_decimal_pr = 386.1 or c_decimal_pr = 387.1 or c_decimal_pr = 388.1 or c_decimal_pr = 389.1 or c_decimal_pr = 390.1 or c_decimal_pr = 391.1 or c_decimal_pr = 392.1 or c_decimal_pr = 393.1 or c_decimal_pr = 394.1 or c_decimal_pr = 395.1 or c_decimal_pr = 396.1 or c_decimal_pr = 397.1 or c_decimal_pr = 398.1 or c_decimal_pr = 399.1 or c_decimal_pr = 400.1 or c_decimal_pr = 401.1 or c_decimal_pr = 402.1 or c_decimal_pr = 403.1 or c_decimal_pr = 404.1 or c_decimal_pr = 405.1 or c_decimal_pr = 406.1 or c_decimal_pr = 407.1 or c_decimal_pr = 408.1 or c_decimal_pr = 409.1 or c_decimal_pr = 410.1 or c_decimal_pr = 411.1 or c_decimal_pr = 412.1 or c_decimal_pr = 413.1 or c_decimal_pr = 414.1 or c_decimal_pr = 415.1 or c_decimal_pr = 416.1 or c_decimal_pr = 417.1 or c_decimal_pr = 418.1 or c_decimal_pr = 419.1 or c_decimal_pr = 420.1 or c_decimal_pr = 421.1 or c_decimal_pr = 422.1 or c_decimal_pr = 423.1 or c_decimal_pr = 424.1 or c_decimal_pr = 425.1 or c_decimal_pr = 426.1 or c_decimal_pr = 427.1 or c_decimal_pr = 428.1 or c_decimal_pr = 429.1 or c_decimal_pr = 430.1 or c_decimal_pr = 431.1 or c_decimal_pr = 432.1 or c_decimal_pr = 433.1 or c_decimal_pr = 434.1 or c_decimal_pr = 435.1 or c_decimal_pr = 436.1 or c_decimal_pr = 437.1 or c_decimal_pr = 438.1 or c_decimal_pr = 439.1 or c_decimal_pr = 440.1 or c_decimal_pr = 441.1 or c_decimal_pr = 442.1 or c_decimal_pr = 443.1 or c_decimal_pr = 444.1 or c_decimal_pr = 445.1 or c_decimal_pr = 446.1 or c_decimal_pr = 447.1 or c_decimal_pr = 448.1 or c_decimal_pr = 449.1 or c_decimal_pr = 450.1 or c_decimal_pr = 451.1 or c_decimal_pr = 452.1 or c_decimal_pr = 453.1 or c_decimal_pr = 454.1 or c_decimal_pr = 455.1 or c_decimal_pr = 456.1 or c_decimal_pr = 457.1 or c_decimal_pr = 458.1 or c_decimal_pr = 459.1 or c_decimal_pr = 460.1 or c_decimal_pr = 461.1 or c_decimal_pr = 462.1 or c_decimal_pr = 463.1 or c_decimal_pr = 464.1 or c_decimal_pr = 465.1 or c_decimal_pr = 466.1 or c_decimal_pr = 467.1 or c_decimal_pr = 468.1 or c_decimal_pr = 469.1 or c_decimal_pr = 470.1 or c_decimal_pr = 471.1 or c_decimal_pr = 472.1 or c_decimal_pr = 473.1 or c_decimal_pr = 474.1 or c_decimal_pr = 475.1 or c_decimal_pr = 476.1 or c_decimal_pr = 477.1 or c_decimal_pr = 478.1 or c_decimal_pr = 479.1 or c_decimal_pr = 480.1 or c_decimal_pr = 481.1 or c_decimal_pr = 482.1 or c_decimal_pr = 483.1 or c_decimal_pr = 484.1 or c_decimal_pr = 485.1 or c_decimal_pr = 486.1 or c_decimal_pr = 487.1 or c_decimal_pr = 488.1 or c_decimal_pr = 489.1 or c_decimal_pr = 490.1 or c_decimal_pr = 491.1 or c_decimal_pr = 492.1 or c_decimal_pr = 493.1 or c_decimal_pr = 494.1 or c_decimal_pr = 495.1 or c_decimal_pr = 496.1 or c_decimal_pr = 497.1 or c_decimal_pr = 498.1 or c_decimal_pr = 499.1 or c_decimal_pr = 1000.1) and c_varchar like "%tmp" and c_json->'$.k1' ="v1"
+    plan: |
+      not record
+  - sql: |
+      select * from nn1 where c_varchar="0123456789101112131415161718192021222fafefeaefaefasdfaefae324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100101102103104105106107108109110111112113114115116117118119120121122123124125126127128129130131132133134135136137138139140141142143144145146147148149150151152153154155156157158159160161162163164165166167168169170171172173174175176177178179180181182183184185186187188189190191192193194195196197198199"
+    plan: |
+      not record   
+
+DDL:
+  nn1:
+    CREATE TABLE `nn1` ( 	`id` bigint(20) NOT NULL, 	`c_decimal_pr` decimal(10, 3) DEFAULT NULL, 	`c_varchar` varchar(1000) DEFAULT NULL, 	`c_json` json DEFAULT NULL, 	PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = latin1 DBPARTITION BY hash(`id`);
+STATISTICS:
+  nn1:
+    0
+  nn1.c_decimal_pr.TOPN:
+    {"countArr":[],"valueArr":[],"type":"Double"}
+  nn1.c_decimal_pr.cardinality:
+    0
+  nn1.c_decimal_pr.histogram:
+    {"buckets":[],"maxBucketSize":1,"type":"Double","sampleRate":1.0}
+  nn1.c_decimal_pr.null_count:
+    0
+  nn1.c_decimal_pr.sample_rate:
+    1.0
+  nn1.c_varchar.TOPN:
+    {"countArr":[],"valueArr":[],"type":"String"}
+  nn1.c_varchar.cardinality:
+    0
+  nn1.c_varchar.histogram:
+    {"buckets":[],"maxBucketSize":1,"type":"String","sampleRate":1.0}
+  nn1.c_varchar.null_count:
+    0
+  nn1.c_varchar.sample_rate:
+    1.0
+  nn1.id.TOPN:
+    {"countArr":[],"valueArr":[],"type":"Int"}
+  nn1.id.cardinality:
+    0
+  nn1.id.histogram:
+    {"buckets":[],"maxBucketSize":1,"type":"Int","sampleRate":1.0}
+  nn1.id.null_count:
+    0
+  nn1.id.sample_rate:
+    1.0
+CONFIG:
+  ENABLE_BKA_JOIN:
+    null
+  MPP_METRIC_LEVEL:
+    0
+  FORCE_APPLY_CACHE:
+    TRUE
+  CONN_POOL_XPROTO_XPLAN_TABLE_SCAN:
+    false
+  ENABLE_SPM:
+    false
+  ENABLE_MPP:
+    FALSE
+  CONN_POOL_MAX_WAIT_THREAD_COUNT:
+    0
+  CONN_POOL_XPROTO_CONFIG:
+
+  CONN_POOL_XPROTO_MAX_POOLED_SESSION_PER_INST:
+    512
+  CONN_POOL_XPROTO_PURE_ASYNC_MPP:
+    true
+  CONN_POOL_XPROTO_SESSION_AGING_TIME:
+    600000
+  RECORD_SQL:
+    TRUE
+  CONN_POOL_XPROTO_MIN_POOLED_SESSION_PER_INST:
+    32
+  CONN_POOL_XPROTO_CHUNK_RESULT:
+    true
+  ENABLE_SCALE_OUT_FEATURE:
+    true
+  SQL_SIMPLE_MAX_LENGTH:
+    1005
+  SCAN_TIMEOUT_INTERVAL:
+    121
+  CHOOSE_STREAMING:
+    true
+  ENABLE_DELETE_WITH_LIMIT:
+    TRUE
+  MAX_PHYSICAL_PARTITION_COUNT:
+    8192
+  FORBID_EXECUTE_DML_ALL:
+    FALSE
+  AUTO_PARTITION_PARTITIONS:
+    3
+  ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING:
+    true
+  GROUP_SEQ_CHECK_INTERVAL:
+    5
+  CONN_POOL_XPROTO_SLOW_THRESH:
+    1000
+  COMMIT_TIMEOUT:
+    180000
+  CONN_POOL_XPROTO_QUERY_TOKEN:
+    10000
+  MPP_RPC_LOCAL_ENABLED:
+    false
+  CONN_POOL_MAX_POOL_SIZE:
+    60
+  HINT_PARSER_FLAG:
+    TRUE
+  GET_TSO_TIMEOUT:
+    5000
+  LOGICAL_DB_TIME_ZONE:
+    +08:00
+  STORAGE_SUPPORTS_BLOOM_FILTER:
+    true
+  TRUE:
+    FALSE
+  SQL_DELAY_CUTOFF:
+    2
+  CONN_POOL_PROPERTIES:
+    connectTimeout=5000;characterEncoding=utf8;autoReconnect=true;failOverReadOnly=false;socketTimeout=12000;rewriteBatchedStatements=true;useServerPrepStmts=false;useSSL=false
+  ENABLE_SIMPLE_SEQUENCE:
+    TRUE
+  INIT_CONCURRENT_POOL_EVERY_CONNECTION:
+    false
+  SINGLE_GROUP_STORAGE_INST_LIST:
+    polardbx-storage-0-master
+  CONN_POOL_XPROTO_MAX_PACKET_SIZE:
+    67108864
+  CONN_POOL_XPROTO_CHECKER:
+    true
+  ENABLE_RUNTIME_FILTER_XXHASH:
+    true
+  ENABLE_UPDATE_PARTITION_KEY:
+    false
+  CONN_POOL_XPROTO_DIRECT_WRITE:
+    false
+  CONN_POOL_XPROTO_MAX_SESSION_PER_CLIENT:
+    1024
+  STATISTIC_COLLECTOR_FROM_RULE:
+    true
+  USE_FAST_SINGLE_POINT_INTERVAL_MERGING:
+    false
+  CONN_POOL_XPROTO_AUTH:
+    true
+  CONN_POOL_BLOCK_TIMEOUT:
+    5000
+  MPP_TABLESCAN_CONNECTION_STRATEGY:
+    0
+  ENABLE_UPDATE_WITH_LIMIT:
+    TRUE
+  CONN_POOL_IDLE_TIMEOUT:
+    60
+  ENABLE_CBO:
+    TRUE
+  CONN_POOL_XPROTO_XPLAN_EXPEND_STAR:
+    true
+  CONN_POOL_XPROTO_STORAGE_DB_PORT:
+    0
+  ENABLE_DDL:
+    TRUE
+  MAX_PARTITION_COLUMN_COUNT:
+    5
+  DEFAULT_PARTITION_MODE:
+    drds
+  CONN_POOL_XPROTO_PIPE_BUFFER_SIZE:
+    268435456
+  PROCESS_AUTO_INCREMENT_BY_SEQUENCE:
+    true
+  ALLOW_SIMPLE_SEQUENCE:
+    false
+  PURGE_TRANS_BEFORE:
+    604801
+  PURGE_TRANS_INTERVAL:
+    86401
+  WORKLOAD_TYPE:
+    AP
+  CONN_POOL_XPROTO_FEEDBACK:
+    true
+  SHOW_TABLE_GROUP_NAME:
+    false
+  ENABLE_CONST_EXPR_EVAL_CACHE:
+    true
+  CONN_POOL_XPROTO_MESSAGE_TIMESTAMP:
+    true
+  PARALLELISM:
+    -1
+  SOCKET_TIMEOUT:
+    900000
+  ENABLE_INTERVAL_ENUMERATION_IN_PRUNING:
+    true
+  PARTITION_PRUNING_STEP_COUNT_LIMIT:
+    1024
+  ENABLE_FORBID_PUSH_DML_WITH_HINT:
+    FALSE
+  CONN_POOL_XPROTO_META_DB_PORT:
+    0
+  ENABLE_MASTER_MPP:
+    true
+  CONN_POOL_MIN_POOL_SIZE:
+    5
+  SHARD_DB_COUNT_EACH_STORAGE_INST:
+    2
+  ENABLE_ALTER_DDL:
+    true
+  PLAN_EXTERNALIZE_TEST:
+    TRUE
+  CONN_POOL_XPROTO_PLAN_CACHE:
+    true
+  MAX_ENUMERABLE_INTERVAL_LENGTH:
+    32
+  CONN_POOL_XPROTO_MAX_CLIENT_PER_INST:
+    32
+  NET_WRITE_TIMEOUT:
+    28800
+  CONN_POOL_XPROTO_XPLAN:
+    true
+  ENABLE_SELF_CROSS_JOIN:
+    true
+  INIT_WORKER:
+    FALSE
+  CDC_STARTUP_MODE:
+    1
+  CONN_POOL_XPROTO_TRX_LEAK_CHECK:
+    false
+  CONN_POOL_XPROTO_FLAG:
+    0
+  USE_CHUNK_EXECUTOR:
+    AUTO
+  RETRY_ERROR_SQL_ON_OLD_SERVER:
+    true
+  SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE:
+    false
+  MAX_LOGICAL_DB_COUNT:
+    2048
+  CONN_POOL_XPROTO_AUTO_COMMIT_OPTIMIZE:
+    true
+  SHOW_HASH_PARTITIONS_BY_RANGE:
+    false
+  defaltxxAPPName.isNew:
+    false
+  defaltxxAPPName.dbNumber:
+    4

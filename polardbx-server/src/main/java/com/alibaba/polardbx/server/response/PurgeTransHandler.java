@@ -27,6 +27,8 @@ import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTask;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
+import java.util.Calendar;
+
 public class PurgeTransHandler extends AbstractTransHandler {
 
     private final static Logger logger = LoggerFactory.getLogger(GlobalTxLogManager.class);
@@ -59,8 +61,17 @@ public class PurgeTransHandler extends AbstractTransHandler {
 
         int purgedCount;
         try {
+            final Calendar startTime = Calendar.getInstance();
+            final Calendar endTime = Calendar.getInstance();
+            startTime.set(Calendar.HOUR_OF_DAY, 0);
+            startTime.set(Calendar.MINUTE, 0);
+            startTime.set(Calendar.SECOND, 0);
+
+            endTime.set(Calendar.HOUR_OF_DAY, 23);
+            endTime.set(Calendar.MINUTE, 59);
+            endTime.set(Calendar.SECOND, 59);
             RotateGlobalTxLogTask task =
-                new RotateGlobalTxLogTask(executor, before, 0, asyncQueue);
+                new RotateGlobalTxLogTask(executor, startTime, endTime, before, 0, asyncQueue);
             task.run();
             purgedCount = task.getPurgedCount();
         } catch (Throwable ex) {

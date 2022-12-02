@@ -47,6 +47,10 @@ import java.util.HashMap;
 @RunWith(EclipseParameterized.class)
 public abstract class PlanTestCommon extends BasePlannerTest {
 
+    public PlanTestCommon(String caseName, String targetEnvFile) {
+        super(caseName, targetEnvFile);
+    }
+
     public PlanTestCommon(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
     }
@@ -60,18 +64,23 @@ public abstract class PlanTestCommon extends BasePlannerTest {
 
     }
 
+    protected SqlNode parserSqlNode(ExecutionContext context, String testSql) {
+        SqlNodeList astList = new FastsqlParser().parse(testSql, context);
+        SqlNode ast = astList.get(0);
+        return ast;
+    }
+
     @Override
     protected String getPlan(String testSql) {
         final String[] planStr = new String[1];
 
+        ExecutionContext executionContext = new ExecutionContext(appName);
+        executionContext.setParams(new Parameters());
+        SqlNode ast = parserSqlNode(executionContext, testSql);
+
         this.cluster =
-            SqlConverter.getInstance(new ExecutionContext()).createRelOptCluster(PlannerContext.EMPTY_CONTEXT);
-        OptimizerContext oc = getContextByAppName(getAppName());
-        SqlNodeList astList = new FastsqlParser().parse(testSql);
+            SqlConverter.getInstance(executionContext).createRelOptCluster(PlannerContext.EMPTY_CONTEXT);
 
-        SqlNode ast = astList.get(0);
-
-        ExecutionContext executionContext = new ExecutionContext();
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
         executionContext.setUsingPhySqlCache(true);
@@ -79,7 +88,6 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName, executionContext.getExtraCmds(),
             executionContext.getGroupHint());
 
-        executionContext.setParams(new Parameters());
         executionContext.getExtraCmds().put(ConnectionProperties.PARALLELISM, enableParallelQuery ? -1 : 0);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_JOIN_CLUSTERING, enableJoinClustering);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, enableMpp);
@@ -131,10 +139,13 @@ public abstract class PlanTestCommon extends BasePlannerTest {
 
         assertPlanProperty(executionPlan.getPlan());
 
-        planStr[0] =
-            RelUtils.toString(executionPlan.getPlan(), executionContext.getParams().getCurrentParameter(),
-                RexUtils.getEvalFunc(executionContext), executionContext);
+        planStr[0] = returnPlanStr(executionContext, executionPlan.getPlan());
 
         return removeSubqueryHashCode(planStr[0], executionPlan.getPlan(), null);
+    }
+
+    protected String returnPlanStr(ExecutionContext executionContext, RelNode plan) {
+        return RelUtils.toString(plan, executionContext.getParams().getCurrentParameter(),
+            RexUtils.getEvalFunc(executionContext), executionContext);
     }
 }

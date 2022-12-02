@@ -26,11 +26,13 @@ import com.alibaba.polardbx.executor.gms.TableRuleManager;
 import com.alibaba.polardbx.executor.gms.util.TableMetaUtil;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
@@ -75,7 +77,17 @@ public class RepartitionValidator {
                                 String sourceTableName,
                                 SqlNode dbPartitionBy,
                                 boolean isBroadcast,
-                                boolean isSingle) {
+                                boolean isSingle,
+                                boolean newPartDb) {
+        if (newPartDb && !DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "can not use 'alter table partition by' in drds mode database, please use 'alter table dbpartition by' instead");
+        }
+
+        if (!newPartDb && DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "can not use 'alter table dbpartition by' in auto mode database, please use 'alter table partition by' instead");
+        }
 
         //必须变成某种类型的表，不可能既不是拆分表，也不是广播表/单表
         if (dbPartitionBy == null && isBroadcast == false && isSingle == false) {
@@ -83,7 +95,6 @@ public class RepartitionValidator {
             throw new TddlNestableRuntimeException("syntax error");
         }
 
-        //不支持带有GSI的拆分表做拆分键变更（因为目前GSI中的数据无法随着新的拆分规则做更新）
         boolean hasAutoIncrement = false;
         TableMeta primaryTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(sourceTableName);
@@ -117,8 +128,8 @@ public class RepartitionValidator {
             }
         }
 
-        List<TableMeta> gsiTableMeta =
-            GlobalIndexMeta.getIndex(sourceTableName, schemaName, IndexStatus.ALL, null);
+//        List<TableMeta> gsiTableMeta =
+//            GlobalIndexMeta.getIndex(sourceTableName, schemaName, IndexStatus.ALL, null);
 
         //make sure there's no GSI before altering primary table to single or broadcast table
 //        if (CollectionUtils.isNotEmpty(gsiTableMeta)) {
@@ -127,6 +138,68 @@ public class RepartitionValidator {
 //                    "Please drop all Global Indexes before altering any table to single or broadcast");
 //            }
 //        }
+    }
+
+    /**
+     * validate for alter table partition count
+     */
+    public static void validate(String schemaName, String sourceTableName) {
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                "can not alter partition count on drds mode database");
+        }
+
+        boolean autoPartition =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(sourceTableName)
+                .isAutoPartition();
+        if (!autoPartition) {
+            throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                "can not alter partition count on a non auto_partition table");
+        }
+
+        PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+            .getPartitionInfo(sourceTableName);
+
+        if (partitionInfo.getActualPartitionColumns().size() != 1) {
+            throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                "can not alter partition count on the table which has been hot split");
+        }
+    }
+
+    /**
+     * validate for alter table remove partitioning
+     */
+    public static boolean validateRemovePartitioning(String schemaName,
+                                                     String sourceTableName) {
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                "can not alter table remove partitioning on drds mode database");
+        }
+
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(sourceTableName);
+
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+
+        if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "it is not allow alter table remove partitioning on a single or broadcast table.");
+        }
+
+        return tableMeta.isAutoPartition();
+    }
+
+    public static boolean validatePartitionCount(String schemaName, String sourceTableName, int partitions) {
+        if (partitions <= 0) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                String.format("partitions [%s] can not be less then 1", partitions));
+        }
+
+        PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+            .getPartitionInfo(sourceTableName);
+        PartitionByDefinition partitionByDefinition = partitionInfo.getPartitionBy();
+
+        return partitionByDefinition.getPartitions().size() == partitions;
     }
 
     /**
@@ -222,7 +295,8 @@ public class RepartitionValidator {
                                                       boolean isSingle,
                                                       boolean isBroadcast,
                                                       TableRule targetTableRule) {
-        TableRule primaryTableRule = TableRuleManager.getTableRules(schemaName).get(sourceTableName);
+        TableRule primaryTableRule =
+            TableRuleManager.getTableRules(schemaName).get(sourceTableName.toLowerCase());
 
         if (checkPartitionRuleEquals(primaryTableRule, targetTableRule) && isBroadcast == false
             && isSingle == false) {
@@ -281,8 +355,8 @@ public class RepartitionValidator {
      * return true is the partitionInfo is the same as before
      */
     public static boolean checkPartitionInfoUnchanged(String schemaName,
-                                                  String sourceTableName,
-                                                  PartitionInfo partitionInfo) {
+                                                      String sourceTableName,
+                                                      PartitionInfo partitionInfo) {
         PartitionInfo primaryPartitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
             .getPartitionInfo(sourceTableName);
 

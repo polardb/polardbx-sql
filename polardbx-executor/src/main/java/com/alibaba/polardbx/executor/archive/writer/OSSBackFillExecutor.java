@@ -54,26 +54,38 @@ public class OSSBackFillExecutor {
                                   Map<String, Set<String>> sourcePhyTables, int indexStride, long parallelism,
                                   Map<Pair<String, String>, OSSBackFillWriterTask> tasks,
                                   String designatedPhysicalPartition) {
+        return backFill2FileStore(schemaName, sourceTableName, targetTableName, baseEc, sourcePhyTables, indexStride, parallelism,
+            tasks, designatedPhysicalPartition, false);
+    }
+
+    public int backFill2FileStore(String schemaName, String sourceTableName, String targetTableName, ExecutionContext baseEc,
+                                  Map<String, Set<String>> sourcePhyTables, int indexStride, long parallelism,
+                                  Map<Pair<String, String>, OSSBackFillWriterTask> tasks,
+                                  String designatedPhysicalPartition, boolean supportPause) {
         Preconditions.checkArgument(Engine.isFileStore(targetEngine));
 
         final long batchSize = indexStride;
-        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_MIN);
-        final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_LIMITATION);
+        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.OSS_BACKFILL_SPEED_MIN);
+        final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.OSS_BACKFILL_SPEED_LIMITATION);
 
         if (null == baseEc.getServerVariables()) {
             baseEc.setServerVariables(new HashMap<>());
         }
 
         // Init extractor and loader
-        final Extractor extractor =
+        final OSSBackFillExtractor extractor =
             OSSBackFillExtractor
                 .create(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
                     baseEc, designatedPhysicalPartition, sourceEngine, targetEngine);
 
         final BatchConsumer batchConsumer = new OSSBackFillConsumer(tasks);
 
-        // Load latest extractor position mark
-        extractor.loadBackfillMeta(baseEc);
+        if (supportPause) {
+            extractor.loadBackfillMetaRestart(baseEc);
+        } else {
+            // Load latest extractor position mark
+            extractor.loadBackfillMeta(baseEc);
+        }
 
         // Foreach row: lock batch -> fill into index -> release lock
         final AtomicInteger affectRows = new AtomicInteger();
@@ -89,8 +101,8 @@ public class OSSBackFillExecutor {
         Preconditions.checkArgument(targetEngine == Engine.INNODB);
 
         final long batchSize = indexStride;
-        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_MIN);
-        final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_LIMITATION);
+        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.OSS_BACKFILL_SPEED_MIN);
+        final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.OSS_BACKFILL_SPEED_LIMITATION);
 
         if (null == baseEc.getServerVariables()) {
             baseEc.setServerVariables(new HashMap<>());
@@ -115,7 +127,7 @@ public class OSSBackFillExecutor {
         extractor.foreachBatch(baseEc, new BatchConsumer() {
             @Override
             public void consume(List<Map<Integer, ParameterContext>> batch,
-                                Pair<ExecutionContext, String> extractEcAndIndexPair) {
+                                Pair<ExecutionContext, Pair<String, String>> extractEcAndIndexPair) {
                 loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
                     try {
                         // Commit and close extract statement

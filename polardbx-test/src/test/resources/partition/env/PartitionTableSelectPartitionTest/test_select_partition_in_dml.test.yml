@@ -1,0 +1,258 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE IF NOT EXISTS tbl_with_gsi1 (
+  a int NOT NULL,
+  b int NOT NULL,
+  c int NOT NULL,
+  d int NOT NULL,
+  GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+     PARTITION p4 VALUES LESS THAN (maxvalue)
+  ),
+  GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+    PARTITION p4 VALUES LESS THAN (maxvalue)
+  )
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_with_gsi2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_with_gsi3 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+
+insert into tbl_with_gsi2 values (11,111,300,111);
+insert into tbl_with_gsi2 values (22,222,300,222);
+insert into tbl_with_gsi2 values (33,333,300,333);
+insert into tbl_with_gsi2 values (44,444,300,444);
+
+insert into tbl_with_gsi3 values (11,111,300,111);
+insert into tbl_with_gsi3 values (22,222,300,222);
+insert into tbl_with_gsi3 values (33,333,300,333);
+insert into tbl_with_gsi3 values (44,444,300,444);
+
+select a,b from tbl_with_gsi1 partition(p1);
+
+# partition selection for single-table select
+begin;
+explain select * from tbl_with_gsi1 partition(p2) where a=21;
+select * from tbl_with_gsi1 partition(p2) where a=21;
+explain select * from tbl_with_gsi1 partition(p2) where a=11;
+select * from tbl_with_gsi1 partition(p2) where a=11;
+rollback;
+
+# partition selection for select with join
+begin;
+explain select * from tbl_with_gsi1 partition(p2) t1 inner join tbl_with_gsi2 partition(p2) t2 on t1.a=t2.a where t1.a=11;
+select * from tbl_with_gsi1 partition(p2) t1 inner join tbl_with_gsi2 partition(p2) t2 on t1.a=t2.a where t1.a=11;
+
+explain select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p3) t2 on t1.a=t2.a where t1.a=11;
+select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p3) t2 on t1.a=t2.a where t1.a=11;
+
+explain select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p3) t2 on t1.a=t2.a;
+select * from tbl_with_gsi1 partition(p4,p2,p1) t1 inner join tbl_with_gsi2 partition(p2,p3,p3) t2 on t1.a=t2.a;
+
+explain select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p4) t2 on t1.a=t2.a order by t1.a;
+select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p4) t2 on t1.a=t2.a order by t1.a;
+
+rollback;
+
+# partition selection for select with scalar subquery
+begin;
+explain select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2));
+select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2));
+explain select * from tbl_with_gsi1 partition(p2) where exists (select a from tbl_with_gsi2 partition(p2));
+select * from tbl_with_gsi1 partition(p2) where exists (select a from tbl_with_gsi2 partition(p2));
+rollback;
+
+# partition selection for select with apply subquery
+begin;
+explain select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
+select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
+explain select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2,p4) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
+select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2,p4) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
+rollback;
+
+# partition selection for insert select
+begin;
+select * from tbl_with_gsi1 order by a;
+insert into tbl_with_gsi1 select * from tbl_with_gsi1 partition(p2);
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for replace select
+begin;
+select * from tbl_with_gsi1 order by a;
+replace into tbl_with_gsi1 select * from tbl_with_gsi1 partition(p2);
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for single-table-update
+begin;
+select * from tbl_with_gsi1 order by a;
+explain update tbl_with_gsi1 partition(p2) set d=999;
+update tbl_with_gsi1 partition(p2) set d=999;
+select * from tbl_with_gsi1 order by a;
+explain update tbl_with_gsi1 partition(p2) set b=100, d=999;
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for single-table-update with point select
+begin;
+select * from tbl_with_gsi1 order by a;
+explain update tbl_with_gsi1 partition(p2) set d=999 where a=11;
+update tbl_with_gsi1 partition(p2) set d=999 where a=11;
+select * from tbl_with_gsi1 order by a;
+explain update tbl_with_gsi1 partition(p2) set b=100, d=999 where a=11;
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for multi-table-update
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
+update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-update with part-col condition
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi1.a=21;
+update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi1.a=21;
+explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi1.a=11;
+update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-update
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
+update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-update with three-table-join
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+select * from tbl_with_gsi3 order by a;
+explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3),tbl_with_gsi3 partition(p3,p3,p4,p2) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=9999,tbl_with_gsi3.d=9999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi2.a=tbl_with_gsi3.a;
+update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3),tbl_with_gsi3 partition(p3,p3,p4,p2) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=9999,tbl_with_gsi3.d=9999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi2.a=tbl_with_gsi3.a;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+select * from tbl_with_gsi3 order by a;
+rollback;
+
+# partition selection for single-table-delete
+begin;
+select * from tbl_with_gsi1 order by a;
+delete from tbl_with_gsi1 partition(p2);
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for single-table-delete point-select
+begin;
+select * from tbl_with_gsi1 order by a;
+delete from tbl_with_gsi1 partition(p2);
+select * from tbl_with_gsi1 order by a;
+rollback;
+
+# partition selection for multi-table-delete
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+delete tbl_with_gsi1, tbl_with_gsi2 from tbl_with_gsi1 partition(p2) inner join tbl_with_gsi2 partition(p2) where tbl_with_gsi1.a=tbl_with_gsi2.a ;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-delete with part-col condition
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+delete tbl_with_gsi1, tbl_with_gsi2 from tbl_with_gsi1 partition(p2) inner join tbl_with_gsi2 partition(p2) where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi1.a=11 ;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-delete
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+delete tbl_with_gsi1, tbl_with_gsi2 from tbl_with_gsi1 partition(p2) inner join tbl_with_gsi2 partition(p2,p3) where tbl_with_gsi1.a=tbl_with_gsi2.a ;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+rollback;
+
+# partition selection for multi-table-delete with three-tbl-join
+begin;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+select * from tbl_with_gsi3 order by a;
+delete tbl_with_gsi1, tbl_with_gsi2,tbl_with_gsi3 from tbl_with_gsi1 partition(p2) inner join tbl_with_gsi2 partition(p2,p3) inner join tbl_with_gsi3 partition(p2,p2,p4,p4) where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi2.a=tbl_with_gsi3.a ;
+select * from tbl_with_gsi1 order by a;
+select * from tbl_with_gsi2 order by a;
+select * from tbl_with_gsi3 order by a;
+rollback;

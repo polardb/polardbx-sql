@@ -16,11 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticService;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
@@ -88,14 +87,15 @@ public class DrdsRelMdDistinctRowCount extends RelMdDistinctRowCount {
 
         TableMeta tableMeta = CBOUtil.getTableMeta(rel.getTable());
         if (tableMeta != null) {
-            final StatisticService stats = OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager();
-            StatisticResult statisticResult = stats.getRowCount(tableMeta.getTableName());
+            StatisticResult statisticResult =
+                StatisticManager.getInstance().getRowCount(tableMeta.getSchemaName(), tableMeta.getTableName());
             final long tableRowCount = Math.max(statisticResult.getLongValue(), 1);
 
             double n = 1.0;
             for (Integer index : groupKey) {
                 final ColumnMeta columnMeta = tableMeta.getAllColumns().get(index);
-                StatisticResult statisticResult1 = stats.getCardinality(tableMeta.getTableName(), columnMeta.getName());
+                StatisticResult statisticResult1 = StatisticManager.getInstance()
+                    .getCardinality(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(), true);
                 long cardinality = statisticResult1.getLongValue();
                 if (cardinality >= 0) {
                     // pass

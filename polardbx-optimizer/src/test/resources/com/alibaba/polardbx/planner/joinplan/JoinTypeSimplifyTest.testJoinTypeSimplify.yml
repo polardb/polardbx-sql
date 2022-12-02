@@ -70,24 +70,21 @@
     select * from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where a.id=2;
 
   plan: |
-
-    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`a`.`id` = ?)")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` from ? as `a` left join ? as `b` on (`a`.`id` = `b`.`id`) where (`a`.`id` = ?)", params="2")
 
 -
   sql: |
     select * from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where b.id=2;
 
   plan: |
-
-    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`b`.`id` = ?)")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` from ? as `a` left join ? as `b` on (`a`.`id` = `b`.`id`) where (`b`.`id` = ?)", params="2")
 
 -
   sql: |
     select a.id from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where a.id=2 limit 5,10;
 
   plan: |
-
-    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id` AS `id` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`a`.`id` = ?) LIMIT ? OFFSET ?")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id` as `id` from ? as `a` left join ? as `b` on (`a`.`id` = `b`.`id`) where (`a`.`id` = ?) limit ? offset ?", params="5,2,10")
 
 -
   sql: |

@@ -1,0 +1,47 @@
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+`a` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`b` varchar(20) DEFAULT NULL,
+`c` varchar(20) DEFAULT NULL,
+`d` varchar(20) DEFAULT NULL
+) partition by key(a);
+
+alter table `t_order` add clustered index cgsi_b (`b`) partition by key(`b`);
+show create table `t_order`;
+show create table `cgsi_b`;
+
+alter table `t_order` add clustered index cgsi_c (`c`) partition by key(`c`);
+show create table `t_order`;
+show create table `cgsi_b`;
+show create table `cgsi_c`;
+
+alter table `t_order` add global index gsi_d (`d`) partition by key(`d`);
+show create table `t_order`;
+show create table `cgsi_b`;
+show create table `cgsi_c`;
+show create table `gsi_d`;
+
+alter table `t_order` add index local_idx (`b`, `c`);
+show create table `t_order`;
+show create table `cgsi_b`;
+show create table `cgsi_c`;
+show create table `gsi_d`;
+
+alter table `t_order` drop index local_idx;
+show create table `t_order`;
+show create table `cgsi_b`;
+show create table `cgsi_c`;
+show create table `gsi_d`;
+
+alter table `t_order` drop index cgsi_c;
+show create table `t_order`;
+show create table `cgsi_b`;
+show create table `gsi_d`;
+
+alter table `t_order` drop index cgsi_b;
+show create table `t_order`;
+show create table `gsi_d`;
+
+alter table `t_order` drop index gsi_d;
+show create table `t_order`;

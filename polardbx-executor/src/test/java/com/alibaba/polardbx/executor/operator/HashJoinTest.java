@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SyncFileCleaner;
+import com.alibaba.polardbx.executor.operator.util.EquiJoinMockData;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -34,10 +35,10 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.InputRefExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.nio.file.Path;
@@ -51,6 +52,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.operator.util.RowChunksBuilder.rowChunksBuilder;
 
 public class HashJoinTest extends BaseExecTest {
 
@@ -76,7 +79,7 @@ public class HashJoinTest extends BaseExecTest {
 
     // be compatible with legacy unit test
     static EquiJoinKey mockEquiJoinKey(int outerIndex, int innerIndex, DataType unifiedType) {
-        return new EquiJoinKey(outerIndex, innerIndex, unifiedType, false, false);
+        return new EquiJoinKey(outerIndex, innerIndex, unifiedType, false);
     }
 
     static ParallelHashJoinExec mockParallelHashJoinExec(Executor outerInput,
@@ -91,6 +94,21 @@ public class HashJoinTest extends BaseExecTest {
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInput, innerInput, joinType, maxOneRow,
             joinKeys, otherCondition, antiJoinOperands, false, context, 0);
+    }
+
+    static SingleExecTest mockParallelHashJoinExec(EquiJoinMockData mockData,
+                                                   JoinRelType joinType,
+                                                   boolean maxOneRow,
+                                                   IExpression otherCondition,
+                                                   List<IExpression> antiJoinOperands,
+                                                   ExecutionContext context) {
+        MockExec innerInput = new MockExec(mockData.getInnerTypes(), mockData.getInnerChunks());
+        MockExec outerInput = new MockExec(mockData.getOuterTypes(), mockData.getOuterChunks());
+        ParallelHashJoinExec exec = new ParallelHashJoinExec(
+            new ParallelHashJoinExec.Synchronizer(1, false),
+            outerInput, innerInput, joinType, maxOneRow,
+            mockData.getEquiJoinKeysAndReset(), otherCondition, antiJoinOperands, false, context, 0);
+        return new SingleExecTest.Builder(exec, innerInput).build();
     }
 
     static SingleExecTest mockHybridHashJoinExec(List<Chunk> outerChunks,
@@ -115,186 +133,182 @@ public class HashJoinTest extends BaseExecTest {
         return new SingleExecTest.Builder(exec, innerBucketInput).build();
     }
 
+    static SingleExecTest mockHybridHashJoinExec(EquiJoinMockData mockData,
+                                                 JoinRelType joinType,
+                                                 boolean maxOneRow,
+                                                 IExpression otherCondition,
+                                                 List<IExpression> antiJoinOperands,
+                                                 ExecutionContext context, int bucketNum) {
+        return mockHybridHashJoinExec(
+            mockData.getOuterChunks(), mockData.getOuterTypes(), mockData.getInnerChunks(), mockData.getInnerTypes(),
+            joinType, maxOneRow, mockData.getEquiJoinKeysAndReset(), otherCondition, antiJoinOperands, context,
+            bucketNum);
+    }
+
     @Test
     public void testInnerJoin_Simple() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "b", "c", null)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8),
-                StringBlock.of("d", "e", "f", null)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false, joinKeys, null, null, context);
-
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes =
+            ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 1, 3, 4, 5, 6, 7),
             IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
             IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
-            StringBlock.of("c", null, "f", "d", "c", null, "a"))), false);
+            StringBlock.of("c", null, "f", "d", "c", null, "a"));
+        List<Chunk> expects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .build();
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(1000, null, null, "XX")
+            .build();
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.INNER, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+        test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.INNER, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
 
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.INNER, false, joinKeys, null, null, context,
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.INNER, false, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
-                IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, "f", "d", "c", null, "a"))), false);
+
+            assertExecResultByRow(test.result(), expects, false);
+            EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.INNER, false, null, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
     }
 
     @Test
     public void testInnerJoin_MultiKey() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4),
-                IntegerBlock.of(1, 1, 2, 2, null),
-                StringBlock.of("a", "b", "a", "b", "a")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8, 9),
-                IntegerBlock.of(3, 3, 4, 4, 4),
-                StringBlock.of("a", "b", "a", "b", null)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "a", "a", null),
-                StringBlock.of("A", "B", "C", "D")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, null),
-                StringBlock.of("a", "b", "c", "b"),
-                StringBlock.of("E", "F", "G", "H")))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType),
-            mockEquiJoinKey(2, 1, DataTypes.StringType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes = ImmutableList.of(
+            DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType,
+            DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 0, 2, 3, 5),
             IntegerBlock.of(1, 1, 2, 2, 3),
             StringBlock.of("a", "a", "a", "b", "a"),
             IntegerBlock.of(1, 1, 2, 2, 3),
             StringBlock.of("a", "a", "a", "b", "a"),
-            StringBlock.of("E", "A", "B", "F", "C")
-        )), false);
-        for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
-            test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.INNER, false, joinKeys, null, null, context,
-                bucketNum);
+            StringBlock.of("E", "A", "B", "F", "C"));
+        List<Chunk> expects[] = new List[4];
+
+        expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            build();
+        expects[1] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            row(8108, null, "XX", null, "XX", "YN").
+            build();
+        expects[2] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            row(8018, 1000, null, 1000, null, "NY").
+            build();
+        expects[3] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            row(8108, null, "XX", null, "XX", "YN").
+            row(8018, 1000, null, 1000, null, "NY").
+            row(8008, null, null, null, null, "NN").
+            build();
+
+        for (int nullSafeMask = 0; nullSafeMask < 4; nullSafeMask++) {
+            List<Chunk> expect = expects[nullSafeMask];
+            EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+            SingleExecTest test =
+                mockParallelHashJoinExec(EquiJoinMockData.MULTI_KEY_CASE, JoinRelType.INNER, false, null, null,
+                    context);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 0, 2, 3, 5),
-                IntegerBlock.of(1, 1, 2, 2, 3),
-                StringBlock.of("a", "a", "a", "b", "a"),
-                IntegerBlock.of(1, 1, 2, 2, 3),
-                StringBlock.of("a", "a", "a", "b", "a"),
-                StringBlock.of("E", "A", "B", "F", "C")
-            )), false);
+
+            assertExecResultByRow(test.result(), expect, false);
+            for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
+                EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+                test = mockHybridHashJoinExec(
+                    EquiJoinMockData.MULTI_KEY_CASE,
+                    JoinRelType.INNER, false, null, null, context,
+                    bucketNum);
+                test.exec();
+                assertExecResultByRow(test.result(), expect, false);
+            }
+
         }
     }
 
     @Test
     public void testLeftOuterJoin_Simple() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "b", "c", null)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8),
-                StringBlock.of("d", "e", "f", null)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes =
+            ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
             IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
             IntegerBlock.of(3, 4, null, 7, 5, 3, 8, 1),
-            StringBlock.of("c", null, null, "f", "d", "c", null, "a")
-        )), false);
+            StringBlock.of("c", null, null, "f", "d", "c", null, "a"));
+
+        List<Chunk> expects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(1000, null, null, null)
+            .build();
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(1000, null, null, "XX")
+            .build();
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.LEFT, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+        test = mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.LEFT, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, false, joinKeys, null, null, context,
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.LEFT, false, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-                IntegerBlock.of(3, 4, null, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, null, "f", "d", "c", null, "a")
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.LEFT, false, null, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
         }
     }
 
     @Test
     public void testLeftOuterJoin_WithCondition() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
+        List<DataType> outTypes =
+            ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
+            IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
+            IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
+            IntegerBlock.of(3, 4, null, 7, null, 3, 8, 1),
+            StringBlock.of("c", null, null, "f", null, "c", null, "a"));
 
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "b", "c", null)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8),
-                StringBlock.of("d", "e", "f", null)))
+        List<Chunk> expects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(1000, null, null, null)
             .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(1000, null, null, "XX")
+            .build();
 
         IExpression condition = new AbstractExpression() {
             @Override
@@ -303,242 +317,221 @@ public class HashJoinTest extends BaseExecTest {
             }
         };
 
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, false, joinKeys, condition, null,
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.LEFT, false, condition, null,
                 context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
         test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-            IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-            IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-            IntegerBlock.of(3, 4, null, 7, null, 3, 8, 1),
-            StringBlock.of("c", null, null, "f", null, "c", null, "a")
-        )), false);
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+        test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.LEFT, false, condition, null,
+                context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, false, joinKeys, condition, null, context,
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.LEFT, false, condition, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-                IntegerBlock.of(3, 4, null, 7, null, 3, 8, 1),
-                StringBlock.of("c", null, null, "f", null, "c", null, "a")
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.LEFT, false, condition, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
 
     }
 
     @Test
     public void testLeftOuterJoin_MultiKey() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4),
-                IntegerBlock.of(1, 1, 2, 2, null),
-                StringBlock.of("a", "b", "a", "b", "a")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8, 9),
-                IntegerBlock.of(3, 3, 4, 4, 4),
-                StringBlock.of("a", "b", "a", "b", null)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "a", "a", null),
-                StringBlock.of("A", "B", "C", "D")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, null),
-                StringBlock.of("a", "b", "c", "b"),
-                StringBlock.of("E", "F", "G", "H")))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType),
-            mockEquiJoinKey(2, 1, DataTypes.StringType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes = ImmutableList.of(
+            DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType,
+            DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
             IntegerBlock.of(1, 1, 1, 2, 2, null, 3, 3, 4, 4, 4),
             StringBlock.of("a", "a", "b", "a", "b", "a", "a", "b", "a", "b", null),
             IntegerBlock.of(1, 1, null, 2, 2, null, 3, null, null, null, null),
             StringBlock.of("a", "a", null, "a", "b", null, "a", null, null, null, null),
-            StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null)
-        )), false);
-        for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
-            test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, false, joinKeys, null, null, context,
-                bucketNum);
-            test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
-                IntegerBlock.of(1, 1, 1, 2, 2, null, 3, 3, 4, 4, 4),
-                StringBlock.of("a", "a", "b", "a", "b", "a", "a", "b", "a", "b", null),
-                IntegerBlock.of(1, 1, null, 2, 2, null, 3, null, null, null, null),
-                StringBlock.of("a", "a", null, "a", "b", null, "a", null, null, null, null),
-                StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null)
-            )), false);
-        }
+            StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null));
+        List<Chunk> expects[] = new List[4];
 
+        expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8008, null, null, null, null, null).
+            row(8108, null, "XX", null, null, null).
+            row(8018, 1000, null, null, null, null).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            build();
+        expects[1] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8008, null, null, null, null, null).
+            row(8108, null, "XX", null, "XX", "YN").
+            row(8018, 1000, null, null, null, null).
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            build();
+        expects[2] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8008, null, null, null, null, null).
+            row(8108, null, "XX", null, null, null).
+            row(8018, 1000, null, 1000, null, "NY").
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            build();
+        expects[3] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(8008, null, null, null, null, "NN").
+            row(8108, null, "XX", null, "XX", "YN").
+            row(8018, 1000, null, 1000, null, "NY").
+            row(8118, 1000, "XX", 1000, "XX", "YY").
+            build();
+
+        for (int nullSafeMask = 0; nullSafeMask < 4; nullSafeMask++) {
+            List<Chunk> expect = expects[nullSafeMask];
+            EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+            SingleExecTest test =
+                mockParallelHashJoinExec(EquiJoinMockData.MULTI_KEY_CASE, JoinRelType.LEFT, false, null, null, context);
+            test.exec();
+            assertExecResultByRow(test.result(), expect, false);
+            for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
+                EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+                test = mockHybridHashJoinExec(
+                    EquiJoinMockData.MULTI_KEY_CASE, JoinRelType.LEFT, false, null, null, context, bucketNum);
+                test.exec();
+                assertExecResultByRow(test.result(), expect, false);
+            }
+        }
     }
 
     @Test
     public void testRightOuterJoin_Simple() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "b", "c", null)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8),
-                StringBlock.of("d", "e", "f", null)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.RIGHT, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes =
+            ImmutableList.of(DataTypes.IntegerType, DataTypes.StringType, DataTypes.IntegerType, DataTypes.IntegerType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(3, 4, null, 7, 5, 3, 8, 1),
             StringBlock.of("c", null, null, "f", "d", "c", null, "a"),
             IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-            IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1)
-        )), false);
+            IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1));
+        List<Chunk> expects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(null, null, 1000, null)
+            .build();
+
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes)
+            .addChunk(baseExpect)
+            .row(null, "XX", 1000, null)
+            .build();
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.RIGHT, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+        test =
+            mockParallelHashJoinExec(EquiJoinMockData.SIMPLE_CASE, JoinRelType.RIGHT, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.RIGHT, false, joinKeys, null, null, context,
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.RIGHT, false, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(3, 4, null, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, null, "f", "d", "c", null, "a"),
-                IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SIMPLE_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SIMPLE_CASE,
+                JoinRelType.RIGHT, false, null, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
 
     }
 
     @Test
     public void testRightOuterJoin_MultiKey() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4),
-                IntegerBlock.of(1, 1, 2, 2, null),
-                StringBlock.of("a", "b", "a", "b", "a")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(5, 6, 7, 8, 9),
-                IntegerBlock.of(3, 3, 4, 4, 4),
-                StringBlock.of("a", "b", "a", "b", null)))
-            .build();
+        List<DataType> outTypes = ImmutableList.of(
+            DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType,
+            DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
 
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4),
-                StringBlock.of("a", "a", "a", null),
-                StringBlock.of("A", "B", "C", "D")))
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, null),
-                StringBlock.of("a", "b", "c", "b"),
-                StringBlock.of("E", "F", "G", "H")))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType),
-            mockEquiJoinKey(2, 1, DataTypes.StringType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.RIGHT, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(1, 1, null, 2, 2, null, 3, null, null, null, null),
             StringBlock.of("a", "a", null, "a", "b", null, "a", null, null, null, null),
             StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null),
             IntegerBlock.of(0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
             IntegerBlock.of(1, 1, 1, 2, 2, null, 3, 3, 4, 4, 4),
             StringBlock.of("a", "a", "b", "a", "b", "a", "a", "b", "a", "b", null)
-        )), false);
-        for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
-            test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.RIGHT, false, joinKeys, null, null, context,
-                bucketNum);
-            test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(1, 1, null, 2, 2, null, 3, null, null, null, null),
-                StringBlock.of("a", "a", null, "a", "b", null, "a", null, null, null, null),
-                StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null),
-                IntegerBlock.of(0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
-                IntegerBlock.of(1, 1, 1, 2, 2, null, 3, 3, 4, 4, 4),
-                StringBlock.of("a", "a", "b", "a", "b", "a", "a", "b", "a", "b", null)
-            )), false);
-        }
+        );
+        List<Chunk> expects[] = new List[4];
 
+        expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(null, null, null, 8008, null, null).
+            row(null, null, null, 8108, null, "XX").
+            row(null, null, null, 8018, 1000, null).
+            row(1000, "XX", "YY", 8118, 1000, "XX").
+            build();
+        expects[1] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(null, null, null, 8008, null, null).
+            row(null, "XX", "YN", 8108, null, "XX").
+            row(null, null, null, 8018, 1000, null).
+            row(1000, "XX", "YY", 8118, 1000, "XX").
+            build();
+        expects[2] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(null, null, null, 8008, null, null).
+            row(null, null, null, 8108, null, "XX").
+            row(1000, null, "NY", 8018, 1000, null).
+            row(1000, "XX", "YY", 8118, 1000, "XX").
+            build();
+        expects[3] = rowChunksBuilder(outTypes).addChunk(baseExpect).
+            row(null, null, "NN", 8008, null, null).
+            row(null, "XX", "YN", 8108, null, "XX").
+            row(1000, null, "NY", 8018, 1000, null).
+            row(1000, "XX", "YY", 8118, 1000, "XX").
+            build();
+        for (int nullSafeMask = 0; nullSafeMask < 4; nullSafeMask++) {
+            List<Chunk> expect = expects[nullSafeMask];
+            EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+
+            SingleExecTest test =
+                mockParallelHashJoinExec(EquiJoinMockData.MULTI_KEY_CASE, JoinRelType.RIGHT, false, null, null,
+                    context);
+            test.exec();
+            assertExecResultByRow(test.result(), expect, false);
+            for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
+                EquiJoinMockData.MULTI_KEY_CASE.setKeyIsNullSafeWithMask(nullSafeMask);
+                test = mockHybridHashJoinExec(
+                    EquiJoinMockData.MULTI_KEY_CASE,
+                    JoinRelType.RIGHT, false, null, null, context,
+                    bucketNum);
+                test.exec();
+                assertExecResultByRow(test.result(), expect, false);
+            }
+        }
     }
 
     @Test
     public void testSemiJoin() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(3, 4, 5, 6)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.SEMI, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
+        List<Chunk> expects = Collections.singletonList(new Chunk(
+            IntegerBlock.of(0, 1, 4, 5),
+            IntegerBlock.of(3, 4, 5, 3)));
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SEMI_CASE, JoinRelType.SEMI, false, null, null, context);
         test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-            IntegerBlock.of(0, 1, 4, 5, 7),
-            IntegerBlock.of(3, 4, 5, 3, 1)
-        )), false);
+        assertExecResultByRow(test.result(), expects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.SEMI, false, joinKeys, null, null, context,
+                EquiJoinMockData.SEMI_CASE,
+                JoinRelType.SEMI, false, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 4, 5, 7),
-                IntegerBlock.of(3, 4, 5, 3, 1)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
         }
 
     }
@@ -557,7 +550,8 @@ public class HashJoinTest extends BaseExecTest {
             mockEquiJoinKey(1, 0, DataTypes.IntegerType));
 
         Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.SEMI, false, joinKeys, null, null, context);
+            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.SEMI, false, joinKeys, null, null,
+                context);
         SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
         test.exec();
         assertExecResultByRow(test.result(), Collections.emptyList(), false);
@@ -575,93 +569,47 @@ public class HashJoinTest extends BaseExecTest {
 
     @Test
     public void testAntiJoin_NotExists() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, null)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(3, 4, 5, 6)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.ANTI, false, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<Chunk> expects = Collections.singletonList(new Chunk(
             IntegerBlock.of(2, 3, 6, 7),
             IntegerBlock.of(9, 7, 8, null)
-        )), false);
+        ));
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SEMI_CASE, JoinRelType.ANTI, false, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.ANTI, false, joinKeys, null, null, context,
+                EquiJoinMockData.SEMI_CASE,
+                JoinRelType.ANTI, false, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(2, 3, 6, 7),
-                IntegerBlock.of(9, 7, 8, null)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
         }
 
     }
 
     @Test
     public void testAntiJoin_NotIn() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, null)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(3, 4, 5, 6)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
+        List<Chunk> expects = Collections.singletonList(new Chunk(
+            IntegerBlock.of(2, 3, 6),
+            IntegerBlock.of(9, 7, 8)
+        ));
         List<IExpression> antiJoinOperands = Arrays.asList(
             new InputRefExpression(1)
         );
 
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.ANTI, false, joinKeys, null, antiJoinOperands,
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SEMI_CASE, JoinRelType.ANTI, false, null, antiJoinOperands,
                 context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
         test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-            IntegerBlock.of(2, 3, 6),
-            IntegerBlock.of(9, 7, 8)
-        )), false);
+        assertExecResultByRow(test.result(), expects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.ANTI, false, joinKeys, null, antiJoinOperands, context,
+                EquiJoinMockData.SEMI_CASE,
+                JoinRelType.ANTI, false, null, antiJoinOperands, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(2, 3, 6),
-                IntegerBlock.of(9, 7, 8)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
         }
 
     }
@@ -683,15 +631,16 @@ public class HashJoinTest extends BaseExecTest {
             new InputRefExpression(1)
         );
 
+        List<Chunk> expects = Collections.singletonList(new Chunk(
+            IntegerBlock.of(4, 5, 6, 7),
+            IntegerBlock.of(5, null, 8, null)
+        ));
         Executor exec =
             mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.ANTI, false, joinKeys, null, antiJoinOperands,
                 context);
         SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
         test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-            IntegerBlock.of(4, 5, 6, 7),
-            IntegerBlock.of(5, null, 8, null)
-        )), false);
+        assertExecResultByRow(test.result(), expects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
                 outerInput.getChunks(), outerInput.getDataTypes(),
@@ -699,10 +648,7 @@ public class HashJoinTest extends BaseExecTest {
                 JoinRelType.ANTI, false, joinKeys, null, antiJoinOperands, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, null, 8, null)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
         }
 
     }
@@ -752,130 +698,83 @@ public class HashJoinTest extends BaseExecTest {
 
     @Test
     public void testAntiJoin_WithCondition() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, null)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(3, 4, 5, 6)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 0, DataTypes.IntegerType));
-
+        List<Chunk> expects = Collections.singletonList(new Chunk(
+            IntegerBlock.of(2, 3, 4, 6, 7),
+            IntegerBlock.of(9, 7, 5, 8, null)
+        ));
         IExpression condition = new AbstractExpression() {
             @Override
             public Object eval(Row row) {
                 return !Objects.equals(row.getObject(2), 5);
             }
         };
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.ANTI, false, joinKeys, condition, null,
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SEMI_CASE, JoinRelType.ANTI, false, condition, null,
                 context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
         test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-            IntegerBlock.of(2, 3, 4, 6, 7),
-            IntegerBlock.of(9, 7, 5, 8, null)
-        )), false);
+        assertExecResultByRow(test.result(), expects, false);
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.ANTI, false, joinKeys, condition, null, context,
+                EquiJoinMockData.SEMI_CASE,
+                JoinRelType.ANTI, false, condition, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(2, 3, 4, 6, 7),
-                IntegerBlock.of(9, 7, 5, 8, null)
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
         }
 
     }
 
     @Test
     public void testInnerSingleJoin() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.StringType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                StringBlock.of("a", "b", "c", null),
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                StringBlock.of("d", "e", "f", null),
-                IntegerBlock.of(5, 6, 7, 8)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 1, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.INNER, true, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes = ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 1, 3, 4, 5, 6, 7),
             IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
-            StringBlock.of("c", null, "f", "d", "c", null, "a")
-        )), false);
+            StringBlock.of("c", null, "f", "d", "c", null, "a"));
+
+        List<Chunk> expects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            build();
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            row(1000, null, "XX").
+            build();
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.INNER, true, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+        test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.INNER, true, null, null, context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.INNER, true, joinKeys, null, null, context,
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.INNER, true, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, "f", "d", "c", null, "a")
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.INNER, true, null, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
 
     }
 
     @Test
     public void testInnerSingleJoin_withError() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.StringType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                StringBlock.of("a", "b", "c", null),
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                StringBlock.of("d", "e", "f", null),
-                IntegerBlock.of(4, 5, 6, 7)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 1, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.INNER, true, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.INNER, true, null, null, context);
         try {
             test.exec();
         } catch (TddlRuntimeException e) {
@@ -883,9 +782,8 @@ public class HashJoinTest extends BaseExecTest {
         }
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.INNER, false, joinKeys, null, null, context,
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.INNER, false, null, null, context,
                 bucketNum);
             try {
                 test.exec();
@@ -898,135 +796,117 @@ public class HashJoinTest extends BaseExecTest {
 
     @Test
     public void testLeftSingleJoin() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.StringType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                StringBlock.of("a", "b", "c", null),
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                StringBlock.of("d", "e", "f", null),
-                IntegerBlock.of(5, 6, 7, 8)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 1, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, true, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        List<DataType> outTypes = ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
             IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-            StringBlock.of("c", null, null, "f", "d", "c", null, "a")
-        )), false);
+            StringBlock.of("c", null, null, "f", "d", "c", null, "a"));
+        List<Chunk> expects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            row(1000, null, null).
+            build();
+
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            row(1000, null, "XX").
+            build();
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.LEFT, true, null, null,
+                context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+        test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.LEFT, true, null, null,
+                context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, true, joinKeys, null, null, context,
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.LEFT, true, null, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, null, "f", "d", "c", null, "a")
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.LEFT, true, null, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
 
     }
 
     @Test
     public void testLeftSingleJoin_WithCondition() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
-
-        MockExec innerInput = MockExec.builder(DataTypes.StringType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                StringBlock.of("a", "b", "c", null),
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                StringBlock.of("d", "e", "f", null),
-                IntegerBlock.of(5, 6, 7, 8)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 1, DataTypes.IntegerType));
-
-        IExpression condition = condition = new AbstractExpression() {
+        IExpression condition = new AbstractExpression() {
             @Override
             public Object eval(Row row) {
                 return !Objects.equals(row.getObject(2), "d");
             }
         };
+        List<DataType> outTypes = ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
 
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, true, joinKeys, condition, null,
-                context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
-        test.exec();
-        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+        Chunk baseExpect = new Chunk(
             IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
             IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-            StringBlock.of("c", null, null, "f", null, "c", null, "a")
-        )), false);
+            StringBlock.of("c", null, null, "f", null, "c", null, "a"));
+
+        List<Chunk> expects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            row(1000, null, null).
+            build();
+
+        List<Chunk> nullSafeExpects = rowChunksBuilder(outTypes).
+            addChunk(baseExpect).
+            row(1000, null, "XX").
+            build();
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.LEFT, true, condition, null,
+                context);
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+
+        EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+        test = mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.LEFT, true, condition, null,
+            context);
+        test.exec();
+        assertExecResultByRow(test.result(), nullSafeExpects, false);
 
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, true, joinKeys, condition, null, context,
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.LEFT, true, condition, null, context,
                 bucketNum);
             test.exec();
-            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3, 4, 5, 6, 7),
-                IntegerBlock.of(3, 4, 9, 7, 5, 3, 8, 1),
-                StringBlock.of("c", null, null, "f", null, "c", null, "a")
-            )), false);
+            assertExecResultByRow(test.result(), expects, false);
+
+            EquiJoinMockData.SINGLE_JOIN_CASE.setKeyIsNullSafe(0);
+            test = mockHybridHashJoinExec(
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.LEFT, true, condition, null, context,
+                bucketNum);
+            test.exec();
+            assertExecResultByRow(test.result(), nullSafeExpects, false);
+
         }
 
     }
 
     @Test
     public void testLeftSingleJoin_withError() {
-        MockExec outerInput = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .withChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, 1)))
-            .build();
 
-        MockExec innerInput = MockExec.builder(DataTypes.StringType, DataTypes.IntegerType)
-            .withChunk(new Chunk(
-                StringBlock.of("a", "b", "c", null),
-                IntegerBlock.of(1, 2, 3, 4)))
-            .withChunk(new Chunk(
-                StringBlock.of("d", "e", "f", null),
-                IntegerBlock.of(4, 5, 6, 7)))
-            .build();
-
-        List<EquiJoinKey> joinKeys = Arrays.asList(
-            mockEquiJoinKey(1, 1, DataTypes.IntegerType));
-
-        Executor exec =
-            mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, true, joinKeys, null, null, context);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SINGLE_JOIN_CASE, JoinRelType.LEFT, true, null, null,
+                context);
         try {
             test.exec();
         } catch (TddlRuntimeException e) {
@@ -1034,9 +914,8 @@ public class HashJoinTest extends BaseExecTest {
         }
         for (int bucketNum = 1; bucketNum <= 4; bucketNum++) {
             test = mockHybridHashJoinExec(
-                outerInput.getChunks(), outerInput.getDataTypes(),
-                innerInput.getChunks(), innerInput.getDataTypes(),
-                JoinRelType.LEFT, true, joinKeys, null, null, context,
+                EquiJoinMockData.SINGLE_JOIN_CASE,
+                JoinRelType.LEFT, true, null, null, context,
                 bucketNum);
             try {
                 test.exec();

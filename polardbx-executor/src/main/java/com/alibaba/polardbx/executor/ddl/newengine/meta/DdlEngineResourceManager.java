@@ -29,6 +29,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Function;
@@ -36,9 +37,10 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
-import javax.validation.constraints.NotNull;
 import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -48,6 +50,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * For the purpose of avoiding deadlock
@@ -59,7 +62,6 @@ public class DdlEngineResourceManager {
 
     private PersistentReadWriteLock lockManager = PersistentReadWriteLock.create();
 
-    private static final String OWNER_PREFIX = "DDL_";
     private static final long RETRY_INTERVAL = 1000L;
 
     private static final Map<String, List<DdlContext>> allLocksTryingToAcquire =
@@ -96,7 +98,7 @@ public class DdlEngineResourceManager {
         Pair<Set<String>, Set<String>> rwLocks = inferRwLocks(shared, exclusive);
         Set<String> readLocks = rwLocks.getKey();
         Set<String> writeLocks = rwLocks.getValue();
-        String owner = OWNER_PREFIX + jobId;
+        String owner = PersistentReadWriteLock.OWNER_PREFIX + jobId;
 
         final LocalDateTime beginTs = LocalDateTime.now();
         int retryCount = 0;
@@ -127,8 +129,9 @@ public class DdlEngineResourceManager {
                     "tryReadWriteLockBatch failed, schemaName:[%s], jobId:[%s], retryCount:[%d], shared:[%s], exclusive:[%s], blockers:[%s]",
                     schemaName, jobId, retryCount++, setToString(shared), setToString(exclusive), setToString(blockers))
                 );
-                if (CollectionUtils.isNotEmpty(blockers)) {
-                    List<DdlEngineRecord> blockerJobRecords = getBlockerJobRecords(schemaName, blockers);
+                Set<String> ddlBlockers = blockers.stream().filter(e-> StringUtils.startsWith(e, PersistentReadWriteLock.OWNER_PREFIX)).collect(Collectors.toSet());
+                if (CollectionUtils.isNotEmpty(ddlBlockers)) {
+                    List<DdlEngineRecord> blockerJobRecords = getBlockerJobRecords(schemaName, ddlBlockers);
                     if (CollectionUtils.isEmpty(blockerJobRecords)) {
                         //there are pending locks(which are without jobs).
                         //this situation should not happen
@@ -136,12 +139,12 @@ public class DdlEngineResourceManager {
                         //we release all the pending locks
                         String errMsg = String.format(
                             "found pending locks without DDL jobs, lock id:[%s].",
-                            Joiner.on(",").join(blockers)
+                            Joiner.on(",").join(ddlBlockers)
                         );
                         LOGGER.error(errMsg);
                         EventLogger.log(EventType.DDL_WARN, errMsg);
-                        for (String blocker : blockers) {
-                            lockManager.unlockReadWriteByOwner(blocker);
+                        for (String ddlBlocker : ddlBlockers) {
+                            lockManager.unlockReadWriteByOwner(ddlBlocker);
                         }
                     } else {
                         for (DdlEngineRecord record : blockerJobRecords) {
@@ -178,18 +181,18 @@ public class DdlEngineResourceManager {
     }
 
     public boolean downGradeWriteLock(Connection connection, long jobId, String writeLock){
-        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
         return lockManager.downGradeWriteLock(connection, owner, writeLock);
     }
 
     public int releaseResource(long jobId) {
-        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
         FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
         return lockManager.unlockReadWriteByOwner(owner);
     }
 
     public int releaseResource(Connection connection, long jobId) {
-        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
         FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
         return lockManager.unlockReadWriteByOwner(connection, owner);
     }
@@ -198,7 +201,7 @@ public class DdlEngineResourceManager {
         if(CollectionUtils.isEmpty(resouceSet)){
             return 0;
         }
-        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
         FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
         return lockManager.unlockReadWriteByOwner(connection, owner, resouceSet);
     }
@@ -215,28 +218,13 @@ public class DdlEngineResourceManager {
     }
 
     private List<DdlEngineRecord> getBlockerJobRecords(String schemaName, Set<String> blockerSet) {
-        Set<Long> jobIdSet = toJobIdSet(blockerSet);
+        Set<Long> jobIdSet = PersistentReadWriteLock.toJobIdSet(blockerSet);
         List<DdlEngineRecord> result = new DdlEngineAccessorDelegate<List<DdlEngineRecord>>() {
             @Override
             protected List<DdlEngineRecord> invoke() {
                 return engineAccessor.query(Lists.newArrayList(jobIdSet));
             }
         }.execute();
-        return result;
-    }
-
-    private Set<Long> toJobIdSet(Set<String> ownerSet) {
-        if (CollectionUtils.isEmpty(ownerSet)) {
-            return new HashSet<>(1);
-        }
-        Set<Long> result = new HashSet<>(ownerSet.size());
-        ownerSet.forEach(e -> {
-            try {
-                result.add(Long.valueOf(e.substring(OWNER_PREFIX.length())));
-            } catch (Exception exception) {
-                LOGGER.error("fail to convert owner to job id. owner:" + e, exception);
-            }
-        });
         return result;
     }
 

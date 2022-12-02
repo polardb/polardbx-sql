@@ -23,11 +23,11 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.function.SqlSequenceFunction;
 import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
@@ -754,9 +754,10 @@ public class ReplaceSequenceWithLiteralVisitor extends SqlShuttle {
         Long nextVal = result[0];
         if (result[1] != null) {
             final boolean isBatchSeq = parameterSettings.getSequenceSize().get() > 0;
+            final boolean isNewSeq = (seqBean.seqType == SequenceAttribute.Type.NEW);
             final boolean isSimpleSeq = (seqBean.seqType == SequenceAttribute.Type.SIMPLE);
 
-            if (isBatchSeq || !isSimpleSeq || null == lastInsertId) {
+            if (isBatchSeq || (!isNewSeq && !isSimpleSeq) || null == lastInsertId) {
                 lastInsertId = result[1];
             }
         }

@@ -16,10 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.protobuf.ByteString;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -29,6 +35,9 @@ import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * @author chenmo.cm
  */
@@ -36,7 +45,8 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
 
     protected String dbIndex;
     protected String schemaName;
-    protected String sqlTemplate;
+    //    protected String sqlTemplate;
+    protected BytesSql bytesSql;
     protected SqlNode nativeSqlNode;
     protected DbType dbType;
     protected SqlKind kind = SqlKind.SELECT;
@@ -48,16 +58,28 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
     protected XPlanTemplate XTemplate = null;
     protected ByteString sqlDigest = null;
 
+    protected boolean supportGalaxyPrepare = true; // support by default
+    protected ByteString galaxyPrepareDigest = null;
+
     protected boolean replicateRelNode = false;
+    protected Long intraGroupConnKey = null;
 
     public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet.replace(DrdsConvention.INSTANCE));
     }
 
-    public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate,
+//    public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate,
+//                              SqlNode nativeSqlNode, DbType dbType) {
+//        super(cluster, traitSet.replace(DrdsConvention.INSTANCE));
+//        this.bytesSql = BytesSql.getBytesSql(sqlTemplate);
+//        this.nativeSqlNode = nativeSqlNode;
+//        this.dbType = dbType;
+//    }
+
+    public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, BytesSql bytesSql,
                               SqlNode nativeSqlNode, DbType dbType) {
         super(cluster, traitSet.replace(DrdsConvention.INSTANCE));
-        this.sqlTemplate = sqlTemplate;
+        this.bytesSql = bytesSql;
         this.nativeSqlNode = nativeSqlNode;
         this.dbType = dbType;
     }
@@ -67,7 +89,7 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
         this.rowType = baseQueryOperation.rowType;
         this.dbIndex = baseQueryOperation.dbIndex;
         this.schemaName = baseQueryOperation.schemaName;
-        this.sqlTemplate = baseQueryOperation.sqlTemplate;
+        this.bytesSql = baseQueryOperation.bytesSql;
         this.nativeSqlNode = baseQueryOperation.nativeSqlNode;
         this.dbType = baseQueryOperation.dbType;
         this.kind = baseQueryOperation.kind;
@@ -76,16 +98,25 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
         this.useDbIndex = baseQueryOperation.useDbIndex;
         this.XTemplate = baseQueryOperation.XTemplate;
         this.sqlDigest = baseQueryOperation.sqlDigest;
+        this.supportGalaxyPrepare = baseQueryOperation.supportGalaxyPrepare;
+        this.galaxyPrepareDigest = baseQueryOperation.galaxyPrepareDigest;
+    }
+
+    @Override
+    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           List<List<String>> phyTableNamesOutput,
+                                                                           ExecutionContext executionContext) {
+        throw new NotSupportException();
     }
 
     @Override
     public String getNativeSql() {
-        return sqlTemplate;
+        return bytesSql.toString(null);
     }
 
-    public void setSqlTemplate(String sqlTemplate) {
-        this.sqlTemplate = sqlTemplate;
-    }
+//    public void setSqlTemplate(String sqlTemplate) {
+//        this.sqlTemplate = sqlTemplate;
+//    }
 
     public DbType getDbType() {
         return dbType;
@@ -106,7 +137,7 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
-        pw.item("sql", this.sqlTemplate);
+        pw.item("sql", this.bytesSql.display());
         return pw;
     }
 
@@ -175,6 +206,22 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
         this.sqlDigest = sqlDigest;
     }
 
+    public boolean isSupportGalaxyPrepare() {
+        return supportGalaxyPrepare;
+    }
+
+    public void setSupportGalaxyPrepare(boolean supportGalaxyPrepare) {
+        this.supportGalaxyPrepare = supportGalaxyPrepare;
+    }
+
+    public ByteString getGalaxyPrepareDigest() {
+        return galaxyPrepareDigest;
+    }
+
+    public void setGalaxyPrepareDigest(ByteString galaxyPrepareDigest) {
+        this.galaxyPrepareDigest = galaxyPrepareDigest;
+    }
+
     public int getAffectedRows() {
         return affectedRows;
     }
@@ -189,5 +236,26 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
 
     public void setReplicateRelNode(boolean replicateRelNode) {
         this.replicateRelNode = replicateRelNode;
+    }
+
+    public BytesSql getBytesSql() {
+        if (bytesSql == null) {
+            if (nativeSqlNode != null) {
+                bytesSql = RelUtils.toNativeBytesSql(nativeSqlNode, DbType.MYSQL);
+            }
+        }
+        return bytesSql;
+    }
+
+    public void setBytesSql(BytesSql bytesSql) {
+        this.bytesSql = bytesSql;
+    }
+
+    public Long getIntraGroupConnKey() {
+        return intraGroupConnKey;
+    }
+
+    public void setIntraGroupConnKey(Long intraGroupConnKey) {
+        this.intraGroupConnKey = intraGroupConnKey;
     }
 }

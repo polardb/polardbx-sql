@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.rule;
 
+import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.biv.MockDataManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
+import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -37,7 +40,6 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.rule.exception.RouteCompareDiffException;
@@ -259,7 +261,7 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
         Object v = comparative.getValue();
         if (v instanceof RexDynamicParam) {
             int index = ((RexDynamicParam) v).getIndex();
-            if (index != -2) {
+            if (index != PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
                 comparative.setValue(dataType.convertJavaFrom(param.get(index + 1).getValue()));
             }
         }
@@ -412,12 +414,14 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
             return null;
         }
 
+        boolean rowDynamic = RexUtils.isRowDynamic(row);
+
         final int op = Comparative.Equivalent;
-        if (row.getOperands().size() == 1) {
-            // id in (1)
-            // 1 in (id)
-            RexNode column = columnInValue ? left : row.getOperands().get(0);
-            RexNode valueNode = columnInValue ? row.getOperands().get(0) : left;
+
+        ComparativeBaseList or = new ComparativeOR();
+        for (RexNode rowValue : row.getOperands()) {
+            RexNode column = columnInValue ? left : rowValue;
+            RexNode valueNode = columnInValue ? rowValue : left;
 
             Object value = null;
             RelDataTypeField columnInfo = null;
@@ -432,42 +436,22 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
             }
             for (String colName : colNames) {
                 if (null != value && null != columnInfo && colName.equalsIgnoreCase(columnInfo.getName())) {
-                    return new Comparative(op, value);
+                    if (rowDynamic) {
+                        or.getList().add(new DynamicComparative(op, value, -1));
+                    } else {
+                        or.getList().add(new Comparative(op, value));
+                    }
+                } else {
+                    continue;
                 }
             }
 
-        } else if (row.getOperands().size() > 1) {
+        } // end of for
 
-            ComparativeBaseList or = new ComparativeOR();
-            for (RexNode rowValue : row.getOperands()) {
-                RexNode column = columnInValue ? left : rowValue;
-                RexNode valueNode = columnInValue ? rowValue : left;
-
-                Object value = null;
-                RelDataTypeField columnInfo = null;
-                if (column instanceof RexInputRef) {
-                    columnInfo = rowType.getFieldList().get(((RexInputRef) column).getIndex());
-                    value = getValue(valueNode, columnInfo, param);
-
-                    if (value == null) {
-                        // value is not a RexLiteral
-                        return null;
-                    }
-                }
-                for (String colName : colNames) {
-                    if (null != value && null != columnInfo && colName.equalsIgnoreCase(columnInfo.getName())) {
-                        or.getList().add(new Comparative(op, value));
-                    } else {
-                        return null;
-                    }
-                }
-
-            } // end of for
-
-            return or;
-        }
-
-        return null;
+        return or;
+//        }
+//
+//        return null;
     }
 
     /**
@@ -478,11 +462,11 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
         RexNode left = operands.get(0);
         RexNode right = operands.get(1);
 
-        if (isInputRef(left) && isConstant(right)) {
+        if (isInputRef(left) && (isConstant(right) || SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(right))) {
             return true;
         }
 
-        if (isConstant(left) && isInputRef(right)) {
+        if (isInputRef(right) && (isConstant(left) || SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(left))) {
             return true;
         }
 
@@ -717,4 +701,5 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
         // scalar functions
         return null;
     }
+
 }

@@ -16,19 +16,41 @@
 
 package com.alibaba.polardbx.executor.balancer.splitpartition;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.executor.balancer.stats.StatsUtils;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
+import com.alibaba.polardbx.optimizer.partition.util.PartTupleRouter;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import org.apache.calcite.util.PrecedenceClimbingParser;
+import org.checkerframework.checker.nullness.Opt;
 
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.*;
+
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION;
+import static java.lang.Math.max;
 
 /**
  * Utilities for SplitPoint
@@ -105,12 +127,16 @@ public class SplitPointUtils {
         return StatsUtils.queryGroupTyped(schema, physicalDatabase, columnTypes, sql);
     }
 
-    // TODO(moyi) move it to a Utils
     public static boolean supportSampling(PartitionStat partition) {
         String schema = partition.getSchema();
         String physicalDb = partition.getPhysicalDatabase();
         List<List<Object>> res = StatsUtils.queryGroupByPhyDb(schema, physicalDb, SQL_CHECK_FEATURE_SUPPORTED);
         return res.stream().anyMatch(row -> row.size() >= 2 && "ON".equals(row.get(1)));
+
+    }
+
+    public static boolean supportStatistics(PartitionStat partition) {
+        return DdlHelper.getInstConfigAsBoolean(SQLRecorderLogger.ddlEngineLogger, ENABLE_AUTO_SPLIT_PARTITION, true);
     }
 
     /**
@@ -140,4 +166,76 @@ public class SplitPointUtils {
         return result;
     }
 
+    public static List<SearchDatumInfo> generateSplitBounds(final String tableSchema,
+                                                            final String logicalTableName,
+                                                            final String partName,
+                                                            final int splitCount,
+                                                            final long maxPartitionSize) {
+        ExecutionContext ec = new ExecutionContext();
+        ec.setParams(new Parameters());
+        ec.setSchemaName(tableSchema);
+        ec.setServerVariables(new HashMap<>());
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(tableSchema).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+        List<Pair<List<Object>, SearchDatumInfo>> rowValues2SearchDatums = new ArrayList<>();
+        SplitPartitionStats splitPartitionStats =
+            SplitPartitionStats.createForSplitPartition(tableSchema, logicalTableName, partName);
+        splitPartitionStats.prepare();
+        List<List<Object>> sampleRows;
+        try {
+            sampleRows = splitPartitionStats.sampleTablePartitions();
+        } catch (SQLException e) {
+            return null;
+        }
+        if (sampleRows == null) {
+            return null;
+        }
+        PartTupleRouter tupleRouter = new PartTupleRouter(partitionInfo, ec);
+        tupleRouter.init();
+        for (int i = 0; i < sampleRows.size(); i++) {
+            SearchDatumInfo searchDatumInfo = tupleRouter.calcSearchDatum(sampleRows.get(i));
+            rowValues2SearchDatums.add(new Pair(sampleRows.get(i), searchDatumInfo));
+        }
+        Collections.sort(rowValues2SearchDatums,
+            (r1, r2) -> partitionInfo.getPartitionBy().getBoundSpaceComparator().compare(r1.getValue(), r2.getValue()));
+
+        int splitSize = max(1, rowValues2SearchDatums.size() / splitCount);
+        List<SearchDatumInfo> splitPoints = new ArrayList<>();
+        int lastRow = 0;
+        int row = lastRow + splitSize;
+        while (lastRow < sampleRows.size()) {
+            SearchDatumInfo comparedSearchDatumInfo = rowValues2SearchDatums.get(row).getValue();
+            SearchDatumInfo searchDatumInfo = null;
+            int j = row;
+            for (; j > lastRow; j--) {
+                searchDatumInfo = rowValues2SearchDatums.get(j).getValue();
+                if (partitionInfo.getPartitionBy().getBoundSpaceComparator()
+                    .compare(comparedSearchDatumInfo, searchDatumInfo) != 0) {
+                    j++;
+                    break;
+                }
+            }
+            if (j == lastRow) {
+                for (j = row; j < sampleRows.size(); j++) {
+                    searchDatumInfo = rowValues2SearchDatums.get(j).getValue();
+                    if (partitionInfo.getPartitionBy().getBoundSpaceComparator()
+                        .compare(comparedSearchDatumInfo, searchDatumInfo) != 0) {
+                        break;
+                    }
+                }
+            }
+            lastRow = j;
+            if (lastRow >= sampleRows.size()) {
+                break;
+            }
+            splitPoints.add(rowValues2SearchDatums.get(lastRow).getValue());
+            if (lastRow + splitSize >= sampleRows.size() - 1) {
+                break;
+            }
+            row = lastRow + splitSize;
+        }
+        return splitPoints;
+    }
 }
+
+

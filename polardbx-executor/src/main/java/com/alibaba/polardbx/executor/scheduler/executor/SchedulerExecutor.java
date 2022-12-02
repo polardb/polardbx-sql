@@ -16,34 +16,81 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor;
 
-import com.alibaba.polardbx.common.scheduler.ScheduledJobExecutorType;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.scheduler.executor.spm.SPMBaseLineSyncScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticRowCountCollectionScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import org.apache.commons.lang3.StringUtils;
 
-public interface SchedulerExecutor {
+import java.text.ParseException;
+import java.util.Calendar;
 
-    static SchedulerExecutor createSchedulerExecutor(ExecutableScheduledJob job){
-        if(job == null || StringUtils.isEmpty(job.getExecutorType())){
+public abstract class SchedulerExecutor {
+
+    public static SchedulerExecutor createSchedulerExecutor(ExecutableScheduledJob job) {
+        if (job == null || StringUtils.isEmpty(job.getExecutorType())) {
             return null;
         }
-        if(StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.LOCAL_PARTITION.name())){
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.LOCAL_PARTITION.name())) {
             return new LocalPartitionScheduledJob(job);
         }
-        if(StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.REBALANCE.name())){
-            return new RebalanceScheduledJob(job);
-        }
 
-        if(StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PURGE_OSS_FILE.name())){
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PURGE_OSS_FILE.name())) {
             return new PurgeOssFileScheduledJob(job);
         }
 
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PARTITION_VISUALIZER.name())) {
+            return new PartitionVisualizerScheduledJob(job);
+        }
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.AUTO_SPLIT_TABLE_GROUP.name())) {
+            return new AutoSplitTableGroupScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.BASELINE_SYNC.name())) {
+            return new SPMBaseLineSyncScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.STATISTIC_ROWCOUNT_COLLECTION.name())) {
+            return new StatisticRowCountCollectionScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.STATISTIC_SAMPLE_SKETCH.name())) {
+            return new StatisticSampleCollectionScheduledJob(job);
+        }
+        if(StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.AUTO_SPLIT_TABLE_GROUP.name())){
+            return new AutoSplitTableGroupScheduledJob(job);
+        }
         return null;
     }
 
     /**
      * invoked by SchedulerExecutorRunner
-     * @return: whether successfully executed the job
      */
-    boolean execute();
+    public abstract boolean execute();
 
+    public Pair<Boolean, String> needInterrupted() {
+        return Pair.of(false, "default");
+    }
+
+    public boolean safeExit() {
+        // do nothing default
+        return true;
+    }
+
+    public boolean inMaintenanceWindow() {
+        // TODO support timezone
+        try {
+            return InstConfUtil.isInMaintenanceTimeWindow();
+        } catch (ParseException e) {
+            // ignore
+        }
+        return true;
+    }
 }

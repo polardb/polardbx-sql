@@ -31,9 +31,9 @@
       {
         "inputDataType": "TinyInt",
         "outputDataType": "Decimal",
-        "inputVectorType": "ShortBlock",
+        "inputVectorType": "ByteBlock",
         "outputVectorType": "DecimalBlock",
-        "inputType": "short",
+        "inputType": "byte",
         "outputType": "Decimal"
       },
       {
@@ -111,9 +111,9 @@
       {
         "inputDataType": "TinyInt",
         "outputDataType": "Long",
-        "inputVectorType": "ShortBlock",
+        "inputVectorType": "ByteBlock",
         "outputVectorType": "LongBlock",
-        "inputType": "short",
+        "inputType": "byte",
         "outputType": "Long"
       },
       {
@@ -215,9 +215,9 @@
       {
         "inputDataType": "TinyInt",
         "outputDataType": "ULong",
-        "inputVectorType": "ShortBlock",
+        "inputVectorType": "ByteBlock",
         "outputVectorType": "ULongBlock",
-        "inputType": "short",
+        "inputType": "byte",
         "outputType": "ULong"
       },
       {

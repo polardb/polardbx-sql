@@ -19,7 +19,9 @@ package com.alibaba.polardbx.executor.ddl.job.factory.localpartition;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.druid.DbType;
@@ -28,8 +30,12 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.ddl.job.builder.LocalPartitionPhysicalSqlBuilder;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
+import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.ArchiveOSSTableDataTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.ArchiveOSSTableDataWithPauseTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileValidationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
@@ -41,8 +47,10 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.LocalPartitionManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.ReorganizeLocalPartitionPreparedData;
@@ -60,6 +68,7 @@ import org.apache.commons.collections.CollectionUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -191,14 +200,30 @@ public class ExpireLocalPartitionJobFactory extends DdlJobFactory {
             Engine targetTableEngine = archiveTableMeta.getEngine();
             List<Long> archiveOSSTableDataTaskIdList = new ArrayList<>();
             allPartitionsToExpire.forEach(physicalPartitionName -> {
-                ArchiveOSSTableDataTask archiveOSSTableDataTask = new ArchiveOSSTableDataTask(
-                    archiveTableSchema, archiveTableName,
-                    schemaName, primaryTableName,
-                    physicalPartitionName, targetTableEngine
-                );
+                ArchiveOSSTableDataTask archiveOSSTableDataTask;
+                if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPIRE_FILE_STORAGE_PAUSE)) {
+                    archiveOSSTableDataTask = new ArchiveOSSTableDataTask(
+                        archiveTableSchema, archiveTableName,
+                        schemaName, primaryTableName,
+                        physicalPartitionName, targetTableEngine
+                    );
+                } else {
+                    archiveOSSTableDataTask = new ArchiveOSSTableDataWithPauseTask(
+                        archiveTableSchema, archiveTableName,
+                        schemaName, primaryTableName,
+                        physicalPartitionName, targetTableEngine
+                    );
+                }
                 archiveOSSTableDataTask.setTaskId(ID_GENERATOR.nextId());
                 taskList.add(archiveOSSTableDataTask);
                 archiveOSSTableDataTaskIdList.add(archiveOSSTableDataTask.getTaskId());
+
+                FileValidationTask fileValidationTask = new FileValidationTask(
+                    archiveTableSchema, archiveTableName,
+                    schemaName, primaryTableName,
+                    physicalPartitionName
+                );
+                taskList.add(fileValidationTask);
             });
 
             // build timestamp update task
@@ -221,7 +246,7 @@ public class ExpireLocalPartitionJobFactory extends DdlJobFactory {
     private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql) {
         ddl.sqlNode =
             SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
-        LocalPartitionPhysicalSqlBuilder builder = new LocalPartitionPhysicalSqlBuilder(
+        DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
             ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );
         builder.build();
@@ -232,11 +257,22 @@ public class ExpireLocalPartitionJobFactory extends DdlJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, primaryTableName));
+
+        Optional<Pair<String, String>> archive = CheckOSSArchiveUtil.getArchive(schemaName, primaryTableName);
+        archive.ifPresent(x -> {
+            resources.add(concatWithDot(x.getKey(), x.getValue()));
+        });
     }
 
     @Override
     protected void sharedResources(Set<String> resources) {
-
+        // add forbid drop read lock if the 'expire' ddl is cross schema
+        Optional<Pair<String, String>> archive = CheckOSSArchiveUtil.getArchive(schemaName, primaryTableName);
+        archive.ifPresent(x -> {
+            if (!x.getKey().equalsIgnoreCase(schemaName)) {
+                resources.add(LockUtil.genForbidDropResourceName(x.getKey()));
+            }
+        });
     }
 
 }

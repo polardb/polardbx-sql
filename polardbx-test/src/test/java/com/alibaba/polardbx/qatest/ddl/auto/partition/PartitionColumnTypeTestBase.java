@@ -37,15 +37,21 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
     public PartitionColumnTypeTestBase.TestParameter parameter;
     protected boolean testQueryByPrepStmt = false;
+    protected String testDbName;
 
     public PartitionColumnTypeTestBase(PartitionColumnTypeTestBase.TestParameter parameter) {
         this.parameter = parameter;
+        this.testDbName = "part_col_type_db";
     }
 
     @Ignore
     public void testInsertAndSelect() throws SQLException {
 
         try {
+            String dbName = testDbName;
+            String createDbPolarx = String.format("create database if not exists %s mode='auto'", dbName);
+            String createDbMysql = String.format("create database if not exists %s", dbName);
+
             String tblName = parameter.tblName;
             String dropTbl = String.format("drop table if exists %s", tblName);
 
@@ -169,6 +175,9 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
             String selectSql =
                 String.format("select %s from %s where %s order by %s", cols, tblName, partPredStr, cols);
 
+            String fullScanSql =
+                String.format("select %s from %s order by %s", cols, tblName, cols);
+
             if (parameter.rngQuerySortedValues != null && parameter.rngQuerySortedValues.length > 1) {
                 for (int i = 0; i < parameter.rngQuerySortedValues.length - 1; i++) {
                     String rngSelectSql = null;
@@ -193,68 +202,72 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
             }
 
             String castStr = this.parameter.toString();
+
+            logSql(castStr, "createDb", createDbPolarx);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createDbPolarx);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, createDbMysql);
+
+            Connection polarConn = getPolardbxConnection(testDbName);
+            Connection mysqlConn = getMysqlConnection(testDbName);
+
             logSql(castStr, "drop", dropTbl);
+            JdbcUtil.executeUpdateSuccess(polarConn, dropTbl);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, dropTbl);
+
             if (!StringUtil.isEmpty(ddlPrepStmt)) {
                 logSql(castStr, "ddlPrepStmt", ddlPrepStmt);
+                execPrepStmts(polarConn, ddlPrepStmt);
+                execPrepStmts(mysqlConn, ddlPrepStmt);
             }
+
             logSql(castStr, "create", createTbl);
+            JdbcUtil.executeUpdateSuccess(polarConn, createTbl);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, createTbl);
+
             if (!StringUtil.isEmpty(insertPrepStmt)) {
                 logSql(castStr, "insertPrepStmt", insertPrepStmt);
+                execPrepStmts(polarConn, insertPrepStmt);
+                execPrepStmts(mysqlConn, insertPrepStmt);
             }
+
             logSql(castStr, "insert", insertSql);
+            JdbcUtil.executeUpdateSuccess(polarConn, insertSql);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, insertSql);
+
             if (!StringUtil.isEmpty(selectPrepStmt)) {
                 logSql(castStr, "selectPrepStmt", selectPrepStmt);
-            }
-            logSql(castStr, "select", selectSql);
-            for (int i = 0; i < pointSelects.length; i++) {
-                logSql(castStr, "point-select", pointSelects[i]);
-            }
-            for (int i = 0; i < rngSelects.size(); i++) {
-                logSql(castStr, "range-select", rngSelects.get(i));
+                execPrepStmts(polarConn, selectPrepStmt);
+                execPrepStmts(mysqlConn, selectPrepStmt);
             }
 
-            JdbcUtil.executeUpdateSuccess(tddlConnection, dropTbl);
-            if (!StringUtil.isEmpty(ddlPrepStmt)) {
-                execPrepStmts(tddlConnection, ddlPrepStmt);
-            }
-            JdbcUtil.executeUpdateSuccess(tddlConnection, createTbl);
-            if (!StringUtil.isEmpty(insertPrepStmt)) {
-                execPrepStmts(tddlConnection, insertPrepStmt);
-            }
-            JdbcUtil.executeUpdateSuccess(tddlConnection, insertSql);
-
-            JdbcUtil.executeUpdateSuccess(mysqlConnection, dropTbl);
-            if (!StringUtil.isEmpty(ddlPrepStmt)) {
-                execPrepStmts(mysqlConnection, ddlPrepStmt);
-            }
-            JdbcUtil.executeUpdateSuccess(mysqlConnection, createTbl);
-            if (!StringUtil.isEmpty(insertPrepStmt)) {
-                execPrepStmts(mysqlConnection, insertPrepStmt);
-            }
-            JdbcUtil.executeUpdateSuccess(mysqlConnection, insertSql);
-
-            if (!StringUtil.isEmpty(selectPrepStmt)) {
-                execPrepStmts(tddlConnection, selectPrepStmt);
-                execPrepStmts(mysqlConnection, selectPrepStmt);
+            try {
+                logSql(castStr, "full-scan-select", fullScanSql);
+                execPrepStmtsByParams(fullScanSql, new ArrayList<>(), mysqlConn, polarConn);
+            } catch (Throwable ex) {
+                Assert.fail(String.format("table data is diff:%s",fullScanSql));
+                throw ex;
             }
 
             if (!testQueryByPrepStmt) {
+                logSql(castStr, "select", selectSql);
                 DataValidator validator = new DataValidator();
-                validator.selectContentSameAssert(selectSql, new ArrayList<>(), mysqlConnection, tddlConnection);
+                validator.selectContentSameAssert(selectSql, new ArrayList<>(), mysqlConn, polarConn);
 
                 for (int i = 0; i < pointSelects.length; i++) {
+                    logSql(castStr, "point-select", pointSelects[i]);
                     validator
-                        .selectContentSameAssert(pointSelects[i], new ArrayList<>(), mysqlConnection, tddlConnection,
+                        .selectContentSameAssert(pointSelects[i], new ArrayList<>(), mysqlConn, polarConn,
                             true);
                 }
+
                 for (int i = 0; i < rngSelects.size(); i++) {
+                    logSql(castStr, "range-select", rngSelects.get(i));
                     validator
-                        .selectContentSameAssert(rngSelects.get(i), new ArrayList<>(), mysqlConnection, tddlConnection,
+                        .selectContentSameAssert(rngSelects.get(i), new ArrayList<>(), mysqlConn, polarConn,
                             true);
                 }
 
             } else {
-
                 for (int i = 0; i < parameter.selectValues.length; i++) {
                     String rawPointVal = parameter.selectValues[i];
                     if (rawPointVal.contains("null")) {
@@ -264,7 +277,8 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
                     pointVal = pointVal.trim();
                     List<Object> params = new ArrayList<>();
                     params.add(pointVal);
-                    execPrepStmtsByParams(pointSelectPattern, params);
+                    logSql(castStr, "prep-point-select", pointSelectPattern + ", param: %s" + pointVal);
+                    execPrepStmtsByParams(pointSelectPattern, params, mysqlConn, polarConn);
                 }
             }
 
@@ -283,9 +297,9 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
         }
     }
 
-    protected void execPrepStmtsByParams(String sql, List<Object> params) {
+    protected void execPrepStmtsByParams(String sql, List<Object> params, Connection mysqlConn, Connection polarxConn) {
         DataValidator validator = new DataValidator();
-        validator.selectContentSameAssert(sql, params, mysqlConnection, tddlConnection, true);
+        validator.selectContentSameAssert(sql, params, mysqlConn, polarxConn, true);
     }
 
     protected static void logSql(String caseStr, String sqlType, String sql) {
@@ -404,17 +418,17 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
             if (i > 0) {
                 sb.append(",");
             }
-            sb.append(genStringHexBinaryByCharset(values[i], charset, true));
+            sb.append(genStringHexBinaryByCharset(values[i], charset, true, true));
         }
         sb.append(")");
         return sb.toString();
     }
 
     protected static String genStringHexBinaryByCharset(String value, String charset) {
-        return genStringHexBinaryByCharset(value, charset, false);
+        return genStringHexBinaryByCharset(value, charset, true, false);
     }
 
-    protected static String genStringHexBinaryByCharset(String value, String charset, boolean isForList) {
+    protected static String genStringHexBinaryByCharset(String value, String charset, boolean prefixCharset, boolean isForList) {
         StringBuilder sb = new StringBuilder("");
         byte[] byteArr = null;
         try {
@@ -426,9 +440,12 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
         if (!isForList) {
             sb.append("(");
         }
-        sb.append(" _");
-        sb.append(charset);
-        sb.append(" x'");
+        if (prefixCharset) {
+            sb.append(" _");
+            sb.append(charset);
+            sb.append(" ");
+        }
+        sb.append("x'");
         for (int i = 0; i < byteArr.length; i++) {
             sb.append(HexUtils.getHexString(byteArr[i], 1));
         }

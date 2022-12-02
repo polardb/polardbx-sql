@@ -160,7 +160,7 @@ public class GsiBackfillResumeTest extends DDLBaseNewDBTestCase {
                     0,
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-                    "GsiBackfillResumeTest");
+                    "{\"testCaseName\":\"GsiBackfillResumeTest\"}");
             } catch (SQLException e) {
                 throw GeneralUtil.nestedException(e);
             }

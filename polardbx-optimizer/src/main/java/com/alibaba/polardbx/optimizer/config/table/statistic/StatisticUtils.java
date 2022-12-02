@@ -16,46 +16,34 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
-import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.core.datatype.AbstractDataType;
-import com.alibaba.polardbx.optimizer.core.datatype.Calculator;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.google.common.util.concurrent.RateLimiter;
 
 import java.sql.Types;
+import java.text.ParseException;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class StatisticUtils {
 
     private static final Logger logger = LoggerFactory.getLogger("statistics");
     public static final int DEFAULT_SAMPLE_SIZE = 100000;
-
-    public static void logInfo(String schemaName, String msg) {
-        logger.info(msg);
-        OptimizerContext oc = OptimizerContext.getContext(schemaName);
-        if (oc != null) {
-            oc.getStatisticManager().getStatisticLogInfo().add("msg");
-        }
-    }
-
-    public static void logDebug(String schemaName, String msg) {
-        logger.debug(msg);
-    }
+    public static final int DEFAULT_SAMPLE_SIZE_ = 80000;
 
     public static DataType decodeDataType(String type) {
         DataType datatype;
@@ -226,4 +214,5 @@ public class StatisticUtils {
     public static String buildSketchKey(String schemaName, String tableName, String columnNames) {
         return (schemaName + ":" + tableName + ":" + columnNames).toLowerCase();
     }
+
 }

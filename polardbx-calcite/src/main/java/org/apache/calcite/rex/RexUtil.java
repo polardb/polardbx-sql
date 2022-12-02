@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.rex;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
@@ -55,6 +57,7 @@ import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mappings;
+import org.apache.http.protocol.ExecutionContext;
 
 import javax.annotation.Nonnull;
 import java.util.*;
@@ -161,6 +164,22 @@ public class RexUtil {
     return generateCastExpressions(rexBuilder, lhsRowType, rhsExps);
   }
 
+  public static List<RexNode> generateCastExpressionsWithCast(
+      RexBuilder rexBuilder,
+      RelDataType lhsRowType,
+      RelDataType rhsRowType) {
+    final List<RelDataTypeField> fieldList = rhsRowType.getFieldList();
+    int n = fieldList.size();
+    assert n == lhsRowType.getFieldCount()
+        : "field count: lhs [" + lhsRowType + "] rhs [" + rhsRowType + "]";
+    List<RexNode> rhsExps = new ArrayList<>();
+    for (RelDataTypeField field : fieldList) {
+      rhsExps.add(
+          rexBuilder.makeInputRef(field.getType(), field.getIndex()));
+    }
+    return generateCastExpressionsWithCast(rexBuilder, lhsRowType, rhsExps);
+  }
+
   /**
    * Generates a cast for a row type.
    *
@@ -185,6 +204,27 @@ public class RexUtil {
         castExps.add(rhsExp);
       } else {
         castExps.add(rexBuilder.makeCast(lhsType, rhsExp));
+      }
+    }
+    return castExps;
+  }
+
+  public static List<RexNode> generateCastExpressionsWithCast(
+      RexBuilder rexBuilder,
+      RelDataType lhsRowType,
+      List<RexNode> rhsExps) {
+    List<RelDataTypeField> lhsFields = lhsRowType.getFieldList();
+    List<RexNode> castExps = new ArrayList<>();
+    for (Pair<RelDataTypeField, RexNode> pair
+        : Pair.zip(lhsFields, rhsExps, true)) {
+      RelDataTypeField lhsField = pair.left;
+      RelDataType lhsType = lhsField.getType();
+      final RexNode rhsExp = pair.right;
+      RelDataType rhsType = rhsExp.getType();
+      if (lhsType.equals(rhsType)) {
+        castExps.add(rhsExp);
+      } else {
+        castExps.add(rexBuilder.makeCastForConvertlet(lhsType, rhsExp, SqlStdOperatorTable.IMPLICIT_CAST));
       }
     }
     return castExps;
@@ -731,8 +771,8 @@ public class RexUtil {
   public static boolean isConstant(RexNode node) {
     return node.accept(ConstantFinder.INSTANCE);
   }
-  
-  
+
+
   /**
    * Returns whether a given expression is deterministic.
    *
@@ -2027,6 +2067,36 @@ public class RexUtil {
       return new RexCall(e.getType(), SqlStdOperatorTable.NOT,
           ImmutableList.of(e));
     }
+  }
+
+  public static RexNode recoverInExpr(RexNode partPredInfo, Map<Integer, ParameterContext> map) {
+    final RexShuttle visitor = new RexShuttle() {
+      @Override
+      public RexNode visitCall(final RexCall call) {
+        if (call.getOperator() == SqlStdOperatorTable.ROW &&
+            call.getOperands().size() == 1 &&
+            call.getOperands().get(0) instanceof RexDynamicParam) {
+          RexDynamicParam rexDynamicParam = (RexDynamicParam) call.getOperands().get(0);
+          ParameterContext parameterContext = map.get(rexDynamicParam.getIndex() + 1);
+          if (parameterContext != null
+              && parameterContext.getValue() != null
+              && parameterContext.getValue() instanceof RawString) {
+            List<RexNode> clonedOperands = Lists.newArrayList();
+            for (int i = 0; i < ((RawString) parameterContext.getValue()).size(); i++) {
+              RexDynamicParam r =
+                  new RexDynamicParam(rexDynamicParam.getType(), rexDynamicParam.getIndex());
+              r.setSubIndex(i);
+              clonedOperands.add(r);
+            }
+            return new RexCall(call.getType(),
+                call.getOperator(),
+                clonedOperands);
+          }
+        }
+        return super.visitCall(call);
+      }
+    };
+    return partPredInfo.accept(visitor);
   }
 
   public static SqlOperator op(SqlKind kind) {

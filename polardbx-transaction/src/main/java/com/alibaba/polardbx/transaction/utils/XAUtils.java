@@ -18,6 +18,7 @@ package com.alibaba.polardbx.transaction.utils;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -30,6 +31,9 @@ public class XAUtils {
 
     private static final int XA_RETRY_INTERVAL = 2000;
     private static final int XA_RETRY_MAX = 30;
+    private static final int MAX_BQUAL_LENGTH = 64;
+    private static final int MAX_TRX_GROUP_ID_LENGTH = 1 + 4;
+    private static final int MAX_GROUP_LENGTH_FOR_BQUAL = MAX_BQUAL_LENGTH - MAX_TRX_GROUP_ID_LENGTH;
 
     private static void xaRollback(Connection conn, long primaryGroupUid, String group, long txid) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
@@ -93,28 +97,75 @@ public class XAUtils {
         }
     }
 
+    /**
+     * Trim group key for used as bqual
+     */
+    private static String uniqueBqual(String bqual) {
+        if (null == bqual) {
+            return bqual;
+        }
+
+        String uniqueBqual;
+        // For Share ReadView, bqual = group + @ + 4 digits
+        final int lastIndexOfAt = bqual.lastIndexOf('@');
+        final boolean usingShareReadView = (lastIndexOfAt != -1);
+
+        final boolean bqualTooLong = bqual.length() > MAX_BQUAL_LENGTH;
+        final boolean groupTooLong = !usingShareReadView && bqual.length() > MAX_GROUP_LENGTH_FOR_BQUAL;
+        if (bqualTooLong || groupTooLong) {
+            if (usingShareReadView) {
+                // bqual = group + @ + 4 digits
+                uniqueBqual = Long.toHexString(FnvHash.fnv1a_64(bqual.substring(0, lastIndexOfAt))) + bqual.substring(
+                    lastIndexOfAt);
+            } else {
+                uniqueBqual = Long.toHexString(FnvHash.fnv1a_64(bqual));
+            }
+        } else {
+            uniqueBqual = bqual;
+        }
+
+        return uniqueBqual;
+    }
+
+    public static String uniqueGroupForBqual(String group) {
+        return group.length() > MAX_GROUP_LENGTH_FOR_BQUAL ? Long.toHexString(FnvHash.fnv1a_64(group)) : group;
+    }
+
     public static class XATransInfo {
         public final long transId;
         public final String bqual;
         public final long primaryGroupUid;
+        public final String trimedBqual;
 
         public XATransInfo(long transId, String group, long uid) {
             this.transId = transId;
             this.primaryGroupUid = uid;
             this.bqual = group;
+            this.trimedBqual = uniqueBqual(group);
         }
 
         /**
-         * ReadView 共享的XA事务信息
+         * 获取 ReadView 共享的XA事务id
+         * 避免重复生成字符串对象
          * 两个xa事务的 transId 与 group 都相同则共享ReadView
          */
-        public static XATransInfo getReadViewInfo(long transId, String group, long uid, long bqualSuffix) {
-            return new XATransInfo(transId, group + "@" + String.format("%04d", bqualSuffix), uid);
+        public static String toXidString(long transId, String group, long primaryGroupUid, long readViewSeq) {
+            String xid = String.format("'drds-%s@%s', '%s@%04d'", Long.toHexString(transId),
+                Long.toHexString(primaryGroupUid), group, readViewSeq);
+            return xid;
         }
 
-        // gtrid = drds-<txid>@<group-uid>, bqual = <group>[@<conn-id>]
+        /**
+         * 获取普通XA事务id
+         */
+        public static String toXidString(long transId, String group, long primaryGroupUid) {
+            String xid = String.format("'drds-%s@%s', '%s'", Long.toHexString(transId),
+                Long.toHexString(primaryGroupUid), group);
+            return xid;
+        }
+
         public String toXidString() {
-            return "'drds-" + Long.toHexString(transId) + "@" + Long.toHexString(primaryGroupUid) + "', '" + bqual
+            return "'drds-" + Long.toHexString(transId) + "@" + Long.toHexString(primaryGroupUid) + "', '" + trimedBqual
                 + "'";
         }
 
@@ -122,7 +173,7 @@ public class XAUtils {
          * 对bqual存在的后缀进行处理
          */
         public String getGroup() {
-            int atSymbolIndex = bqual.indexOf('@');
+            int atSymbolIndex = bqual.lastIndexOf('@');
             if (atSymbolIndex == -1) {
                 return bqual;
             } else {

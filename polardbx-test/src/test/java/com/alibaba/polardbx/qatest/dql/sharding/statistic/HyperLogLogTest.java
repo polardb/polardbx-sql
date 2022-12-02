@@ -21,6 +21,7 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.google.common.collect.Maps;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlOrTddl;
+import static com.alibaba.polardbx.qatest.validator.DataOperator.queryOnMysqlOrTddl;
 import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepareRD;
 
 /**
@@ -49,21 +51,25 @@ public class HyperLogLogTest extends CrudBasedLockTestCase {
         return Arrays.asList(ExecuteTableName.updateBaseOneTableForCollationTest());
     }
 
-    @Test
-    public void testShowTables() throws SQLException {
-        int[] testScope = {100, 1000, 5000, 10000};
+    @Ignore
+    public void testHll() throws SQLException {
+        int[] testScope = {100001, 150000};
         StringBuilder stringBuilder = new StringBuilder();
         for (int scope : testScope) {
             stringBuilder.append("scope:" + scope).append("\n");
             // init random data
-            tableDataPrepareRD(baseOneTableName, scope,
+            tableDataPrepareRD(baseOneTableName, 10,
                 TableColumnGenerator.getAllTypeColumPkAndIntegerNotNull(), PK_COLUMN_NAME,
                 tddlConnection, columnDataGenerator);
             String sql = "analyze table " + baseOneTableName;
             executeOnMysqlOrTddl(tddlConnection, sql, null);
 
+            sql = "select * from  " + baseOneTableName + " where pk=300 and varchar_test='f'";
+            queryOnMysqlOrTddl(tddlConnection, sql);
+            queryOnMysqlOrTddl(tddlConnection, sql);
+
             // look up statistics
-            sql = "select * from VIRTUAL_STATISTIC";
+            sql = "select * from VIRTUAL_STATISTIC where table_name='" + baseOneTableName + "'";
             Statement stmt = tddlConnection.createStatement();
             ResultSet rs = null;
             Map<String, Long> cardinalityMap = Maps.newHashMap();
@@ -71,10 +77,11 @@ public class HyperLogLogTest extends CrudBasedLockTestCase {
             try {
                 rs = stmt.executeQuery(sql);
                 while (rs.next()) {
-                    if (!rs.getBoolean("NDV_SOURCE")) {
-                        return;
-                    }
                     if (rs.getString("table_name").equals(baseOneTableName)) {
+                        String isNDV = rs.getString("NDV_SOURCE");
+                        if (!"HLL_SKETCH".equals(isNDV)) {
+                            continue;
+                        }
                         String column = rs.getString("column_name");
                         cardinalityMap.put(column, rs.getLong("cardinality"));
                     }
@@ -98,12 +105,10 @@ public class HyperLogLogTest extends CrudBasedLockTestCase {
                 long estimate = cardinalityMap.get(column);
                 String s = baseOneTableName + ":" + column + ":" + real + ":" + estimate;
                 stringBuilder.append(s).append("\n");
-//                System.out.println(s);
                 Assert.assertTrue(s, Math.abs(real - estimate) < 100 || Double.valueOf(estimate) / real > 0.9);
             }
             stringBuilder.append("\n");
         }
-//        System.out.println(stringBuilder.toString());
     }
 
     @Test

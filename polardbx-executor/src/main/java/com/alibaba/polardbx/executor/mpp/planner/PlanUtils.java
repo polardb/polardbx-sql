@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Strings;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
@@ -37,6 +35,8 @@ import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.google.common.base.Joiner;
+import com.google.common.base.Strings;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.List;
@@ -69,34 +69,43 @@ public class PlanUtils {
         StringBuilder builder = new StringBuilder();
         builder.append("ExecutorMode: ").append(type).append(" ").append("\n");
         for (PipelineFactory pipelineFactory : pipelineFactories) {
-            builder.append(formatPipelineFragment(pipelineFactory, context.getParams().getCurrentParameter()));
+            builder.append(formatPipelineFragment(context, pipelineFactory, context.getParams().getCurrentParameter()));
         }
         return builder.toString();
     }
 
-    private static String formatPipelineFragment(PipelineFactory pipelineFactory,
+    private static String formatPipelineFragment(ExecutionContext executionContext,
+                                                 PipelineFactory pipelineFactory,
                                                  Map<Integer, ParameterContext> params) {
         PipelineFragment fragment = pipelineFactory.getFragment();
         StringBuilder builder = new StringBuilder();
-        builder.append(format("Fragment %s dependency: [%s] parallelism: %s \n", fragment.getPipelineId(),
+        builder.append(format("Fragment %s dependency: [%s] parallelism: %s", fragment.getPipelineId(),
             Joiner.on(", ").join(fragment.getDependency()), fragment.getParallelism()));
-        builder.append(RelUtils.toString(fragment.getProperties().getRelNode(), params)).append("\n");
+        if (fragment.getPrefetchLists().size() > 0) {
+            builder.append(format(" prefetch: %s \n ", fragment.getPrefetchLists()));
+        } else {
+            builder.append(" \n ");
+        }
+        builder.append(
+                RelUtils.toString(executionContext.getSqlExplainLevel(), fragment.getProperties().getRelNode(), params))
+            .append("\n");
         return builder.toString();
     }
 
-    public static String textPlan(ExecutionContext clientContext, RelNode relNode) {
-        Session session = new Session(clientContext.getTraceId(), clientContext);
+    public static String textPlan(ExecutionContext executionContext, Session session, RelNode relNode) {
         Pair<SubPlan, Integer> plan = PlanFragmenter.buildRootFragment(relNode, session);
         StringBuilder builder = new StringBuilder();
         builder.append("ExecutorType: ").append("MPP").append("\n");
         builder.append("The Query's MaxConcurrentParallelism: ").append(plan.getValue()).append("\n");
         for (PlanFragment fragment : plan.getKey().getAllFragments()) {
-            builder.append(formatFragment(fragment, clientContext.getParams().getCurrentParameter()));
+            builder.append(formatFragment(
+                executionContext, fragment, session.getClientContext().getParams().getCurrentParameter()));
         }
         return builder.toString();
     }
 
-    private static String formatFragment(PlanFragment fragment, Map<Integer, ParameterContext> params) {
+    private static String formatFragment(ExecutionContext executionContext, PlanFragment fragment,
+                                         Map<Integer, ParameterContext> params) {
         StringBuilder builder = new StringBuilder();
         builder.append(format("Fragment %s \n", fragment.getId()));
 
@@ -106,8 +115,8 @@ public class PlanUtils {
                 SerializeDataType.convertToDataType(fragment.getOutputTypes()).stream().map(
                     c -> c.getStringSqlType()).toArray()
             ))).append(format(" Output layout: [%s]\n", Joiner.on(", ").join(
-            fragment.getTypes().stream().map(c -> c.getStringSqlType()).toArray()
-        )));
+                fragment.getTypes().stream().map(c -> c.getStringSqlType()).toArray()
+            )));
         builder.append(indentString(1));
         builder.append(format("Output partitioning: %s [%s] ",
             partitioningScheme.getPartitionMode(), Joiner.on(", ").join(partitioningScheme.getPartChannels())));
@@ -120,7 +129,8 @@ public class PlanUtils {
         }
 
         builder.append(indentString(1));
-        builder.append(RelUtils.toString(fragment.getRootNode(), params)).append("\n");
+        builder.append(RelUtils.toString(executionContext.getSqlExplainLevel(), fragment.getRootNode(), params))
+            .append("\n");
         return builder.toString();
     }
 

@@ -16,11 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -36,16 +38,16 @@ import java.util.Map;
  */
 public class DirectTableOperation extends BaseTableOperation {
 
-    private List<String> logicalTableNames;
-    private List<String> tableNames;
+    private List<String> logicalTableNames; // log tables
+    private List<String> tableNames; // phy tables
 
     public DirectTableOperation(RelNode logicalPlan, RelDataType rowType, List<String> logicalTableNames,
                                 List<String> tableNames, String dbIndex,
-                                String sqlTemplate, List<Integer> paramIndex) {
+                                BytesSql sqlTemplate, List<Integer> paramIndex) {
         super(logicalPlan.getCluster(), logicalPlan.getTraitSet(), rowType, null, logicalPlan);
         this.tableNames = tableNames;
         this.dbIndex = dbIndex;
-        this.sqlTemplate = sqlTemplate;
+        this.bytesSql = sqlTemplate;
         this.paramIndex = paramIndex;
         this.logicalTableNames = logicalTableNames;
     }
@@ -57,21 +59,40 @@ public class DirectTableOperation extends BaseTableOperation {
     }
 
     @Override
+    public void setDbIndex(String dbIndex) {
+        this.dbIndex = dbIndex;
+    }
+
+    @Override
     public List<String> getTableNames() {
         return tableNames;
     }
 
+    @Override
     public List<String> getLogicalTableNames() {
         return this.logicalTableNames;
     }
 
     @Override
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           List<List<String>> phyTableNamesOutput,
                                                                            ExecutionContext executionContext) {
         if (MapUtils.isEmpty(param) && CollectionUtils.isNotEmpty(paramIndex)) {
             throw new OptimizerException("Param list is empty.");
         }
-        return new Pair<>(dbIndex, buildParam(param));
+        Pair<String, Map<Integer, ParameterContext>> result = new Pair<>(dbIndex, buildParam(param));
+        if (phyTableNamesOutput != null) {
+            for (int i = 0; i < tableNames.size(); i++) {
+                phyTableNamesOutput.add(ImmutableList.of(tableNames.get(i)));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           ExecutionContext executionContext) {
+        return getDbIndexAndParam(param, null, executionContext);
     }
 
     private Map<Integer, ParameterContext> buildParam(Map<Integer, ParameterContext> param) {

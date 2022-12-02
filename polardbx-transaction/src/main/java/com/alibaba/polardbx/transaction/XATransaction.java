@@ -58,7 +58,6 @@ public class XATransaction extends ShareReadViewTransaction {
      */
     @Override
     protected void begin(String schema, String group, IConnection conn) throws SQLException {
-        this.shareReadView = executionContext.isShareReadView();
         try {
             if (shareReadView) {
                 beginWithShareReadView(group, conn);
@@ -85,13 +84,13 @@ public class XATransaction extends ShareReadViewTransaction {
                 + "Try with setting share_read_view=off.");
         } else {
             conn.executeLater(TURN_ON_TXN_GROUP_SQL);
-            conn.executeLater("XA START " + getXid(group, conn, true));
+            conn.executeLater("XA START " + getXid(group, conn));
         }
     }
 
     private void beginWithoutShareReadView(String group, IConnection conn) throws SQLException {
         if (primaryConnection != null) {
-            conn.executeLater("XA START " + getXid(group, conn, false));
+            conn.executeLater("XA START " + getXid(group, conn));
         } else {
             conn.executeLater("begin");
         }
@@ -136,7 +135,7 @@ public class XATransaction extends ShareReadViewTransaction {
     protected void innerCommitOneShardTrx(String group, IConnection conn) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
             if (shareReadView) {
-                String xid = getXid(group, conn, true);
+                String xid = getXid(group, conn);
                 stmt.execute(getXACommitOnePhaseSqls(xid));
             } else {
                 stmt.execute("COMMIT");
@@ -246,7 +245,7 @@ public class XATransaction extends ShareReadViewTransaction {
      */
     private void commitPrimary(Statement stmt) throws SQLException {
         if (shareReadView) {
-            String xid = getXid(primaryGroup, primaryConnection, true);
+            String xid = getXid(primaryGroup, primaryConnection);
             stmt.execute(getXACommitOnePhaseSqls(xid));
         } else {
             stmt.execute("COMMIT");
@@ -261,19 +260,28 @@ public class XATransaction extends ShareReadViewTransaction {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
 
             @Override
-            public void execute(String group, IConnection conn, boolean participated) {
-                if (!participated) {
-                    commitNonParticipantSync(group, conn);
-                } else if (conn == primaryConnection) {
+            public void execute(String group, IConnection conn,
+                                TransactionConnectionHolder.ParticipatedState participated) {
+                if (conn == primaryConnection) {
                     writeCommitLog(conn);
-                } else {
+                    return;
+                }
+                switch (participated) {
+                case NONE:
+                    rollbackNonParticipantSync(group, conn);
+                    return;
+                case SHARE_READVIEW_READ:
+                    rollbackNonParticipantShareReadViewSync(group, conn);
+                    return;
+                case WRITTEN:
                     prepare(group, conn);
+                    return;
                 }
             }
 
             private void prepare(String group, IConnection conn) {
                 // XA transaction must be 'ACTIVE' state here.
-                String xid = getXid(group, conn, shareReadView);
+                String xid = getXid(group, conn);
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute("XA END " + xid + "; XA PREPARE " + xid);
                 } catch (SQLException e) {
@@ -287,14 +295,16 @@ public class XATransaction extends ShareReadViewTransaction {
     protected void commitConnections() {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
             @Override
-            public boolean condition(String group, IConnection conn, boolean participated) {
-                return conn != primaryConnection && participated;
+            public boolean condition(String group, IConnection conn,
+                                     TransactionConnectionHolder.ParticipatedState participated) {
+                return conn != primaryConnection && participated.participatedTrx();
             }
 
             @Override
-            public void execute(String group, IConnection conn, boolean participated) {
+            public void execute(String group, IConnection conn,
+                                TransactionConnectionHolder.ParticipatedState participated) {
                 // XA transaction must be 'PREPARED' state here.
-                String xid = getXid(group, conn, shareReadView);
+                String xid = getXid(group, conn);
                 try (Statement stmt = conn.createStatement()) {
                     try {
                         stmt.execute("XA COMMIT " + xid);
@@ -330,7 +340,7 @@ public class XATransaction extends ShareReadViewTransaction {
                 stmt.execute("rollback");
             }
         } else {
-            String xid = getXid(group, conn, shareReadView);
+            String xid = getXid(group, conn);
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute(getXARollbackSqls(xid));
             } catch (SQLException e) {

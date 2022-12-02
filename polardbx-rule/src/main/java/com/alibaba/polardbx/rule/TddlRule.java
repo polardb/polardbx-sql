@@ -424,13 +424,11 @@ public class TddlRule extends TddlRuleGmsConfig implements TddlTableRule {
         if (tableNameMappings == null || tableNameMappings.isEmpty()) {
             synchronized (vtrs) {
                 tableNameMappings = getVersionedTableNames().get(versionIndex.get(0));
-                if (tableNameMappings == null) {
+                if (tableNameMappings == null || tableNameMappings.isEmpty()) {
                     tableNameMappings = Maps.newConcurrentMap();
-                    getVersionedTableNames().put(versionIndex.get(0), tableNameMappings);
-                }
-                if (tableNameMappings.isEmpty()) {
                     Collection<TableRule> tableRules = getTables();
                     initTableNameMappings(tableRules, tableNameMappings, groupNames);
+                    getVersionedTableNames().put(versionIndex.get(0), tableNameMappings);
                 }
             }
         }

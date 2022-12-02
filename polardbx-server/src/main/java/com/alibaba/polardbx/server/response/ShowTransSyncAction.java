@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
@@ -29,6 +31,7 @@ import com.alibaba.polardbx.transaction.TransactionManager;
 import java.util.Collection;
 
 public class ShowTransSyncAction implements ISyncAction {
+    private final static Logger logger = LoggerFactory.getLogger(ShowTransSyncAction.class);
 
     private String db;
 
@@ -63,13 +66,19 @@ public class ShowTransSyncAction implements ISyncAction {
 
         long currentTimeMs = System.currentTimeMillis();
         for (ITransaction transaction : transactions) {
-            if (transaction.isBegun()) {
+            if (transaction.isBegun() && !transaction.isClosed()) {
                 final BaseTransaction tx = (BaseTransaction) transaction;
                 final String transId = Long.toHexString(tx.getId());
                 final String type = tx.getTransactionClass().toString();
                 final long duration = currentTimeMs - tx.getStartTime();
                 final String state = transaction.getState().toString();
-                final long processId = transaction.getExecutionContext().getConnection().getId();
+                final long processId;
+                if (transaction.getExecutionContext().getConnection() == null) {
+                    processId = -1;
+                } else {
+                    processId = transaction.getExecutionContext().getConnection().getId();
+                }
+
                 result.addRow(new Object[] {transId, type, duration, state, processId});
             }
         }

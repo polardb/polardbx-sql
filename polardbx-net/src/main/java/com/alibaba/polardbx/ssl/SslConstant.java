@@ -19,17 +19,16 @@
  */
 package com.alibaba.polardbx.ssl;
 
-import sun.security.util.DisabledAlgorithmConstraints;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import java.security.Security;
-import java.util.Arrays;
 
 /**
  * ssl constant values
  */
 public class SslConstant {
+
+    public static final String PROPERTY_TLS_DISABLED_ALGS = "jdk.tls.disabledAlgorithms";
     public static String PROTOCOL = "TLS";
 
     public static String[] enabledProtocols;
@@ -37,7 +36,7 @@ public class SslConstant {
     static {
         SSLSocket sslSocket = null;
         try {
-            Security.setProperty(DisabledAlgorithmConstraints.PROPERTY_TLS_DISABLED_ALGS, "");
+            Security.setProperty(PROPERTY_TLS_DISABLED_ALGS, "");
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, null, null);
             sslSocket = (SSLSocket) sslContext.getSocketFactory().createSocket();

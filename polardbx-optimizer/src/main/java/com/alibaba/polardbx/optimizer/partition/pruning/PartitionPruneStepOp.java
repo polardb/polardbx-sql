@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.util.Rex2ExprStringVisitor;
+import org.apache.calcite.rex.RexNode;
 
 import java.util.BitSet;
 import java.util.List;
@@ -82,6 +84,11 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
      */
     protected PartitionPruneStepOp originalStepOp;
 
+    /**
+     * Label if current step is a in expr with dynamicSubQuery
+     */
+    protected boolean dynamicSubQueryInStep = false;
+
     public PartitionPruneStepOp(PartitionInfo partInfo,
                                 PartPredPathInfo partPredPathInfo,
                                 PartRouteFunction predRouteFunc,
@@ -98,7 +105,6 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
         }
         this.isConflict = isConflict;
         this.isScanFirstPartOnly = isScanFirstPartOnly;
-        //this.stepOpDigest = buildStepDigest();
         if (this.partKeyMatchLevel == PartKeyLevel.NO_PARTITION_KEY) {
             this.rangeMerger = null;
         } else {
@@ -112,7 +118,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
     /**
      * Only used by copy
      */
-    private PartitionPruneStepOp() {
+    protected PartitionPruneStepOp() {
     }
 
     protected void adjustComparisonKind(ComparisonKind newCmpKind) {
@@ -128,7 +134,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
     @Override
     public String getStepDigest() {
         if (this.stepOpDigestCache == null) {
-            this.stepOpDigestCache = buildStepDigest();
+            this.stepOpDigestCache = buildStepDigest(null);
         }
         return this.stepOpDigestCache;
     }
@@ -156,6 +162,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
             partBitSet.set(0, 1, true);
             rs.partBitSet = partBitSet;
             rs.partInfo = partInfo;
+            PartitionPrunerUtils.collateStepExplainInfo(this, context, rs, pruningCtx);
             return rs;
         }
 
@@ -169,6 +176,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
             }
             rs.partBitSet = allPartBitSet;
             rs.partInfo = partInfo;
+            PartitionPrunerUtils.collateStepExplainInfo(this, context, rs, pruningCtx);
             return rs;
         }
 
@@ -176,6 +184,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
         PartPrunedResult result = new PartPrunedResult();
         result.partBitSet = finalPartBitSet;
         result.partInfo = partInfo;
+        PartitionPrunerUtils.collateStepExplainInfo(this, context, result, pruningCtx);
         return result;
     }
 
@@ -194,9 +203,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
         return 1;
     }
 
-    private String buildStepDigest() {
-
-        String cmpExpr = null;
+    public String buildStepDigest(ExecutionContext ec) {
         StringBuilder digestBuilder = new StringBuilder("");
         if (getStepType() == PartPruneStepType.PARTPRUNE_OP_MISMATCHED_PART_KEY) {
             if (!isConflict) {
@@ -238,7 +245,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
                         if (clauseInfoExec.isAlwaysNullValue()) {
                             constExprBuilder.append("null");
                         } else {
-                            constExprBuilder.append(clauseInfo.getConstExpr().toString());
+                            constExprBuilder.append(Rex2ExprStringVisitor.convertRexToExprString(clauseInfo.getConstExpr(), ec));
                         }
                     }
                 }
@@ -299,7 +306,7 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
 
     @Override
     public String toString() {
-        return buildStepDigest();
+        return buildStepDigest(null);
     }
 
     public PartKeyLevel getPartKeyMatchLevel() {
@@ -384,7 +391,16 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
         stepOp.setRangeMerger(this.rangeMerger);
         stepOp.setPartPredPathInfo(this.partPredPathInfo);
         stepOp.setPredRouteFunc(this.predRouteFunc.copy());
+        stepOp.setDynamicSubQueryInStep(this.dynamicSubQueryInStep);
         return stepOp;
+    }
+
+    public boolean isDynamicSubQueryInStep() {
+        return dynamicSubQueryInStep;
+    }
+
+    public void setDynamicSubQueryInStep(boolean dynamicSubQueryInStep) {
+        this.dynamicSubQueryInStep = dynamicSubQueryInStep;
     }
 
 }

@@ -77,9 +77,23 @@ public class PlanInfo {
     }
 
     public PlanInfo(String planJsonString, int baselineId, double cost, String traceId, String origin,
-                    int tablesHashCode) {
+                    int tablesVersion) {
         this.compressPlanByteArray = PlanManagerUtil.compressPlan(planJsonString);
         this.id = planJsonString.hashCode();
+        this.baselineId = baselineId;
+        this.createTime = unixTimeStamp();
+        this.cost = cost;
+        this.traceId = traceId;
+        this.origin = origin;
+        this.tablesHashCode = tablesVersion;
+    }
+
+    public PlanInfo(RelNode plan, int baselineId, double cost, String traceId, String origin,
+                    int tablesHashCode) {
+        String planJson = PlanManagerUtil.relNodeToJson(plan);
+        this.compressPlanByteArray = PlanManagerUtil.compressPlan(planJson);
+        this.plan = plan;
+        this.id = planJson.hashCode();
         this.baselineId = baselineId;
         this.createTime = unixTimeStamp();
         this.cost = cost;
@@ -207,7 +221,7 @@ public class PlanInfo {
         }
     }
 
-    public void resetPlan(RelNode newPlan){
+    public void resetPlan(RelNode newPlan) {
         this.compressPlanByteArray = PlanManagerUtil.compressPlan(PlanManagerUtil.relNodeToJson(newPlan));
         this.plan = newPlan;
     }
@@ -236,9 +250,6 @@ public class PlanInfo {
     synchronized RelOptCost getCumulativeCost(RelOptCluster cluster, RelOptSchema relOptSchema, Parameters parameters) {
         RelNode plan = getPlan(cluster, relOptSchema);
         PlannerContext.getPlannerContext(plan).setParams(parameters);
-        if (PlannerContext.getPlannerContext(plan).getExecutionContext() != null) {
-            PlannerContext.getPlannerContext(plan).getExecutionContext().setParams(parameters);
-        }
         return cluster.getMetadataQuery().getCumulativeCost(plan);
     }
 

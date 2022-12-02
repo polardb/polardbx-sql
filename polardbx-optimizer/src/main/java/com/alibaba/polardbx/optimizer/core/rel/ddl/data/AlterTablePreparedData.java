@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.calcite.sql.SqlEnableKeys;
@@ -25,7 +26,6 @@ import org.apache.calcite.sql.SqlEnableKeys;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -92,10 +92,46 @@ public class AlterTablePreparedData extends DdlPreparedData {
      */
     private List<String> backfillColumns;
 
+    private Boolean isGsi = false;
+
     public boolean hasColumnModify() {
         return GeneralUtil.isNotEmpty(droppedColumns) ||
             GeneralUtil.isNotEmpty(addedColumns) ||
             GeneralUtil.isNotEmpty(updatedColumns) ||
             GeneralUtil.isNotEmpty(changedColumns);
     }
+
+    /**
+     * Used by online modify column
+     */
+
+    private boolean onlineModifyColumn = false;
+    private boolean onlineChangeColumn = false;
+
+    private String modifyColumnType = null;
+    private String modifyColumnName = null;
+
+    private String tmpColumnName = null;
+
+    // [tableName -> [localIndexName -> newLocalIndexName]]
+    private Map<String, Map<String, String>> localIndexNewNameMap;
+    // [tableName -> [localIndexName -> tmpLocalIndexName]]
+    private Map<String, Map<String, String>> localIndexTmpNameMap;
+    // [tableName -> [localIndexName -> indexMeta]]
+    private Map<String, Map<String, IndexMeta>> localIndexMeta;
+
+    // new unique index name if column definition contains unique constraint
+    private Map<String, String> newUniqueIndexNameMap;
+
+    private boolean oldColumnNullable;
+    private boolean newColumnNullable;
+
+    // if algorithm=omc_index
+    private boolean onlineModifyColumnIndexTask = false;
+
+    private boolean useChecker;
+    private boolean useSimpleChecker;
+    private String checkerColumnName;
+
+    private boolean skipBackfill;
 }

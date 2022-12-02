@@ -18,7 +18,13 @@ package com.alibaba.polardbx.common.utils;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.RawString;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.commons.lang.BooleanUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.io.Closeable;
 import java.io.InputStream;
@@ -30,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -112,6 +119,15 @@ public class GeneralUtil {
             return defaultValue;
         } else {
             return BooleanUtils.toBoolean(value);
+        }
+    }
+
+    public static int getPropertyInt(Map<String, Object> extraCmd, String key, int defaultValue) {
+        String value = getPropertyString(extraCmd, key);
+        if (value == null) {
+            return defaultValue;
+        } else {
+            return Integer.valueOf(value);
         }
     }
 
@@ -267,24 +283,19 @@ public class GeneralUtil {
         return System.currentTimeMillis() / 1000;
     }
 
+    public static long stringToMs(String time) {
+        String[] timeSplit = time.split(":");
+        assert timeSplit.length == 2;
+        int timeHour = Integer.parseInt(timeSplit[0]);
+        int timeMin = Integer.parseInt(timeSplit[1]);
+        assert timeHour >= 0 && timeHour < 24;
+        assert timeMin >= 0 && timeMin < 60;
+        return (timeHour * 60 + timeMin) * 60 * 1000;
+    }
+
     public static boolean shouldRunAtThatTime(long now, String startTime, String endTime, Timestamp nextRunningTime) {
-        String[] startTimeSplit = startTime.split(":");
-        String[] endTimeSplit = endTime.split(":");
-        assert startTimeSplit.length == 2;
-        assert endTimeSplit.length == 2;
-
-        int startTimeHour = Integer.valueOf(startTimeSplit[0]);
-        int startTimeMin = Integer.valueOf(startTimeSplit[1]);
-        int endTimeHour = Integer.valueOf(endTimeSplit[0]);
-        int endTimeMin = Integer.valueOf(endTimeSplit[1]);
-
-        assert startTimeHour >= 0 && startTimeHour < 24;
-        assert startTimeMin >= 0 && startTimeMin < 60;
-        assert endTimeHour >= 0 && endTimeHour < 24;
-        assert endTimeMin >= 0 && endTimeMin < 60;
-
-        long startTimeInMs = (startTimeHour * 60 + startTimeMin) * 60 * 1000;
-        long endTimeInMs = (endTimeHour * 60 + endTimeMin) * 60 * 1000;
+        long startTimeInMs = stringToMs(startTime);
+        long endTimeInMs = stringToMs(endTime);
 
         long todayMs = now - GeneralUtil.startOfToday(now);
         if (endTimeInMs >= startTimeInMs) {
@@ -323,6 +334,177 @@ public class GeneralUtil {
             }
         }
         return null;
+    }
+
+    public static int findStartOfStatement(String sql) {
+        int statementStartPos = 0;
+
+        if (startsWithIgnoreCaseAndWs(sql, "/*", 0)) {
+            statementStartPos = sql.indexOf("*/");
+
+            if (statementStartPos == -1) {
+                statementStartPos = 0;
+            } else {
+                statementStartPos += 2;
+            }
+        } else if (startsWithIgnoreCaseAndWs(sql, "--", 0) || startsWithIgnoreCaseAndWs(sql, "#", 0)) {
+            statementStartPos = sql.indexOf('\n');
+
+            if (statementStartPos == -1) {
+                statementStartPos = sql.indexOf('\r');
+
+                if (statementStartPos == -1) {
+                    statementStartPos = 0;
+                }
+            }
+        }
+
+        return statementStartPos;
+    }
+
+    /**
+     * Useful function.
+     */
+
+    public static boolean startsWithIgnoreCase(String searchIn, int startAt, String searchFor) {
+        return searchIn.regionMatches(true, startAt, searchFor, 0, searchFor.length());
+    }
+
+    public static boolean startsWithIgnoreCaseAndWs(String searchIn, String searchFor, int beginPos) {
+        if (searchIn == null) {
+            return searchFor == null;
+        }
+
+        int inLength = searchIn.length();
+
+        for (; beginPos < inLength; beginPos++) {
+            if (!Character.isWhitespace(searchIn.charAt(beginPos))) {
+                break;
+            }
+        }
+
+        return startsWithIgnoreCase(searchIn, beginPos, searchFor);
+    }
+
+    public final static String UNION_KW = "\nUNION ALL\n";
+    public final static String ORDERBY_KW = " ORDER BY ";
+    public final static String LIMIT_KW = " LIMIT ";
+    public final static String UNION_ALIAS = "__DRDS_ALIAS_T_";
+
+    /**
+     * Use union all to reduce the amount of physical sql.
+     *
+     * @param num number of sub-queries
+     */
+    public static String buildPhysicalQuery(int num, String sqlTemplateStr, String orderBy, String prefix, long limit) {
+        Preconditions.checkArgument(num > 0, "The number of tables must great than 0 when build UNION ALL sql");
+        if (num == 1) {
+            if (StringUtils.isNotEmpty(prefix)) {
+                return prefix + sqlTemplateStr;
+            } else {
+                return sqlTemplateStr;
+            }
+        }
+
+        StringBuilder builder = new StringBuilder();
+        if (prefix != null) {
+            builder.append(prefix);
+        }
+        if (orderBy != null) {
+            builder.append("SELECT * FROM (");
+        }
+
+        builder.append("( ").append(sqlTemplateStr).append(" )");
+        for (int i = 1; i < num; i++) {
+            builder.append(UNION_KW).append("( ").append(sqlTemplateStr).append(") ");
+        }
+
+        // 最终生成的 UNION ALL SQL,需要在最外层添加 OrderBy
+        // 不能添加limit 和 offset, 有聚合函数的情况下会导致结果错误
+        if (orderBy != null) {
+            builder.append(") ").append(UNION_ALIAS).append(" ").append(ORDERBY_KW).append(orderBy);
+        }
+
+        if (limit > 0) {
+            builder.append(LIMIT_KW).append(limit);
+        }
+        return builder.toString();
+    }
+
+    /**
+     * Convert string value to boolean value.
+     * TRUE/ON/1 will be converted to true.
+     * FALSE/OFF/0 will be converted to false.
+     * For other cases, return null.
+     */
+    public static Boolean convertStringToBoolean(String val) {
+        if ("true".equalsIgnoreCase(val) || "on".equalsIgnoreCase(val) || "1".equalsIgnoreCase(val)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(val) || "off".equalsIgnoreCase(val) || "0".equalsIgnoreCase(val)) {
+            return false;
+        }
+        return null;
+    }
+
+    public static Map<Integer, ParameterContext> listToMap(List<ParameterContext> parameterContexts) {
+        if (parameterContexts == null || parameterContexts.size() == 0) {
+            return Collections.emptyMap();
+        }
+        Map<Integer, ParameterContext> map = Maps.newHashMap();
+        for (int i = 0; i < parameterContexts.size(); i++) {
+            map.put(i, parameterContexts.get(i));
+        }
+        return map;
+    }
+
+    public static List<ParameterContext> mapToList(Map<Integer, ParameterContext> param) {
+        if (param == null) {
+            return Collections.emptyList();
+        }
+        List<ParameterContext> p = new LinkedList<>();
+        for (int i = 0; i < param.size(); i++) {
+            p.add(null);
+        }
+        for (Map.Entry<Integer, ParameterContext> entry : param.entrySet()) {
+            p.set(entry.getKey() - 1, entry.getValue());
+        }
+        return p;
+    }
+
+    public static List<ParameterContext> prepareParam(List<ParameterContext> paramList) {
+        List<ParameterContext> r = Lists.newArrayList();
+        if (paramList == null || paramList.isEmpty()) {
+            return paramList;
+        }
+        int indexShift = 0;
+        for (ParameterContext parameterContext : paramList) {
+            if (parameterContext.getValue() instanceof RawString) {
+                int index = (int) parameterContext.getArgs()[0];
+                for (Object o : ((RawString) parameterContext.getValue()).getObjList()) {
+                    if (o instanceof List) {
+                        for (Object sub : (List<?>) o) {
+                            r.add(new ParameterContext(parameterContext.getParameterMethod(),
+                                new Object[] {index++, sub}));
+                            indexShift++;
+                        }
+                    } else {
+                        r.add(new ParameterContext(parameterContext.getParameterMethod(), new Object[] {index++, o}));
+                        indexShift++;
+                    }
+                }
+                indexShift = indexShift - 1;
+            } else {
+                if (indexShift > 0) {
+                    Object[] args = parameterContext.getArgs().clone();
+                    args[0] = (int) args[0] + indexShift;
+                    r.add(new ParameterContext(parameterContext.getParameterMethod(), args));
+                } else {
+                    r.add(parameterContext);
+                }
+            }
+        }
+        return r;
     }
 
     public static void close(Connection x) {

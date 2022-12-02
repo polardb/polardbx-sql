@@ -19,6 +19,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -35,6 +36,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
@@ -51,6 +53,7 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * @author lingce.ldm 2018-01-31 18:39
@@ -70,6 +73,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
             schemaName = executionContext.getSchemaName();
         }
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName,executionContext);
 
         List<RexDynamicParam> scalarList = logicalModifyView.getScalarList();
         SubqueryUtils.buildScalarSubqueryValue(scalarList, executionContext);// handle scalar subquery
@@ -113,7 +117,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
                 true);
         }
         // Dynamic functions will be calculated in buildSqlTemplate()
-        SqlNode sqlTemplate = logicalModifyView.getSqlTemplate(visitor);
+        SqlNode sqlTemplate = logicalModifyView.getSqlTemplate(visitor, executionContext);
         List<RelNode> inputs = logicalModifyView.getInput(sqlTemplate, executionContext);
         if (!logicalModifyView.hasHint() && executionContext.getParams() != null
             && GlobalIndexMeta.hasIndex(logicalModifyView.getLogicalTableName(), schemaName, executionContext)) {
@@ -139,10 +143,18 @@ public class LogicalModifyViewHandler extends HandlerCommon {
      */
     private boolean needUpdateGSI(LogicalModifyView logicalModifyView, SqlUpdate sqlUpdate,
                                   ExecutionContext executionContext) {
-        List<TableMeta> indexMetas = GlobalIndexMeta.getIndex(logicalModifyView.getLogicalTableName(),
-            logicalModifyView.getSchemaName(), executionContext);
-        for (SqlNode column : sqlUpdate.getTargetColumnList()) {
+        Map<String, List<TableMeta>> tableNameAndIndexMetas = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        List<String> allTables = logicalModifyView.getTableModify().getTargetTableNames();
+
+        for (int i = 0; i < sqlUpdate.getTargetColumnList().size(); i++) {
+            final SqlNode column = sqlUpdate.getTargetColumnList().get(i);
             final String columName = ((SqlIdentifier) column).getLastName();
+            final String tableName = allTables.get(i);
+            List<TableMeta> indexMetas = tableNameAndIndexMetas.get(tableName);
+            if (indexMetas == null) {
+                indexMetas = GlobalIndexMeta.getIndex(tableName, logicalModifyView.getSchemaName(), executionContext);
+                tableNameAndIndexMetas.put(tableName, indexMetas);
+            }
             for (TableMeta indexMeta : indexMetas) {
                 if (indexMeta.getColumnIgnoreCase(columName) != null) {
                     return true;

@@ -23,6 +23,7 @@ import java.sql.SQLException;
 
 public class SequencesRecord implements SystemTableRecord {
 
+    public String id;
     public String schemaName;
     public String name;
     public String value;
@@ -34,9 +35,13 @@ public class SequencesRecord implements SystemTableRecord {
     public String maxValue;
     public String cycle;
     public String type;
+    public String status;
+    public String gmtCreated;
+    public String gmtModified;
 
     @Override
     public SequencesRecord fill(ResultSet rs) throws SQLException {
+        this.id = rs.getString("id");
         this.schemaName = rs.getString("schema_name");
         this.name = rs.getString("name");
         this.value = rs.getString("value");
@@ -48,6 +53,9 @@ public class SequencesRecord implements SystemTableRecord {
         this.maxValue = rs.getString("max_value");
         this.cycle = rs.getString("cycle");
         this.type = rs.getString("type");
+        this.status = rs.getString("status");
+        this.gmtCreated = rs.getString("gmt_created");
+        this.gmtModified = rs.getString("gmt_modified");
         return this;
     }
 

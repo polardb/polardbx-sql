@@ -26,6 +26,7 @@ import java.util.List;
 import static com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph.Edge;
 import static com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph.Vertex;
 
+@Deprecated
 public class TopologicalSorter extends AbstractLifecycle implements Iterator<DdlTask> {
 
     final List<Vertex> zeroInDegreeVertexes = new ArrayList<>();

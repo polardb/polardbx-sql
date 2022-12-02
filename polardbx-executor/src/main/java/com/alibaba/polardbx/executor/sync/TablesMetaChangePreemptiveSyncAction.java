@@ -50,7 +50,7 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         // TODO(luoyanxin) optimize single-version schema-change
-        oldSchemaManager.toNewVersionInTrx(logicalTables, true, initWait, interval, timeUnit, false);
+        oldSchemaManager.toNewVersionInTrx(logicalTables, true, initWait, interval, timeUnit, true);
         return null;
     }
 

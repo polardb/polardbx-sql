@@ -1,9 +1,14 @@
-sql: |
-  select id
-  from test_hash_tb a
-  where a.id=1;
+- sql: |
+    select id from test_hash_tb a where a.id=1;
 
 
-plan: |
+  plan: |
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1)")
 
-  LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1)")
+- sql: |
+    Select * from tf_f_user_service where user_id IN (3015020529145996) AND product_id IN (90657326) AND end_date > now() AND province_code = '30' AND partition_id = RIGHT(CAST(3015020529145996 AS char), 4) limit 2001
+
+  plan: |
+    mergesort(sort="", offset=0, fetch=2001)
+      logicalview(tables="optest_0000.tf_f_user_service_[00-10]", shardcount=11, sql="select `partition_id`, `user_id`, `service_id`, `main_tag`, `start_date`, `end_date`, `service_item_id`, `package_id`, `product_id`, `update_time`, `eparchy_code`, `province_code`, `prior_order_time` from `tf_f_user_service` as `tf_f_user_service` where (((((`province_code` = '30') and (`product_id` in(90657326))) and (`user_id` in(3015020529145996))) and (`end_date` > now())) and (`partition_id` = right(cast(3015020529145996 as char), 4))) limit 2001")
+

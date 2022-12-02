@@ -51,6 +51,10 @@ public class PartitionTupleRouteInfo {
         return tupleDispatchFuncInfos.get(tupleTempleIdx).routeTuple(ec, pruningCtx);
     }
 
+    public SearchDatumInfo calcSearchDatum(int tupleTempleIdx, ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+        return tupleDispatchFuncInfos.get(tupleTempleIdx).calcSearchDatum(ec, pruningCtx);
+    }
+
     public String getSchemaName() {
         return schemaName;
     }

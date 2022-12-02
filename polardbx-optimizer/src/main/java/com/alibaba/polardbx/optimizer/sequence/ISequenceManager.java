@@ -20,8 +20,10 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
 
+import java.util.Map;
+
 /**
- * @author mengshi.sunmengshi 2014年4月28日 下午2:51:04
+ * @author mengshi.sunmengshi 2014/04/28 14:51:04
  * @since 5.1.0
  */
 public interface ISequenceManager extends Lifecycle {
@@ -29,14 +31,19 @@ public interface ISequenceManager extends Lifecycle {
     String AUTO_SEQ_PREFIX = SequenceAttribute.AUTO_SEQ_PREFIX;
 
     /**
-     *
+     * Get next sequence value
      */
     Long nextValue(String schemaName, String seqName);
 
     /**
-     *
+     * Get next batch of sequence values
      */
     Long nextValue(String schemaName, String seqName, int batchSize);
+
+    /**
+     * Get current sequence value
+     */
+    Long currValue(String schemaName, String seqName);
 
     /**
      * 消耗内存中的sequence
@@ -65,11 +72,6 @@ public interface ISequenceManager extends Lifecycle {
     int invalidateAll(String schemaName);
 
     /**
-     * Check if sequence table and stored procedure exist. If not, create them.
-     */
-    void validateDependence(String schemaName);
-
-    /**
      * Check if a sequence with the name exists. If not, then return Type.NA.
      */
     Type checkIfExists(String schemaName, String seqName);
@@ -95,11 +97,6 @@ public interface ISequenceManager extends Lifecycle {
     long getMinValueFromCurrentSeqRange(String schemaName, String seqName);
 
     /**
-     * Check if CustomUnitGroupSequence is supported.
-     */
-    boolean isCustomUnitGroupSeqSupported(String schemaName);
-
-    /**
      * Get global custom unit arguments: unit_count, unit_index and inner_step
      * for reference of the creation of group sequence.
      */
@@ -109,5 +106,16 @@ public interface ISequenceManager extends Lifecycle {
      * Check if all existing sequences are the same type specified.
      */
     boolean areAllSequencesSameType(String schemaName, Type seqType);
+
+    /**
+     * Reload connection properties so that the latest configuration
+     * can take effect for Sequence.
+     */
+    void reloadConnProps(String schemaName, Map<String, Object> connProps);
+
+    /**
+     * Reset all New Sequence related queues and handlers.
+     */
+    void resetNewSeqResources(String schemaName);
 
 }

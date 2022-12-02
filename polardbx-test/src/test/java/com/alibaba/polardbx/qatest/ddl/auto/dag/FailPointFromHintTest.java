@@ -18,16 +18,13 @@ package com.alibaba.polardbx.qatest.ddl.auto.dag;
 
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.util.HashMap;
 import java.util.Map;
 
+@Ignore
 public class FailPointFromHintTest {
 
     @Rule

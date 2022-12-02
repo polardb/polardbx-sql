@@ -32,6 +32,10 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlOrTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+/**
+ * Prepare does not support LoadData
+ * @see <a href="https://dev.mysql.com/doc/internals/en/com-stmt-prepare.html#packet-COM_STMT_PREPARE">COM_STMT_PREPARE</a>
+ */
 public class LoadDataLocalTest extends BaseTestCase {
     private static String path = Thread.currentThread().getContextClassLoader().getResource(".").getPath();
 
@@ -333,6 +337,9 @@ public class LoadDataLocalTest extends BaseTestCase {
 
     @Test
     public void testTableWithGsi() throws Exception {
+        if (PropertiesUtil.usePrepare()) {
+            return;
+        }
         clearDataOnMysqlAndTddl();
         String create_table_sql = "CREATE TABLE `" + baseOneTableName + "` (" + "`col1_int` bigint(11) NOT NULL,"
             + "`col2_int` int(11) DEFAULT NULL, `col3_int` int(11) DEFAULT NULL, " + "PRIMARY KEY (`col1_int`)"

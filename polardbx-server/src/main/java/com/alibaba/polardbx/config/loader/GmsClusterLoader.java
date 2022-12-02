@@ -31,6 +31,9 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.InstanceRoleManager;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.config.SystemConfig;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.FunctionAccessor;
+import com.alibaba.polardbx.executor.pl.PLUtils;
+import com.alibaba.polardbx.executor.pl.UdfUtils;
 import com.alibaba.polardbx.gms.config.InstConfigReceiver;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
@@ -39,6 +42,7 @@ import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.pl.function.FunctionMetaRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
@@ -50,12 +54,16 @@ import com.alibaba.polardbx.gms.topology.InstLockAccessor;
 import com.alibaba.polardbx.gms.topology.InstLockRecord;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -209,8 +217,24 @@ public class GmsClusterLoader extends ClusterLoader {
         // load dbInfo/userPriv/dbPriv from metaDb
         initClusterAppInfo();
 
+        // register stored function
+        registerStoredFunction();
+
         //init ccl
         CclManager.getService();
+    }
+
+    private void registerStoredFunction() {
+        try (Connection connection = MetaDbUtil.getConnection();) {
+            FunctionAccessor accessor = new FunctionAccessor();
+            accessor.setConnection(connection);
+            List<FunctionMetaRecord> records = accessor.loadFunctionMetas();
+            for(FunctionMetaRecord record: records) {
+                UdfUtils.registerSqlUdf(record.routineMeta, record.canPush);
+            }
+        } catch (Exception ex) {
+            logger.warn("Load function failed: " + ex.getCause());
+        }
     }
 
     protected void loadServerInstIdInfos() {
@@ -310,7 +334,6 @@ public class GmsClusterLoader extends ClusterLoader {
             appLoader.init();
         }
 
-
         CobarServer.getInstance().getConfig().setInstanceId(this.instanceId);
         CobarServer.getInstance().getConfig().getSystem().setInstanceId(this.instanceId);
         CobarServer.getInstance().getConfig().getSystem().setInstanceType(this.instanceType);
@@ -344,7 +367,8 @@ public class GmsClusterLoader extends ClusterLoader {
                             logger.info("Init schema '{}' costs {} secs", schema.getName(),
                                 (System.nanoTime() - startTime) / 1e9);
                         } else {
-                            logger.warn("Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(),
+                            logger.warn(
+                                    "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(),
                                 ex);
                         }
                     }));

@@ -20,5 +20,5 @@ package com.alibaba.polardbx.optimizer.core.rel;
  * @author lingce.ldm 2018-06-20 19:52
  */
 public interface UnionOptHelper {
-    int calMergeUnionSize(int total, String groupName);
+    int calMergeUnionSize(int totalCount, int unionCount, String groupName);
 }

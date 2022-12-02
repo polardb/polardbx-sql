@@ -19,8 +19,8 @@ package com.alibaba.polardbx.server.response;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute.CpuStatAttr;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.LogicalShowProfileHandler;
@@ -75,10 +75,6 @@ public class ShowProfileSyncAction implements ISyncAction {
 
     static {
         profileIgnoreSqlTypeSet.add(SqlType.SHOW);
-        profileIgnoreSqlTypeSet.add(SqlType.SHOW_SEQUENCES);
-        profileIgnoreSqlTypeSet.add(SqlType.SHOW_CHARSET);
-        profileIgnoreSqlTypeSet.add(SqlType.SHOW_INSTANCE_TYPE);
-        profileIgnoreSqlTypeSet.add(SqlType.TDDL_SHOW);
     }
 
     protected String queryId;
@@ -708,7 +704,7 @@ public class ShowProfileSyncAction implements ISyncAction {
             PriorityQueue<CpuSketchItem> allSortedStmtCpuList = new PriorityQueue<>(CPU_COMP);
             for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
                 for (FrontendConnection fc : p.getFrontends().values()) {
-                    if (fc != null && fc instanceof ServerConnection) {
+                    if (fc instanceof ServerConnection) {
                         ServerConnection sc = (ServerConnection) fc;
                         if (sc.isStatementExecuting().get()) {
                             ExecutionContext ec = sc.getTddlConnection().getExecutionContext();

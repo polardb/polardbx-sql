@@ -18,12 +18,9 @@ package com.alibaba.polardbx.matrix.jdbc;
 
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
-import com.alibaba.polardbx.common.jdbc.IConnection;
-import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -31,10 +28,13 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
 import com.alibaba.polardbx.common.lock.LockingFunctionManager;
+import com.alibaba.polardbx.common.logical.ITConnection;
+import com.alibaba.polardbx.common.logical.ITPrepareStatement;
+import com.alibaba.polardbx.common.logical.ITStatement;
 import com.alibaba.polardbx.common.model.DbPriv;
-import com.alibaba.polardbx.common.model.hint.DirectlyRouteCondition;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -42,6 +42,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.InsertSplitter;
@@ -56,9 +57,9 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
-import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.utils.ExceptionUtils;
@@ -71,6 +72,7 @@ import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -100,42 +102,35 @@ import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.alibaba.polardbx.transaction.AutoCommitTransaction;
 import com.alibaba.polardbx.transaction.ITsoTransaction;
 import com.alibaba.polardbx.transaction.ReadOnlyTsoTransaction;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.OptimizerHint;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlCreate;
+import org.apache.calcite.sql.SqlCreateIndex;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.sql.Array;
-import java.sql.Blob;
-import java.sql.CallableStatement;
-import java.sql.Clob;
-import java.sql.DatabaseMetaData;
-import java.sql.NClob;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLClientInfoException;
 import java.sql.SQLException;
-import java.sql.SQLWarning;
-import java.sql.SQLXML;
-import java.sql.Savepoint;
-import java.sql.Statement;
-import java.sql.Struct;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -143,7 +138,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DDL_STATEMENT;
-import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED_POLARDBX;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MODIFY_TABLE;
 import static org.apache.calcite.sql.OptimizerHint.COMMIT_ON_SUCCESS;
@@ -155,7 +149,7 @@ import static org.apache.calcite.sql.SqlKind.UPDATE;
  * @author mengshi.sunmengshi 2013-11-22 下午3:26:06
  * @since 5.0.0
  */
-public class TConnection implements IConnection {
+public class TConnection implements ITConnection {
 
     protected final static Logger logger = LoggerFactory.getLogger(TConnection.class);
     private PlanExecutor executor = null;
@@ -216,6 +210,7 @@ public class TConnection implements IConnection {
     private String user = null;
     private MdlContext mdlContext = null;
     private String frontendConnectionInfo = null;
+    private Boolean asyncDDLPureModeSession = null;
     private InternalTimeZone logicalTimeZone = null;
 
     /**
@@ -239,8 +234,9 @@ public class TConnection implements IConnection {
      */
     private LockingFunctionHandle lockHandle;
     private String traceId;
+
     /**
-     * FIXME @jinwu for ShareReadView
+     * 事务级别
      */
     private ShareReadViewPolicy shareReadView = ShareReadViewPolicy.DEFAULT;
 
@@ -248,6 +244,12 @@ public class TConnection implements IConnection {
      * whether the current statement is a DDL
      */
     private boolean ddlStatement;
+
+    /**
+     * the intra group parallelism ,
+     * when it is not null means user manually set the variable by "SET GROUP_PARALLELISM=xxx"
+     */
+    private Long groupParallelism;
 
     public void setDdlStatement(boolean ddlStatement) {
         this.ddlStatement = ddlStatement;
@@ -262,8 +264,6 @@ public class TConnection implements IConnection {
         this.executor = ds.getExecutor();
         this.executorService = ds.borrowExecutorService();
         this.logicalTimeZone = ds.getLogicalDbTimeZone();
-        // 默认关闭ShareReadView 特殊场景手动开启
-        this.shareReadView = ShareReadViewPolicy.OFF;
     }
 
     public boolean getShareReadView() {
@@ -354,16 +354,13 @@ public class TConnection implements IConnection {
                 extraServerVariables = new HashMap<String, Object>();
             }
 
-            // set binlog_rows_query_log_events
-            String binlogQueryLogConfig =
-                executionContext.getParamManager().getString(ConnectionParams.BINLOG_ROWS_QUERY_LOG_EVENTS);
-
-            if (StringUtils.isEmpty(binlogQueryLogConfig)) {
-                serverVariables.remove(ConnectionProperties.BINLOG_ROWS_QUERY_LOG_EVENTS.toLowerCase());
-            } else {
-                serverVariables.put(ConnectionProperties.BINLOG_ROWS_QUERY_LOG_EVENTS.toLowerCase(),
-                    BooleanUtils.toBoolean(binlogQueryLogConfig.trim()) ? "ON" : "OFF");
+            if (extraServerVariables.get(ConnectionProperties.ENABLE_STORAGE_TRIGGER) != null) {
+                extraCmd.put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME,
+                    extraServerVariables.get(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME));
+                extraCmd.put(ConnectionProperties.ENABLE_STORAGE_TRIGGER,
+                    extraServerVariables.get(ConnectionProperties.ENABLE_STORAGE_TRIGGER));
             }
+
             // 设置逻辑库默认时区
             if (logicalTimeZone != null) {
                 setTimeZoneVariable(serverVariables);
@@ -399,6 +396,7 @@ public class TConnection implements IConnection {
             executionContext.setStressTestValid(dataSource.isStressTestValid());
             executionContext.setSocketTimeout(socketTimeout);
             executionContext.setModifySelect(false);
+            executionContext.setModifySelectParallel(false);
             executionContext.setTimeZone(this.logicalTimeZone);
             executionContext.getPrivilegeVerifyItems().clear();
             if (executionContext.isInternalSystemSql()) {
@@ -412,8 +410,34 @@ public class TConnection implements IConnection {
                 executionContext.setTraceId(internSqlTraceId);
                 executionContext.setPhySqlId(0L);
             }
-            executionContext.setRuntimeStatistics(RuntimeStatHelper.buildRuntimeStat(executionContext));
-
+            if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+                executionContext.setRuntimeStatistics(RuntimeStatHelper.buildRuntimeStat(executionContext));
+            } else {
+                executionContext.setRuntimeStatistics(RuntimeStatHelper.SHARE_RUNTIME_STATISTICS);
+            }
+            DdlContext ddlContext = executionContext.getDdlContext();
+            if (ddlContext != null && ddlContext.getParentDdlContext() != null) {
+                for (Map.Entry<String, Object> entry : ddlContext.getParentDdlContext().getServerVariables()
+                    .entrySet()) {
+                    executionContext.getServerVariables().putIfAbsent(entry.getKey(), entry.getValue());
+                }
+                for (Map.Entry<String, Object> entry : ddlContext.getParentDdlContext().getUserDefVariables()
+                    .entrySet()) {
+                    executionContext.getUserDefVariables().putIfAbsent(entry.getKey(), entry.getValue());
+                }
+                for (Map.Entry<String, Object> entry : ddlContext.getParentDdlContext().getExtraServerVariables()
+                    .entrySet()) {
+                    executionContext.getExtraServerVariables().putIfAbsent(entry.getKey(), entry.getValue());
+                }
+                for (Map.Entry<String, Object> entry : ddlContext.getParentDdlContext().getExtraCmds().entrySet()) {
+                    executionContext.getExtraCmds().putIfAbsent(entry.getKey(), entry.getValue());
+                }
+                if (StringUtils.isNotEmpty(ddlContext.getParentDdlContext().getTimeZone())) {
+                    executionContext.setTimeZone(
+                        TimeZoneUtils.convertFromMySqlTZ(ddlContext.getParentDdlContext().getTimeZone()));
+                }
+                executionContext.setEncoding(ddlContext.getParentDdlContext().getEncoding());
+            }
             if (this.trx == null || this.trx.isClosed()) {
                 beginTransaction();
             } else {
@@ -546,6 +570,21 @@ public class TConnection implements IConnection {
         if (plan == null) {
             return new ResultCursor(new AffectRowCursor(0));
         }
+        SqlNode ast = plan.getAst();
+        if (ast != null) {
+            SqlKind sqlKind = ast.getKind();
+            boolean saveOriginSql =
+                (sqlKind == SqlKind.CREATE_TABLE || sqlKind == SqlKind.CREATE_INDEX || sqlKind == SqlKind.ALTER_TABLE);
+            if (saveOriginSql) {
+                if (ast instanceof SqlCreateTable) {
+                    ((SqlCreateTable) ast).setOriginalSql(sql.toString());
+                } else if (ast instanceof SqlCreateIndex) {
+                    ((SqlCreateIndex) ast).setOriginalSql(sql.toString());
+                } else if (ast instanceof SqlAlterTable) {
+                    ((SqlAlterTable) ast).setOriginalSql(sql.toString());
+                }
+            }
+        }
 
         this.lastExecutionBeginNano = System.nanoTime();
         this.lastExecutionBeginUnixTime = unixTimeStamp();
@@ -588,7 +627,7 @@ public class TConnection implements IConnection {
         if (requireMdl && enableMdl) {
             if (!isClosed()) {
                 // Acquire meta data lock for each statement modifies table data
-                acquireTransactionalMdl(sql.toString(), plan, executionContext);
+                acquireTransactionalMdl(sql, plan, executionContext);
             }
 
             if (isClosed()) {
@@ -598,7 +637,9 @@ public class TConnection implements IConnection {
 
             // If any meta is modified during optimization, rebuild plan
             if (metaVersionChanged(plan, metaVersions, executionContext) || testRebuild) {
-                if (originParams.getBatchSize() <= 0 && GeneralUtil.isEmpty(originParams.getFirstParameter())) {
+                if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
+                    .isEmpty(originParams.getFirstParameter())) {
+                    // rebuild plan during executing preparedStmt should reset origin params
                     // Resume empty parameters for insert
                     executionContext.setParams(originParams);
                 }
@@ -632,7 +673,9 @@ public class TConnection implements IConnection {
         }
 
         executionContext.setFinalPlan(plan);
-        PolarPrivilegeUtils.checkPrivilege(plan, executionContext);
+        if (!executionContext.isExecutingPreparedStmt()) {
+            PolarPrivilegeUtils.checkPrivilege(plan, executionContext);
+        }
         ScaleOutPlanUtil.checkDDLPermission(plan, executionContext);
         invalidInventoryMode(plan);
 
@@ -719,23 +762,27 @@ public class TConnection implements IConnection {
         return plan;
     }
 
-    public void feedBackPlan(Throwable ex, double executeTimeMs, List<Pair<Integer, ParameterContext>> params) {
+    public void feedBackPlan(Throwable ex) {
+        if (!DynamicConfig.getInstance().enableClearFailedPlan()) {
+            return;
+        }
         if (executionContext.getExplain() != null) {
             return;
         }
-        ExecutionPlan plan = executionContext.getFinalPlan();
-        if (plan != null && !plan.isDirectShardingKey()) {
-            // only deal with plan not null and not direct sharding point select
-            if (plan.getCacheKey() != null) {
-                OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager()
-                    .feedBack(plan, ex,
-                        ((RuntimeStatistics) executionContext.getRuntimeStatistics()).toSketch(), executionContext);
+        if (ex != null) {
+            ExecutionPlan plan = executionContext.getFinalPlan();
+            if (plan != null && !plan.isDirectShardingKey()) {
+                // only deal with plan not null and not direct sharding point select
+                if (plan.getCacheKey() != null) {
+                    PlanManager.getInstance().invalidateCache(plan, ex);
+                }
             }
         }
     }
 
     public Pair<Integer, Integer> updatePlanManagementInfo(long lastExecuteUnixTime,
-                                                           double executionTimeInSeconds, Throwable ex) {
+                                                           double executionTimeInSeconds, ExecutionContext ec,
+                                                           Throwable ex) {
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SPM)) {
             return null;
         }
@@ -752,18 +799,21 @@ public class TConnection implements IConnection {
             PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
             BaselineInfo baselineInfo = plannerContext.getBaselineInfo();
             PlanInfo planInfo = plannerContext.getPlanInfo();
-            OptimizerContext optimizerContext = OptimizerContext.getContext(executionContext.getSchemaName());
-            if (optimizerContext == null) {
-                return null;
-            }
-            PlanManager planManager = optimizerContext.getPlanManager();
-            if (planInfo != null && baselineInfo != null && planManager != null) {
+            if (planInfo != null && baselineInfo != null) {
                 synchronized (baselineInfo) {
-                    planManager.doEvolution(baselineInfo, planInfo, lastExecuteUnixTime, executionTimeInSeconds, ex);
+                    PlanManager.getInstance().doEvolution(executionContext.getSchemaName(), baselineInfo, planInfo,
+                        lastExecuteUnixTime, executionTimeInSeconds, ec, ex);
                     return new Pair<>(baselineInfo.getId(), planInfo.getId());
                 }
             }
+            // only deal with plan not null and not direct sharding point select
+            if (executionPlan.getCacheKey() != null) {
+                PlanManager.getInstance()
+                    .feedBack(executionPlan, ex,
+                        ((RuntimeStatistics) executionContext.getRuntimeStatistics()).toSketch(), executionContext);
+            }
         }
+
         return null;
     }
 
@@ -784,11 +834,11 @@ public class TConnection implements IConnection {
         } else if (plan instanceof LogicalModifyView) {
             tableNameList = ((LogicalModifyView) plan).getTableNames();
         } else if (plan instanceof DirectTableOperation) {
-            tableNameList = ((DirectTableOperation) plan).getTableNames();
+            tableNameList = ((DirectTableOperation) plan).getLogicalTableNames();
         } else if (plan instanceof BroadcastTableModify) {
             tableNameList = ((BroadcastTableModify) plan).getDirectTableOperation().getTableNames();
         } else if (plan instanceof SingleTableOperation) {
-            tableNameList = ((SingleTableOperation) plan).getTableNames();
+            tableNameList = ((SingleTableOperation) plan).getLogicalTableNames();
         } else {
             return;
         }
@@ -812,12 +862,12 @@ public class TConnection implements IConnection {
         }
 
         if (sqlKind == SqlKind.INSERT) {
-            OptimizerContext.getContext(executionContext.getSchemaName()).getStatisticManager()
-                .addUpdateRowCount(logicalTableName, affectRow);
+            StatisticManager.getInstance()
+                .addUpdateRowCount(executionContext.getSchemaName(), logicalTableName, affectRow);
         }
         if (sqlKind == SqlKind.DELETE) {
-            OptimizerContext.getContext(executionContext.getSchemaName()).getStatisticManager()
-                .addUpdateRowCount(logicalTableName, -affectRow);
+            StatisticManager.getInstance()
+                .addUpdateRowCount(executionContext.getSchemaName(), logicalTableName, -affectRow);
         }
     }
 
@@ -906,7 +956,7 @@ public class TConnection implements IConnection {
     /**
      * acquire mdl for each table modified
      */
-    private void acquireTransactionalMdl(final String sql, final ExecutionPlan plan, final ExecutionContext ec) {
+    private void acquireTransactionalMdl(final ByteString sql, final ExecutionPlan plan, final ExecutionContext ec) {
         final MdlContext mdlContext = getMdlContext();
         if (null == mdlContext) {
             // For sql statement mdl can never be null
@@ -931,7 +981,7 @@ public class TConnection implements IConnection {
 
         Set<Pair<String, String>> tables = plan.getTableSet();
         if (tables != null) {
-            tables.stream().sorted(Comparator.comparing(Pair::getValue)).forEach(table -> {
+            for (Pair<String, String> table : tables) {
                 String schemaName = table.getKey();
                 if (schemaName == null) {
                     schemaName = executionContext.getSchemaName();
@@ -946,12 +996,25 @@ public class TConnection implements IConnection {
                 TableMeta meta = ec.getSchemaManager(schemaName).getTableWithNull(table.getValue());
 
                 if (meta != null) {
+                    boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+                    if (isNewPartDb && meta.getTableGroupDigestList() != null) {
+                        mdlContext.acquireLock(MdlRequest.getTransactionalDmlMdlRequest(trxId,
+                            schemaName, meta.getTableGroupDigest(trxId),
+                            executionContext.getTraceId(), sql, frontendConnectionInfo));
+                    }
+                    if (!isNewPartDb && meta.getSchemaDigestList() != null) {
+                        mdlContext.acquireLock(MdlRequest.getTransactionalDmlMdlRequest(trxId,
+                            schemaName, meta.getSchemaDigest(trxId),
+                            executionContext.getTraceId(), sql, frontendConnectionInfo));
+                    }
                     mdlContext.acquireLock(MdlRequest.getTransactionalDmlMdlRequest(trxId,
                         schemaName, meta.getDigest(),
                         executionContext.getTraceId(), sql, frontendConnectionInfo));
                 }
-            });
+            }
+            ;
         }
+
     }
 
     private void refreshTableMeta() {
@@ -1009,28 +1072,6 @@ public class TConnection implements IConnection {
                 dbPriv.loadPriv(dbPrivFromProperties);
             }
         }
-    }
-
-    public PreparedStatement prepareStatement(ByteString sql) throws SQLException {
-        checkClosed();
-        ExecutionContext context = prepareExecutionContext();
-        TPreparedStatement stmt = new TPreparedStatement(dataSource, this, sql, context);
-        synchronized (openedStatements) {
-            openedStatements.add(stmt);
-        }
-        return stmt;
-    }
-
-    @Override
-    public Statement createStatement() throws SQLException {
-        checkClosed();
-        ExecutionContext context = prepareExecutionContext();
-        TStatement stmt = new TStatement(dataSource, this, context);
-
-        synchronized (openedStatements) {
-            openedStatements.add(stmt);
-        }
-        return stmt;
     }
 
     private ExecutionContext prepareExecutionContext() throws SQLException {
@@ -1093,6 +1134,7 @@ public class TConnection implements IConnection {
         this.executionContext.setModifyBroadcastTable(false);
         this.executionContext.setModifyGsiTable(false);
         this.executionContext.setModifySelect(false);
+        this.executionContext.setModifySelectParallel(false);
         this.executionContext.setConnId(connId);
         this.executionContext.setClientIp(clientIp);
         this.executionContext.setTestMode(testMode);
@@ -1104,9 +1146,22 @@ public class TConnection implements IConnection {
         this.executionContext.setReturning(null);
         this.executionContext.setOptimizedWithReturning(false);
         this.executionContext.setClientFoundRows(isClientFoundRows());
-        this.executionContext.setDdlContext(ddlContext);
+
         this.executionContext.setIsExecutingPreparedStmt(isExecutingPreparedStmt);
         this.executionContext.setPreparedStmtCache(preparedStmtCache);
+        this.executionContext.setDdlContext(ddlContext);
+        this.executionContext.setCursorFetchMode(false);
+        if (ddlContext != null && ddlContext.getParentDdlContext() != null) {
+            DdlContext parentDdlContext = ddlContext.getParentDdlContext();
+            executionContext.setServerVariables(parentDdlContext.getServerVariables());
+            executionContext.setUserDefVariables(parentDdlContext.getUserDefVariables());
+            executionContext.setExtraCmds(parentDdlContext.getExtraCmds());
+            executionContext.setExtraServerVariables(parentDdlContext.getExtraServerVariables());
+            if (StringUtils.isNotEmpty(parentDdlContext.getTimeZone())) {
+                executionContext.setTimeZone(TimeZoneUtils.convertFromMySqlTZ(parentDdlContext.getTimeZone()));
+            }
+            executionContext.setEncoding(parentDdlContext.getEncoding());
+        }
         return this.executionContext;
     }
 
@@ -1115,8 +1170,6 @@ public class TConnection implements IConnection {
      * JDBC事务相关的autoCommit设置、commit/rollback、TransactionIsolation等
      * ======================================================================
      */
-
-    @Override
     public void setAutoCommit(boolean autoCommit) throws SQLException {
         checkClosed();
         if (this.isAutoCommit == autoCommit) {
@@ -1138,7 +1191,6 @@ public class TConnection implements IConnection {
                 this.trx = null;
                 refreshTableMeta();
                 releaseTransactionalMdl(getExecutionContext());
-
             }
         }
 
@@ -1155,20 +1207,26 @@ public class TConnection implements IConnection {
         }
     }
 
-    @Override
     public boolean getAutoCommit() throws SQLException {
         checkClosed();
         return isAutoCommit;
     }
 
-    @Override
     public void commit() throws SQLException {
         checkClosed();
 
         if (this.trx != null) {
             try {
                 // 事务结束,清理事务内容
-                this.trx.commit();
+                if (executionContext.isCursorFetchMode() && trx instanceof AutoCommitTransaction) {
+                    // For cursor-fetch mode, row data will be fetched in later statements.
+                    // We achieve this by caching the result set.
+                    // So do not commit the trx or release the physical connections,
+                    // or otherwise the result set will be closed automatically.
+
+                } else {
+                    this.trx.commit();
+                }
             } catch (Throwable e) {
                 // 增加打印事务异常日志
                 logger.error(e);
@@ -1176,13 +1234,19 @@ public class TConnection implements IConnection {
             } finally {
                 if (isAutoCommit) {
                     if (trxPolicy == ITransactionPolicy.NO_TRANSACTION) {
-                        // DTS relies on NO_TRANSACTION to process batch by batch. Fuck it.
+                        // DTS relies on NO_TRANSACTION to process batch by batch.
                         // See DataXSpecialTest for details.
                     } else {
                         this.trxPolicy = null;
                     }
                 }
-                this.trx.close();
+
+                if (executionContext.isCursorFetchMode() && trx instanceof AutoCommitTransaction) {
+                    // For cursor-fetch mode, do not close the trx.
+                } else {
+                    this.trx.close();
+                }
+
                 this.trx = null;
                 refreshTableMeta();
                 releaseTransactionalMdl(executionContext);
@@ -1190,22 +1254,6 @@ public class TConnection implements IConnection {
         }
     }
 
-    public void newExecutionContext() {
-        this.executionContext.clearContextForStatement();
-        if (this.executionContext != null && this.executionContext.getTransaction() != null && !this.executionContext
-            .getTransaction().isClosed()) {
-            return;
-        }
-
-        Object lastFailedMessage = this.executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
-        this.executionContext = new ExecutionContext();
-
-        if (lastFailedMessage != null) {
-            this.executionContext.getExtraDatas().put(ExecutionContext.LastFailedMessage, lastFailedMessage);
-        }
-    }
-
-    @Override
     public void rollback() throws SQLException {
         checkClosed();
 
@@ -1228,12 +1276,6 @@ public class TConnection implements IConnection {
         }
     }
 
-    @Override
-    public DatabaseMetaData getMetaData() throws SQLException {
-        checkClosed();
-        return new TDatabaseMetaData(dataSource);
-    }
-
     private void checkClosed() throws SQLException {
         if (closed) {
             throw new SQLException("No operations allowed after connection closed.");
@@ -1247,7 +1289,6 @@ public class TConnection implements IConnection {
 
     @Override
     public void close() throws SQLException {
-
         if (closed) {
             return;
         }
@@ -1333,115 +1374,6 @@ public class TConnection implements IConnection {
         }
     }
 
-    @Override
-    public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        TStatement stmt = (TStatement) createStatement();
-        stmt.setResultSetType(resultSetType);
-        stmt.setResultSetConcurrency(resultSetConcurrency);
-        return stmt;
-    }
-
-    @Override
-    public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability)
-        throws SQLException {
-        TStatement stmt = (TStatement) createStatement(resultSetType, resultSetConcurrency);
-        stmt.setResultSetHoldability(resultSetHoldability);
-        return stmt;
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) throws SQLException {
-        TPreparedStatement stmt = (TPreparedStatement) prepareStatement(sql);
-        stmt.setAutoGeneratedKeys(autoGeneratedKeys);
-        return stmt;
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency,
-                                              int resultSetHoldability) throws SQLException {
-        TPreparedStatement stmt = (TPreparedStatement) prepareStatement(sql, resultSetType, resultSetConcurrency);
-        stmt.setResultSetHoldability(resultSetHoldability);
-        return stmt;
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String sql, int[] columnIndexes) throws SQLException {
-        TPreparedStatement stmt = (TPreparedStatement) prepareStatement(sql);
-        stmt.setColumnIndexes(columnIndexes);
-        return stmt;
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String sql, String[] columnNames) throws SQLException {
-        TPreparedStatement stmt = (TPreparedStatement) prepareStatement(sql);
-        stmt.setColumnNames(columnNames);
-        return stmt;
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency)
-        throws SQLException {
-        TPreparedStatement stmt = (TPreparedStatement) prepareStatement(sql);
-        stmt.setResultSetType(resultSetType);
-        stmt.setResultSetConcurrency(resultSetConcurrency);
-        return stmt;
-    }
-
-    @Override
-    public CallableStatement prepareCall(String sql) throws SQLException {
-        return prepareCall(sql, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
-    }
-
-    @Override
-    public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-        return prepareCall(sql, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
-    }
-
-    @Override
-    public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency,
-                                         int resultSetHoldability) throws SQLException {
-        checkClosed();
-
-        if (this.trx == null || this.trx.isClosed()) {
-            beginTransaction();
-        }
-
-        // 先检查下是否有db hint
-        DirectlyRouteCondition route = null;
-        String defaultDbIndex = null;
-        if (route != null) {
-            defaultDbIndex = route.getDbId();
-        } else {
-            // 针对存储过程，直接下推到default库上执行
-            defaultDbIndex =
-                this.dataSource.getConfigHolder().getOptimizerContext().getRuleManager().getDefaultDbIndex(null);
-        }
-
-        IGroupExecutor groupExecutor = this.dataSource.getConfigHolder()
-            .getExecutorContext()
-            .getTopologyHandler()
-            .get(defaultDbIndex);
-
-        IDataSource groupDataSource = groupExecutor.getDataSource();
-
-        IConnection conn = this.getConnectionHolder().getConnection(getSchema(), defaultDbIndex, groupDataSource);
-        CallableStatement target;
-        if (resultSetType != Integer.MIN_VALUE && resultSetHoldability != Integer.MIN_VALUE) {
-            target = conn.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
-        } else if (resultSetType != Integer.MIN_VALUE) {
-            target = conn.prepareCall(sql, resultSetType, resultSetConcurrency);
-        } else {
-            target = conn.prepareCall(sql);
-        }
-
-        ExecutionContext context = prepareExecutionContext();
-        TCallableStatement stmt = new TCallableStatement(dataSource, this, sql, context, target);
-        synchronized (openedStatements) {
-            openedStatements.add(stmt);
-        }
-        return stmt;
-    }
-
     protected ResultCursor buildSqlErrorInfoCursor(Throwable ex, String sql) {
 
         // 收集SQL在DRDS的新或旧引擎上的执行错误，包括完整堆栈、行号、方法名、文件名和IpPort
@@ -1499,7 +1431,6 @@ public class TConnection implements IConnection {
         return result;
     }
 
-    @Override
     public void setTransactionIsolation(int level) throws SQLException {
         if (this.transactionIsolation == level) {
             return;
@@ -1513,59 +1444,15 @@ public class TConnection implements IConnection {
         }
     }
 
-    @Override
     public String getSqlMode() {
         return sqlMode;
     }
 
-    @Override
     public void setSqlMode(String sqlMode) {
         this.sqlMode = sqlMode;
 
         if (executionContext != null) {
             executionContext.setSqlMode(sqlMode);
-        }
-    }
-
-    @Override
-    public int getTransactionIsolation() throws SQLException {
-        checkClosed();
-        return transactionIsolation;
-    }
-
-    /**
-     * 暂时实现为isClosed
-     */
-    @Override
-    public boolean isValid(int timeout) throws SQLException {
-        return this.isClosed();
-    }
-
-    @Override
-    public void setHoldability(int holdability) throws SQLException {
-        /*
-         * 如果你看到这里，那么恭喜，哈哈 mysql默认在5.x的jdbc driver里面也没有实现holdability 。
-         * 所以默认都是.CLOSE_CURSORS_AT_COMMIT 为了简化起见，我们也就只实现close这种
-         */
-        throw new UnsupportedOperationException("setHoldability");
-    }
-
-    @Override
-    public int getHoldability() throws SQLException {
-        return ResultSet.CLOSE_CURSORS_AT_COMMIT;
-    }
-
-    @Override
-    public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        return iface.isAssignableFrom(this.getClass());
-    }
-
-    @Override
-    public <T> T unwrap(Class<T> iface) throws SQLException {
-        try {
-            return (T) this;
-        } catch (Exception e) {
-            throw GeneralUtil.nestedException(e);
         }
     }
 
@@ -1579,125 +1466,27 @@ public class TConnection implements IConnection {
         return this.executionContext;
     }
 
-    @Override
-    public SQLWarning getWarnings() throws SQLException {
-        return null;
+    public void newExecutionContext() {
+        ExecutionContext ecNeedClear = this.executionContext;
+
+        // TODO Remove special clear action for trans, context should be totally cleared when statement finished.
+        if (this.executionContext != null && this.executionContext.getTransaction() != null && !this.executionContext
+            .getTransaction().isClosed()) {
+            this.executionContext.clearContextInsideTrans();
+            return;
+        }
+
+        Object lastFailedMessage = this.executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
+        this.executionContext = new ExecutionContext();
+
+        if (lastFailedMessage != null) {
+            this.executionContext.getExtraDatas().put(ExecutionContext.LastFailedMessage, lastFailedMessage);
+        }
+        ecNeedClear.clearContextAfterTrans();
     }
 
-    @Override
-    public void clearWarnings() throws SQLException {
-        // do nothing
-    }
-
-    @Override
     public void setReadOnly(boolean readOnly) throws SQLException {
         this.readOnly = readOnly;
-    }
-
-    /**
-     * 保持可读可写
-     */
-    @Override
-    public boolean isReadOnly() throws SQLException {
-        return readOnly;
-    }
-
-    /*---------------------后面是未实现的方法------------------------------*/
-
-    @Override
-    public Savepoint setSavepoint() throws SQLException {
-        throw new UnsupportedOperationException("setSavepoint");
-    }
-
-    @Override
-    public Savepoint setSavepoint(String name) throws SQLException {
-        throw new UnsupportedOperationException("setSavepoint");
-    }
-
-    @Override
-    public void rollback(Savepoint savepoint) throws SQLException {
-        throw new UnsupportedOperationException("rollback");
-
-    }
-
-    @Override
-    public void releaseSavepoint(Savepoint savepoint) throws SQLException {
-        throw new UnsupportedOperationException("releaseSavepoint");
-    }
-
-    @Override
-    public Clob createClob() throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public Blob createBlob() throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public NClob createNClob() throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public SQLXML createSQLXML() throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public void setClientInfo(String name, String value) throws SQLClientInfoException {
-        throw new RuntimeException("not support exception");
-    }
-
-    @Override
-    public void setClientInfo(Properties properties) throws SQLClientInfoException {
-        throw new RuntimeException("not support exception");
-    }
-
-    @Override
-    public String getClientInfo(String name) throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public Properties getClientInfo() throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public Array createArrayOf(String typeName, Object[] elements) throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public Struct createStruct(String typeName, Object[] attributes) throws SQLException {
-        throw new SQLException("not support exception");
-    }
-
-    @Override
-    public Map<String, Class<?>> getTypeMap() throws SQLException {
-        throw new UnsupportedOperationException("getTypeMap");
-    }
-
-    @Override
-    public void setTypeMap(Map<String, Class<?>> map) throws SQLException {
-        throw new UnsupportedOperationException("setTypeMap");
-    }
-
-    @Override
-    public String nativeSQL(String sql) throws SQLException {
-        throw new UnsupportedOperationException("nativeSQL");
-    }
-
-    @Override
-    public void setCatalog(String catalog) throws SQLException {
-        throw new UnsupportedOperationException("setCatalog");
-    }
-
-    @Override
-    public String getCatalog() throws SQLException {
-        throw new UnsupportedOperationException("getCatalog");
     }
 
     public IConnectionHolder getConnectionHolder() {
@@ -1708,7 +1497,6 @@ public class TConnection implements IConnection {
         return this.trx.getConnectionHolder();
     }
 
-    @Override
     public void kill() throws SQLException {
         lock.lock();
 
@@ -1766,17 +1554,11 @@ public class TConnection implements IConnection {
         generatedKeys = ids;
     }
 
-    @Override
     public void setEncoding(String encoding) {
         this.encoding = encoding;
         if (executionContext != null) {
             executionContext.setEncoding(encoding);
         }
-    }
-
-    @Override
-    public String getEncoding() {
-        return this.encoding;
     }
 
     private void beginTransaction() {
@@ -1798,6 +1580,10 @@ public class TConnection implements IConnection {
             if (shareReadView == ShareReadViewPolicy.DEFAULT) {
                 loadShareReadView(executionContext);
             }
+            if (groupParallelism == null) {
+                // When group parallelism is not set ,use default value of ConnectionParams.GROUP_PARALLELISM
+                groupParallelism = this.executionContext.getParamManager().getLong(ConnectionParams.GROUP_PARALLELISM);
+            }
 
             boolean readOnly =
                 this.readOnly || (ConfigDataMode.isSlaveMode() && executionContext.getParamManager().getBoolean(
@@ -1814,6 +1600,8 @@ public class TConnection implements IConnection {
             executionContext.setConnection(this);
             executionContext.setReadOnly(readOnly);
             executionContext.setShareReadView(shareReadView == ShareReadViewPolicy.ON);
+            executionContext.setGroupParallelism(groupParallelism);
+
             ITransactionManager tm = this.dataSource.getConfigHolder().getExecutorContext().getTransactionManager();
             this.trx = tm.createTransaction(trxConfig, executionContext);
         } finally {
@@ -1832,6 +1620,9 @@ public class TConnection implements IConnection {
             // force update transaction policy
             this.trxPolicy = loadTrxPolicy(executionContext);
             loadShareReadView(executionContext);
+            if (groupParallelism == null) {
+                groupParallelism = this.executionContext.getParamManager().getLong(ConnectionParams.GROUP_PARALLELISM);
+            }
 
             boolean isSingleShard = false;
             if (executionContext.getFinalPlan() != null) {
@@ -1851,6 +1642,7 @@ public class TConnection implements IConnection {
             executionContext.setUserDefVariables(userDefVariables);
             executionContext.setConnection(this);
             executionContext.setShareReadView(shareReadView == ShareReadViewPolicy.ON);
+            executionContext.setGroupParallelism(this.groupParallelism);
             ITransactionManager tm = this.dataSource.getConfigHolder().getExecutorContext().getTransactionManager();
             this.trx = tm.createTransaction(trxConfig, executionContext);
             return this.trx;
@@ -1872,7 +1664,9 @@ public class TConnection implements IConnection {
         executionContext.setStressTestValid(dataSource.isStressTestValid());
         executionContext.setSocketTimeout(socketTimeout);
         executionContext.setModifySelect(false);
+        executionContext.setModifySelectParallel(false);
         executionContext.setTimeZone(this.logicalTimeZone);
+        executionContext.setTxIsolation(this.transactionIsolation);
         if (executionContext.isInternalSystemSql()) {
             /**
              * When the sql is labeled as internal system sql of drds, the
@@ -1950,39 +1744,12 @@ public class TConnection implements IConnection {
         return dataSource;
     }
 
-    @Override
     public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
         this.socketTimeout = milliseconds;
     }
 
-    @Override
-    public int getNetworkTimeout() throws SQLException {
-        return this.socketTimeout;
-    }
-
-    @Override
-    public void setStressTestValid(boolean stressTestValid) {
-        throw new NotSupportException();
-    }
-
-    @Override
-    public boolean isStressTestValid() {
-        return dataSource.isStressTestValid();
-    }
-
-    @Override
-    public void setSchema(String schema) throws SQLException {
-        throw new NotSupportException("setSchemas");
-    }
-
-    @Override
     public String getSchema() throws SQLException {
         return this.dataSource.getSchemaName();
-    }
-
-    @Override
-    public void abort(Executor executor) throws SQLException {
-        throw new NotSupportException("abort");
     }
 
     public void tryClose() throws SQLException {
@@ -2021,17 +1788,14 @@ public class TConnection implements IConnection {
         return trx;
     }
 
-    @Override
     public Map<String, Object> getServerVariables() {
         return serverVariables;
     }
 
-    @Override
     public void setServerVariables(Map<String, Object> serverVariables) {
         this.serverVariables = serverVariables;
     }
 
-    @Override
     public void setGlobalServerVariables(Map<String, Object> globalServerVariables) {
         this.globalServerVariables = globalServerVariables;
     }
@@ -2044,7 +1808,6 @@ public class TConnection implements IConnection {
         this.extraServerVariables = extraServerVariables;
     }
 
-    @Override
     public void setConnectionVariables(Map<String, Object> connectionVariables) {
         this.connectionVariables = connectionVariables;
     }
@@ -2101,7 +1864,6 @@ public class TConnection implements IConnection {
         return user;
     }
 
-    @Override
     public void setUser(String userName) {
         this.user = userName;
     }
@@ -2130,14 +1892,8 @@ public class TConnection implements IConnection {
         return lastExecutionBeginUnixTime;
     }
 
-    @Override
-    public void executeLater(String sql) throws SQLException {
-        throw new NotSupportException("executeLater");
-    }
-
-    @Override
-    public void flushUnsent() throws SQLException {
-        throw new NotSupportException("flushUnsent");
+    public void setAsyncDDLPureModeSession(Boolean asyncDDLPureModeSession) {
+        this.asyncDDLPureModeSession = asyncDDLPureModeSession;
     }
 
     @Override
@@ -2206,13 +1962,35 @@ public class TConnection implements IConnection {
         return false;
     }
 
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
+    }
+
     @Override
-    public PreparedStatement prepareStatement(String sql) throws SQLException {
+    public ITStatement createStatement() throws SQLException {
+        checkClosed();
+        ExecutionContext context = prepareExecutionContext();
+        TStatement stmt = new TStatement(dataSource, this, context);
+
+        synchronized (openedStatements) {
+            openedStatements.add(stmt);
+        }
+        return stmt;
+    }
+
+    @Override
+    public ITPrepareStatement prepareStatement(String sql) throws SQLException {
         return prepareStatement(ByteString.from(sql));
     }
 
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
+    public ITPrepareStatement prepareStatement(ByteString sql) throws SQLException {
+        checkClosed();
+        ExecutionContext context = prepareExecutionContext();
+        TPreparedStatement stmt = new TPreparedStatement(dataSource, this, sql, context);
+        synchronized (openedStatements) {
+            openedStatements.add(stmt);
+        }
+        return stmt;
     }
 
     public void setShareReadView(ShareReadViewPolicy shareReadView) {
@@ -2231,6 +2009,18 @@ public class TConnection implements IConnection {
             ShareReadViewPolicy.checkTxIsolation(transactionIsolation);
         }
         this.shareReadView = shareReadView;
+    }
+
+    public void setGroupParallelism(Long groupParallelism) {
+        if (this.groupParallelism != null && this.groupParallelism.equals(groupParallelism)) {
+            return;
+        }
+        if (this.trx != null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                "Set group parallelism in the middle of transaction "
+                    + "is not allowed. Please do this operation right after transaction begins.");
+        }
+        this.groupParallelism = groupParallelism;
     }
 
     public boolean dnSupportShareReadView() {

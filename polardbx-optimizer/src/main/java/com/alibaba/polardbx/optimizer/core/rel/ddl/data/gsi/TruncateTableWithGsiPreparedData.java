@@ -25,12 +25,12 @@ import java.util.Map;
 
 public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
 
-    private TruncateTablePreparedData primaryTablePreparedData;
-    private Map<String, TruncateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
+    protected TruncateTablePreparedData primaryTablePreparedData;
+    protected Map<String, TruncateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
 
-    private LogicalCreateTable logicalCreateTable;
-    private String tmpTableSuffix;
-    private Map<String, String> tmpIndexTableMap;
+    protected LogicalCreateTable logicalCreateTable;
+    protected String tmpTableSuffix;
+    protected Map<String, String> tmpIndexTableMap;
 
     public TruncateTablePreparedData getPrimaryTablePreparedData() {
         return primaryTablePreparedData;
@@ -81,6 +81,7 @@ public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
         return primaryTablePreparedData.getTableName();
     }
 
+    @Override
     public String getSchemaName() {
         return primaryTablePreparedData.getSchemaName();
     }

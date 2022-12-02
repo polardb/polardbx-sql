@@ -42,8 +42,6 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.mysqlDBName1;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXShardingDBName1;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
-@Ignore(
-    "fix by ???: The params of ddl may be invalid, because the expected physical tables number for each group specified by ddl mismatch the actual generated number, the expected/actual number is [1/1]")
 public class IndexLookupTest extends ReadBaseTestCase {
 
     enum Sharding {
@@ -53,10 +51,12 @@ public class IndexLookupTest extends ReadBaseTestCase {
             "dbpartition by HASH(a) tbpartition by HASH(a) tbpartitions 2"),
         DB_TB_DIFF_COLUMN("index_lookup_test_a_b",
             "dbpartition by HASH(a) tbpartition by HASH(b) tbpartitions 2"),
-        DB_RANGE_HASH("index_lookup_test_ab",
-            "dbpartition by RANGE_HASH(a, b, 1)"),
-        DB_TB_SAME_RANGE_HASH("index_lookup_test_ab_ab",
-            "dbpartition by RANGE_HASH(a, b, 1) tbpartition by RANGE_HASH(a, b, 1) tbpartitions 2"),
+        // Uncomment the following code once this aone is fixed
+        // https://work.aone.alibaba-inc.com/issue/41325609
+//        DB_RANGE_HASH("index_lookup_test_ab",
+//            "dbpartition by RANGE_HASH(a, b, 1)"),
+//        DB_TB_SAME_RANGE_HASH("index_lookup_test_ab_ab",
+//            "dbpartition by RANGE_HASH(a, b, 1) tbpartition by RANGE_HASH(a, b, 1) tbpartitions 2"),
         TB_ONLY("index_lookup_test_x_a",
             "tbpartition by HASH(a) tbpartitions 2");
 

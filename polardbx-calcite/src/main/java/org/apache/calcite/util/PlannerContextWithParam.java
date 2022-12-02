@@ -18,7 +18,9 @@ package org.apache.calcite.util;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -33,4 +35,12 @@ public interface PlannerContextWithParam {
     public Function<RexNode, Object> getEvalFunc();
 
     public void setEvalFunc(Function<RexNode, Object> evalFunc);
+
+    public Optional<CalcitePlanOptimizerTrace> getCalcitePlanOptimizerTrace();
+
+    /**
+     * Return the ExecutionContext of Planner
+     * @return
+     */
+    public Object getExecContext();
 }

@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;

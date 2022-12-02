@@ -664,4 +664,16 @@ public class StringNumericParser extends MySQLTimeParserBase {
         result[NUMERIC_INDEX] = isNeg ? SIGNED_MIN_LONG : (Long.MAX_VALUE ^ Long.MIN_VALUE);
         result[ERROR_INDEX] = 1;
     }
+
+    public static Long simplyParseLong(String val) {
+        long longValue = 0;
+        if (val != null) {
+            try {
+                longValue = Long.parseLong(val);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return longValue;
+    }
 }

@@ -193,38 +193,45 @@ public class ConfigListenerAccessor extends AbstractAccessor {
                 connection.setAutoCommit(false);
             }
 
-            Map<Integer, ParameterContext> queryParams = Maps.newHashMap();
-            MetaDbUtil.setParameter(1, queryParams, ParameterMethod.setString, dataId);
-            List<ConfigListenerRecord> records =
-                MetaDbUtil.query(SELECT_DATA_ID, queryParams, ConfigListenerRecord.class, connection);
-            if (records.size() == 0) {
-                Map<Integer, ParameterContext> insertParams = Maps.newHashMap();
-                MetaDbUtil.setParameter(1, insertParams, ParameterMethod.setString, dataId);
-                MetaDbUtil.setParameter(2, insertParams, ParameterMethod.setInt, listenerStatus);
-                MetaDbUtil.setParameter(3, insertParams, ParameterMethod.setLong, initOpVersion);
-                MetaDbUtil.insert(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams, connection);
-                DdlMetaLogUtil.logSql(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams);
-            } else {
-                long idVal = records.get(0).id;
-                Map<Integer, ParameterContext> forUpdateParams = Maps.newHashMap();
-                MetaDbUtil.setParameter(1, forUpdateParams, ParameterMethod.setLong, idVal);
-                DdlMetaLogUtil.logSql(SELECT_DATA_ID_BY_ID_FOR_UPDATE, forUpdateParams);
-                List<ConfigListenerRecord> forUpdateRs =
-                    MetaDbUtil.query(SELECT_DATA_ID_BY_ID_FOR_UPDATE, forUpdateParams, ConfigListenerRecord.class,
-                        connection);
-                if (forUpdateRs.size() > 0) {
-                    ConfigListenerRecord recordForUpdate = forUpdateRs.get(0);
-                    if (recordForUpdate.status == ConfigListenerRecord.DATA_ID_STATUS_REMOVED) {
-                        // reset record.status to DATA_ID_STATUS_NORMAL
-                        Map<Integer, ParameterContext> updateParams = Maps.newHashMap();
-                        MetaDbUtil.setParameter(1, updateParams, ParameterMethod.setInt, listenerStatus);
-                        MetaDbUtil.setParameter(2, updateParams, ParameterMethod.setLong, initOpVersion);
-                        MetaDbUtil.setParameter(3, updateParams, ParameterMethod.setLong, idVal);
-                        MetaDbUtil.update(UPDATE_DATA_ID_STATUS_AND_VALUE_BY_ID, updateParams, connection);
-                        DdlMetaLogUtil.logSql(UPDATE_DATA_ID_STATUS_AND_VALUE_BY_ID, updateParams);
-                    }
-                }
-            }
+            Map<Integer, ParameterContext> insertParams = Maps.newHashMap();
+            MetaDbUtil.setParameter(1, insertParams, ParameterMethod.setString, dataId);
+            MetaDbUtil.setParameter(2, insertParams, ParameterMethod.setInt, listenerStatus);
+            MetaDbUtil.setParameter(3, insertParams, ParameterMethod.setLong, initOpVersion);
+            MetaDbUtil.insert(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams, connection);
+            DdlMetaLogUtil.logSql(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams);
+
+//            Map<Integer, ParameterContext> queryParams = Maps.newHashMap();
+//            MetaDbUtil.setParameter(1, queryParams, ParameterMethod.setString, dataId);
+//            List<ConfigListenerRecord> records =
+//                MetaDbUtil.query(SELECT_DATA_ID, queryParams, ConfigListenerRecord.class, connection);
+//            if (records.size() == 0) {
+//                Map<Integer, ParameterContext> insertParams = Maps.newHashMap();
+//                MetaDbUtil.setParameter(1, insertParams, ParameterMethod.setString, dataId);
+//                MetaDbUtil.setParameter(2, insertParams, ParameterMethod.setInt, listenerStatus);
+//                MetaDbUtil.setParameter(3, insertParams, ParameterMethod.setLong, initOpVersion);
+//                MetaDbUtil.insert(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams, connection);
+//                DdlMetaLogUtil.logSql(INSERT_IGNORE_INTO_ONE_DATA_ID, insertParams);
+//            } else {
+//                long idVal = records.get(0).id;
+//                Map<Integer, ParameterContext> forUpdateParams = Maps.newHashMap();
+//                MetaDbUtil.setParameter(1, forUpdateParams, ParameterMethod.setLong, idVal);
+//                DdlMetaLogUtil.logSql(SELECT_DATA_ID_BY_ID_FOR_UPDATE, forUpdateParams);
+//                List<ConfigListenerRecord> forUpdateRs =
+//                    MetaDbUtil.query(SELECT_DATA_ID_BY_ID_FOR_UPDATE, forUpdateParams, ConfigListenerRecord.class,
+//                        connection);
+//                if (forUpdateRs.size() > 0) {
+//                    ConfigListenerRecord recordForUpdate = forUpdateRs.get(0);
+//                    if (recordForUpdate.status == ConfigListenerRecord.DATA_ID_STATUS_REMOVED) {
+//                        // reset record.status to DATA_ID_STATUS_NORMAL
+//                        Map<Integer, ParameterContext> updateParams = Maps.newHashMap();
+//                        MetaDbUtil.setParameter(1, updateParams, ParameterMethod.setInt, listenerStatus);
+//                        MetaDbUtil.setParameter(2, updateParams, ParameterMethod.setLong, initOpVersion);
+//                        MetaDbUtil.setParameter(3, updateParams, ParameterMethod.setLong, idVal);
+//                        MetaDbUtil.update(UPDATE_DATA_ID_STATUS_AND_VALUE_BY_ID, updateParams, connection);
+//                        DdlMetaLogUtil.logSql(UPDATE_DATA_ID_STATUS_AND_VALUE_BY_ID, updateParams);
+//                    }
+//                }
+//            }
 
             if (needSetAutoCommitFalse) {
                 connection.commit();

@@ -28,6 +28,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -66,6 +67,11 @@ public class PolarDbXSystemTableView implements SystemTableView {
         "SELECT `SCHEMA_NAME`, `VIEW_NAME`, `COLUMN_LIST`, `VIEW_DEFINITION`, `PLAN`, `PLAN_TYPE`, `PLAN_ERROR`"
             + " FROM `" + TABLE_NAME + "` "
             + " WHERE `SCHEMA_NAME` = ? AND `VIEW_NAME` = ?";
+
+    private static final String SELECT_ALL_VIEW_NAME_SQL =
+            "SELECT `VIEW_NAME`"
+                    + " FROM `" + TABLE_NAME + "` "
+                    + " WHERE `SCHEMA_NAME` = ? ";
 
     private static final String INSERT_SQL = "INSERT INTO `" + TABLE_NAME
         + "` (`SCHEMA_NAME`, `VIEW_NAME`, `COLUMN_LIST`, `VIEW_DEFINITION`, `DEFINER`, `PLAN`, `PLAN_TYPE`) VALUES (?, ?, ?, ?, ?, ?, ?) ";
@@ -135,6 +141,37 @@ public class PolarDbXSystemTableView implements SystemTableView {
         } catch (Exception e) {
             logger.error("create " + TABLE_NAME + " if not exist error", e);
         } finally {
+            GeneralUtil.close(ps);
+            GeneralUtil.close(conn);
+        }
+    }
+
+    @Override
+    public List<String> selectAllViewName() {
+        List<String> result = new ArrayList<>();
+        if (!canRead()) {
+            return result;
+        }
+        if (!checkTableFromCache()) {
+            return result;
+        }
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = dataSource.getConnection();
+            ps = conn.prepareStatement(SELECT_ALL_VIEW_NAME_SQL);
+            ps.setString(1, schemaName);
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                result.add(rs.getString("VIEW_NAME"));
+            }
+            return result;
+        } catch (Exception e) {
+            logger.error("select " + TABLE_NAME + " error");
+            throw new TddlNestableRuntimeException(e);
+        } finally {
+            GeneralUtil.close(rs);
             GeneralUtil.close(ps);
             GeneralUtil.close(conn);
         }

@@ -48,9 +48,10 @@ public class UpsertRelocateGsiWriter extends UpsertRelocateWriter implements Gsi
                                    Mapping skSourceMapping,
                                    List<ColumnMeta> skMetas,
                                    boolean modifySkOnly,
+                                   boolean usePartFieldChecker,
                                    TableMeta gsiMeta) {
         super(parent, targetTable, simpleInsertWriter, distinctInsertWriter, relocateDeleteWriter, relocateInsertWriter,
-            modifyWriter, skTargetMapping, skSourceMapping, skMetas, modifySkOnly);
+            modifyWriter, skTargetMapping, skSourceMapping, skMetas, modifySkOnly, usePartFieldChecker);
         this.gsiMeta = gsiMeta;
     }
 

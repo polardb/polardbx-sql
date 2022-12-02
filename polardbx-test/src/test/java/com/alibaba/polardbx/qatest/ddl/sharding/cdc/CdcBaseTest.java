@@ -19,6 +19,7 @@ package com.alibaba.polardbx.qatest.ddl.sharding.cdc;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.cdc.CdcManager;
 import com.alibaba.polardbx.cdc.SysTableUtil;
+import com.alibaba.polardbx.cdc.entity.DDLExtInfo;
 import com.alibaba.polardbx.cdc.entity.LogicMeta;
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
 import com.google.common.collect.Maps;
@@ -30,6 +31,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -39,6 +41,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.cdc.SysTableUtil.CDC_DDL_RECORD_TABLE;
 
 /**
  * Created by ziyang.lb
@@ -204,6 +208,20 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
         return count;
     }
 
+    protected DDLExtInfo getDdlExtInfo(String tokenHints) throws SQLException {
+        try (Statement stmt = tddlConnection.createStatement()) {
+            try (ResultSet resultSet = stmt.executeQuery(
+                "select EXT from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE
+                    + " where ddl_sql like '%" + tokenHints + "%' ")) {
+                while (resultSet.next()) {
+                    String ext = resultSet.getString(1);
+                    return JSONObject.parseObject(ext, DDLExtInfo.class);
+                }
+            }
+        }
+        return null;
+    }
+
     protected Map<String, Set<String>> getDdlRecordTopology(String tokenHints, String tableName)
         throws SQLException {
         Map<String, Set<String>> result = Maps.newHashMap();
@@ -298,31 +316,49 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
         return String.format("/* CDC_TOKEN : %s */", UUID.randomUUID().toString());
     }
 
-    protected long getMaxDdlRecordId() throws SQLException {
-        int count = 0;
+    protected Timestamp getLastDdlRecordTimestamp(String schemaName) throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
-                "select max(id) from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE)) {
+                "select max(GMT_CREATED) from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE + " where SCHEMA_NAME ='"
+                    + schemaName + "'")) {
                 while (resultSet.next()) {
-                    return resultSet.getLong(1);
+                    return resultSet.getTimestamp(1);
                 }
             }
         }
 
-        return -1L;
+        return new Timestamp(0);
     }
 
-    protected List<String> getDdlRecordListMaxThan(Long id) throws SQLException {
-        ArrayList<String> list = new ArrayList<>();
+    protected List<Map<String, String>> getDdlRecordListNewerThan(String schemaName, Timestamp ts) throws SQLException {
+        ArrayList<Map<String, String>> list = new ArrayList<>();
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
-                "select ddl_sql from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE + " where id > " + id)) {
+                "select ddl_sql,ext from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE + " where GMT_CREATED > '" + ts
+                    + "' and SCHEMA_NAME ='" + schemaName + "'")) {
                 while (resultSet.next()) {
-                    list.add(resultSet.getString(1));
+                    Map<String, String> map = new HashMap<>();
+                    map.put("ddl_sql", resultSet.getString(1));
+                    map.put("ext", resultSet.getString(2));
+                    list.add(map);
                 }
             }
         }
 
         return list;
+    }
+
+    protected String getDdlRecordSqlByTableName(String tableName) throws SQLException {
+        try (Statement stmt = tddlConnection.createStatement()) {
+            try (ResultSet resultSet = stmt.executeQuery(
+                "select ddl_sql from __cdc__." + CDC_DDL_RECORD_TABLE
+                    + " where table_name = '" + tableName + "' ")) {
+                while (resultSet.next()) {
+                    return resultSet.getString(1);
+                }
+            }
+        }
+
+        return "";
     }
 }

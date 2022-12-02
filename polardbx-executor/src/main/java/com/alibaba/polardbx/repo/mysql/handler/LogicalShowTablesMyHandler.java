@@ -73,6 +73,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
         result.addColumn("Tables_in_" + showNode.getSchemaName(), DataTypes.StringType);
         if (full) {
             result.addColumn("Table_type", DataTypes.StringType);
+            result.addColumn("Auto_partition", DataTypes.StringType);
         }
         result.initMeta();
         List<Object[]> tables;
@@ -82,6 +83,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
             sqlBuilder.append("select table_name ");
             if (full) {
                 sqlBuilder.append(", table_type ");
+                sqlBuilder.append(", 'NO' as auto_partition ");
             }
             sqlBuilder.append(" from `information_schema`.`tables` where table_schema = 'information_schema'");
 
@@ -129,7 +131,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
                     while ((row = viewCursor.next()) != null) {
                         String viewName = row.getString(0);
                         if (full) {
-                            tables.add(new Object[] {viewName, "VIEW"});
+                            tables.add(new Object[] {viewName, "VIEW", "NO"});
                         } else {
                             tables.add(new Object[] {viewName});
                         }

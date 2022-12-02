@@ -136,6 +136,8 @@ public class InsertSplitter {
         long lastInsertId = 0;
         long returnedLastInsertId = 0;
         boolean isFirstTimeExecute = true;
+        // reset prepared flag during inner execution
+        executionContext.setIsExecutingPreparedStmt(false);
         do {
             ByteString values = parseValues(lexer);
             if (values == null || values.isEmpty()) {

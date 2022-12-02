@@ -20,22 +20,29 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
 import org.jetbrains.annotations.NotNull;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +52,7 @@ import java.util.Set;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_RANDOM_BACKFILL_EXCEPTION;
 
 public class OSSBackFillExtractor extends Extractor {
+    private static final Logger LOGGER = LoggerFactory.getLogger("oss");
     // phy schema - {phy tables}
     private Map<String, Set<String>> sourcePhyTables;
 
@@ -66,17 +74,18 @@ public class OSSBackFillExtractor extends Extractor {
                                    Engine targetEngine) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
             planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
+            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, null, null, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
         this.sourceEngine = GeneralUtil.coalesce(sourceEngine, Engine.INNODB);
         this.targetEngine = GeneralUtil.coalesce(targetEngine, Engine.INNODB);
     }
 
-    public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                                   long speedMin, long speedLimit, long parallelism,
-                                   Map<String, Set<String>> sourcePhyTables,
-                                   ExecutionContext ec, String physicalPartition, Engine sourceEngine,
-                                   Engine targetEngine) {
+    public static OSSBackFillExtractor create(String schemaName, String sourceTableName, String targetTableName,
+                                              long batchSize,
+                                              long speedMin, long speedLimit, long parallelism,
+                                              Map<String, Set<String>> sourcePhyTables,
+                                              ExecutionContext ec, String physicalPartition, Engine sourceEngine,
+                                              Engine targetEngine) {
         // we use sourceTableName instead of targetTableName, because targetTableMeta couldn't be fetched during backfill.
         ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
@@ -100,9 +109,12 @@ public class OSSBackFillExtractor extends Extractor {
     }
 
     @Override
-    protected List<Map<Integer, ParameterContext>> extract(PhyTableOperation extractPlan,
+    protected List<Map<Integer, ParameterContext>> extract(String dbIndex, String phyTableName,
+                                                           PhyTableOperation extractPlan,
                                                            ExecutionContext extractEc,
-                                                           BatchConsumer batchConsumer) {
+                                                           BatchConsumer batchConsumer,
+                                                           List<ParameterContext> lowerBound,
+                                                           List<ParameterContext> upperBound) {
         // Extract
         Cursor extractCursor = doExtract(extractPlan, extractEc);
 
@@ -153,7 +165,7 @@ public class OSSBackFillExtractor extends Extractor {
         FailPoint.injectRandomExceptionFromHint(FP_RANDOM_BACKFILL_EXCEPTION, extractEc);
 
         // Load
-        batchConsumer.consume(result, Pair.of(extractEc, extractPlan.getDbIndex()));
+        batchConsumer.consume(result, Pair.of(extractEc, Pair.of(extractPlan.getDbIndex(), null)));
 
         return result;
     }
@@ -196,16 +208,18 @@ public class OSSBackFillExtractor extends Extractor {
      * @param primaryKeysId Index of primary keys for ResultSet of data extracted from source
      * @return BackfillObjectRecord with upper bound initialized, one for each primary key
      */
-    protected List<GsiBackfillManager.BackfillObjectRecord> initUpperBound(final ExecutionContext baseEc,
-                                                                           final long ddlJobId,
-                                                                           final String dbIndex, final String phyTable,
-                                                                           final List<Integer> primaryKeysId) {
+    @Override
+    protected List<GsiBackfillManager.BackfillObjectRecord> splitAndInitUpperBound(final ExecutionContext baseEc,
+                                                                                   final long ddlJobId,
+                                                                                   final String dbIndex,
+                                                                                   final String phyTable,
+                                                                                   final List<Integer> primaryKeysId) {
         // Build parameter
         final Map<Integer, ParameterContext> params = new HashMap<>(1);
         params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
 
         // Build plan
-        final PhyTableOperation phyTableOperation = new PhyTableOperation(this.planSelectMaxPk);
+        final PhyTableOperation phyTableOperation = this.planSelectMaxPk;
         phyTableOperation.setDbIndex(dbIndex);
         phyTableOperation.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
         phyTableOperation.setParam(params);
@@ -223,6 +237,86 @@ public class OSSBackFillExtractor extends Extractor {
             break;
         }
 
-        return getBackfillObjectRecords(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId, plan);
+        final List<Map<Integer, ParameterContext>> upperBound = executePhysicalPlan(baseEc, plan);
+
+        return getBackfillObjectRecords(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId, upperBound, "");
+    }
+
+    /**
+     * Load latest position mark
+     *
+     * @param ec Id of parent DDL job
+     * @return this
+     */
+    public Extractor loadBackfillMetaRestart(ExecutionContext ec) {
+        Long backfillId = ec.getBackfillId();
+
+        // Init position mark with upper bound
+        final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId);
+
+        doRestartWithRetry(5, backfillId, initBfoList);
+
+        // Load from system table
+        this.reporter.loadBackfillMeta(backfillId);
+        SQLRecorderLogger.ddlLogger.info(
+            String.format("loadBackfillMeta for backfillId %d: %s", backfillId, this.reporter.getBackfillBean()));
+        return this;
+    }
+
+    private void doRestartWithRetry(int retryLimit, Long backfillId,
+                                    List<GsiBackfillManager.BackfillObjectRecord> initBfoList) {
+        int retryCount = 0;
+        do {
+            try {
+                doRestart(backfillId, initBfoList);
+                break;
+            } catch (Throwable t) {
+                // retry when deadlock found
+                if (t.getCause() instanceof SQLException
+                    && t.getCause().getMessage().startsWith("Deadlock found")) {
+                    if (retryCount > retryLimit) {
+                        throw t;
+                    }
+                    ++retryCount;
+                } else {
+                    throw t;
+                }
+            }
+        } while (true);
+    }
+
+    private void doRestart(Long backfillId, List<GsiBackfillManager.BackfillObjectRecord> initBfoList) {
+        FileStorageBackFillAccessor fileStorageBackFillAccessor = new FileStorageBackFillAccessor();
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            try {
+                fileStorageBackFillAccessor.setConnection(metaDbConn);
+                MetaDbUtil.beginTransaction(metaDbConn);
+                // insert ignore the backfill_object to file_storage_backfill_object
+                fileStorageBackFillAccessor.insertIgnoreFileBackfillMeta(initBfoList);
+
+                List<GsiBackfillManager.BackfillObjectRecord> initBackfillObjects =
+                    fileStorageBackFillAccessor.selectBackfillObjectFromFileStorageById(backfillId);
+                // init progress in the first step
+                if (fileStorageBackFillAccessor.selectBackfillProgress(backfillId).isEmpty()) {
+                    final GsiBackfillManager.BackfillObjectRecord bfo = initBackfillObjects.get(0);
+                    final GsiBackfillManager.BackfillObjectRecord logicalBfo = bfo.copy();
+                    logicalBfo.setPhysicalDb(null);
+                    logicalBfo.setPhysicalTable(null);
+                    initBackfillObjects.add(0, logicalBfo);
+                }
+
+                fileStorageBackFillAccessor.replaceBackfillMeta(initBackfillObjects);
+                // insert file_storage_backfill_object to backfill_object
+                MetaDbUtil.commit(metaDbConn);
+
+            } catch (Exception e) {
+                MetaDbUtil.rollback(metaDbConn, new RuntimeException(e), LOGGER, "update back-fill object");
+                throw GeneralUtil.nestedException(e);
+            } finally {
+                MetaDbUtil.endTransaction(metaDbConn, LOGGER);
+            }
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 }

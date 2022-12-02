@@ -184,7 +184,7 @@ public abstract class PartitionTableRepartitionBaseTest extends RepartitionBaseT
         String partitionRule = buildPartitionRule(p);
 
         return MessageFormat
-            .format(failPointHint + "ALTER TABLE {0}.{1} {2}", getRepartitonBaseDB(), primaryTableName,
+            .format(repartitionHint + "ALTER TABLE {0}.{1} {2}", getRepartitonBaseDB(), primaryTableName,
                 partitionRule);
     }
 

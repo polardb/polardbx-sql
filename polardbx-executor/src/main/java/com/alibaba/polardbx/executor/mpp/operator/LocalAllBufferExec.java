@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
 import java.util.Iterator;
 import java.util.List;
 
+import static com.alibaba.polardbx.executor.utils.ExecUtils.checkException;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.tryAndCheckException;
 
@@ -108,6 +109,10 @@ public class LocalAllBufferExec extends LocalBufferExec {
                 usedBufferSize += chunk.getSizeInBytes();
                 bufferMemoryManager.updateMemoryUsage(chunk.getSizeInBytes());
                 if (bufferMemoryManager.isFull() && supportSpill) {
+                    if (spillFuture != null) {
+                        //等待上一次的写完，才能继续spill
+                        checkException(spillFuture);
+                    }
                     spill(false);
                 } else if (bufferMemoryManager.isFull()) {
                     throw new TddlNestableRuntimeException("Memory not enough, and already use the memory size: " +
@@ -146,6 +151,7 @@ public class LocalAllBufferExec extends LocalBufferExec {
                 bufferMemoryManager.updateMemoryUsage(-usedSize);
             } finally {
                 if (build) {
+                    //这里的读需要等写完成，目前这样操作没有问题，注意一下用法
                     iterator = spiller.getSpills().get(0);
                     notEmptyFuture.set(null);
                 }

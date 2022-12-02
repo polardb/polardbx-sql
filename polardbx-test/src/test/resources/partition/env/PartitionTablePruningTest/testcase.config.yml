@@ -1,5 +1,3 @@
-#test_type_cast_pruning
-#test_hint_pruning
 test_select_partitions
 test_insert_for_list
 test_hash_enum
@@ -12,3 +10,6 @@ test_part_pruning_null
 test_part_pruning_null2
 test_part_pruning_row_expr
 test_part_pruning_on_list_col
+test_part_pruning_notequal
+test_part_timezone
+test_part_charset

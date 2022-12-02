@@ -85,6 +85,11 @@ public class OSSFileSystem extends FileSystem {
     private Cache<Path, FileStatus> metaCache;
     private boolean enableCache;
 
+    /**
+     * Limit the rate of file input-stream and output-stream
+     */
+    private FileSystemRateLimiter rateLimiter;
+
     private static final PathFilter DEFAULT_FILTER = new PathFilter() {
         @Override
         public boolean accept(Path file) {
@@ -92,12 +97,13 @@ public class OSSFileSystem extends FileSystem {
         }
     };
 
-    public OSSFileSystem(boolean enableCache) {
+    public OSSFileSystem(boolean enableCache, FileSystemRateLimiter rateLimiter) {
+        this.rateLimiter = rateLimiter;
         this.enableCache = enableCache;
         this.metaCache = CacheBuilder.newBuilder()
-                .maximumSize(4096)
-                .expireAfterAccess(300, SECONDS)
-                .build();
+            .maximumSize(4096)
+            .expireAfterAccess(300, SECONDS)
+            .build();
     }
 
     @Override
@@ -149,12 +155,14 @@ public class OSSFileSystem extends FileSystem {
                 store,
                 key,
                 uploadPartSize,
-                new SemaphoredDelegatingExecutor(boundedThreadPool,
-                    blockOutputActiveBlocks, true)), statistics);
+                new SemaphoredDelegatingExecutor(boundedThreadPool, blockOutputActiveBlocks, true),
+                rateLimiter),
+            statistics);
     }
 
     /**
      * {@inheritDoc}
+     *
      * @throws FileNotFoundException if the parent directory is not present -or
      * is not a directory.
      */
@@ -196,7 +204,7 @@ public class OSSFileSystem extends FileSystem {
      * @param recursive if path is a directory and set to
      * true, the directory is deleted else throws an exception. In
      * case of a file the recursive can be set to either true or false.
-     * @return  true if delete is successful else false.
+     * @return true if delete is successful else false.
      * @throws IOException due to inability to delete a directory or file.
      */
     private boolean innerDelete(FileStatus status, boolean recursive)
@@ -241,6 +249,7 @@ public class OSSFileSystem extends FileSystem {
      * attempt to continue with the delete operation: deleting root
      * directories is never allowed. This method simply implements
      * the policy of when to return an exit code versus raise an exception.
+     *
      * @param isEmptyDir empty directory or not
      * @param recursive recursive flag from command
      * @return a return code for the operation
@@ -324,6 +333,10 @@ public class OSSFileSystem extends FileSystem {
                 getDefaultBlockSize(path), meta.getLastModified().getTime(),
                 qualifiedPath, username);
         }
+    }
+
+    public FileSystemRateLimiter getRateLimiter() {
+        return this.rateLimiter;
     }
 
     @Override
@@ -561,7 +574,6 @@ public class OSSFileSystem extends FileSystem {
      *
      * @param key directory path
      * @return true if directory is successfully created
-     * @throws IOException
      */
     private boolean mkdir(final String key) throws IOException {
         String dirName = key;
@@ -596,7 +608,6 @@ public class OSSFileSystem extends FileSystem {
      * Check whether the path is a valid path.
      *
      * @param path the path to be checked.
-     * @throws IOException
      */
     private void validatePath(Path path) throws IOException {
         Path fPart = path.getParent();
@@ -628,7 +639,7 @@ public class OSSFileSystem extends FileSystem {
             new SemaphoredDelegatingExecutor(
                 boundedThreadPool, maxReadAheadPartNumber, true),
             maxReadAheadPartNumber, store, pathToKey(path), fileStatus.getLen(),
-            statistics));
+            statistics, rateLimiter));
     }
 
     @Override

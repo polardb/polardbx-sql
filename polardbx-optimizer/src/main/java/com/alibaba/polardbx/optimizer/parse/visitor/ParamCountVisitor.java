@@ -37,10 +37,10 @@ public class ParamCountVisitor extends MySqlOutputVisitor {
     public boolean visit(SQLVariantRefExpr x) {
         super.visit(x);
         String name = x.getName();
-        if (StringUtils.startsWith(name, "@")) {
-            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NEED_IMPLEMENT,
-                "Does not support user/system parameters.");
-        }
+//        if (StringUtils.startsWith(name, "@")) {
+//            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NEED_IMPLEMENT,
+//                "Does not support user/system parameters.");
+//        }
         if ("?".equals(name)) {
             parameterCount++;
         }

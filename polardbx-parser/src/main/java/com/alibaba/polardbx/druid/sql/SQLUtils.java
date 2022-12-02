@@ -24,8 +24,10 @@ import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLInListExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLLiteralExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryOperator;
@@ -48,6 +50,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateSetItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObject;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlSelectIntoStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlSchemaStatVisitor;
@@ -364,7 +367,10 @@ public class SQLUtils {
     public static SQLASTOutputVisitor createFormatOutputVisitor(Appendable out, //
                                                                 List<SQLStatement> statementList, //
                                                                 DbType dbType) {
-        return new MySqlOutputVisitor(out);
+
+
+            return new MySqlOutputVisitor(out);
+
     }
 
     @Deprecated
@@ -390,8 +396,11 @@ public class SQLUtils {
         }
 
         switch (dbType) {
+
         case mysql:
+
             return new MySqlSchemaStatVisitor(repository);
+
         default:
             return new SchemaStatVisitor(repository);
         }
@@ -1133,6 +1142,31 @@ public class SQLUtils {
             return true;
         }
 
+    }
+
+    public static boolean enclosedByBackTick(String str) {
+        return str != null && str.length() > 0 && str.charAt(0) == '`';
+    }
+
+    public static SQLPropertyExpr rewriteUdfName(SQLName name) {
+        return new SQLPropertyExpr("mysql", SQLUtils.normalize(name.getSimpleName()));
+    }
+
+    public static String getRewriteUdfName(SQLName name) {
+        return "mysql" + "." + name.getSimpleName().toLowerCase();
+    }
+
+    public static SQLName normalizeSqlName(SQLName name) {
+        if (name instanceof SQLIdentifierExpr) {
+            ((SQLIdentifierExpr) name).setName(normalize(name.getSimpleName()));
+        } else if (name instanceof SQLPropertyExpr) {
+            ((SQLPropertyExpr) name).setOwner(normalize(((SQLPropertyExpr) name).getOwnerName()));
+            ((SQLPropertyExpr) name).setName(normalize(name.getSimpleName()));
+        } else if (name instanceof MySqlUserName) {
+            ((MySqlUserName) name).setUserName(normalize(((MySqlUserName) name).getUserName()));
+            ((MySqlUserName) name).setHost(normalize(((MySqlUserName) name).getHost()));
+        }
+        return name;
     }
 }
 

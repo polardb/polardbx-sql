@@ -20,12 +20,13 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 
@@ -49,7 +50,8 @@ public class AlterTableGroupSplitPartitionByHotValueSubTaskJobFactory extends Al
                                                                     boolean skipBackfill,
                                                                     ExecutionContext executionContext) {
         super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, executionContext);
+            orderedTargetTableLocations, targetPartition, skipBackfill,
+            ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE, executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 
@@ -84,25 +86,9 @@ public class AlterTableGroupSplitPartitionByHotValueSubTaskJobFactory extends Al
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
             .getNewPartitionInfoForSplitPartitionByHotValue(curPartitionInfo, parentPrepareData,
                 orderedTargetTableLocations, executionContext);
-        //checkPartitionCount(newPartInfo);
+        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
         return newPartInfo;
-    }
-
-    private boolean schemaChange(PartitionInfo curPartInfo, PartitionInfo newPartInfo) {
-        if (curPartInfo.getPartitionBy().getPartitions().size() != newPartInfo.getPartitionBy().getPartitions()
-            .size()) {
-            return true;
-        }
-        for (int i = 0; i < curPartInfo.getPartitionBy().getPartitions().size(); i++) {
-            PartitionSpec curPartSpec = curPartInfo.getPartitionBy().getPartitions().get(i);
-            PartitionSpec newPartSpec = newPartInfo.getPartitionBy().getPartitions().get(i);
-            if (curPartSpec.getBoundSpaceComparator()
-                .compare(curPartSpec.getBoundSpec().getSingleDatum(), newPartSpec.getBoundSpec().getSingleDatum())
-                != 0) {
-                return true;
-            }
-        }
-        return false;
     }
 
 }

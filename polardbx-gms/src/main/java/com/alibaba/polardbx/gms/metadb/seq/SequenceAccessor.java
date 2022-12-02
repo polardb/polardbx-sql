@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.metadb.seq;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -24,13 +23,16 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.metadb.record.CountRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INNER_STEP;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_COUNT;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_INDEX;
@@ -53,13 +55,20 @@ public class SequenceAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA_SEQ = WHERE_SCHEMA + " and `name` = ?";
 
+    private static final String WHERE_STANDALONE_SEQUENCES =
+        WHERE_SCHEMA + " and `name` not like '" + AUTO_SEQ_PREFIX + "%'";
+
     private static final String SELECT_SEQ_TABLE =
         "select `schema_name`, `name`, `new_name`, `value`, `unit_count`, `unit_index`, `inner_step`, `status` from"
             + SEQ_TABLE;
 
     private static final String SELECT_SEQ_TABLE_ALL = SELECT_SEQ_TABLE + WHERE_SCHEMA;
 
+    private static final String SELECT_SEQ_TABLE_ALL_FOR_UPDATE = SELECT_SEQ_TABLE + WHERE_SCHEMA + " for update";
+
     private static final String SELECT_SEQ_TABLE_ONE = SELECT_SEQ_TABLE + WHERE_SCHEMA_SEQ;
+
+    private static final String SEQUENCE_COUNT = "select count(*) from " + SEQ_TABLE + WHERE_STANDALONE_SEQUENCES;
 
     private static final String UPDATE_SEQ_TABLE = "update " + SEQ_TABLE + " set ";
 
@@ -69,9 +78,11 @@ public class SequenceAccessor extends AbstractAccessor {
 
     private static final String UPDATE_SEQ_TABLE_STATUS = UPDATE_SEQ_TABLE + "`status` = ?" + WHERE_SCHEMA_SEQ;
 
-    private static final String DELETE_SEQ_TABLE = "delete from " + SEQ_TABLE + WHERE_SCHEMA_SEQ;
+    private static final String DELETE_SEQ_TABLE = "delete from " + SEQ_TABLE;
 
-    private static final String DELETE_SEQ_TABLE_ALL = "delete from " + SEQ_TABLE + WHERE_SCHEMA;
+    private static final String DELETE_SEQ_TABLE_ALL = DELETE_SEQ_TABLE + WHERE_SCHEMA;
+
+    private static final String DELETE_SEQ_TABLE_ONE = DELETE_SEQ_TABLE + WHERE_SCHEMA_SEQ;
 
     public int insert(SequenceRecord record) {
         validate(record);
@@ -91,6 +102,22 @@ public class SequenceAccessor extends AbstractAccessor {
             }
             LOGGER.error("Failed to insert a new record into " + SEQ_TABLE + extraMsg, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "insert into",
+                SEQ_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public void insert(String schemaName, List<SequenceRecord> records) {
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        for (SequenceRecord record : records) {
+            paramsBatch.add(record.buildInsertParams());
+        }
+        try {
+            DdlMetaLogUtil.logSql(INSERT_SEQ_TABLE, paramsBatch);
+            MetaDbUtil.insert(INSERT_SEQ_TABLE, paramsBatch, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of sequences for schema '" + schemaName + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "insert batch of sequence into",
                 SEQ_TABLE,
                 e.getMessage());
         }
@@ -121,6 +148,10 @@ public class SequenceAccessor extends AbstractAccessor {
         return query(SELECT_SEQ_TABLE_ALL, SEQ_TABLE, SequenceRecord.class, schemaName);
     }
 
+    public List<SequenceRecord> queryForUpdate(String schemaName) {
+        return query(SELECT_SEQ_TABLE_ALL_FOR_UPDATE, SEQ_TABLE, SequenceRecord.class, schemaName);
+    }
+
     public SequenceRecord query(String schemaName, String name) {
         List<SequenceRecord> records = query(SELECT_SEQ_TABLE_ONE, SEQ_TABLE, SequenceRecord.class, schemaName, name);
         if (records != null && records.size() > 0) {
@@ -129,9 +160,17 @@ public class SequenceAccessor extends AbstractAccessor {
         return null;
     }
 
+    public int count(String schemaName) {
+        List<CountRecord> seqRecords = query(SEQUENCE_COUNT, SEQ_TABLE, CountRecord.class, schemaName);
+        if (seqRecords != null && seqRecords.size() > 0) {
+            return seqRecords.get(0).count;
+        }
+        return 0;
+    }
+
     public int update(SequenceRecord record) {
         try {
-            String value = record.value > 0 ? "'" + record.value + "'" : SequenceAttribute.DEFAULT_VALUE_COLUMN;
+            String value = record.value > 0 ? "'" + record.value + "'" : "value";
             Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildStringParameters(new String[] {record.schemaName, record.name});
             return MetaDbUtil.update(String.format(UPDATE_SEQ_TABLE_VALUE, value), params, connection);
@@ -164,7 +203,7 @@ public class SequenceAccessor extends AbstractAccessor {
     }
 
     public int delete(SequenceRecord record) {
-        return delete(DELETE_SEQ_TABLE, SEQ_TABLE, record.schemaName, record.name);
+        return delete(DELETE_SEQ_TABLE_ONE, SEQ_TABLE, record.schemaName, record.name);
     }
 
     public int deleteAll(String schemaName) {

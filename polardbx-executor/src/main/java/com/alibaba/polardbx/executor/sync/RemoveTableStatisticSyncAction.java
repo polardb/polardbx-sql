@@ -53,10 +53,8 @@ public class RemoveTableStatisticSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        StatisticManager statisticManager =
-            (StatisticManager) OptimizerContext.getContext(schemaName).getStatisticManager();
         if (logicalTableName != null) {
-            statisticManager.removeLogicalTableList(ImmutableList.of(logicalTableName));
+            StatisticManager.getInstance().removeLogicalTableList(schemaName, ImmutableList.of(logicalTableName));
         }
         return null;
     }

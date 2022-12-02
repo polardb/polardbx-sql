@@ -194,3 +194,17 @@
               logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
             gather(concurrent=true)
               logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+
+- sql: |
+    select * from (
+      select
+        sum(tinyint_test) over (partition by integer_test order by tinyint_test asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1
+        from select_base_one_multi_db_multi_tb
+      ) T;
+
+  plan: |
+
+    project(ow1="f2w0$o0")
+      sortwindow(integer_test="integer_test", tinyint_test="tinyint_test", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $2 preceding and $2 following aggs [sum($1)])", constants="[1]")
+        mergesort(sort="integer_test asc,tinyint_test asc")
+          logicalview(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardcount=16, sql="select `integer_test`, `tinyint_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` order by `integer_test`, `tinyint_test`")

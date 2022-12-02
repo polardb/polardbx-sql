@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.13-SNAPSHOT</version>
+        <version>5.4.15-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -13,7 +13,8 @@
     <name>${project.artifactId} module for polardbx ${project.version}</name>
 
     <properties>
-        <dep.airlift.version>0.178</dep.airlift.version>
+        <dep.airlift.version>206</dep.airlift.version>
+        <hadoop.version>3.2.2</hadoop.version>
         <orc.version>1.6.9</orc.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
         <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
@@ -29,6 +30,15 @@
             <artifactId>polardbx-optimizer</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-optimizer</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+            <type>test-jar</type>
+        </dependency>
+
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-net</artifactId>
@@ -134,21 +144,19 @@
             <artifactId>guice</artifactId>
             <version>${google.guice.version}</version>
         </dependency>
-        <dependency>
-            <groupId>javax.validation</groupId>
-            <artifactId>validation-api</artifactId>
-            <version>${validation.api.version}</version>
-        </dependency>
+
         <dependency>
             <groupId>javax.inject</groupId>
             <artifactId>javax.inject</artifactId>
             <version>${javax.inject.version}</version>
         </dependency>
-        <dependency>
-            <groupId>io.airlift</groupId>
-            <artifactId>joda-to-java-time-bridge</artifactId>
-            <version>${joda-to-java-time-bridge.version}</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>io.airlift</groupId>-->
+<!--            <artifactId>joda-to-java-time-bridge</artifactId>-->
+<!--            <version>${joda-to-java-time-bridge.version}</version>-->
+<!--        </dependency>-->
+
+
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>concurrent</artifactId>
@@ -207,9 +215,9 @@
         </dependency>
 
         <dependency>
-            <groupId>io.airlift</groupId>
-            <artifactId>airline</artifactId>
-            <version>${airline.version}</version>
+            <groupId>javax.validation</groupId>
+            <artifactId>validation-api</artifactId>
+            <version>${validation.api.version}</version>
         </dependency>
 
         <dependency>

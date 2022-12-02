@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.common.lock;
 
 import com.alibaba.polardbx.common.TddlNode;
+import com.alibaba.polardbx.common.constants.SystemTables;
+import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.utils.MasterSlaveUtil;
 
 import javax.sql.DataSource;
@@ -51,7 +53,7 @@ public class LockingFunctionManager {
         return INSTANCE;
     }
 
-    public synchronized LockingFunctionHandle getHandle(Connection drdsConnection, long connectionId) {
+    public synchronized LockingFunctionHandle getHandle(ITConnection drdsConnection, long connectionId) {
         return new PolarDBXLockingFunctionHandle(this, drdsConnection, sessionId(connectionId));
     }
 

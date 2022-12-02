@@ -39,32 +39,16 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropColumnCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertColumnMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexColumnStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4BringUpGsiTable;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import org.apache.calcite.rel.ddl.AlterTable;
-import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
 
 /**
  * an interesting gsi-relevant task generator
@@ -153,68 +137,6 @@ public class GsiTaskFactory {
         taskList.add(publicTask);
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
         return taskList;
-    }
-
-    /**
-     * for
-     * create global index
-     * alter table add global index
-     */
-    public static ExecutableDdlJob4BringUpGsiTable addGlobalIndexTasks(String schemaName,
-                                                                       String primaryTableName,
-                                                                       String indexName) {
-        ExecutableDdlJob4BringUpGsiTable executableDdlJob4BringUpGsiTable =
-            new ExecutableDdlJob4BringUpGsiTable();
-
-        GsiUpdateIndexStatusTask deleteOnlyTask = new GsiUpdateIndexStatusTask(
-            schemaName,
-            primaryTableName,
-            indexName,
-            IndexStatus.CREATING,
-            IndexStatus.DELETE_ONLY
-        );
-        deleteOnlyTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
-        GsiUpdateIndexStatusTask writeOnlyTask = new GsiUpdateIndexStatusTask(
-            schemaName,
-            primaryTableName,
-            indexName,
-            IndexStatus.DELETE_ONLY,
-            IndexStatus.WRITE_ONLY
-        );
-        writeOnlyTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
-        GsiUpdateIndexStatusTask writeReOrgTask = new GsiUpdateIndexStatusTask(
-            schemaName,
-            primaryTableName,
-            indexName,
-            IndexStatus.WRITE_ONLY,
-            IndexStatus.WRITE_REORG
-        );
-        writeReOrgTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
-        GsiUpdateIndexStatusTask publicTask = new GsiUpdateIndexStatusTask(
-            schemaName,
-            primaryTableName,
-            indexName,
-            IndexStatus.WRITE_REORG,
-            IndexStatus.PUBLIC
-        );
-        publicTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
-
-        executableDdlJob4BringUpGsiTable.setDeleteOnlyTask(deleteOnlyTask);
-        executableDdlJob4BringUpGsiTable.setSyncTaskAfterDeleteOnly(new TableSyncTask(schemaName, primaryTableName));
-
-        executableDdlJob4BringUpGsiTable.setWriteOnlyTask(deleteOnlyTask);
-        executableDdlJob4BringUpGsiTable.setSyncTaskAfterWriteOnly(new TableSyncTask(schemaName, primaryTableName));
-
-        LogicalTableBackFillTask backFillTask = new LogicalTableBackFillTask(schemaName, primaryTableName, indexName);
-        executableDdlJob4BringUpGsiTable.setLogicalTableBackFillTask(backFillTask);
-
-        executableDdlJob4BringUpGsiTable.setWriteReorgTask(deleteOnlyTask);
-        executableDdlJob4BringUpGsiTable.setSyncTaskAfterWriteReorg(new TableSyncTask(schemaName, primaryTableName));
-
-        executableDdlJob4BringUpGsiTable.setPublicTask(deleteOnlyTask);
-        executableDdlJob4BringUpGsiTable.setSyncTaskAfterPublic(new TableSyncTask(schemaName, primaryTableName));
-
-        return executableDdlJob4BringUpGsiTable;
     }
 
     /**
@@ -352,6 +274,14 @@ public class GsiTaskFactory {
         return alterGsiTableSql.toString();
     }
 
+    public static String genAlterGlobalIndexDropColumnsSql(String indexName, List<String> columns) {
+        if (indexName == null || columns == null || columns.isEmpty()) {
+            return null;
+        }
+        String hint = "/*+TDDL:CMD_EXTRA(DDL_ON_GSI=true)*/";
+        return hint + "alter table " + indexName + " drop column " + StringUtils.join(columns, ", drop column ");
+    }
+
     private static String extractCurrentTimestamp(String onUpdate, SQLExpr onUpdateExpr) {
         if (onUpdateExpr instanceof SQLCurrentTimeExpr || onUpdateExpr instanceof SQLMethodInvokeExpr) {
             try {
@@ -369,7 +299,7 @@ public class GsiTaskFactory {
     }
 
     /**
-     * add global index column and change gsi phy table
+     * add column on global index and change gsi phy table
      */
     public static AlterTableJobFactory alterGlobalIndexAddColumnFactory(String schemaName,
                                                                         String primaryTableName,

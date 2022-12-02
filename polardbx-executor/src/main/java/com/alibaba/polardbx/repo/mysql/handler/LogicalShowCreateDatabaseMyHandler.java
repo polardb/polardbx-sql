@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -91,7 +92,10 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
         }
 
         if (locality != null) {
-            optiionBuilder.append(" LOCALITY = \"").append(locality.getLocality()).append("\"");
+            LocalityDesc localityDesc = LocalityDesc.parse(locality.getLocality());
+            if (!localityDesc.holdEmptyDnList()) {
+                optiionBuilder.append(" LOCALITY = \"").append(locality.getLocality()).append("\"");
+            }
         }
 
         String showCreateDbStr = "";

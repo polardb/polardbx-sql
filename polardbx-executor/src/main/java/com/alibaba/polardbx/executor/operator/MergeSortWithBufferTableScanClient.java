@@ -95,6 +95,11 @@ public class MergeSortWithBufferTableScanClient extends TableScanClient {
         return new BufferSplitResultSet(jdbcSplit, Lists.newArrayList(dataTypeList));
     }
 
+    @Override
+    protected boolean isReady() {
+        return completePrefetchNum.get() == splitList.size();
+    }
+
     public class BufferSplitResultSet extends SplitResultSet {
         private List<Chunk> bufferData = new LinkedList<>();
         private Row current = null;
@@ -115,7 +120,7 @@ public class MergeSortWithBufferTableScanClient extends TableScanClient {
             try {
                 while (super.next()) {
                     chunkBuilder.declarePosition();
-                    ResultSetCursorExec.buildOneRow(super.current(), dataTypeList, chunkBuilder.getBlockBuilders());
+                    ResultSetCursorExec.buildOneRow(super.current(), dataTypeList, chunkBuilder.getBlockBuilders(), context);
                     Chunk chunk = chunkBuilder.build();
                     bufferData.add(chunk);
                     chunkSize = chunk.getSizeInBytes();

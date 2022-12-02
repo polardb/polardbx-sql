@@ -236,7 +236,7 @@ public class MockExecutor {
                               ExecutionContext context) {
         SqlNodeList astList;
         if (null != sqlParameterized) {
-            param.putAll(OptimizerUtils.buildParam(sqlParameterized.getParameters()));
+            param.putAll(OptimizerUtils.buildParam(sqlParameterized.getParameters(), context));
             astList = new FastsqlParser().parse(sqlParameterized.getSql(), sqlParameterized.getParameters(), context);
         } else {
             astList = new FastsqlParser().parse(testSql, context);
@@ -278,8 +278,7 @@ public class MockExecutor {
         context.setMatrix(getMatrix());
         context.setSchemaManager(schemaManager);
         context.setRuleManager(rule);
-        StatisticManager statisticManager = new StatisticManager(schemaName, new MockStatisticDatasource());
-        context.setStatisticManager(statisticManager);
+        StatisticManager.sds = MockStatisticDatasource.getInstance();
     }
 
     private Matrix getMatrix() {
@@ -341,7 +340,7 @@ public class MockExecutor {
                 true,
                 "");
 
-            return new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
+            return new TableMeta(schemaName, DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
                 TableStatus.PUBLIC, 0, 0);
         }
 

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -50,6 +51,13 @@ public interface SingleStreamSpiller extends Closeable {
      * as they were spilled. Method requires the issued spill request to be completed.
      */
     Iterator<Chunk> getSpilledChunks();
+
+    /**
+     * 返回的Iterator最多读取maxChunkNum个Chunk
+     */
+    default Iterator<Chunk> getSpilledChunks(long maxChunkNum){
+        throw new NotSupportException();
+    };
 
     /**
      * Initiates read of previously spilled pages. The returned {@link Future} will be complete once all pages are read.

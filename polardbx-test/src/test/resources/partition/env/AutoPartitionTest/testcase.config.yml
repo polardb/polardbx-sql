@@ -12,6 +12,14 @@ test_add_index
 test_add_clustered
 test_drop_index
 test_create_drop_index
+test_create_drop_index2
 test_composite_pk
 test_composite_index
 test_add_idx_not_support
+test_bugs0
+test_index_replaced
+test_alter_repartition_auto
+test_invalid_repartition_auto
+test_missing_implicit_pk_bug
+test_alter_partition_count
+test_alter_table_remove_partitioning

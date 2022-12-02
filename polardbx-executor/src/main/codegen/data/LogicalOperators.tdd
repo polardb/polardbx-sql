@@ -18,98 +18,98 @@
       {
         "inputDataType1": "TinyInt",
         "inputDataType2": "TinyInt",
-        "inputVectorType1": "ShortBlock",
-        "inputVectorType2": "ShortBlock",
-        "inputType1": "short",
-        "inputType2": "short"
+        "inputVectorType1": "ByteBlock",
+        "inputVectorType2": "ByteBlock",
+        "inputType1": "byte",
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "UTinyInt",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "ShortBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "short"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "SmallInt",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "ShortBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "short"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "USmallInt",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "IntegerBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "int"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "MediumInt",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "IntegerBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "int"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "UMediumInt",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "IntegerBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "int"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "Integer",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "IntegerBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "int"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "UInteger",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "LongBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "long"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "Long",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "LongBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "long"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "Float",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "FloatBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "float"
       }
     ,{
         "inputDataType1": "TinyInt",
         "inputDataType2": "Double",
-        "inputVectorType1": "ShortBlock",
+        "inputVectorType1": "ByteBlock",
         "inputVectorType2": "DoubleBlock",
-        "inputType1": "short",
+        "inputType1": "byte",
         "inputType2": "double"
       }
     ,{
         "inputDataType1": "UTinyInt",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "ShortBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "short",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "UTinyInt",
@@ -195,9 +195,9 @@
         "inputDataType1": "SmallInt",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "ShortBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "short",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "SmallInt",
@@ -283,9 +283,9 @@
         "inputDataType1": "USmallInt",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "IntegerBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "int",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "USmallInt",
@@ -371,9 +371,9 @@
         "inputDataType1": "MediumInt",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "IntegerBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "int",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "MediumInt",
@@ -459,9 +459,9 @@
         "inputDataType1": "UMediumInt",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "IntegerBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "int",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "UMediumInt",
@@ -547,9 +547,9 @@
         "inputDataType1": "Integer",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "IntegerBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "int",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "Integer",
@@ -635,9 +635,9 @@
         "inputDataType1": "UInteger",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "LongBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "long",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "UInteger",
@@ -723,9 +723,9 @@
         "inputDataType1": "Long",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "LongBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "long",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "Long",
@@ -811,9 +811,9 @@
         "inputDataType1": "Float",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "FloatBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "float",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "Float",
@@ -899,9 +899,9 @@
         "inputDataType1": "Double",
         "inputDataType2": "TinyInt",
         "inputVectorType1": "DoubleBlock",
-        "inputVectorType2": "ShortBlock",
+        "inputVectorType2": "ByteBlock",
         "inputType1": "double",
-        "inputType2": "short"
+        "inputType2": "byte"
       }
     ,{
         "inputDataType1": "Double",
@@ -988,8 +988,8 @@
   "notTypes": [
     {
       "inputDataType": "TinyInt",
-      "inputVectorType": "ShortBlock",
-      "inputType": "short"
+      "inputVectorType": "ByteBlock",
+      "inputType": "byte"
     },
     {
       "inputDataType": "UTinyInt",

@@ -107,17 +107,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterProcedureStatement;
@@ -160,6 +163,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableConstrain
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableKeys;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableLifecycle;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupAddTable;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableImportPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableModifyClusteredBy;
@@ -214,6 +218,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
@@ -233,6 +238,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -275,6 +281,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLLoopStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement.MergeInsertClause;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement.MergeUpdateClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
@@ -319,7 +326,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPackagesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowProcessListStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecylebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowSessionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticListStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticStmt;
@@ -1646,6 +1653,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public void endVisit(SQLAlterTableGroupAddTable x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableGroupAddTable x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(SQLAlterTableSetLifecycle x) {
 
     }
@@ -2437,12 +2454,12 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public boolean visit(SQLShowRecylebinStatement x) {
+    public boolean visit(SQLShowRecyclebinStatement x) {
         return true;
     }
 
     @Override
-    public void endVisit(SQLShowRecylebinStatement x) {
+    public void endVisit(SQLShowRecyclebinStatement x) {
 
     }
 
@@ -3578,12 +3595,12 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupSplitPartition x) {
+    public boolean visit(DrdsSplitPartition x) {
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupSplitPartition x) {
+    public void endVisit(DrdsSplitPartition x) {
 
     }
 
@@ -3608,32 +3625,32 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMergePartition x) {
+    public boolean visit(DrdsMergePartition x) {
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupMergePartition x) {
+    public void endVisit(DrdsMergePartition x) {
 
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMovePartition x) {
+    public boolean visit(DrdsMovePartition x) {
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupMovePartition x) {
+    public void endVisit(DrdsMovePartition x) {
 
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupExtractHotKey x) {
+    public boolean visit(DrdsExtractHotKey x) {
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupExtractHotKey x) {
+    public void endVisit(DrdsExtractHotKey x) {
 
     }
 
@@ -3668,12 +3685,32 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupRenamePartition x) {
+    public boolean visit(DrdsRenamePartition x) {
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupRenamePartition x) {
+    public void endVisit(DrdsAlterTableGroupSetLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableGroupSetLocality x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableGroupSetPartitionsLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableGroupSetPartitionsLocality x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsRenamePartition x) {
 
     }
 
@@ -3703,5 +3740,45 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     @Override
     public boolean visit(SQLAlterTableDropFile x) {
         return true;
+    }
+
+    @Override
+    public boolean visit(SQLCreateJoinGroupStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLCreateJoinGroupStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLDropJoinGroupStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLDropJoinGroupStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLAlterJoinGroupStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLAlterJoinGroupStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLMergeTableGroupStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLMergeTableGroupStatement x) {
+
     }
 }

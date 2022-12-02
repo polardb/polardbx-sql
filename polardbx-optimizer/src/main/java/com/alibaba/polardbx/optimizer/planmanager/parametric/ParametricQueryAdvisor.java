@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.planmanager.parametric;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import org.apache.calcite.rel.RelNode;
@@ -36,24 +37,13 @@ public interface ParametricQueryAdvisor {
     /**
      *
      */
-    void feedBack(PlannerContext plannerContext, PlanInfo planInfo,
-                  ExecutionContext executionContext, Map<RelNode, RuntimeStatisticsSketch> runtimeStatistic);
+    void feedBack(PlannerContext plannerContext, BaselineInfo baselineInfo, PlanInfo planInfo,
+                  ExecutionContext executionContext,
+                  Map<RelNode, RuntimeStatisticsSketch> runtimeStatistic);
 
-    Pair<Point, PlanInfo> advise(String parameterSql,
-                                 Collection<PlanInfo> planInfos,
-                                 List<Object> params, PlannerContext plannerContext,
-                                 ExecutionContext executionContext, boolean isExplain);
-
-    /**
-     * bulk load
-     */
-    void load(Map<String, Set<Point>> points);
-
-    void checkPlanRedundant(int minorTolerance);
-
-    Map<String, Set<Point>> dump();
-
-    void remove(String parameterSql);
-
-    void clear();
+    Pair<Point, PlanInfo> advise(String parameterSql, Collection<PlanInfo> planInfos,
+                                 List<Object> params,
+                                 Collection<Point> points,
+                                 PlannerContext plannerContext,
+                                 int currentHashCode);
 }

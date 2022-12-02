@@ -16,35 +16,52 @@
 
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
+import com.alibaba.polardbx.optimizer.utils.IScalarSubqueryExecHelper;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.SQLMode;
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
-import com.alibaba.polardbx.common.model.SqlType;
+import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.ccl.common.CclContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
@@ -55,6 +72,7 @@ import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
+import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
@@ -62,19 +80,26 @@ import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.util.ValueHolder;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.NlsString;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.InputStream;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -147,7 +172,7 @@ public class ExecutionContext {
 
     private int resultSetHoldability = -1;
 
-    private IConnection connection = null;
+    private ITConnection connection = null;
 
     private InputStream localInFileInputStream = null;
 
@@ -158,6 +183,8 @@ public class ExecutionContext {
     private ByteString sql = null;
 
     private String encoding = null;
+
+    private CharsetName sessionCharset = null;
 
     private String appName;
 
@@ -201,8 +228,14 @@ public class ExecutionContext {
     // INSERT SELECT or UPDATE / DELETE that cannot be pushed down
     private boolean modifySelect;
 
+    /**
+     * INSERT/UPDATE/DELETE select 时读写并行，即Select过程和 Insert/Update/Delete 同时进行
+     */
+    private boolean modifySelectParallel = false;
+
     private Map<CorrelationId, Row> correlateRowMap = Maps.newHashMap();
     private Map<RexFieldAccess, RexNode> correlateFieldInViewMap = Maps.newHashMap();
+    private Map<Integer, ScalarSubQueryExecContext> scalarSubqueryCtxMap = Maps.newHashMap();
 
     private ExplainResult explain;
     private SqlType sqlType;
@@ -233,7 +266,7 @@ public class ExecutionContext {
      * When it is an internal sql, caching physical sql may cause expansion of params in ExecutionContext
      *
      * @see com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder
-     * @see com.alibaba.polardbx.optimizer.core.rel.LogicalView#sqlTemplateCache
+     * @see com.alibaba.polardbx.optimizer.core.rel.LogicalView
      */
     private boolean usingPhySqlCache = false;
 
@@ -312,11 +345,11 @@ public class ExecutionContext {
 
     private boolean shareReadView = false;
 
+    private Long groupParallelism = 1L;
+
     private Point point;
 
     private Map<String, Object> constantValues = Maps.newHashMap();
-
-    private Map<String, PhyFeedBack> xFeedBackMap = Maps.newHashMap();
 
     private String returning = null;
 
@@ -324,7 +357,6 @@ public class ExecutionContext {
     /**
      * For DirectShardingKeyTableOperation
      */
-    private Pair<String, String> dbIndexAndTableName = null;
     private long backfillId;
     private boolean clientFoundRows = true;
 
@@ -344,6 +376,23 @@ public class ExecutionContext {
     private volatile Boolean enableOssDelayMaterializationOnExchange = null;
     private boolean executingPreparedStmt = false;
     private PreparedStmtCache preparedStmtCache = null;
+
+    private Map<Pair<String, List<String>>, Parameters> pruneRawStringMap = null;
+
+    /**
+     * True means in cursor-fetch mode.
+     */
+    private boolean cursorFetchMode = false;
+
+    public void setCursorFetchMode(boolean cursorFetchMode) {
+        this.cursorFetchMode = cursorFetchMode;
+    }
+
+    public boolean isCursorFetchMode() {
+        return cursorFetchMode;
+    }
+
+    private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace;
 
     public ExecutionContext() {
     }
@@ -419,7 +468,6 @@ public class ExecutionContext {
 
     public void setAutoCommit(boolean autoCommit) {
         this.autoCommit = autoCommit;
-
     }
 
     public String getGroupHint() {
@@ -494,11 +542,11 @@ public class ExecutionContext {
         this.paramManager = pm;
     }
 
-    public IConnection getConnection() {
+    public ITConnection getConnection() {
         return connection;
     }
 
-    public void setConnection(IConnection connection) {
+    public void setConnection(ITConnection connection) {
         this.connection = connection;
     }
 
@@ -530,7 +578,7 @@ public class ExecutionContext {
 
     public void setSqlMode(String sqlMode) {
         this.sqlMode = sqlMode;
-        this.sqlModeFlags = SQLMode.convertToFlag(sqlMode);
+        this.sqlModeFlags = SQLMode.getCachedFlag(sqlMode);
     }
 
     public long getSqlModeFlags() {
@@ -549,8 +597,13 @@ public class ExecutionContext {
         return encoding;
     }
 
+    public CharsetName getSessionCharset() {
+        return sessionCharset;
+    }
+
     public void setEncoding(String encoding) {
         this.encoding = encoding;
+        this.sessionCharset = CharsetName.of(encoding);
     }
 
     public String getAppName() {
@@ -729,26 +782,50 @@ public class ExecutionContext {
         this.planSource = planSource;
     }
 
-    /**
-     * feedback infos from xResult
-     */
-    public PhyFeedBack getXFeedBack() {
-        long examinedRowCount =
-            xFeedBackMap.values().stream().mapToLong(xFeedBack -> xFeedBack.getExaminedRowCount()).sum();
-        return new PhyFeedBack(examinedRowCount, null);
-    }
-
-    public Map<String, PhyFeedBack> getxFeedBackMap() {
-        return xFeedBackMap;
-    }
-
     public Pair<String, String> getDbIndexAndTableName() {
         return finalPlan.getDbIndexAndTableName();
+    }
+
+
+    public Object getScalarSubqueryVal(int paramKey) {
+        if (paramKey < 0) {
+            return null;
+        }
+        ScalarSubQueryExecContext ctx = scalarSubqueryCtxMap.get(paramKey);
+        Object sbRs = ctx.getSubQueryResult();
+        if (sbRs == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+            return null;
+        }
+        return sbRs;
+    }
+
+    public Map<Integer, ScalarSubQueryExecContext> getScalarSubqueryCtxMap() {
+        return scalarSubqueryCtxMap;
     }
 
     public void clearPreparedStmt() {
         this.executingPreparedStmt = false;
         this.preparedStmtCache = null;
+    }
+
+    public Map<Pair<String, List<String>>, Parameters> getPruneRawStringMap() {
+        return pruneRawStringMap;
+    }
+
+    public void setPruneRawStringMap(
+        Map<Pair<String, List<String>>, Parameters> pruneRawStringMap) {
+        this.pruneRawStringMap = pruneRawStringMap;
+    }
+
+    public Map<Integer, ParameterContext> getPruneParams(String dbIndex, List<String> tableNames) {
+        if (pruneRawStringMap == null) {
+            return null;
+        }
+        Pair<String, List<String>> pair = new Pair<>(dbIndex, tableNames);
+        if (pruneRawStringMap.get(pair) == null) {
+            return null;
+        }
+        return pruneRawStringMap.get(pair).getCurrentParameter();
     }
 
     public static class ErrorMessage {
@@ -821,6 +898,14 @@ public class ExecutionContext {
 
     public void setModifySelect(boolean modifySelect) {
         this.modifySelect = modifySelect;
+    }
+
+    public boolean isModifySelectParallel() {
+        return modifySelectParallel;
+    }
+
+    public void setModifySelectParallel(boolean modifySelectParallel) {
+        this.modifySelectParallel = modifySelectParallel;
     }
 
     public ExplainResult getExplain() {
@@ -1008,8 +1093,8 @@ public class ExecutionContext {
     public ExecutionContext copy(CopyOption option) {
         ExecutionContext ec = new ExecutionContext();
         ec.transaction = getTransaction();
-        ec.extraCmds = getExtraCmds();
-        ec.paramManager = getParamManager();
+        ec.extraCmds = Maps.newHashMap(getExtraCmds());
+        ec.paramManager = new ParamManager(ec.extraCmds);
         ec.params = option.getParams().getOrElse(() -> this.params);
         ec.concurrentService = getExecutorService();
         ec.autoCommit = isAutoCommit();
@@ -1027,6 +1112,7 @@ public class ExecutionContext {
         ec.sqlModeFlags = getSqlModeFlags();
         ec.sql = getSql();
         ec.encoding = getEncoding();
+        ec.sessionCharset = getSessionCharset();
         ec.appName = getAppName();
         ec.schemaName = getSchemaName();
         ec.physicalRecorder = getPhysicalRecorder();
@@ -1045,9 +1131,11 @@ public class ExecutionContext {
         ec.originSql = getOriginSql();
         ec.isPrivilegeMode = isPrivilegeMode();
         ec.modifySelect = isModifySelect();
+        ec.modifySelectParallel = isModifySelectParallel();
         ec.correlateRowMap = Maps.newHashMap(getCorrelateRowMap());
         ec.correlateFieldInViewMap = Maps.newConcurrentMap();
         ec.correlateFieldInViewMap.putAll(correlateFieldInViewMap);
+        ec.scalarSubqueryCtxMap = Maps.newHashMap(getScalarSubqueryCtxMap());
         ec.explain = getExplain();
         ec.sqlType = getSqlType();
         ec.planProperties = (BitSet) getPlanProperties().clone();
@@ -1095,6 +1183,7 @@ public class ExecutionContext {
         ec.unOptimizedPlan = getUnOptimizedPlan();
         ec.querySpillSpaceMonitor = getQuerySpillSpaceMonitor();
         ec.shareReadView = isShareReadView();
+        ec.groupParallelism = getGroupParallelism();
         ec.point = getPoint();
         ec.workloadType = getWorkloadType();
         ec.phySqlId = getPhySqlId();
@@ -1379,8 +1468,17 @@ public class ExecutionContext {
         return this.schemaManagers;
     }
 
-    public void setSchemaManagers(Map<String, SchemaManager> schemaManagers) {
+    public ExecutionContext setSchemaManagers(Map<String, SchemaManager> schemaManagers) {
         this.schemaManagers = schemaManagers;
+        return this;
+    }
+
+    public ExecutionContext setSchemaManager(String schemaName, SchemaManager sm) {
+        if (schemaName == null || sm == null) {
+            return this;
+        }
+        schemaManagers.put(schemaName, sm);
+        return this;
     }
 
     public boolean isReadOnly() {
@@ -1402,6 +1500,7 @@ public class ExecutionContext {
     public static final class CopyOption {
         private final ValueHolder<Parameters> params = new ValueHolder<>();
         private final ValueHolder<QueryMemoryPoolHolder> memoryPoolHolder = new ValueHolder<>();
+        //private final ValueHolder<Map<String, Object>> extraCmds = new ValueHolder<>();
 
         public CopyOption setParameters(Parameters params) {
             this.params.set(params);
@@ -1421,6 +1520,7 @@ public class ExecutionContext {
             this.memoryPoolHolder.set(memoryPoolHolder);
             return this;
         }
+
     }
 
     public RelNode getUnOptimizedPlan() {
@@ -1472,6 +1572,18 @@ public class ExecutionContext {
         this.shareReadView = shareReadView;
     }
 
+    public Long getGroupParallelism() {
+        return groupParallelism;
+    }
+
+    public void setGroupParallelism(Long groupParallelism) {
+        this.groupParallelism = groupParallelism;
+    }
+
+    public boolean isAllowGroupMultiWriteConns() {
+        return groupParallelism != null && groupParallelism > 1;
+    }
+
     public WorkloadType getWorkloadType() {
         return workloadType;
     }
@@ -1488,10 +1600,7 @@ public class ExecutionContext {
         this.phySqlId = phySqlId;
     }
 
-    /**
-     * clear context after the execution of every statement
-     */
-    public void clearContextForStatement() {
+    public void clearContextInsideTrans() {
         // Make sure memory pool is released after query
         try {
             if (getRuntimeStatistics() != null) {
@@ -1502,6 +1611,7 @@ public class ExecutionContext {
             logger.warn("Failed to release memory of current request", e);
         }
 
+        scalarSubqueryCtxMap.clear();
         this.cclContext = null;
 
         try {
@@ -1513,14 +1623,126 @@ public class ExecutionContext {
         }
 
         constantValues.clear();
-        getxFeedBackMap().clear();
+        cacheRefs.clear();
+        cacheRelNodeIds.clear();
+
         // clear params to release memory
-        if (params != null) {
-            params.clear();
+        params = null;
+
+        if (pruneRawStringMap != null) {
+            pruneRawStringMap = null;
         }
+        calcitePlanOptimizerTrace = null;
+    }
+
+    /**
+     * clear context after the execution of every statement
+     */
+    public void clearContextAfterTrans() {
+        clearContextInsideTrans();
+
+        // clear fieldsConnectionParams.
+        Object lastFailedMessage = getExtraDatas().get(ExecutionContext.FailedMessage);
+        if (lastFailedMessage != null) {
+            getExtraDatas().put(ExecutionContext.LastFailedMessage, lastFailedMessage);
+        }
+        defaultExtraCmds = null;
+        hintCmds = null;
+        schemaManagers = new ConcurrentHashMap<>();
+        currentSchemaManager = null;
+        parameterNlsStrings = null;
+        concurrentService = null;
+        autoCommit = true;
+        txIsolation = Connection.TRANSACTION_READ_COMMITTED;
+        groupHint = null;
+        autoGeneratedKeys = -1;
+        columnIndexes = null;
+        columnNames = null;
+        resultSetType = -1;
+        resultSetConcurrency = -1;
+        resultSetHoldability = -1;
+        connection = null;
+        localInFileInputStream = null;
+        sqlMode = null;
+        sqlModeFlags = 0L;
+        sql = null;
+        encoding = null;
+        sessionCharset = null;
+        physicalRecorder = null;
+        recorder = null;
+        tracer = null;
+        enableTrace = false;
+        enableDdlTrace = false;
+        enableFeedBackWorkload = false;
+        stressTestValid = false;
+        socketTimeout = -1;
+        stats = null;
+        originSql = null;
+        isPrivilegeMode = false;
+        isInFilter = false;
+        modifySelect = false;
+        correlateRowMap = Maps.newHashMap();
+        correlateFieldInViewMap = Maps.newHashMap();
+        explain = null;
+        sqlType = null;
+        hasScanWholeTable = false;
+        hasUnpushedJoin = false;
+        hasTempTable = false;
+        privilegeVerifyItems = new ArrayList<>();
+        onlyUseTmpTblPool = true;
+        internalSystemSql = true;
+        sqlTemplateId = null;
+        runtimeStatistics = null;
+        usingPhySqlCache = false;
+        doingBatchInsertBySpliter = false;
+        isApplyingSubquery = false;
+        subqueryId = null;
         blockBuilderCapacity = null;
         enableOssCompatible = null;
         enableOssDelayMaterializationOnExchange = null;
+        finalPlan = null;
+        unOptimizedPlan = null;
+        timeZone = null;
+        traceId = null;
+        phySqlId = null;
+        cluster = null;
+        startTime = 0l;
+        executeMode = ExecutorMode.NONE;
+        workloadType = null;
+        mdcConnString = null;
+        recordRowCnt = Maps.newConcurrentMap();
+        ddlContext = null;
+        phyDdlExecutionRecord = null;
+        multiDdlContext = new MultiDdlContext();
+        randomPhyTableEnabled = true;
+        phyTableRenamed = true;
+        tableInfoManager = null;
+        dmlRelScaleOutWriteFlagMap = new HashMap<>();
+        hasScaleOutWrite = false;
+        isOriginSqlPushdownOrRoute = false;
+        privilegeContext = null;
+        txId = 0L;
+        connId = 0L;
+        clientIp = null;
+        testMode = false;
+        useHint = false;
+        readOnly = false;
+        planSource = null;
+        loadDataContext = null;
+        rescheduled = false;
+        cclContext = null;
+        querySpillSpaceMonitor = null;
+        shareReadView = false;
+        point = null;
+        optimizedWithReturning = false;
+        backfillId = 0L;
+        clientFoundRows = true;
+        enableRuleCounter = false;
+        ruleCount = 0;
+        if (pruneRawStringMap != null) {
+            pruneRawStringMap = null;
+        }
+        executingPreparedStmt = false;
     }
 
     public boolean useReturning() {
@@ -1610,5 +1832,57 @@ public class ExecutionContext {
             enableOssDelayMaterializationOnExchange = paramManager.getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
         }
         return enableOssDelayMaterializationOnExchange;
+    }
+
+    /**
+     * copy context for trans
+     */
+    public ExecutionContext subContextForParamsPrune() {
+        ExecutionContext executionContext = new ExecutionContext(schemaName);
+        executionContext.setParamManager(paramManager);
+        executionContext.setExtraCmds(extraCmds);
+        executionContext.setServerVariables(serverVariables);
+        executionContext.setParams(params);
+        executionContext.extraServerVariables = extraServerVariables;
+        executionContext.userDefVariables = userDefVariables;
+        executionContext.serverVariables = serverVariables;
+        executionContext.planProperties = planProperties;
+        return executionContext;
+    }
+    public boolean isSupportAutoSavepoint() {
+        // First, try to return session config value.
+        if (null != extraServerVariables
+            && null != extraServerVariables.get(ConnectionProperties.ENABLE_AUTO_SAVEPOINT)) {
+            return (boolean) extraServerVariables.get(ConnectionProperties.ENABLE_AUTO_SAVEPOINT);
+        }
+        // Return global config value.
+        return this.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTO_SAVEPOINT);
+    }
+
+    public boolean isSuperUser() {
+        final List<String> grants = PolarPrivManager.getInstance().showGrants(
+            this.getPrivilegeContext().getPolarUserInfo(),
+            this.getPrivilegeContext().getActiveRoles(),
+            this.getPrivilegeContext().getPolarUserInfo().getAccount(),
+            Collections.emptyList());
+        for (String grant : grants) {
+            if (StringUtils.startsWithIgnoreCase(grant, "GRANT ALL PRIVILEGES ON *.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Optional<CalcitePlanOptimizerTrace> getCalcitePlanOptimizerTrace() {
+        return Optional.ofNullable(calcitePlanOptimizerTrace);
+    }
+
+    public SqlExplainLevel getSqlExplainLevel() {
+        return calcitePlanOptimizerTrace == null ? CalcitePlanOptimizerTrace.DEFAULT_LEVEL :
+            calcitePlanOptimizerTrace.getSqlExplainLevel();
+    }
+
+    public void setCalcitePlanOptimizerTrace(CalcitePlanOptimizerTrace calcitePlanOptimizerTrace) {
+        this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
     }
 }

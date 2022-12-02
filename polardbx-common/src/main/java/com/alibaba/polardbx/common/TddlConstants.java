@@ -27,10 +27,13 @@ public class TddlConstants {
     public static final int DEFAULT_DIGEST_EXPIRE_TIME = 300 * 1000;
 
     public static final int MIN_OPTIMIZER_CACHE_SIZE = 1000;
-    public static final int DEFAULT_OPTIMIZER_CACHE_SIZE = 2000;
+    public static final int DEFAULT_OPTIMIZER_CACHE_SIZE = 4000;
+    public static final int DEFAULT_SCHEMA_CACHE_SIZE = 2000;
     public static final int MAX_OPTIMIZER_CACHE_SIZE = 10000;
     public static final int DEFAULT_PARSER_CACHE_SIZE = 1000;
     public static final int DEFAULT_DIGEST_CACHE_SIZE = 1000;
+    public static final int DEFAULT_ORC_BLOOM_FILTER_CACHE_SIZE = 20000;
+    public static final int DEFAULT_ORC_TAIL_CACHE_SIZE = 20000;
 
     public static final int DEFAULT_CCL_CACHE_NOT_MATCH_CONN_SIZE = 20000;
     public static final int DEFAULT_CCL_CACHE_NOT_MATCH_PLAN_SIZE = 20000;
@@ -66,7 +69,12 @@ public class TddlConstants {
 
     public static final String UGSI_PK_INDEX_NAME = "_gsi_pk_idx_";
 
+    // temp local index, only for backfill
+    public static final String UGSI_PK_UNIQUE_INDEX_NAME = "_gsi_pk_unique_idx_";
+
     public static final String AUTO_LOCAL_INDEX_PREFIX = "_local_";
 
     public static final String AUTO_SHARD_KEY_PREFIX = "auto_shard_key_";
+
+    public static final String SQL_MODE = "sql_mode";
 }

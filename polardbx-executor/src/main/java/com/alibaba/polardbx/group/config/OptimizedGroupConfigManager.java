@@ -190,20 +190,54 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         }
     }
 
-    public synchronized void loadGroupDataSourceByMetaDb(Set<String> instIds) {
+    public void loadGroupDataSourceByMetaDb(Set<String> instIds) {
         // (storageId -> (index -> DataSourceWrapper))
-        List<Pair<HaSwitchParams, List<DataSourceWrapper>>> rets = buildDataSourceWrapperByGms(instIds);
-        List<DataSourceWrapper> dswList = new ArrayList<>();
-        List<HaSwitchParams> haSwitchParams = new ArrayList<>();
-        for (Pair<HaSwitchParams, List<DataSourceWrapper>> pair : rets) {
-            dswList.addAll(pair.getValue());
-            haSwitchParams.add(pair.getKey());
-        }
-        resetByPolarDBXDataSourceWrapper(dswList);
 
-        String dbName = groupDataSource.getSchemaName();
-        String groupName = groupDataSource.getDbGroupKey();
-        updateListenerStorageInstId(dbName, groupName);
+        List<Pair<HaSwitchParams, List<DataSourceWrapper>>> rets = null;
+        List<HaSwitchParams> outputHaSwitchParamsWithReadLock = new ArrayList<>();
+        try {
+            /**
+             * Build new datasource by latest leaderAddr(rw-dn) or learnerAddr(ro-dn),
+             * it need acquire read lock by calling storageInstHaContext.getHaLock().readLock()
+             */
+            rets = buildDataSourceWrapperByGms(instIds, outputHaSwitchParamsWithReadLock);
+            synchronized (this) {
+                /**
+                 *  Acquire sync lock of OptimizedGroupConfigManager to update the master-slave data sources info
+                 *  by synchronized
+                 */
+                List<DataSourceWrapper> dswList = new ArrayList<>();
+                for (Pair<HaSwitchParams, List<DataSourceWrapper>> pair : rets) {
+                    dswList.addAll(pair.getValue());
+                }
+                resetByPolarDBXDataSourceWrapper(dswList);
+
+                String dbName = groupDataSource.getSchemaName();
+                String groupName = groupDataSource.getDbGroupKey();
+                updateListenerStorageInstId(dbName, groupName);
+            }
+        } finally {
+            /**
+             * Because fetch all readLocks of cared dn in calling buildDataSourceWrapperByGms(),
+             * so here need unlock all read locks
+             */
+            try {
+                for (int i = 0; i < outputHaSwitchParamsWithReadLock.size(); i++) {
+                    HaSwitchParams haParams = outputHaSwitchParamsWithReadLock.get(i);
+                    if (!haParams.autoUnlock && haParams.haLock != null) {
+                        try {
+                            haParams.haLock.readLock().unlock();
+                        } catch (Throwable ex) {
+                            MetaDbLogUtil.META_DB_LOG.warn(String.format("Failed to release read lock of dn[%s], err is %s", haParams.storageInstId, ex.getMessage()), ex);
+                        }
+
+                    }
+                }
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.warn(ex);
+            }
+        }
+
     }
 
     private synchronized void registerStorageHaTasks() {
@@ -440,6 +474,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                 phyDbName,
                                 storageInstConfig, schemaName);
                         TAtomDataSource atomDs = new TAtomDataSource(true);
+                        atomDs.setDnId(haSwitchParams.storageInstId);
 
                         atomDs.init(appName, groupName, leaderDsKey, "", atomDsConf);
                         DataSourceWrapper dsw =
@@ -528,9 +563,9 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
     }
 
     protected List<Pair<HaSwitchParams, List<DataSourceWrapper>>> buildDataSource(
-        String appName, String unitName, Set<String> instIds, String dbName, String groupName) {
-        List<HaSwitchParams> haSwitchParamsList =
-            StorageHaManager.getInstance().getStorageHaSwitchParamsForInitGroupDs(instIds, dbName, groupName);
+        String appName, String unitName, Set<String> instIds, String dbName, String groupName, List<HaSwitchParams> outputHaSwitchParamsWithReadLock) {
+        StorageHaManager.getInstance().getStorageHaSwitchParamsForInitGroupDs(instIds, dbName, groupName, outputHaSwitchParamsWithReadLock);
+        List<HaSwitchParams> haSwitchParamsList = outputHaSwitchParamsWithReadLock;
         if (haSwitchParamsList.size() == 0) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                 String.format("instId[%s] is NOT available", instIds));
@@ -564,6 +599,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                         haSwitchParams.passwdEnc, haSwitchParams.phyDbName, haSwitchParams.storageConnPoolConfig,
                         dbName);
                 TAtomDataSource atomDs = new TAtomDataSource(true);
+                atomDs.setDnId(haSwitchParams.storageInstId);
                 try {
                     atomDs.init(appName, groupName, dsLeaderKey, unitName, atomDsConf);
                 } catch (Throwable t) {
@@ -591,7 +627,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         return rets;
     }
 
-    protected List<Pair<HaSwitchParams, List<DataSourceWrapper>>> buildDataSourceWrapperByGms(Set<String> instIds) {
+    protected List<Pair<HaSwitchParams, List<DataSourceWrapper>>> buildDataSourceWrapperByGms(Set<String> instIds,
+                                                                                              List<HaSwitchParams> outputHaSwitchParamsWithReadLock) {
         String unitName = "";
         List<Pair<HaSwitchParams, List<DataSourceWrapper>>> dataSourceWrapperLists = null;
         try {
@@ -601,7 +638,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
             // build DatasourceWrapper for the instIds
             dataSourceWrapperLists =
-                buildDataSource(appName, unitName, instIds, dbName, groupName);
+                buildDataSource(appName, unitName, instIds, dbName, groupName, outputHaSwitchParamsWithReadLock);
             if (dataSourceWrapperLists.size() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                     String.format("instId[%s] is NOT available", instIds));
@@ -631,6 +668,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                             haSwitchParams.storageConnPoolConfig, dbName);
                                     String slaveWeightStr = GroupInfoUtil.buildWeightStr(10, 0);
                                     TAtomDataSource slaveAtomDs = new TAtomDataSource(true);
+                                    slaveAtomDs.setDnId(haSwitchParams.storageInstId);
+
                                     slaveAtomDs.init(appName, groupName, slaveKey, unitName, slaveAtomDsConf);
                                     DataSourceWrapper follower = new DataSourceWrapper(
                                         haSwitchParams.storageInstId, slaveKey, slaveWeightStr, slaveAtomDs, 1);
@@ -1072,10 +1111,14 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
         @Override
         public void doHaSwitch(HaSwitchParams haSwitchParams) {
-
             String groupName = groupDs.getDbGroupKey();
             String dbName = groupDs.getSchemaName();
             try {
+                /**
+                 * When this method is calling, that mean at least dn has HA or groupDetailInfo has benn changed.
+                 * At this time, the writeLock of dn of StorageHaContext has been acquired by calling
+                 *  StorageHaContext.getHaLock().writeLock()
+                 */
                 switchGroupDs(haSwitchParams);
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_DYNAMIC_CONFIG

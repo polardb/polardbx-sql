@@ -27,6 +27,9 @@ import org.apache.calcite.sql.SqlRebalance;
  */
 public class BalanceOptions {
 
+    /**
+     * 512 MB
+     */
     public static long DEFAULT_MAX_PARTITION_SIZE = 512 << 20;
     public static final int MAX_PARTITION_COUNT = 8192;
     public static final int DEFAULT_MAX_ACTION = 50;

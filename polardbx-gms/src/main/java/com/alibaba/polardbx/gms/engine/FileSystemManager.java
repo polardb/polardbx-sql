@@ -19,20 +19,26 @@ package com.alibaba.polardbx.gms.engine;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
-import com.alibaba.polardbx.rpc.utils.BufferPool;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -44,7 +50,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
-import java.lang.management.BufferPoolMXBean;
 import java.math.BigInteger;
 import java.net.URI;
 import java.sql.Connection;
@@ -86,19 +91,20 @@ public class FileSystemManager {
             lockMap.put(engine, new StampedLock());
         }
         cache = CacheBuilder.newBuilder()
-                        .removalListener(new EngineFileSystemRemovalListener())
-                        .build(new EngineFileSystemCacheLoader());
+            .removalListener(new EngineFileSystemRemovalListener())
+            .build(new EngineFileSystemCacheLoader());
         this.executor = new ThreadPoolExecutor(16,
-                16,
-                1800,
-                TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(32),
-                new NamedThreadFactory("FileSystemManager executor", true),
-                new ThreadPoolExecutor.CallerRunsPolicy());
+            16,
+            1800,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(32),
+            new NamedThreadFactory("FileSystemManager executor", true),
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
         MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getFileStorageInfoDataId(), null);
         MetaDbConfigManager
-            .getInstance().bindListener(MetaDbDataIdBuilder.getFileStorageInfoDataId(), new FileStorageInfoListener());
+            .getInstance()
+            .bindListener(MetaDbDataIdBuilder.getFileStorageInfoDataId(), new FileStorageInfoListener());
     }
 
     public ThreadPoolExecutor getExecutor() {
@@ -116,15 +122,25 @@ public class FileSystemManager {
     private static final int CACHE_STATS_FIELD_COUNT = 9;
 
     public static FileSystemGroup getFileSystemGroup(Engine engine) {
+        return getFileSystemGroup(engine, true);
+    }
+
+    public static FileSystemGroup getFileSystemGroup(Engine engine, boolean throwException) {
         try {
             Optional<FileSystemGroup> optional = getInstance().getCache().get(engine);
-            if (optional.isPresent()) {
-                return optional.get();
+            if (!optional.isPresent()) {
+                if (!throwException) {
+                    return null;
+                } else {
+                    // otherwise we get NPE when datasource not found.
+                    throw GeneralUtil.nestedException("There is no datasource for engine: " + engine);
+                }
             }
+            return optional.get();
         } catch (ExecutionException e) {
+            // catch execution exception when loading caches.
             throw GeneralUtil.nestedException(e);
         }
-        return null;
     }
 
     private static StampedLock getLock(Engine engine) {
@@ -163,6 +179,36 @@ public class FileSystemManager {
                 getInstance().getCache().invalidate(engine);
             } finally {
                 getLock(engine).unlockWrite(stamp);
+            }
+        }
+    }
+
+    public static void resetRate() {
+        // fetch the rate params
+        Map<String, Long> configs = InstConfUtil.fetchLongConfigs(
+            ConnectionParams.OSS_FS_MAX_READ_RATE,
+            ConnectionParams.OSS_FS_MAX_WRITE_RATE
+        );
+        final Long readRate = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
+        final Long writeRate = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
+
+        FileSystemGroup fileSystemGroup = getFileSystemGroup(Engine.OSS);
+
+        // reset rate-limiter of master && slave file system.
+        FileMergeCachingFileSystem masterFs = (FileMergeCachingFileSystem) fileSystemGroup.getMaster();
+        if (masterFs.getDataTier() instanceof OSSFileSystem) {
+            FileSystemRateLimiter rateLimiter = ((OSSFileSystem) masterFs.getDataTier()).getRateLimiter();
+            rateLimiter.setReadRate(readRate);
+            rateLimiter.setWriteRate(writeRate);
+        }
+        for (FileSystem fs : fileSystemGroup.getSlaves()) {
+            FileMergeCachingFileSystem slaveFs = (FileMergeCachingFileSystem) fs;
+            if (slaveFs.getDataTier() instanceof OSSFileSystem) {
+                FileSystemRateLimiter rateLimiter = ((OSSFileSystem) slaveFs.getDataTier()).getRateLimiter();
+                rateLimiter.setReadRate(readRate);
+                rateLimiter.setWriteRate(writeRate);
             }
         }
     }
@@ -225,41 +271,48 @@ public class FileSystemManager {
                     slaves.add(slave);
                 }
             }
-            return Optional.of(new FileSystemGroup(master, slaves, getInstance().executor, DeletePolicy.MAP.get(records.get(0).deletePolicy), records.get(0).status == 2));
+            return Optional.of(new FileSystemGroup(master, slaves, getInstance().executor,
+                DeletePolicy.MAP.get(records.get(0).deletePolicy), records.get(0).status == 2));
         }
     }
 
     public static FileSystem buildFileSystem(FileStorageInfoRecord record) throws IOException {
         Engine engine = Engine.of(record.getEngine());
         switch (engine) {
-            case OSS: {
-                List<String> endpoints =
-                    ImmutableList.of(record.externalEndpoint, record.internalClassicEndpoint, record.internalVpcEndpoint);
-                int endpointOrdinal = (int) Math.min(record.endpointOrdinal, endpoints.size() - 1);
-                FileSystem ossFileSystem =
-                        OSSInstanceInitializer.newBuilder()
-                                .accessKeyIdValue(record.accessKeyId)
-                                .accessKeySecretValue(PasswdUtil.decrypt(record.accessKeySecret))
-                                .bucketName(record.fileUri)
-                                .cachePolicy(CachePolicy.MAP.get(record.cachePolicy))
-                                .endpointValue(endpoints.get(endpointOrdinal))
-                                .initialize();
-                Path workingDirectory = new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+        case OSS: {
+            List<String> endpoints =
+                ImmutableList.of(record.externalEndpoint, record.internalClassicEndpoint, record.internalVpcEndpoint);
+            int endpointOrdinal = (int) Math.min(record.endpointOrdinal, endpoints.size() - 1);
+            FileSystem ossFileSystem =
+                OSSInstanceInitializer.newBuilder()
+                    .accessKeyIdValue(record.accessKeyId)
+                    .accessKeySecretValue(PasswdUtil.decrypt(record.accessKeySecret))
+                    .bucketName(record.fileUri)
+                    .cachePolicy(CachePolicy.MAP.get(record.cachePolicy))
+                    .endpointValue(endpoints.get(endpointOrdinal))
+                    .initialize();
+            Path workingDirectory =
+                new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+
                 ossFileSystem.setWorkingDirectory(workingDirectory);
-                return ossFileSystem;
-            }
-            case LOCAL_DISK: {
-                Configuration configuration = new Configuration();
-                configuration.setBoolean("fs.file.impl.disable.cache", true);
-                FileSystem localFileSystem = FileSystem.get(
-                        URI.create(record.fileUri), configuration
-                );
-                Path workingDirectory = new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+
+            return ossFileSystem;
+        }
+        case LOCAL_DISK: {
+            Configuration configuration = new Configuration();
+            configuration.setBoolean("fs.file.impl.disable.cache", true);
+            FileSystem localFileSystem = FileSystem.get(
+                URI.create(record.fileUri), configuration
+            );
+            Path workingDirectory =
+                new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+
                 localFileSystem.setWorkingDirectory(workingDirectory);
-                return localFileSystem;
-            }
-            default:
-                return null;
+
+            return localFileSystem;
+        }
+        default:
+            return null;
         }
     }
 
@@ -270,7 +323,7 @@ public class FileSystemManager {
         if (cacheManager != null) {
             CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
             FileMergeCacheConfig fileMergeCacheConfig =
-                    ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
+                ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
             CacheConfig cacheConfig = ((FileMergeCacheManager) cacheManager).getCacheConfig();
             BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
             long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();

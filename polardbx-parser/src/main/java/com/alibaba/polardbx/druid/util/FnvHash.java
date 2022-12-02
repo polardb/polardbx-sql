@@ -108,8 +108,6 @@ public final class FnvHash {
 
     /**
      * lower and normalized and fnv_1a_64
-     * @param name
-     * @return
      */
     public static long hashCode64(String name) {
         if (name == null) {
@@ -123,9 +121,9 @@ public final class FnvHash {
             char c0 = name.charAt(0);
             char c1 = name.charAt(len - 1);
             if ((c0 == '`' && c1 == '`')
-                    || (c0 == '"' && c1 == '"')
-                    || (c0 == '\'' && c1 == '\'')
-                    || (c0 == '[' && c1 == ']')) {
+                || (c0 == '"' && c1 == '"')
+                || (c0 == '\'' && c1 == '\'')
+                || (c0 == '[' && c1 == ']')) {
                 quote = true;
             }
         }
@@ -212,9 +210,9 @@ public final class FnvHash {
             char c0 = name.charAt(0);
             char c1 = name.charAt(len - 1);
             if ((c0 == '`' && c1 == '`')
-                    || (c0 == '"' && c1 == '"')
-                    || (c0 == '\'' && c1 == '\'')
-                    || (c0 == '[' && c1 == ']')) {
+                || (c0 == '"' && c1 == '"')
+                || (c0 == '\'' && c1 == '\'')
+                || (c0 == '[' && c1 == ']')) {
                 quote = true;
             }
         }
@@ -283,9 +281,6 @@ public final class FnvHash {
 
     /**
      * normalized and lower and fnv1a_64_hash
-     * @param owner
-     * @param name
-     * @return
      */
     public static long hashCode64(String owner, String name) {
         long hashCode = BASIC;
@@ -300,15 +295,15 @@ public final class FnvHash {
                 char c0 = item.charAt(0);
                 char c1 = item.charAt(len - 1);
                 if ((c0 == '`' && c1 == '`')
-                        || (c0 == '"' && c1 == '"')
-                        || (c0 == '\'' && c1 == '\'')
-                        || (c0 == '[' && c1 == ']')) {
+                    || (c0 == '"' && c1 == '"')
+                    || (c0 == '\'' && c1 == '\'')
+                    || (c0 == '[' && c1 == ']')) {
                     quote = true;
                 }
             }
 
             int start = quote ? 1 : 0;
-            int end   = quote ? len - 1 : len;
+            int end = quote ? len - 1 : len;
             for (int j = start; j < end; ++j) {
                 char ch = item.charAt(j);
 
@@ -324,7 +319,6 @@ public final class FnvHash {
             hashCode *= PRIME;
         }
 
-
         if (name != null) {
             String item = name;
 
@@ -335,15 +329,15 @@ public final class FnvHash {
                 char c0 = item.charAt(0);
                 char c1 = item.charAt(len - 1);
                 if ((c0 == '`' && c1 == '`')
-                        || (c0 == '"' && c1 == '"')
-                        || (c0 == '\'' && c1 == '\'')
-                        || (c0 == '[' && c1 == ']')) {
+                    || (c0 == '"' && c1 == '"')
+                    || (c0 == '\'' && c1 == '\'')
+                    || (c0 == '[' && c1 == ']')) {
                     quote = true;
                 }
             }
 
             int start = quote ? 1 : 0;
-            int end   = quote ? len - 1 : len;
+            int end = quote ? len - 1 : len;
             for (int j = start; j < end; ++j) {
                 char ch = item.charAt(j);
 
@@ -462,6 +456,7 @@ public final class FnvHash {
         long STDDEV = fnv1a_64_lower("STDDEV");
         long RANK = fnv1a_64_lower("RANK");
         long SUM = fnv1a_64_lower("SUM");
+        long CHECK_SUM = fnv1a_64_lower("CHECK_SUM");
         long ARBITRARY = fnv1a_64_lower("ARBITRARY");
         long GROUP_CONCAT = fnv1a_64_lower("GROUP_CONCAT");
         long CONVERT_TZ = fnv1a_64_lower("CONVERT_TZ");
@@ -762,6 +757,8 @@ public final class FnvHash {
         long PARTITIONS = fnv1a_64_lower("PARTITIONS");
         long FORMAT = fnv1a_64_lower("FORMAT");
         long ENCODE = fnv1a_64_lower("ENCODE");
+        long HEATMAP = fnv1a_64_lower("HEATMAP");
+
 
         long SELECT = fnv1a_64_lower("SELECT");
         long DELETE = fnv1a_64_lower("DELETE");
@@ -1164,6 +1161,8 @@ public final class FnvHash {
         long _CP932 = fnv1a_64_lower("_CP932");
         long _EUCJPMS = fnv1a_64_lower("_EUCJPMS");
         long _GB18030 = fnv1a_64_lower("_GB18030");
+
+        long JOINGROUP = fnv1a_64_lower("JOINGROUP");
 
         Set<Long> MYSQL_CHARACTER_SETS = ImmutableSet.of(
             _BIG5, _DEC8, _CP850, _HP8, _KOI8R, _LATIN1, _LATIN2, _SWE7, _ASCII, _UJIS, _SJIS, _HEBREW, _TIS620,

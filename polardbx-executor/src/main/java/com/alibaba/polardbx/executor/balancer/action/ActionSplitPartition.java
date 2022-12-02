@@ -21,13 +21,17 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.splitpartition.SplitPoint;
+import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
+import com.google.common.collect.Sets;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.List;
 import java.util.Objects;
@@ -50,6 +54,7 @@ public class ActionSplitPartition implements BalanceAction {
     private String genSql;
     private SearchDatumInfo rightBound;
     private List<SplitPoint> splitPoints;
+    private BalanceStats stats;
 
     public ActionSplitPartition(String schemaName, String tableGroupName, String partitionName, String genSql) {
         this.schema = schemaName;
@@ -58,12 +63,14 @@ public class ActionSplitPartition implements BalanceAction {
         this.genSql = genSql;
     }
 
-    public ActionSplitPartition(String schema, PartitionStat partition, List<SplitPoint> splitPointList) {
+    public ActionSplitPartition(String schema, PartitionStat partition, List<SplitPoint> splitPointList,
+                                BalanceStats stats) {
         this.schema = schema;
         this.tableGroupName = partition.getTableGroupName();
         this.partitionName = partition.getPartitionName();
         this.rightBound = partition.getCurrentBound();
         this.splitPoints = splitPointList;
+        this.stats = stats;
         genSplitPartitionSql();
     }
 
@@ -113,7 +120,8 @@ public class ActionSplitPartition implements BalanceAction {
     }
 
     private String genPartitionSpec(String name, SearchDatumInfo bound) {
-        return String.format("partition %s values less than (%s)", name, bound.getDesc(false, PartitionInfoUtil.FULL_PART_COL_COUNT));
+        return String.format("partition %s values less than (%s)", name,
+            bound.getDesc(false, PartitionInfoUtil.FULL_PART_COL_COUNT));
     }
 
     private List<Pair<String, SearchDatumInfo>> buildSplits() {
@@ -133,7 +141,23 @@ public class ActionSplitPartition implements BalanceAction {
     @Override
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         String sql = genSplitPartitionSql();
-        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
+
+        final String tableGroupName = this.getTableGroupName();
+        final String partitionName = this.getPartitionName();
+
+        long totalRows = 0L;
+        long totalSize = 0L;
+        List<PartitionStat> partitionStatList =
+            stats.filterPartitionStat(tableGroupName, Sets.newHashSet(partitionName));
+        if (CollectionUtils.isNotEmpty(partitionStatList)) {
+            for (PartitionStat partitionStat : partitionStatList) {
+                totalRows += partitionStat.getPartitionRows();
+                totalSize += partitionStat.getPartitionDiskSize();
+            }
+        }
+
+        return ActionUtils.convertToDelegatorJob(schema, sql,
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
     }
 
     @Override

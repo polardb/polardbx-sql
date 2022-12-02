@@ -17,12 +17,11 @@
 package com.alibaba.polardbx.optimizer.planmanager;
 
 public interface IBaselineSyncController {
-
-    void updatePlanInfo(String schemaName, int originPlanId, BaselineInfo baselineInfo, PlanInfo planInfo);
-
-    void updateBaseline(String schemaName, BaselineInfo baselineInfo);
+    void updateBaselineSync(String schemaName, BaselineInfo baselineInfo);
 
     void deleteBaseline(String schemaName, BaselineInfo baselineInfo);
 
     void deletePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo planInfo);
+
+    String scheduledJobsInfo();
 }

@@ -49,50 +49,50 @@ import java.util.Map;
 
 public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLStatement, SQLCreateStatement {
 
-    protected boolean                          ifNotExists = false;
-    protected Type                             type;
-    protected SQLExprTableSource               tableSource;
-    protected List<SQLTableElement>            tableElementList = new ArrayList<SQLTableElement>();
+    protected boolean ifNotExists = false;
+    protected Type type;
+    protected SQLExprTableSource tableSource;
+    protected List<SQLTableElement> tableElementList = new ArrayList<SQLTableElement>();
 
     // for postgresql
-    protected SQLExprTableSource               inherits;
-    protected SQLSelect                        select;
-    protected SQLExpr                          comment;
-    protected SQLExprTableSource               like;
+    protected SQLExprTableSource inherits;
+    protected SQLSelect select;
+    protected SQLExpr comment;
+    protected SQLExprTableSource like;
 
-    protected Boolean                          compress;
-    protected Boolean                          logging;
+    protected Boolean compress;
+    protected Boolean logging;
 
-    protected SQLName                          tablespace;
-    protected SQLPartitionBy                   partitioning;
-    protected SQLPartitionBy                   localPartitioning;
-    protected SQLExpr                          storedAs;
-    protected SQLExpr                          location;
+    protected SQLName tablespace;
+    protected SQLPartitionBy partitioning;
+    protected SQLPartitionBy localPartitioning;
+    protected SQLExpr storedAs;
+    protected SQLExpr location;
 
-    protected boolean                          onCommitPreserveRows;
-    protected boolean                          onCommitDeleteRows;
-    protected boolean                          external;
+    protected boolean onCommitPreserveRows;
+    protected boolean onCommitDeleteRows;
+    protected boolean external;
 
     // for odps & hive
-    protected SQLExternalRecordFormat          rowFormat;
-    protected final List<SQLColumnDefinition>  partitionColumns = new ArrayList<SQLColumnDefinition>(2);
-    protected ClusteringType                   clusteringType;
-    protected final List<SQLSelectOrderByItem> clusteredBy      = new ArrayList<SQLSelectOrderByItem>();
-    protected final List<SQLSelectOrderByItem> sortedBy         = new ArrayList<SQLSelectOrderByItem>();
-    protected int                              buckets;
-    protected int                              shards;
-    protected final List<SQLAssignItem>        tableOptions     = new ArrayList<SQLAssignItem>();
-    protected final List<SQLAssignItem>        tblProperties    = new ArrayList<SQLAssignItem>();
+    protected SQLExternalRecordFormat rowFormat;
+    protected final List<SQLColumnDefinition> partitionColumns = new ArrayList<SQLColumnDefinition>(2);
+    protected ClusteringType clusteringType;
+    protected final List<SQLSelectOrderByItem> clusteredBy = new ArrayList<SQLSelectOrderByItem>();
+    protected final List<SQLSelectOrderByItem> sortedBy = new ArrayList<SQLSelectOrderByItem>();
+    protected int buckets;
+    protected int shards;
+    protected final List<SQLAssignItem> tableOptions = new ArrayList<SQLAssignItem>();
+    protected final List<SQLAssignItem> tblProperties = new ArrayList<SQLAssignItem>();
 
     protected boolean replace = false;
     protected boolean ignore = false;
-    protected boolean                          dimension;
+    protected boolean dimension;
 
-    public SQLCreateTableStatement(){
+    public SQLCreateTableStatement() {
 
     }
 
-    public SQLCreateTableStatement(DbType dbType){
+    public SQLCreateTableStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -205,7 +205,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     }
 
     public static enum Type {
-                             GLOBAL_TEMPORARY, LOCAL_TEMPORARY, TEMPORARY, SHADOW
+        GLOBAL_TEMPORARY, LOCAL_TEMPORARY, TEMPORARY, SHADOW
     }
 
     public List<SQLTableElement> getTableElementList() {
@@ -237,6 +237,21 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         return column;
     }
 
+    public boolean existFullTextIndex() {
+        for (SQLTableElement element : this.tableElementList) {
+            if (element instanceof MySqlKey) {
+                if ("FULLTEXT".equalsIgnoreCase(((MySqlKey) element).getIndexType())) {
+                    return true;
+                }
+            } else if (element instanceof MySqlTableIndex) {
+                if ("FULLTEXT".equalsIgnoreCase(((MySqlTableIndex) element).getIndexType())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public List<String> getColumnNames(boolean normalized) {
         List<String> columnNames = new ArrayList<String>();
         for (SQLColumnDefinition definition : getColumnDefinitions()) {
@@ -253,11 +268,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     public List<String> getColumnComments() {
         List<String> comments = new ArrayList<String>();
         for (SQLColumnDefinition definition : getColumnDefinitions()) {
-            comments.add(((SQLCharExpr)definition.getComment()).getText());
+            comments.add(((SQLCharExpr) definition.getComment()).getText());
         }
         return comments;
     }
-
 
     public List<String> getPrimaryKeyNames() {
         List<String> keys = new ArrayList<String>();
@@ -267,7 +281,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                 for (SQLSelectOrderByItem column : columns) {
                     final SQLExpr expr = column.getExpr();
                     if (expr instanceof SQLMethodInvokeExpr) {
-                        keys.add(SQLUtils.normalize(((SQLMethodInvokeExpr)expr).getMethodName()));
+                        keys.add(SQLUtils.normalize(((SQLMethodInvokeExpr) expr).getMethodName()));
                     } else {
                         keys.add(SQLUtils.normalize(expr.toString()));
                     }
@@ -277,13 +291,11 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         return keys;
     }
 
-
-
     public void addColumn(String columnName, String dataType) {
         SQLColumnDefinition column = new SQLColumnDefinition();
         column.setName(columnName);
         column.setDataType(
-                SQLParserUtils.createExprParser(dataType, dbType).parseDataType()
+            SQLParserUtils.createExprParser(dataType, dbType).parseDataType()
         );
         addColumn(column);
     }
@@ -411,7 +423,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         if (attributes == null) {
             attributes = new HashMap<String, Object>(1);
         }
-        
+
         List<String> attrComments = (List<String>) attributes.get("rowFormat.body_before_comment");
         if (attrComments == null) {
             attributes.put("rowFormat.body_before_comment", comments);
@@ -419,22 +431,22 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
             attrComments.addAll(comments);
         }
     }
-    
+
     @SuppressWarnings("unchecked")
     public List<String> getBodyBeforeCommentsDirect() {
         if (attributes == null) {
             return null;
         }
-        
+
         return (List<String>) attributes.get("rowFormat.body_before_comment");
     }
-    
+
     public boolean hasBodyBeforeComment() {
         List<String> comments = getBodyBeforeCommentsDirect();
         if (comments == null) {
             return false;
         }
-        
+
         return !comments.isEmpty();
     }
 
@@ -490,7 +502,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         for (SQLColumnDefinition element : this.getColumnDefinitions()) {
             for (SQLColumnConstraint constraint : element.constraints) {
                 if (constraint instanceof SQLColumnPrimaryKey
-                        && SQLUtils.normalize(element.getColumnName()).equalsIgnoreCase(SQLUtils.normalize(columnName))) {
+                    && SQLUtils.normalize(element.getColumnName()).equalsIgnoreCase(SQLUtils.normalize(columnName))) {
                     return true;
                 }
             }
@@ -527,10 +539,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
                 SQLExpr column = unique.getColumns().get(0).getExpr();
                 if (column instanceof SQLIdentifierExpr
-                        && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
+                    && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
                     return unique.getColumns().size() > 1;
                 } else if (column instanceof SQLMethodInvokeExpr
-                        && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
+                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
                     return true;
                 }
             } else if (element instanceof MySqlKey) {
@@ -538,10 +550,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
                 SQLExpr column = unique.getColumns().get(0).getExpr();
                 if (column instanceof SQLIdentifierExpr
-                        && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
+                    && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
                     return true;
                 } else if (column instanceof SQLMethodInvokeExpr
-                        && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
+                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
                     return true;
                 }
             }
@@ -563,10 +575,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
                 SQLExpr column = unique.getColumns().get(0).getExpr();
                 if (column instanceof SQLIdentifierExpr
-                        && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
+                    && SQLUtils.nameEquals(columnName, ((SQLIdentifierExpr) column).getName())) {
                     return unique.getColumns().size() == 1;
                 } else if (column instanceof SQLMethodInvokeExpr
-                        && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
+                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) column).getMethodName(), columnName)) {
                     return true;
                 }
             }
@@ -717,7 +729,8 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
     public static void sort(List<SQLStatement> stmtList) {
         Map<String, SQLCreateTableStatement> tables = new HashMap<String, SQLCreateTableStatement>();
-        Map<String, List<SQLCreateTableStatement>> referencedTables = new HashMap<String, List<SQLCreateTableStatement>>();
+        Map<String, List<SQLCreateTableStatement>> referencedTables =
+            new HashMap<String, List<SQLCreateTableStatement>>();
 
         for (SQLStatement stmt : stmtList) {
             if (stmt instanceof SQLCreateTableStatement) {
@@ -904,8 +917,8 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
             }
 
             SQLColumnDefinition column
-                    = this.findColumn(
-                        propertyExpr.nameHashCode64());
+                = this.findColumn(
+                propertyExpr.nameHashCode64());
 
             if (column != null) {
                 column.setComment(comment.clone());
@@ -964,8 +977,39 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
         } else if (item instanceof SQLAlterTableAddIndex) {
             return apply((SQLAlterTableAddIndex) item);
+
+        } else if (item instanceof SQLAlterTableRenameIndex) {
+            return apply((SQLAlterTableRenameIndex) item);
+            
         }
 
+        return false;
+    }
+
+    private boolean apply(SQLAlterTableRenameIndex item) {
+        long indexNameHashCode64 = item.getName().nameHashCode64();
+
+        for (int i = tableElementList.size() - 1; i >= 0; i--) {
+            SQLTableElement e = tableElementList.get(i);
+            if (e instanceof SQLUniqueConstraint) {
+                //ignore primary key
+                if (e instanceof SQLPrimaryKey) {
+                    continue;
+                }
+                SQLUniqueConstraint unique = (SQLUniqueConstraint) e;
+                if (unique.getName().nameHashCode64() == indexNameHashCode64) {
+                    SQLUniqueConstraint constraint = (SQLUniqueConstraint) tableElementList.get(i);
+                    constraint.setName(item.getTo());
+                    return true;
+                }
+            } else if (e instanceof MySqlTableIndex) {
+                MySqlTableIndex tableIndex = (MySqlTableIndex) e;
+                if (SQLUtils.nameEquals(tableIndex.getName(), item.getName())) {
+                    tableIndex.setName(item.getTo());
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
@@ -1131,8 +1175,6 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                 }
             }
         }
-
-
 
         return true;
     }
@@ -1554,7 +1596,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                 if (old != null) {
                     if (throwException) {
                         throw new SemanticException("Table contains duplicate column names : "
-                                + SQLUtils.normalize(columnName.getSimpleName()));
+                            + SQLUtils.normalize(columnName.getSimpleName()));
                     }
                     return true;
                 }

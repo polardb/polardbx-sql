@@ -1,0 +1,4 @@
+- explain select nn1.n_regionkey,nn2.n_regionkey from nn1, nn2 where nn1.n_gg=nn2.n_gg;
+- explain select n_regionkey from nn1 where n_gg=1;
+- explain select n_regionkey from nn1 where n_de=1;
+- explain select n_regionkey from nn1 where n_regionkey=1;

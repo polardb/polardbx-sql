@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.qatest.sequence;
 
 import com.alibaba.polardbx.qatest.BaseSequenceTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang.StringUtils;
@@ -59,23 +59,31 @@ public class RenameSequenceTest extends BaseSequenceTestCase {
     @Parameterized.Parameters(name = "{index}:seqType={0}, schema={1}")
     public static List<String[]> prepareData() {
         String[][] postFix = {
-            {"", ""}, {"simple", ""}, {"group", ""},
-            {"", PropertiesUtil.polardbXShardingDBName2()}, {"simple", PropertiesUtil.polardbXShardingDBName2()},
-            {"group", PropertiesUtil.polardbXShardingDBName2()}};
+            {"", ""},
+            {"new", ""},
+            {"group", ""},
+            {"simple", ""},
+            {"time", ""},
+            {"", PropertiesUtil.polardbXAutoDBName2()},
+            {"new", PropertiesUtil.polardbXAutoDBName2()},
+            {"group", PropertiesUtil.polardbXAutoDBName2()},
+            {"simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"time", PropertiesUtil.polardbXAutoDBName2()}
+        };
         return Arrays.asList(postFix);
     }
 
     @Before
     public void prepareSequence() {
-        dropSeqence(seqNameOld);
-        dropSeqence(seqNameNew);
+        dropSequence(seqNameOld);
+        dropSequence(seqNameNew);
         String sql = String.format("create %s sequence %s ", seqType, seqNameOld);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
     @After
     public void deleteSequence() {
-        dropSeqence(seqNameNew);
+        dropSequence(seqNameNew);
     }
 
     @Rule
@@ -86,17 +94,21 @@ public class RenameSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testRenameSequence() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqNameOld);
+        TestSequence sequenceBefore = showSequence(seqNameOld);
         assertThat(sequenceBefore).isNotNull();
 
         String sql = String.format("rename sequence %s to %s", seqNameOld, seqNameNew);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequenceAfter = showSequence(seqNameNew);
+        TestSequence sequenceAfter = showSequence(seqNameNew);
         assertThat(sequenceAfter).isNotNull();
 
         getSequenceNextVal(seqNameNew);
         simpleCheckSequence(seqNameNew, seqType);
     }
 
+    @Override
+    public boolean usingNewPartDb() {
+        return true;
+    }
 }

@@ -70,6 +70,7 @@ public class VariableProxy implements IVariableProxy {
         }
     }
 
+    @Override
     public ImmutableMap<String, Object> getGlobalVariables() {
         TGroupDirectConnection tGroupDirectConnection = null;
         try {

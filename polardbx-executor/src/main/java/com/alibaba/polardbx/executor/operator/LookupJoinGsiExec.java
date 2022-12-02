@@ -22,8 +22,8 @@ import com.alibaba.polardbx.executor.operator.util.BufferInputBatchQueue;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
-import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.List;
@@ -34,12 +34,12 @@ public class LookupJoinGsiExec extends LookupJoinExec implements LookupTableExec
                              boolean maxOneRow, List<EquiJoinKey> joinKeys,
                              List<EquiJoinKey> allJoinKeys,
                              IExpression otherCondition,
-                             LookupPredicate predicates,
                              ExecutionContext context,
                              int shardCount,
-                             int parallelism) {
-        super(outerInput, innerInput, joinType, maxOneRow, joinKeys, allJoinKeys, otherCondition, predicates, context,
-            shardCount, parallelism);
+                             int parallelism,
+                             boolean allowMultiReadConn) {
+        super(outerInput, innerInput, joinType, maxOneRow, joinKeys, allJoinKeys, otherCondition, context,
+            shardCount, parallelism, allowMultiReadConn);
         Preconditions
             .checkArgument(outerResumeExec == outerInput, "The outerResumeExec should be outerInput directly!");
         Preconditions.checkArgument(

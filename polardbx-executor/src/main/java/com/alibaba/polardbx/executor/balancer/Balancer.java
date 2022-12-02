@@ -35,6 +35,7 @@ import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.StatsUtils;
 import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -195,24 +196,52 @@ public class Balancer extends AbstractLifecycle {
         return rebalanceImpl(ec, options, stats, schema);
     }
 
+    public List<BalanceAction> rebalanceTableGroup(ExecutionContext ec, String tableGroupName, BalanceOptions options) {
+        String schema = ec.getSchemaName();
+        boolean isSharding = !DbInfoManager.getInstance().isNewPartitionDb(schema);
+        if (isSharding) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "only partition database support rebalance table");
+        }
+        BalanceStats stats = collectBalanceStatsOfTableGroup(schema, tableGroupName);
+
+        return rebalanceTableGroupImpl(ec, options, stats, schema, tableGroupName);
+    }
+
     /**
      * Rebalance Database: apply all policies on all tables of current database
      */
     public List<BalanceAction> rebalanceDatabase(ExecutionContext ec, BalanceOptions options) {
         String schema = ec.getSchemaName();
         DdlJobManager jobManager = new DdlJobManager();
-        String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schema);
+        String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schema);
         if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "unable to acquire rebalance locks");
         }
 
         BalanceStats stats = collectBalanceStatsOfDatabase(schema);
 
         if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "unable to acquire rebalance locks");
         }
 
         return rebalanceImpl(ec, options, stats, schema);
+    }
+
+    private List<BalanceAction> rebalanceTableGroupImpl(ExecutionContext ec,
+                                                        BalanceOptions options,
+                                                        BalanceStats stats,
+                                                        String schema,
+                                                        String tableGroup) {
+        List<BalancePolicy> policies = getBalancePolicy(options.policy);
+        if (policies.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "Policy not found");
+        }
+
+        List<BalanceAction> actions = new ArrayList<>();
+        for (BalancePolicy policy : policies) {
+            actions.addAll(policy.applyToTableGroup(ec, options, stats, schema, tableGroup));
+        }
+        return actions;
     }
 
     private List<BalanceAction> rebalanceImpl(ExecutionContext ec,
@@ -260,6 +289,15 @@ public class Balancer extends AbstractLifecycle {
         } else {
             List<GroupStats.GroupsOfStorage> groupStats = GroupStats.getGroupsOfDb(schema);
             return BalanceStats.createForSharding(schema, groupStats);
+        }
+    }
+
+    public static BalanceStats collectBalanceStatsOfTableGroup(String schema, String tableGroupName) {
+        if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+            List<TableGroupStat> tableGroupStats = StatsUtils.getTableGroupsStats(schema, tableGroupName, true);
+            return BalanceStats.createForPartition(schema, tableGroupStats);
+        } else {
+            return null;
         }
     }
 

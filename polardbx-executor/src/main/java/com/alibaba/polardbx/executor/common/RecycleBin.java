@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.logical.ITConnection;
+import com.alibaba.polardbx.common.logical.ITDataSource;
+import com.alibaba.polardbx.common.logical.ITStatement;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -31,6 +33,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.RecycleBinManager.RecycleBinParam;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import org.apache.commons.lang.RandomStringUtils;
 
@@ -54,16 +57,16 @@ public class RecycleBin extends AbstractLifecycle {
 
     private String appName;
     private String schemaName;
+    private ITDataSource dataSource;
     private DataSource metaDbDataSource;
-    private DataSource dataSource;
     private Map<String, Object> cmds;
 
-    public RecycleBin(String appName, String schemaName, DataSource dataSource, Map<String, Object> cmds) {
+    public RecycleBin(String appName, String schemaName, ITDataSource dataSource, Map<String, Object> cmds) {
         this.appName = appName;
         this.schemaName = schemaName;
-        this.metaDbDataSource = MetaDbDataSource.getInstance().getDataSource();
         this.dataSource = dataSource;
         this.cmds = cmds;
+        this.metaDbDataSource = MetaDbDataSource.getInstance().getDataSource();
     }
 
     public static boolean isRecyclebinTable(String name) {
@@ -80,6 +83,9 @@ public class RecycleBin extends AbstractLifecycle {
         deleteAll();
     }
 
+    private void initTable() {
+    }
+
     public void flashback(String name, String renameTo) {
         RecycleBinParam param = get(name);
         if (param == null) {
@@ -92,7 +98,8 @@ public class RecycleBin extends AbstractLifecycle {
         }
         try {
             logger.info("flashback:" + appName + "," + name + "->" + renameTo);
-            doExecuteUpdate(String.format("/*+TDDL:cmd_extra(FLASHBACK_RENAME=true)*/ RENAME TABLE `%s` TO `%s`", name, TStringUtil.escape(target, '`', '`')),
+            doExecuteUpdate(String.format("/*+TDDL:cmd_extra(FLASHBACK_RENAME=true)*/ RENAME TABLE `%s` TO `%s`", name,
+                    TStringUtil.escape(target, '`', '`')),
                 dataSource);
         } catch (SQLException e) {
             logger.error("flashback:" + name + "->" + renameTo, e);
@@ -102,7 +109,6 @@ public class RecycleBin extends AbstractLifecycle {
     }
 
     public void purge(boolean expired) {
-//        ThreadLocalMap.put(SqlContext.USING_HINT, false);
         List<RecycleBinParam> result = getAll(expired);
         for (RecycleBinParam param : result) {
             purgeTable(param.name, false);
@@ -160,7 +166,7 @@ public class RecycleBin extends AbstractLifecycle {
                 tableName, where, retainHours);
         }
         try {
-            return doExecuteQuery(sql, getMetaDataSource());
+            return doExecuteQueryOnMeta(sql);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "get from recycle bin error", e);
         }
@@ -171,7 +177,7 @@ public class RecycleBin extends AbstractLifecycle {
         String sql = "select `gmt_create`,`name`, `original_name` from %s where %s `name`='%s'";
         try {
             List<RecycleBinParam> result =
-                doExecuteQuery(String.format(sql, tableName, where, name.toUpperCase()), getMetaDataSource());
+                doExecuteQueryOnMeta(String.format(sql, tableName, where, name.toUpperCase()));
             if (result == null || result.size() == 0) {
                 return null;
             } else {
@@ -186,7 +192,9 @@ public class RecycleBin extends AbstractLifecycle {
         String where = "`schema_name` = '" + schemaName + "' and";
         String sql = "delete from %s where %s `name`='%s'";
         try {
-            doExecuteUpdate(String.format(sql, tableName, where, name.toUpperCase()), getMetaDataSource());
+            String deleteSql = String.format(sql, tableName, where, name.toUpperCase());
+            DdlMetaLogUtil.logSql(deleteSql);
+            doExecuteUpdate(deleteSql, metaDbDataSource);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "delete from recycle bin error", e);
         }
@@ -196,7 +204,9 @@ public class RecycleBin extends AbstractLifecycle {
         String where = "`schema_name` = '" + schemaName + "' and";
         String sql = "delete from %s where %s 1 = 1";
         try {
-            doExecuteUpdate(String.format(sql, tableName, where), getMetaDataSource());
+            String deleteAllSql = String.format(sql, tableName, where);
+            DdlMetaLogUtil.logSql(deleteAllSql);
+            doExecuteUpdate(deleteAllSql, metaDbDataSource);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "delete from recycle bin error", e);
         }
@@ -208,9 +218,10 @@ public class RecycleBin extends AbstractLifecycle {
         String sql = "insert into %s (`gmt_create`,`name`, `original_name` %s) value (%s,'%s',%s %s)";
         try {
             logger.info("bind recycle table:" + appName + "," + name + "," + originalName);
-            doExecuteUpdate(String.format(sql, tableName, schemaColumn, "now()",
-                    name.toUpperCase(), TStringUtil.quoteString(originalName), schemaValue),
-                getMetaDataSource());
+            String insertSql = String.format(sql, tableName, schemaColumn, "now()",
+                name.toUpperCase(), TStringUtil.quoteString(originalName), schemaValue);
+            DdlMetaLogUtil.logSql(insertSql);
+            doExecuteUpdate(insertSql, metaDbDataSource);
         } catch (SQLException e) {
             logger.error("bind recycle table:" + appName + "," + name + "," + originalName, e);
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "insert into recycle bin error", e);
@@ -226,8 +237,8 @@ public class RecycleBin extends AbstractLifecycle {
     }
 
     public boolean hasForeignConstraint(String appName, String tableName) {
-        Connection connection = null;
-        Statement statement = null;
+        ITConnection connection = null;
+        ITStatement statement = null;
         try {
             connection = dataSource.getConnection();
             statement = connection.createStatement();
@@ -269,11 +280,11 @@ public class RecycleBin extends AbstractLifecycle {
         }
     }
 
-    private List<RecycleBinParam> doExecuteQuery(String sql, DataSource dataSource) throws SQLException {
+    private List<RecycleBinParam> doExecuteQueryOnMeta(String sql) throws SQLException {
         Connection connection = null;
         Statement statement = null;
         try {
-            connection = dataSource.getConnection();
+            connection = metaDbDataSource.getConnection();
             statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(sql);
             List<RecycleBinParam> result = new ArrayList<>();
@@ -295,7 +306,26 @@ public class RecycleBin extends AbstractLifecycle {
         }
     }
 
-    private void doExecuteUpdate(String sql, DataSource dataSource) throws SQLException, TddlNestableRuntimeException {
+    private void doExecuteUpdate(String sql, ITDataSource dataSource)
+        throws SQLException, TddlNestableRuntimeException {
+        ITConnection connection = null;
+        ITStatement statement = null;
+        try {
+            connection = dataSource.getConnection();
+            statement = connection.createStatement();
+            statement.executeUpdate(sql);
+        } finally {
+            if (statement != null) {
+                statement.close();
+            }
+            if (connection != null) {
+                connection.close();
+            }
+        }
+    }
+
+    private void doExecuteUpdate(String sql, DataSource dataSource)
+        throws SQLException, TddlNestableRuntimeException {
         Connection connection = null;
         Statement statement = null;
         try {
@@ -312,10 +342,6 @@ public class RecycleBin extends AbstractLifecycle {
         }
     }
 
-    private DataSource getMetaDataSource() {
-        return metaDbDataSource;
-    }
-
     public String getAppName() {
         return appName;
     }
@@ -324,11 +350,11 @@ public class RecycleBin extends AbstractLifecycle {
         this.appName = appName;
     }
 
-    public DataSource getDataSource() {
+    public ITDataSource getDataSource() {
         return dataSource;
     }
 
-    public void setDataSource(DataSource dataSource) {
+    public void setDataSource(ITDataSource dataSource) {
         this.dataSource = dataSource;
     }
 

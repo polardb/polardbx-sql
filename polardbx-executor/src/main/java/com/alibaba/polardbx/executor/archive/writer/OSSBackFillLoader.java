@@ -58,7 +58,7 @@ public class OSSBackFillLoader extends Loader {
                                 BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                 Map<String, String> sourceTargetGroupMap, String designateLogicalPart) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc);
+            executeFunc, false);
         this.sourceTargetGroupMap = sourceTargetGroupMap;
         this.designateLogicalPart = designateLogicalPart;
     }
@@ -159,12 +159,12 @@ public class OSSBackFillLoader extends Loader {
 
     @Override
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
-                             ExecutionContext executionContext, String sourceDbIndex) {
+                             ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         String targetGroup = sourceTargetGroupMap.get(sourceDbIndex);
         assert targetGroup != null;
         return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, schemaName, executionContext, executeFunc,
+            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext, executeFunc,
                 false,
                 false, this.designateLogicalPart);
     }

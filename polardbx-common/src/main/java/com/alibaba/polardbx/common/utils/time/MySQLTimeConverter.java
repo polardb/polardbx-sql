@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 
+import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -107,7 +108,22 @@ public class MySQLTimeConverter {
 
     public static MysqlDateTime convertTimestampToDatetime(MySQLTimeVal timeVal, ZoneId zoneId) {
         long second = timeVal.getSeconds();
-        Instant instant = Instant.ofEpochSecond(second);
+        long nano = timeVal.getNano();
+
+        return toMySqlDatetime(zoneId, second, nano);
+    }
+
+    public static MysqlDateTime convertTimestampToDatetime(Timestamp jdbcTemporalValue, ZoneId zoneId) {
+        Instant instant = jdbcTemporalValue.toInstant();
+        return toMysqlDatetime(zoneId, instant);
+    }
+
+    public static MysqlDateTime toMySqlDatetime(ZoneId zoneId, long second, long nano) {
+        Instant instant = Instant.ofEpochSecond(second, nano);
+        return toMysqlDatetime(zoneId, instant);
+    }
+
+    public static MysqlDateTime toMysqlDatetime(ZoneId zoneId, Instant instant) {
         ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(instant, zoneId);
 
         MysqlDateTime mysqlDateTime = new MysqlDateTime();
@@ -117,8 +133,7 @@ public class MySQLTimeConverter {
         mysqlDateTime.setHour(zonedDateTime.getHour());
         mysqlDateTime.setMinute(zonedDateTime.getMinute());
         mysqlDateTime.setSecond(zonedDateTime.getSecond());
-
-        mysqlDateTime.setSecondPart(timeVal.getNano());
+        mysqlDateTime.setSecondPart(zonedDateTime.getNano());
         return mysqlDateTime;
     }
 

@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
+import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -27,6 +29,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.FilterReorderRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinSemiJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
@@ -36,8 +39,10 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilde
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.Contexts;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
@@ -142,19 +147,17 @@ public class PushDownOpt {
      */
     private List<Map<String, Comparative>> comparatives = new ArrayList<>();
     private List<Map<String, Comparative>> fullComparatives = new ArrayList<>();
-    private final ExecutionContext ec;
 
     /**
      * index of list: the table index of logical table in the LV
      * PartitionPruneStep : the part prune step info of the the index of logical table in LV
      */
-    private List<PartitionPruneStep> allPartPruneSteps = new ArrayList<>();
+    private Map<String, List<PartitionPruneStep>> allPartPruneSteps = Maps.newConcurrentMap();
 
     public PushDownOpt(LogicalView tableScan, DbType dbType, ExecutionContext ec) {
         this.tableScan = tableScan;
         this.dbType = dbType;
         this.aggIsPushed = false;
-        this.ec = ec;
         this.relOptSchema = RelUtils.buildCatalogReader(tableScan.getSchemaName(), ec);
         this.builder = createBuilderAndScan(relOptSchema);
         this.plainRowType = tableScan.getRowType();
@@ -164,7 +167,6 @@ public class PushDownOpt {
     public PushDownOpt(LogicalView tableScan, RelNode rel, DbType dbType, ExecutionContext ec) {
         this.tableScan = tableScan;
         this.dbType = dbType;
-        this.ec = ec;
         this.relOptSchema = RelUtils.buildCatalogReader(tableScan.getSchemaName(), ec);
         this.builder = createBuilder(relOptSchema);
         this.builder.push(rel);
@@ -172,8 +174,7 @@ public class PushDownOpt {
         initPlainRefIndex(plainRowType, tableScan.getLogicalTableName());
     }
 
-    private PushDownOpt(PushDownOpt pushDownOpt, ExecutionContext ec) {
-        this.ec = ec;
+    private PushDownOpt(PushDownOpt pushDownOpt) {
         this.tableScan = pushDownOpt.tableScan;
         this.dbType = pushDownOpt.dbType;
         this.relOptSchema = pushDownOpt.relOptSchema;
@@ -190,7 +191,7 @@ public class PushDownOpt {
     }
 
     public final PushDownOpt copy(LogicalView logicalView, RelNode rel) {
-        PushDownOpt newPushDownOpt = new PushDownOpt(this, ec);
+        PushDownOpt newPushDownOpt = new PushDownOpt(this);
         newPushDownOpt.tableScan = logicalView;
         newPushDownOpt.builder = createBuilder(relOptSchema);
         newPushDownOpt.builder.push(rel);
@@ -222,7 +223,8 @@ public class PushDownOpt {
         }
         if (this.allPartPruneSteps != null && !this.allPartPruneSteps.isEmpty() && logicalView.isNewPartDbTbl()) {
             PartRoutingPlanInfo partRoutingPlanInfo =
-                newPushDownOpt.buildPartRoutingPlanInfo(logicalView, logicalView.isNewPartDbTbl());
+                newPushDownOpt.buildPartRoutingPlanInfo(logicalView, logicalView.isNewPartDbTbl(),
+                    PlannerContext.getPlannerContext(rel).getExecutionContext());
             newPushDownOpt.updatePartRoutingPlanInfo(partRoutingPlanInfo);
         }
         return newPushDownOpt;
@@ -236,8 +238,7 @@ public class PushDownOpt {
     }
 
     private RelBuilder createBuilder(RelOptSchema relOptSchema) {
-        RelBuilder builder = RelBuilder.proto(Contexts.EMPTY_CONTEXT)
-            .create(tableScan.getCluster(), relOptSchema);
+        RelBuilder builder = RelBuilder.proto(Contexts.EMPTY_CONTEXT).create(tableScan.getCluster(), relOptSchema);
         return builder;
     }
 
@@ -316,7 +317,9 @@ public class PushDownOpt {
             .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP)) {
             return getPushedRelNode();
         }
-
+        if (!OptimizerUtils.findSemiJoin(getPushedRelNode())) {
+            return getPushedRelNode();
+        }
         HepProgramBuilder builder = new HepProgramBuilder();
         //transform semi join
         builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
@@ -335,18 +338,9 @@ public class PushDownOpt {
     /**
      * transform semiJoin and correlate to subquery, optimize the tree for native sql
      *
-     * @param relNode root of the tree to be transformed
      * @return the root of a tree without semiJoin and correlate
      */
-    private RelNode semiJoinCorrToSubQuery(RelNode relNode) {
-
-        // semi join could not exist when ENABLE_LV_SUBQUERY_UNWRAP is disabled
-        // thus there is no need to transform
-        if (!PlannerContext.getPlannerContext(relNode).getParamManager()
-            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP)) {
-            return relNode;
-        }
-
+    public void optimizePhySql() {
         HepProgramBuilder builder = new HepProgramBuilder();
 
         //pull project
@@ -374,7 +368,7 @@ public class PushDownOpt {
         //transform semi join
         builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
         builder.addGroupBegin();
-        builder.addRuleInstance(SemiJoinCorrToSubQueryRule.SEMI_JOIN);
+        builder.addRuleInstance(SemiJoinCorrToSubQueryRule.SEMI_JOIN_REORDER);
         builder.addGroupEnd();
 
         builder.addGroupBegin();
@@ -384,22 +378,25 @@ public class PushDownOpt {
         builder.addRuleInstance(ProjectMergeRule.INSTANCE);
         builder.addGroupEnd();
 
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterReorderRule.INSTANCE);
+        builder.addGroupEnd();
         HepPlanner planner = new HepPlanner(builder.build());
         planner.stopOptimizerTrace();
-        planner.setRoot(relNode);
+        planner.setRoot(getPushedRelNode());
         RelNode optimizedNode = planner.findBestExp();
 
         optimizedNode = optimizedNode.accept(new RelCastRemover());
-
-        return optimizedNode;
+        this.builder.clear();
+        this.builder.push(optimizedNode);
     }
 
     /**
      * return current native sql, may be a middle state
      */
     public SqlNode buildNativeSql(RelToSqlConverter sqlConverter, ReplaceCallWithLiteralVisitor visitor) {
-        RelNode relNode = getPushedRelNode();
-        relNode = semiJoinCorrToSubQuery(relNode);
+        // while it not safe to call hepPlanner in executor, it is for sure that there is no semi join after optimizer
+        RelNode relNode = removeSemiJoin();
         if (visitor != null) {
             // only in gsi currently
             relNode = replaceCallWithLiteral(relNode, visitor);
@@ -483,7 +480,7 @@ public class PushDownOpt {
         planner.setRoot(getPushedRelNode());
         RelNode optimizedNode = planner.findBestExp();
         optimizedNode = optimizedNode.accept(new RelCastRemover());
-        RelNode optNode =  optimizedNode;
+        RelNode optNode = optimizedNode;
         this.builder.clear();
         this.builder.push(optNode);
     }
@@ -516,13 +513,9 @@ public class PushDownOpt {
         pushSemiJoin(join, rightView, leftFilters, rightFilters, cluster);
 
         //pass the logicalView of left and right
-        LogicalSemiJoin semiJoin = join.copy(
-            join.getTraitSet(),
-            join.getCondition(),
-            builder.build(),
-            rightView.getPushedRelNode(),
-            join.getJoinType(),
-            join.isSemiJoinDone());
+        LogicalSemiJoin semiJoin =
+            join.copy(join.getTraitSet(), join.getCondition(), builder.build(), rightView.getPushedRelNode(),
+                join.getJoinType(), join.isSemiJoinDone());
 
         builder.push(semiJoin);
     }
@@ -533,11 +526,7 @@ public class PushDownOpt {
         RelDataType rightType = rightView.buildCurRowType();
         if (join.getJoinType() == JoinRelType.LEFT) {
             extendPlainRefIndex(rightView.getPlainRefIndex().subList(0, 1));
-            plainRowType = SqlValidatorUtil.createLeftSemiJoinType(
-                cluster.getTypeFactory(),
-                leftType,
-                rightType,
-                null,
+            plainRowType = SqlValidatorUtil.createLeftSemiJoinType(cluster.getTypeFactory(), leftType, rightType, null,
                 join.getSystemFieldList(), 1);
         } else {
             extendPlainRefIndex(new ArrayList<>());
@@ -570,12 +559,31 @@ public class PushDownOpt {
                 // just add full table scan. for sql like column subquery
                 ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
                 partStep =
-                    PartitionPruneStepBuilder.generateFullScanPruneStepInfo(tableScan.getSchemaName(),
-                        tbName, ec);
+                    PartitionPruneStepBuilder.generateFullScanPruneStepInfo(tableScan.getSchemaName(), tbName, ec);
             }
             allPartPruneSteps.add(partStep);
         }
-        this.allPartPruneSteps = allPartPruneSteps;
+        String key = OptimizerUtils.buildInexprKey(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
+
+        this.allPartPruneSteps.put(key, allPartPruneSteps);
+    }
+
+    private List<PartitionPruneStep> buildNewPartPruneSteps(ExecutionContext ec) {
+        List<String> logTbNameList = tableScan.getTableNames();
+        List<PartitionPruneStep> allPartPruneSteps = new ArrayList<>();
+        PartRoutingPlanInfo partRoutingPlanInfo = buildPartRoutingPlanInfo(getPushedRelNode(), true, ec);
+
+        for (int i = 0; i < logTbNameList.size(); i++) {
+            String tbName = logTbNameList.get(i);
+            PartitionPruneStep partStep = partRoutingPlanInfo.allPartPruningSteps.get(tbName);
+            allPartPruneSteps.add(partStep);
+        }
+        String key = OptimizerUtils.buildInexprKey(ec);
+        // cache prune steps for the key
+        if (allPartPruneSteps.size() < 10) {
+            this.allPartPruneSteps.put(key, allPartPruneSteps);
+        }
+        return allPartPruneSteps;
     }
 
     public RelNode getPushedRelNode() {
@@ -593,7 +601,7 @@ public class PushDownOpt {
         return comparatives;
     }
 
-    public RelShardInfo getRelShardInfo(int tableIndex) {
+    public RelShardInfo getRelShardInfo(int tableIndex, ExecutionContext ec) {
         RelShardInfo relShardInfo = new RelShardInfo();
         String logTbName = this.tableScan.getTableNames().get(tableIndex);
         String dbName = this.tableScan.getSchemaName();
@@ -601,25 +609,36 @@ public class PushDownOpt {
         relShardInfo.setSchemaName(this.tableScan.getSchemaName());
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(dbName);
         if (isNewPartDb) {
-            relShardInfo
-                .setPartPruneStepInfo(PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
+            relShardInfo.setPartPruneStepInfo(
+                PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
         }
         if (comparatives.size() > tableIndex) {
             relShardInfo.setUsePartTable(false);
             relShardInfo.setAllComps(comparatives.get(tableIndex));
             relShardInfo.setAllFullComps(fullComparatives.get(tableIndex));
-        } else if (this.allPartPruneSteps.size() > tableIndex) {
+        } else {
             relShardInfo.setUsePartTable(true);
-            relShardInfo.setPartPruneStepInfo(this.allPartPruneSteps.get(tableIndex));
+            String key = OptimizerUtils.buildInexprKey(ec);
+            if (this.allPartPruneSteps.containsKey(key) && this.allPartPruneSteps.get(key).size() > tableIndex) {
+                if (this.allPartPruneSteps.get(key).get(tableIndex) != null) {
+                    relShardInfo.setPartPruneStepInfo(this.allPartPruneSteps.get(key).get(tableIndex));
+                } else {
+                    relShardInfo.setPartPruneStepInfo(
+                        PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
+                }
+            } else {
+                List<PartitionPruneStep> list = buildNewPartPruneSteps(ec);
+                if (list.size() > tableIndex) {
+                    relShardInfo.setPartPruneStepInfo(list.get(tableIndex));
+                }
+            }
         }
 
         return relShardInfo;
     }
 
     public Map<String, Comparative> getComparative(int tableIndex) {
-        return Optional.of(comparatives)
-            .filter(c -> c.size() > tableIndex)
-            .map(c -> c.get(tableIndex))
+        return Optional.of(comparatives).filter(c -> c.size() > tableIndex).map(c -> c.get(tableIndex))
             .orElse(new HashMap<>());
     }
 
@@ -628,9 +647,7 @@ public class PushDownOpt {
     }
 
     public Map<String, Comparative> getFullComparative(int tableIndex) {
-        return Optional.of(fullComparatives)
-            .filter(c -> c.size() > tableIndex)
-            .map(c -> c.get(tableIndex))
+        return Optional.of(fullComparatives).filter(c -> c.size() > tableIndex).map(c -> c.get(tableIndex))
             .orElse(new HashMap<>());
     }
 
@@ -846,8 +863,52 @@ public class PushDownOpt {
 
     public void rebuildPartRoutingPlanInfo() {
         PartRoutingPlanInfo partRoutingPlanInfo =
-            buildPartRoutingPlanInfo(removeSemiJoin(), tableScan.isNewPartDbTbl());
+            buildPartRoutingPlanInfo(removeSemiJoin(), tableScan.isNewPartDbTbl(),
+                PlannerContext.getPlannerContext(getPushedRelNode()).getExecutionContext());
         updatePartRoutingPlanInfo(partRoutingPlanInfo);
+    }
+
+    public boolean couldDynamicPruning() {
+        if (allPartPruneSteps == null || allPartPruneSteps.size() == 0) {
+            if (comparatives != null && comparatives.size() > 0) {
+                for (Map<String, Comparative> l : comparatives) {
+                    for (Comparative c : l.values()) {
+                        if (isContainsDynamicComparative(c)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            if (fullComparatives != null && fullComparatives.size() > 0) {
+                for (Map<String, Comparative> l : fullComparatives) {
+                    for (Comparative c : l.values()) {
+                        if (isContainsDynamicComparative(c)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } else if (allPartPruneSteps.size() >= 1 && !allPartPruneSteps.containsKey(OptimizerUtils.EMPTY_KEY)) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isContainsDynamicComparative(Comparative c) {
+        if (c == null) {
+            return false;
+        }
+        if (c instanceof DynamicComparative) {
+            return true;
+        }
+        if (c instanceof ComparativeBaseList) {
+            for (Comparative t : ((ComparativeBaseList) c).getList()) {
+                if (isContainsDynamicComparative(t)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -912,11 +973,7 @@ public class PushDownOpt {
             RexNode newCondition = condition.accept(new RexCastRemover());
 
             if (condition != newCondition) {
-                return join.copy(join.getTraitSet(),
-                    newCondition,
-                    join.getLeft(),
-                    join.getRight(),
-                    join.getJoinType(),
+                return join.copy(join.getTraitSet(), newCondition, join.getLeft(), join.getRight(), join.getJoinType(),
                     join.isSemiJoinDone());
             } else {
                 return super.visit(join);
@@ -969,14 +1026,15 @@ public class PushDownOpt {
         }
     }
 
-    protected PartRoutingPlanInfo buildPartRoutingPlanInfo(RelNode relPlan, boolean usePartitionTable) {
+    protected PartRoutingPlanInfo buildPartRoutingPlanInfo(RelNode relPlan, boolean usePartitionTable,
+                                                           ExecutionContext ec) {
 
         PartRoutingPlanInfo pruningPlanInfo = new PartRoutingPlanInfo();
         if (!usePartitionTable) {
             final Map<String, Map<String, Comparative>> allComps = new HashMap<>();
             final Map<String, Map<String, Comparative>> allFullComps = new HashMap<>();
-            final ExtractionResult er = ConditionExtractor.predicateFrom(relPlan).extract();
-            er.allCondition(allComps, allFullComps, ec);
+            final ExtractionResult er = ConditionExtractor.partitioningConditionFrom(relPlan).extract();
+            er.allCondition(allComps, allFullComps, PlannerContext.getPlannerContext(relPlan).getExecutionContext());
             pruningPlanInfo.allComps = allComps;
             pruningPlanInfo.allFullComps = allFullComps;
             pruningPlanInfo.usePartitionTable = false;
@@ -984,6 +1042,7 @@ public class PushDownOpt {
         } else {
             ExtractionResult er = ConditionExtractor.predicateFrom(relPlan).extract();
             Map<String, PartitionPruneStep> allPartPruningSteps = er.allPartPruneSteps(ec);
+
             pruningPlanInfo.usePartitionTable = true;
             pruningPlanInfo.allPartPruningSteps = allPartPruningSteps;
             return pruningPlanInfo;
@@ -996,10 +1055,6 @@ public class PushDownOpt {
         } else {
             updatePartPruneSteps(newPruningPlanInfo.allPartPruningSteps);
         }
-    }
-
-    public List<PartitionPruneStep> getAllPartPruneSteps() {
-        return allPartPruneSteps;
     }
 
 }

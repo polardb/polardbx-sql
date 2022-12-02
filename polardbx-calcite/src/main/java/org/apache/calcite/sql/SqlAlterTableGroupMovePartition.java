@@ -18,35 +18,21 @@ package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Created by luoyanxin.
  *
  * @author luoyanxin
  */
-public class SqlAlterTableGroupMovePartition extends SqlAlterSpecification {
+public class SqlAlterTableGroupMovePartition extends SqlAlterTableMovePartition {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("MOVE PARTITION", SqlKind.MOVE_PARTITION);
-    private final SqlNode targetStorageId;
-    private final List<SqlNode> oldPartitions;
     private SqlAlterTableGroup parent;
 
-    public SqlAlterTableGroupMovePartition(SqlParserPos pos, SqlNode targetStorageId, List<SqlNode> oldPartitions) {
-        super(pos);
-        this.targetStorageId = targetStorageId;
-        this.oldPartitions = oldPartitions == null ? new ArrayList<>() : oldPartitions;
-    }
-
-    @Override
-    public SqlOperator getOperator() {
-        return OPERATOR;
-    }
-
-    @Override
-    public List<SqlNode> getOperandList() {
-        return null;
+    public SqlAlterTableGroupMovePartition(SqlParserPos pos, Map<SqlNode, List<SqlNode>> instPartitions, Map<String, Set<String>> targetPartitions) {
+        super(pos, instPartitions, targetPartitions);
     }
 
     public SqlAlterTableGroup getParent() {
@@ -55,13 +41,5 @@ public class SqlAlterTableGroupMovePartition extends SqlAlterSpecification {
 
     public void setParent(SqlAlterTableGroup parent) {
         this.parent = parent;
-    }
-
-    public SqlNode getTargetStorageId() {
-        return targetStorageId;
-    }
-
-    public List<SqlNode> getOldPartitions() {
-        return oldPartitions;
     }
 }

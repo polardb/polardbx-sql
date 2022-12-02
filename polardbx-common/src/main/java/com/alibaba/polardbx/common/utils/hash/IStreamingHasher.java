@@ -47,7 +47,6 @@ public interface IStreamingHasher {
     IStreamingHasher putBytes(byte[] bytes);
 
     default IStreamingHasher putString(String str) {
-        // TODO charset
         return putBytes(str.getBytes(StandardCharsets.UTF_8));
     }
 

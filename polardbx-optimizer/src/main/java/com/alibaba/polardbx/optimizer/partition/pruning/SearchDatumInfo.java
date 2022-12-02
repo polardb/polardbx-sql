@@ -29,6 +29,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.min;
+
 /**
  * SearchDatumInfo: a tuple/row of values
  * <p>
@@ -148,6 +150,15 @@ public class SearchDatumInfo {
         return this.datumInfo[0];
     }
 
+    public boolean containDefaultValue() {
+        for (PartitionBoundVal val : datumInfo) {
+            if (val.isDefaultValue()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public SearchDatumInfo copy() {
         PartitionBoundVal[] values = new PartitionBoundVal[this.datumInfo.length];
         for (int i = 0; i < values.length; i++) {
@@ -157,18 +168,26 @@ public class SearchDatumInfo {
     }
 
     public String getDesc(boolean withBracket, int prefixPartColCnt) {
-
         int targetPartColCnt = this.datumInfo.length;
         PartitionBoundVal[] targetDatumInfo = this.datumInfo;
+        boolean isDefault = false;
         if (prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT) {
+            //if contain defaultValue, we print at most 1 BoundVal (defaultVal)
+            if (this.containDefaultValue()) {
+                prefixPartColCnt = min(prefixPartColCnt, 1);
+            }
             targetPartColCnt = prefixPartColCnt;
             targetDatumInfo = new PartitionBoundVal[prefixPartColCnt];
             for (int i = 0; i < targetPartColCnt; i++) {
                 targetDatumInfo[i] = this.datumInfo[i];
+                if (this.datumInfo[i].isDefaultValue()) {
+                    isDefault = true;
+                    break;
+                }
             }
         }
 
-        String str = StringUtils.join(targetDatumInfo, ",");
+        String str = isDefault ? targetDatumInfo[0].toString() : StringUtils.join(targetDatumInfo, ",");
         if (withBracket) {
             return "(" + str + ")";
         } else {
@@ -179,6 +198,10 @@ public class SearchDatumInfo {
     @Override
     public String toString() {
         return getDesc(true, PartitionInfoUtil.FULL_PART_COL_COUNT);
+    }
+
+    public String toStringWithNoBracket() {
+        return getDesc(false, PartitionInfoUtil.FULL_PART_COL_COUNT);
     }
 
     @Override
@@ -204,10 +227,14 @@ public class SearchDatumInfo {
         if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
             return Arrays.equals(datumInfo, that.datumInfo);
         } else {
-            PartitionBoundVal[] thisArr = new PartitionBoundVal[prefixPartColCnt];
-            PartitionBoundVal[] thatArr = new PartitionBoundVal[prefixPartColCnt];
-            for (int i = 0; i < prefixPartColCnt; i++) {
+            int thisArrLen = this.containDefaultValue() ? min(prefixPartColCnt, 1) : prefixPartColCnt;
+            int thatArrLen = that.containDefaultValue() ? min(prefixPartColCnt, 1) : prefixPartColCnt;
+            PartitionBoundVal[] thisArr = new PartitionBoundVal[thisArrLen];
+            PartitionBoundVal[] thatArr = new PartitionBoundVal[thatArrLen];
+            for (int i = 0; i < thisArrLen; i++) {
                 thisArr[i] = datumInfo[i];
+            }
+            for (int i = 0; i < thatArrLen; i++) {
                 thatArr[i] = that.datumInfo[i];
             }
             return Arrays.equals(thisArr, thatArr);

@@ -1,7 +1,26 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.gms.engine;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.oss.filesystem.Constants;
+import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.stats.MatrixStatistics;
@@ -17,6 +36,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -34,9 +54,12 @@ public class FileStoreStatistics {
 
     private static final ReadWriteLock LOCK = new ReentrantReadWriteLock();
 
-    private static final int FILE_STORAGE_FIELD_COUNT = 8;
+    private static final int FILE_STORAGE_FIELD_COUNT = 10;
+
+    private static AtomicLong lastUpdateTime;
 
     static {
+        lastUpdateTime = new AtomicLong(System.currentTimeMillis());
         if (System.getProperty(PROPERTY_STATS_TIME_PERIOD) != null) {
             STATS_TIME_PERIOD = Long.valueOf(System.getProperty("STATS_TIME_PERIOD"));
         }
@@ -56,7 +79,7 @@ public class FileStoreStatistics {
                 continue;
             }
 
-            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine);
+            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine, false);
             if (group != null) {
                 FileSystem master = group.getMaster();
                 // do collect
@@ -75,6 +98,7 @@ public class FileStoreStatistics {
             writeLock.lock();
             PREVIOUS_STATS.clear();
             PREVIOUS_STATS.addAll(localStats);
+            lastUpdateTime.set(System.currentTimeMillis());
         } finally {
             writeLock.unlock();
         }
@@ -112,6 +136,16 @@ public class FileStoreStatistics {
             statsBuilder.put(item, String.valueOf(statistics.getValue()));
         }
 
+        if (fileSystem instanceof FileMergeCachingFileSystem
+            && ((FileMergeCachingFileSystem) fileSystem).getDataTier() instanceof OSSFileSystem) {
+            FileSystemRateLimiter rateLimiter = ((OSSFileSystem) ((FileMergeCachingFileSystem) fileSystem).getDataTier()).getRateLimiter();
+            statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
+            statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
+        } else {
+            statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(-1L));
+            statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(-1L));
+        }
+
         localStats.add(statsBuilder.build());
 
         // reset all statistics value to 0.
@@ -126,7 +160,9 @@ public class FileStoreStatistics {
         BYTES_READ("bytesRead"),
         BYTES_WRITTEN("bytesWritten"),
         READ_OPS("readOps"),
-        WRITE_OPS("writeOps");
+        WRITE_OPS("writeOps"),
+        MAX_READ_RATE("max_read_rate"),
+        MAX_WRITE_RATE("max_write_rate");
 
         private String itemName;
 
@@ -149,7 +185,8 @@ public class FileStoreStatistics {
     }
 
     public synchronized static List<byte[][]> generateFileStoragePacket() {
-        if (PREVIOUS_STATS.isEmpty()) {
+        if (PREVIOUS_STATS.isEmpty()
+            || lastUpdateTime.updateAndGet(l -> System.currentTimeMillis() - l) > STATS_TIME_PERIOD) {
             // force collection.
             collectStatistics();
         }
@@ -177,6 +214,10 @@ public class FileStoreStatistics {
                 result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.BYTES_WRITTEN));
                 result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.READ_OPS));
                 result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.WRITE_OPS));
+
+                // rate limit info.
+                result[pos++] = bytesOfString(statsMap.get(StatisticItem.MAX_READ_RATE));
+                result[pos++] = bytesOfString(statsMap.get(StatisticItem.MAX_WRITE_RATE));
 
                 fileStorageRows.add(result);
             }

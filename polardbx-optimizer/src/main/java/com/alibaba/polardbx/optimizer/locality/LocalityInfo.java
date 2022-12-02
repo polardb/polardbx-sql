@@ -21,6 +21,7 @@ import com.alibaba.polardbx.gms.locality.LocalityId;
 import com.alibaba.polardbx.gms.locality.LocalityInfoRecord;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -42,6 +43,11 @@ public class LocalityInfo {
         this.locality = rhs.locality;
     }
 
+    public boolean contains(List<String> dstDnList){
+        List<String> srcDnList = LocalityDesc.parse(locality).getDnList();
+        return srcDnList.containsAll(dstDnList);
+    }
+
     public static LocalityInfo from(LocalityInfoRecord record) {
         LocalityInfo result = new LocalityInfo();
         LocalityId id = new LocalityId(record.objectId, record.objectType);
@@ -55,6 +61,31 @@ public class LocalityInfo {
         base.setLocality(LocalityDesc.parse(newLocality).toString());
     }
 
+    private static List<String> intersect(List<String> list1, List<String> list2){
+        if(list1.isEmpty() || list2.isEmpty()){
+            list1.addAll(list2);
+            return list1;
+        }else{
+            list1.retainAll(list2);
+            return list1;
+        }
+    }
+
+    public static LocalityDesc intersect(List<LocalityInfo> localityInfos){
+        // universe set INTERSECT non-empty set = universe set
+        List<String> intersectionDnlist = new ArrayList<>();
+        for(LocalityInfo localityInfo:localityInfos){
+            List<String> dnList;
+            if(localityInfo == null){
+                dnList = new ArrayList<>();
+            }else {
+                dnList = LocalityDesc.parse(localityInfo.locality).getDnList();
+            }
+            intersectionDnlist = intersect(intersectionDnlist, dnList);
+        }
+        String locality = "dn=" + String.join(",", intersectionDnlist);
+        return LocalityDesc.parse(locality);
+    }
     /**
      * Inherit hierarchical locality: default/database/table-group/partition-group
      */

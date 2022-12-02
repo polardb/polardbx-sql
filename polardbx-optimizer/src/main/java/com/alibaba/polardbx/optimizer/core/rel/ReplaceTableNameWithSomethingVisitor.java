@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.context.ScalarSubQueryExecContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdIndex;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.rel2sql.SqlImplementor;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
@@ -58,12 +60,14 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.TDDLSqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.sql2rel.SqlToRelConverter.HintBlackboard;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -78,7 +82,9 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected List<String> tableNames = new ArrayList<>();
 
-    Map<RexFieldAccess, RexNode> correlateFieldInViewMap;
+    protected Map<RexFieldAccess, RexNode> correlateFieldInViewMap;
+    //protected Map<Integer, Object> scalarSubqueryValsMap;
+    protected Map<Integer, ScalarSubQueryExecContext> scalarSubqueryExecCtxMap;
 
     protected final boolean handleIndexHint;
 
@@ -98,10 +104,11 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected ReplaceTableNameWithSomethingVisitor(Map<RexFieldAccess, RexNode> correlateFieldInViewMap,
                                                    String defaultSchemaName, ExecutionContext ec) {
-        this.correlateFieldInViewMap = correlateFieldInViewMap;
         this.handleIndexHint = false;
         this.defaultSchemaName = defaultSchemaName;
         this.ec = ec;
+        this.correlateFieldInViewMap = correlateFieldInViewMap;
+        this.scalarSubqueryExecCtxMap = ec.getScalarSubqueryCtxMap();
     }
 
     protected ReplaceTableNameWithSomethingVisitor(String defaultSchemaName, boolean handleIndexHint,
@@ -109,12 +116,16 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         this.defaultSchemaName = defaultSchemaName;
         this.handleIndexHint = handleIndexHint;
         this.ec = ec;
+        this.correlateFieldInViewMap = ec.getCorrelateFieldInViewMap();
+        this.scalarSubqueryExecCtxMap = ec.getScalarSubqueryCtxMap();
     }
 
     protected ReplaceTableNameWithSomethingVisitor(String defaultSchemaName, ExecutionContext ec) {
         this.defaultSchemaName = defaultSchemaName;
         this.handleIndexHint = false;
         this.ec = ec;
+        this.correlateFieldInViewMap = ec.getCorrelateFieldInViewMap();
+        this.scalarSubqueryExecCtxMap = ec.getScalarSubqueryCtxMap();
     }
 
     @Override
@@ -162,6 +173,14 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             SqlNode having = select.getHaving();
             if (having instanceof SqlCall) {
                 select.setHaving(visit((SqlCall) having));
+            }
+
+            /**
+             * order
+             */
+            SqlNode orderList = select.getOrderList();
+            if (orderList != null) {
+                select.setOrderBy((SqlNodeList) visit((SqlNodeList) orderList));
             }
 
             return select;
@@ -277,6 +296,11 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             if (update.getOrderList() != null && update.getOrderList().size() > 0) {
                 update.setOperand(6, visit(update.getOrderList()));
             }
+
+            // Replace table-refers on SET column
+            if (update.getSourceExpressionList() != null && update.getSourceExpressionList().size() > 0) {
+                update.setOperand(2, visit(update.getSourceExpressionList()));
+            }
             return update;
         }
         if (SqlKind.SEQUENCE_DDL.contains(kind)) {
@@ -333,7 +357,66 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             return call;
         }
 
-        return super.visit(call);
+        SqlNode rs = super.visit(call);
+        if (rs instanceof SqlCall && ((SqlCall) rs).getOperandList().size() == 2) {
+            for (SqlNode op : ((SqlCall) rs).getOperandList()) {
+                if (rowWithEmpty(op) || emptyLiteral(op)) {
+                    if (call.getKind() == SqlKind.IN) {
+                        return SqlLiteral.createBoolean(false, rs.getParserPosition());
+                    } else if (call.getKind() == SqlKind.NOT_IN) {
+                        return SqlLiteral.createBoolean(true, rs.getParserPosition());
+                    } else {
+                        return SqlLiteral.createNull(rs.getParserPosition());
+                    }
+
+                }
+            }
+        } else if (rs instanceof SqlCall && rs.getKind() == SqlKind.ROW
+            && ((SqlCall) rs).getOperandList().size() == 1) {
+            SqlNode l = ((SqlCall) rs).getOperandList().get(0);
+
+            if (l instanceof SqlDynamicParam && scalarSubqueryExecCtxMap != null) {
+                ScalarSubQueryExecContext ctx = scalarSubqueryExecCtxMap.get(((SqlDynamicParam) l).getDynamicKey());
+                if (ctx != null && ctx.getSubQueryResult() != null && (ctx.getSubQueryResult() instanceof Collection)) {
+                    // change list type objects to sqlnodelist
+                    Collection collection = (Collection) ctx.getSubQueryResult();
+                    SqlNode[] list = new SqlNode[collection.size()];
+                    int j = 0;
+                    for (Object o : collection) {
+                        list[j++] = ((SqlDynamicParam) l).getTypeName().createLiteral(o, l.getParserPosition());
+                    }
+                    return new SqlBasicCall(((SqlCall) rs).getOperator(), list, rs.getParserPosition());
+                }
+            }
+
+//            if (l instanceof SqlDynamicParam
+//                && scalarSubqueryValsMap != null
+//                && scalarSubqueryValsMap.get(((SqlDynamicParam) l).getDynamicKey()) != null
+//                && scalarSubqueryValsMap.get(((SqlDynamicParam) l).getDynamicKey()) instanceof Collection) {
+//                // change list type objects to sqlnodelist
+//                Collection collection = (Collection) scalarSubqueryValsMap.get(((SqlDynamicParam) l).getDynamicKey());
+//                SqlNode[] list = new SqlNode[collection.size()];
+//                int j = 0;
+//                for (Object o : collection) {
+//                    list[j++] = ((SqlDynamicParam) l).getTypeName().createLiteral(o, l.getParserPosition());
+//                }
+//                return new SqlBasicCall(((SqlCall) rs).getOperator(), list, rs.getParserPosition());
+//            }
+        }
+        return rs;
+    }
+
+    private boolean rowWithEmpty(SqlNode op) {
+        return op != null && op instanceof SqlCall && op.getKind() == SqlKind.ROW
+            && ((SqlCall) op).getOperandList().size() == 1
+            && ((SqlCall) op).getOperandList().get(0) instanceof SqlLiteral
+            && ((SqlLiteral) ((SqlCall) op).getOperandList().get(0)).getValue()
+            == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY;
+    }
+
+    private boolean emptyLiteral(SqlNode op) {
+        return op != null && op instanceof SqlLiteral
+            && ((SqlLiteral) op).getValue() == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY;
     }
 
     public void convertFrom(SqlSelect select, SqlNode from) {
@@ -387,6 +470,31 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         if (param.getIndex() == -4 && correlateFieldInViewMap != null) {
             return SqlImplementor.buildSqlLiteral((RexLiteral) correlateFieldInViewMap.get(param.getValue()));
         }
+
+        if (param.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX && scalarSubqueryExecCtxMap != null) {
+            ScalarSubQueryExecContext ctx = scalarSubqueryExecCtxMap.get(param.getDynamicKey());
+            if (ctx != null && ctx.getSubQueryResult() != null) {
+                Object sbResult = ctx.getSubQueryResult();
+                if (sbResult == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+                    return SqlLiteral.createSymbol(RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY,
+                        param.getParserPosition());
+                } else if (!(sbResult instanceof Collection)) {
+                    return param.getTypeName()
+                        .createLiteral(sbResult, param.getParserPosition());
+                }
+            }
+        }
+
+//        if (param.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX && scalarSubqueryValsMap != null
+//            && scalarSubqueryValsMap.get(param.getDynamicKey()) != null) {
+//            if (scalarSubqueryValsMap.get(param.getDynamicKey()) == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+//                return SqlLiteral.createSymbol(RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY, param.getParserPosition());
+//            } else if (!(scalarSubqueryValsMap.get(param.getDynamicKey()) instanceof Collection)) {
+//                return param.getTypeName()
+//                    .createLiteral(scalarSubqueryValsMap.get(param.getDynamicKey()), param.getParserPosition());
+//            }
+//        }
+
         return SqlNode.clone(param);
     }
 

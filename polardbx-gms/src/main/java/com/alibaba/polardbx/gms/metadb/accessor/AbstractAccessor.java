@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -32,6 +33,7 @@ import com.google.common.collect.Maps;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -43,6 +45,7 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
 
     protected static final String COMMA = ",";
     protected static final String SINGLE_QUOTE = "'";
+    protected static final String QUESTION_MARK = "?";
 
     protected Connection connection;
 
@@ -67,6 +70,40 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
             sb.append(COMMA).append(SINGLE_QUOTE).append(name).append(SINGLE_QUOTE);
         }
         return sb.deleteCharAt(0).toString();
+    }
+
+    protected String concatParams(Collection<String> names) {
+        if (GeneralUtil.isEmpty(names)) {
+            return null;
+        }
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < names.size(); i++) {
+            buf.append(COMMA).append(QUESTION_MARK);
+        }
+        return buf.deleteCharAt(0).toString();
+    }
+
+    protected Map<Integer, ParameterContext> buildParams(String tableSchema, String tableName,
+                                                         List<String> objectNames) {
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(objectNames)) {
+            paramValues.addAll(objectNames);
+        }
+        return MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+    }
+
+    protected Map<Integer, ParameterContext> buildParams(String tableSchema, String tableName,
+                                                         List<String> objectNames, int newStatus) {
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(String.valueOf(newStatus));
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(objectNames)) {
+            paramValues.addAll(objectNames);
+        }
+        return MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
     }
 
     protected int insert(String insertSql, String systemTable, Map<Integer, ParameterContext> params) {
@@ -99,12 +136,12 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
 
     protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
                                                           String schemaName) {
-        return query(selectSql, systemTable, clazz, schemaName, null);
+        return query(selectSql, systemTable, clazz, schemaName, null, null, connection);
     }
 
     public <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
                                                        String schemaName, String objectName) {
-        return query(selectSql, systemTable, clazz, schemaName, objectName, connection);
+        return query(selectSql, systemTable, clazz, schemaName, objectName, null, connection);
     }
 
     protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
@@ -122,7 +159,7 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
                                                           DataSource dataSource) {
         try (Connection phyDbConn = dataSource.getConnection()) {
             return query(selectSql, systemTable, clazz, schemaName, objectName, objectName2, phyDbConn);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             LOGGER.error("Failed to get connection for " + systemTable, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "get connection",
                 systemTable,
@@ -131,40 +168,50 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
     }
 
     protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                          String schemaName, String objectName, String objectName2,
+                                                          Connection connection) {
+        Map<Integer, ParameterContext> params;
+        if (TStringUtil.isNotBlank(objectName2)) {
+            params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName, objectName2});
+        } else if (TStringUtil.isNotBlank(objectName)) {
+            params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName});
+        } else if (TStringUtil.isNotBlank(schemaName)) {
+            params = MetaDbUtil.buildStringParameters(new String[] {schemaName});
+        } else {
+            params = null;
+        }
+        return query(selectSql, systemTable, clazz, params, connection);
+    }
+
+    protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
                                                           long objectId) {
-        try {
-            Map<Integer, ParameterContext> params = Maps.newHashMap();
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, objectId);
-            return MetaDbUtil.query(selectSql, params, clazz, connection);
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + systemTable, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+        Map<Integer, ParameterContext> params = Maps.newHashMap();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, objectId);
+        return query(selectSql, systemTable, clazz, params, connection);
+    }
+
+    protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                          Map<Integer, ParameterContext> params,
+                                                          DataSource dataSource) {
+        try (Connection phyDbConn = dataSource.getConnection()) {
+            return query(selectSql, systemTable, clazz, params, phyDbConn);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to get connection for " + systemTable, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "get connection",
                 systemTable,
                 e.getMessage());
         }
     }
 
-    protected static <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
-                                                                 String schemaName, String objectName,
-                                                                 Connection connection) {
-        return query(selectSql, systemTable, clazz, schemaName, objectName, null, connection);
+    protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                          Map<Integer, ParameterContext> params) {
+        return query(selectSql, systemTable, clazz, params, connection);
     }
 
     protected static <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
-                                                                 String schemaName, String objectName,
-                                                                 String objectName2,
+                                                                 Map<Integer, ParameterContext> params,
                                                                  Connection connection) {
         try {
-            Map<Integer, ParameterContext> params;
-            if (TStringUtil.isNotBlank(objectName2)) {
-                params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName, objectName2});
-            } else if (TStringUtil.isNotBlank(objectName)) {
-                params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName});
-            } else if (TStringUtil.isNotBlank(schemaName)){
-                params = MetaDbUtil.buildStringParameters(new String[] {schemaName});
-            } else {
-                params = null;
-            }
             return MetaDbUtil.query(selectSql, params, clazz, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + systemTable, e);
@@ -257,6 +304,20 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
         } catch (SQLException e) {
             LOGGER.error(
                 "Failed to delete from " + systemTable + " for table " + wrap(objectName), e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete from",
+                systemTable,
+                e.getMessage());
+        }
+    }
+
+    protected int delete(String deleteSql, String systemTable, Map<Integer, ParameterContext> params) {
+        try {
+            if (DdlMetaLogUtil.isDdlTable(systemTable)) {
+                DdlMetaLogUtil.logSql(deleteSql, params);
+            }
+            return MetaDbUtil.delete(deleteSql, params, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to delete from " + systemTable, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete from",
                 systemTable,
                 e.getMessage());

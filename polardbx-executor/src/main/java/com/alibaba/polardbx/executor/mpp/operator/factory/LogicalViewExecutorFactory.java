@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.operator.AbstractOSSTableScanExec;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
@@ -43,18 +44,28 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterConsume;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
+import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
+import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
+import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;
+import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
+import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
@@ -86,7 +97,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
     private boolean enableDrivingResume;
 
-    private List<EquiJoinKey> allJoinKeys; // including null-safe equal (`<=>`)
+    private List<LookupEquiJoinKey> allJoinKeys; // including null-safe equal (`<=>`)
     private LookupPredicate predicates;
     private List<DataType> dataTypeList;
 
@@ -106,9 +117,21 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
         if (logicalView.getJoin() != null) {
             Join join = logicalView.getJoin();
-            this.allJoinKeys = EquiJoinUtils.buildEquiJoinKeys(join, join.getOuter(), join.getInner(),
+            this.allJoinKeys = EquiJoinUtils.buildLookupEquiJoinKeys(join, join.getOuter(), join.getInner(),
                 (RexCall) join.getCondition(), join.getJoinType(), true);
-            this.predicates = new LookupPredicateBuilder(join).build(allJoinKeys);
+            RelMetadataQuery mq = join.getCluster().getMetadataQuery();
+            List<String> columnOrigins = Lists.newArrayList();
+            synchronized (mq) {
+                for (int i = 0; i < logicalView.getRowType().getFieldCount(); i++) {
+                    RelColumnOrigin columnOrigin = mq.getColumnOrigin(logicalView, i);
+                    if (columnOrigin == null) {
+                        columnOrigins.add(logicalView.getRowType().getFieldNames().get(i));
+                    } else {
+                        columnOrigins.add(columnOrigin.getColumnName());
+                    }
+                }
+            }
+            this.predicates = new LookupPredicateBuilder(join, columnOrigins).build(allJoinKeys);
         }
 
         if (enableRuntimeFilter) {
@@ -210,7 +233,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
             // prepare filter bitmap
             List<Integer> inputIndex = VectorizedExpressionUtils.getInputIndex(vectorizedExpression);
             int[] filterBitmap = new int[inputTypes.size() + filterOutputTypes.size()];
-            for(int i : inputIndex) {
+            for (int i : inputIndex) {
                 filterBitmap[i] = 1;
             }
             exec.setPreAllocatedChunk(preAllocatedChunk);
@@ -283,7 +306,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
     }
 
     public TableScanExec createLookupScanExec(ExecutionContext context, boolean canShard,
-                                              LookupPredicate predicate, List<EquiJoinKey> allJoinKeys) {
+                                              LookupPredicate predicate, List<LookupEquiJoinKey> allJoinKeys) {
         boolean allowMultipleReadConn = ExecUtils.allowMultipleReadConns(context, logicalView);
         boolean useTransaction = ExecUtils.useExplicitTransaction(context);
 

@@ -78,9 +78,7 @@ public class PolarCreateUserHandler extends AbstractPrivilegeCommandHandler {
             }
 
             String password = user.getPassword() == null ? "" : user.getPassword();
-            if (!UserPasswdChecker.verifyPassword(password, passwdRuleConfig)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD);
-            }
+            UserPasswdChecker.verifyPassword(password, passwdRuleConfig);
         }
     }
 
@@ -102,7 +100,7 @@ public class PolarCreateUserHandler extends AbstractPrivilegeCommandHandler {
                 .setAccountType(AccountType.USER)
                 .setUsername(user.getUserName())
                 .setHost(user.getHost())
-                .setPassword(user.getIdentifiedBy())
+                .setPassword(spec.getIdentifiedBy())
                 .build());
             grantees.add(userInfo);
         }

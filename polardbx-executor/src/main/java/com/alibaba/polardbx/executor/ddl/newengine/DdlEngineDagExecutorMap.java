@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
@@ -24,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.Lists;
 
 import java.util.List;
 import java.util.Map;

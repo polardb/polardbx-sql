@@ -27,7 +27,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
-import com.alibaba.polardbx.executor.sync.BaselineValidateSyncAction;
+import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
 import com.alibaba.polardbx.executor.sync.ClearOSSFileSystemSyncAction;
 import com.alibaba.polardbx.executor.sync.InvalidateBufferPoolSyncAction;
 import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
@@ -40,6 +40,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager.PhyInfoSchemaContext;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 
 import java.util.List;
@@ -139,43 +140,38 @@ public class CommonMetaChanger {
 
     public static void finalOperationsOnSuccess(String schemaName, String logicalTableName) {
         invalidatePlanCache(schemaName);
-        validateBaseLine(schemaName);
         removeTableStatistic(schemaName, logicalTableName);
     }
 
-    public static void renameFinalOperationsOnSuccess(String schemaName, String logicalTableName, String newLogicalTableName) {
+    public static void finalOperationsOnRenameTableSuccess(String schemaName, String logicalTableName,
+                                                      String newLogicalTableName) {
         invalidatePlanCache(schemaName);
-        validateBaseLine(schemaName);
-        renameStatistic(schemaName, logicalTableName, newLogicalTableName);
-        invalidateBufferPool(schemaName, logicalTableName);
+        renameTableStatistic(schemaName, logicalTableName, newLogicalTableName);
     }
 
-    public static void alterTableColumnFinalOperationsOnSuccess(String schemaName, String logicalTableName, List<String> columnList) {
+    public static void finalOperationsOnAlterTableSuccess(String schemaName, String logicalTableName,
+                                                                List<String> columnNames) {
         invalidatePlanCache(schemaName);
-        validateBaseLine(schemaName);
-        invalidateAlterTableColumnStatistic(schemaName, logicalTableName, columnList);
-        invalidateBufferPool(schemaName, logicalTableName);
+        removeColumnStatistic(schemaName, logicalTableName, columnNames);
     }
 
     public static void invalidatePlanCache(String schemaName) {
-        OptimizerContext.getContext(schemaName).getPlanManager().invalidateCache();
-    }
-
-    private static void validateBaseLine(String schemaName) {
-        // null means to validate all baseline
-        SyncManagerHelper.sync(new BaselineValidateSyncAction(schemaName, null), schemaName);
+        PlanManager.getInstance().cleanCache(schemaName);
     }
 
     private static void removeTableStatistic(String schemaName, String logicalTableName) {
         SyncManagerHelper.sync(new RemoveTableStatisticSyncAction(schemaName, logicalTableName), schemaName);
     }
 
-    private static void invalidateAlterTableColumnStatistic(String schemaName, String logicalTableName, List<String> columnList) {
-        SyncManagerHelper.sync(new RemoveColumnStatisticSyncAction(schemaName, logicalTableName, columnList), schemaName);
+    private static void invalidateAlterTableColumnStatistic(String schemaName, String logicalTableName,
+                                                            List<String> columnList) {
+        SyncManagerHelper.sync(new RemoveColumnStatisticSyncAction(schemaName, logicalTableName, columnList),
+            schemaName);
     }
 
     private static void renameStatistic(String schemaName, String logicalTableName, String newLogicalTableName) {
-        SyncManagerHelper.sync(new RenameStatisticSyncAction(schemaName, logicalTableName, newLogicalTableName), schemaName);
+        SyncManagerHelper.sync(new RenameStatisticSyncAction(schemaName, logicalTableName, newLogicalTableName),
+            schemaName);
     }
 
     public static void invalidateBufferPool() {
@@ -193,4 +189,14 @@ public class CommonMetaChanger {
     public static void clearOSSFileSystemCache() {
         SyncManagerHelper.sync(new ClearOSSFileSystemSyncAction(), DefaultDbSchema.NAME);
     }
+    private static void renameTableStatistic(String schemaName, String logicalTableName, String newLogicalTableName) {
+        SyncManagerHelper.sync(new RenameStatisticSyncAction(schemaName, logicalTableName, newLogicalTableName),
+            schemaName);
+    }
+
+    private static void removeColumnStatistic(String schemaName, String logicalTableName, List<String> columnNames) {
+        SyncManagerHelper.sync(new RemoveColumnStatisticSyncAction(schemaName, logicalTableName, columnNames),
+            schemaName);
+    }
+
 }

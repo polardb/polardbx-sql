@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.executor.mdl;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 /**
  * 线程请求锁时使用的对象，加锁成功后会将返回一个 MdlTicket
@@ -31,7 +34,7 @@ public final class MdlRequest {
     final Long trxId;
 
     final String traceId;
-    final String sql;
+    final ByteString sql;
     final String frontend;
 
     /**
@@ -57,7 +60,7 @@ public final class MdlRequest {
         this.frontend = null;
     }
 
-    public MdlRequest(Long trxId, MdlKey key, MdlType type, MdlDuration duration, String traceId, String sql,
+    public MdlRequest(Long trxId, MdlKey key, MdlType type, MdlDuration duration, String traceId, ByteString sql,
                       String frontend) {
         this.trxId = trxId;
         this.key = key;
@@ -74,7 +77,7 @@ public final class MdlRequest {
      */
     public static MdlRequest getTransactionalDmlMdlRequest(@NotNull Long trxId, @NotNull String dbName,
                                                            @NotNull String tableName, @NotNull String traceId,
-                                                           @NotNull String sql, @NotNull String frontend) {
+                                                           @NotNull ByteString sql, @NotNull String frontend) {
         return new MdlRequest(trxId,
             MdlKey.getTableKeyWithLowerTableName(dbName, tableName),
             MdlType.MDL_SHARED_WRITE,
@@ -110,7 +113,7 @@ public final class MdlRequest {
         return traceId;
     }
 
-    public String getSql() {
+    public ByteString getSql() {
         return sql;
     }
 

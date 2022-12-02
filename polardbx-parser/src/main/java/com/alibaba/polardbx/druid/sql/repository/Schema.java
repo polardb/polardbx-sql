@@ -22,12 +22,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLAggregateExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.*;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLJoinTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableSource;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.StringUtils;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Created by wenshao on 21/07/2017.
@@ -35,11 +43,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Schema {
     private String catalog;
     private String name;
-    protected final Map<Long, SchemaObject> objects = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    protected final Map<Long, SchemaObject> indexes = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    protected final Map<Long, SchemaObject> sequences = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    protected final Map<Long, SchemaObject> functions = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    private SchemaRepository repository;
+    private final SchemaRepository repository;
+    private final SchemaObjectStore store;
 
     protected Schema(SchemaRepository repository) {
         this(repository, null);
@@ -48,12 +53,16 @@ public class Schema {
     protected Schema(SchemaRepository repository, String name) {
         this.repository = repository;
         this.setName(name);
+        this.store = repository.getSchemaObjectStoreProvider().get();
+        this.store.setSchema(this);
     }
 
     protected Schema(SchemaRepository repository, String catalog, String name) {
         this.repository = repository;
         this.catalog = catalog;
         this.name = name;
+        this.store = repository.getSchemaObjectStoreProvider().get();
+        this.store.setSchema(this);
     }
 
     public SchemaRepository getRepository() {
@@ -98,7 +107,7 @@ public class Schema {
     }
 
     public SchemaObject findTable(long nameHashCode64) {
-        SchemaObject object = objects.get(nameHashCode64);
+        SchemaObject object = store.getObject(nameHashCode64);
 
         if (object != null && object.getType() == SchemaObjectType.Table) {
             return object;
@@ -113,7 +122,7 @@ public class Schema {
     }
 
     public SchemaObject findView(long nameHashCode64) {
-        SchemaObject object = objects.get(nameHashCode64);
+        SchemaObject object = store.getObject(nameHashCode64);
 
         if (object != null && object.getType() == SchemaObjectType.View) {
             return object;
@@ -128,7 +137,7 @@ public class Schema {
     }
 
     public SchemaObject findTableOrView(long hashCode64) {
-        SchemaObject object = objects.get(hashCode64);
+        SchemaObject object = store.getObject(hashCode64);
 
         if (object == null) {
             return null;
@@ -145,16 +154,15 @@ public class Schema {
     public SchemaObject findFunction(String functionName) {
         functionName = SQLUtils.normalize(functionName);
         String lowerName = functionName.toLowerCase();
-        return functions.get(lowerName);
+        return store.getFunction(FnvHash.hashCode64(lowerName));
     }
 
     public boolean isSequence(String name) {
         long nameHashCode64 = FnvHash.hashCode64(name);
-        SchemaObject object = sequences.get(nameHashCode64);
+        SchemaObject object = store.getSequence(nameHashCode64);
         return object != null
-                && object.getType() == SchemaObjectType.Sequence;
+            && object.getType() == SchemaObjectType.Sequence;
     }
-
 
     public SchemaObject findTable(SQLTableSource tableSource, String alias) {
         if (tableSource instanceof SQLExprTableSource) {
@@ -162,7 +170,7 @@ public class Schema {
                 SQLExprTableSource exprTableSource = (SQLExprTableSource) tableSource;
 
                 SchemaObject tableObject = exprTableSource.getSchemaObject();
-                if (tableObject !=  null) {
+                if (tableObject != null) {
                     return tableObject;
                 }
 
@@ -222,7 +230,7 @@ public class Schema {
                 SQLAggregateExpr aggregateExpr = (SQLAggregateExpr) expr;
                 String function = aggregateExpr.getMethodName();
                 if ("min".equalsIgnoreCase(function)
-                        || "max".equalsIgnoreCase(function)) {
+                    || "max".equalsIgnoreCase(function)) {
                     SQLExpr arg = aggregateExpr.getArguments().get(0);
                     expr = arg;
                 }
@@ -249,7 +257,7 @@ public class Schema {
             SQLAggregateExpr aggregateExpr = (SQLAggregateExpr) expr;
             String function = aggregateExpr.getMethodName();
             if ("min".equalsIgnoreCase(function)
-                    || "max".equalsIgnoreCase(function)) {
+                || "max".equalsIgnoreCase(function)) {
                 SQLExpr arg = aggregateExpr.getArguments().get(0);
                 return findTable(tableSource, arg);
             }
@@ -330,7 +338,8 @@ public class Schema {
 
     public int getTableCount() {
         int count = 0;
-        for (SchemaObject object : this.objects.values()) {
+        Collection<SchemaObject> objects = store.getAllObjects();
+        for (SchemaObject object : objects) {
             if (object.getType() == SchemaObjectType.Table) {
                 count++;
             }
@@ -339,24 +348,25 @@ public class Schema {
     }
 
     public Collection<SchemaObject> getObjects() {
-        return this.objects.values();
+        return store.getAllObjects();
     }
 
     public Collection<SchemaObject> getIndexes() {
-        return indexes.values();
+        return store.getAllIndexes();
     }
 
     public Collection<SchemaObject> getSequences() {
-        return sequences.values();
+        return store.getAllSequences();
     }
 
     public Collection<SchemaObject> getFunctions() {
-        return functions.values();
+        return store.getAllFunctions();
     }
 
     public int getViewCount() {
         int count = 0;
-        for (SchemaObject object : this.objects.values()) {
+        Collection<SchemaObject> objects = store.getAllObjects();
+        for (SchemaObject object : objects) {
             if (object.getType() == SchemaObjectType.View) {
                 count++;
             }
@@ -365,8 +375,9 @@ public class Schema {
     }
 
     public List<String> showTables() {
-        List<String> tables = new ArrayList<String>(objects.size());
-        for (SchemaObject object : objects.values()) {
+        Collection<SchemaObject> objects = store.getAllObjects();
+        List<String> tables = new ArrayList<>(objects.size());
+        for (SchemaObject object : objects) {
             if (object.getType() == SchemaObjectType.Table) {
                 tables.add(object.getName());
             }
@@ -377,5 +388,9 @@ public class Schema {
 
     public String getCatalog() {
         return catalog;
+    }
+
+    public SchemaObjectStore getStore() {
+        return store;
     }
 }

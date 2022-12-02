@@ -31,4 +31,11 @@ explain select * from tbl where a<'2000-10-01 10:10:10' order by a;
 explain select * from tbl where a<='2001-10-01 10:10:10' order by a;
 drop table if exists tbl;
 
-
+create table if not exists tbl (a int not null)
+partition by range(a)
+( partition p0 values less than (1000),
+partition `123` values less than (2000),
+partition `456` values less than (maxvalue)
+);
+show create table tbl;
+drop table if exists tbl;

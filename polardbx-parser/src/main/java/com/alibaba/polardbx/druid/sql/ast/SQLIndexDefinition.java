@@ -28,10 +28,6 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName SQLIndexDefinition
- * @description
- * @Author zzy
- * @Date 2019-06-04 11:27
  */
 public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
@@ -63,7 +59,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
     // for polardb-x partition manage
     protected SQLPartitionBy partitioning;
-
+    private SQLName tableGroup;
 
     // For fulltext index when create table.
     private SQLName analyzerName;
@@ -450,7 +446,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         }
 
         return getOption(
-                FnvHash.hashCode64(name));
+            FnvHash.hashCode64(name));
     }
 
     public SQLExpr getOption(long hash64) {
@@ -525,5 +521,11 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         this.partitioning = partitioning;
     }
 
+    public SQLName getTableGroup() {
+        return tableGroup;
+    }
 
+    public void setTableGroup(SQLName tableGroup) {
+        this.tableGroup = tableGroup;
+    }
 }

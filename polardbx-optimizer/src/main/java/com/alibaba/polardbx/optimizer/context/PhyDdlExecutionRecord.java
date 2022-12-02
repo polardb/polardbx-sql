@@ -131,6 +131,15 @@ public class PhyDdlExecutionRecord {
         this.errorHashesIgnored = errorHashesIgnored;
     }
 
+    public PhyDdlExecutionRecord copy() {
+        PhyDdlExecutionRecord copy = new PhyDdlExecutionRecord(this.jobId, this.taskId, this.numPhyObjectsTotal);
+        copy.setNumPhyObjectsDone(this.numPhyObjectsDone.get());
+        Set<String> tmpPhyObjectsDone = ConcurrentHashMap.newKeySet();
+        tmpPhyObjectsDone.addAll(this.phyObjectsDone);
+        copy.setPhyObjectsDone(tmpPhyObjectsDone);
+        return copy;
+    }
+
     @Override
     public String toString() {
         StringBuilder info = new StringBuilder();

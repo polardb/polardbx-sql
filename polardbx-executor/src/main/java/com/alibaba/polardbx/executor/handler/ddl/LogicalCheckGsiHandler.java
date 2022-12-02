@@ -74,7 +74,7 @@ public class LogicalCheckGsiHandler extends LogicalCommonDdlHandler {
     }
 
     @Override
-    protected Cursor buildResultCursor(BaseDdlOperation baseDdl, ExecutionContext ec) {
+    protected Cursor buildResultCursor(BaseDdlOperation baseDdl, DdlJob ddlJob, ExecutionContext ec) {
         LogicalCheckGsi ddl = (LogicalCheckGsi) baseDdl;
         boolean async = ec.getDdlContext().isAsyncMode();
 

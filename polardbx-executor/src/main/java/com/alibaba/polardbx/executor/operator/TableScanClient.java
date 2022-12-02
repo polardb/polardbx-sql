@@ -18,6 +18,22 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import com.mysql.cj.polarx.protobuf.PolarxResultset;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
+import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
+import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.rpc.pool.XConnectionManager;
+import com.alibaba.polardbx.rpc.result.XResult;
+import com.alibaba.polardbx.rpc.result.XResultObject;
+import com.alibaba.polardbx.rpc.result.chunk.BlockDecoder;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -32,6 +48,7 @@ import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
@@ -47,6 +64,7 @@ import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.PhyOpTrxConnUtils;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -54,7 +72,6 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
@@ -68,11 +85,11 @@ import com.alibaba.polardbx.rpc.result.chunk.BlockDecoder;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import com.google.protobuf.ByteString;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import io.airlift.slice.Slice;
 import org.apache.commons.lang.StringUtils;
@@ -331,7 +348,7 @@ public class TableScanClient {
         notifyBlockedCallers();
         if (exception != null) {
             for (PrefetchThread prefetchThread : prefetchThreads) {
-                prefetchThread.cancel();
+                prefetchThread.cancel(false);
             }
         }
     }
@@ -340,9 +357,13 @@ public class TableScanClient {
         return readyResultSet.poll();
     }
 
+    protected boolean isReady() {
+        return readyResultSet.peek() != null || noMoreExecuteSplit();
+    }
+
     public synchronized ListenableFuture<?> isBlocked() {
         throwIfFailed();
-        if (isFinished() || isFailed() || readyResultSet.peek() != null || noMoreExecuteSplit()) {
+        if (isFinished() || isFailed() || isReady()) {
             notifyBlockedCallers();
             return NOT_BLOCKED;
         } else {
@@ -358,15 +379,14 @@ public class TableScanClient {
     }
 
     public void reset() {
-        this.pushdownSplitIndex.set(0);
-        this.completePrefetchNum.set(0);
-        this.pushdownSplitIndex.set(0);
-        this.completeExecuteNum.set(0);
         this.isClosed = true;
-        cancelAllThreads();
+        cancelAllThreads(true);
         notifyBlockedCallers();
         prefetchThreads.clear();
         readyResultSet.clear();
+        this.completePrefetchNum.set(0);
+        this.pushdownSplitIndex.set(0);
+        this.completeExecuteNum.set(0);
         this.isClosed = false;
     }
 
@@ -378,7 +398,7 @@ public class TableScanClient {
         if (this.exception == null) {
             this.exception = exception;
         }
-        cancelAllThreads();
+        cancelAllThreads(false);
         isClosed = true;
         notifyBlockedCallers();
     }
@@ -409,7 +429,7 @@ public class TableScanClient {
     public synchronized void close(SourceExec sourceExec) {
         sourceExecHashSet.remove(sourceExec);
         if (sourceExecHashSet.isEmpty()) {
-            cancelAllThreads();
+            cancelAllThreads(false);
             isClosed = true;
             prefetchThreads.clear();
             readyResultSet.clear();
@@ -417,10 +437,10 @@ public class TableScanClient {
         notifyBlockedCallers();
     }
 
-    public void cancelAllThreads() {
+    public void cancelAllThreads(boolean ignoreCnt) {
         if (!prefetchThreads.isEmpty()) {
             for (PrefetchThread prefetchThread : prefetchThreads) {
-                prefetchThread.cancel();
+                prefetchThread.cancel(ignoreCnt);
             }
         }
 
@@ -469,66 +489,70 @@ public class TableScanClient {
 
         private void initConnection() throws SQLException {
             if (jdbcSplit.getDbIndex() != null) {
-                TGroupDataSource dataSource =
-                    new MyDataSourceGetter(jdbcSplit.getSchemaName()).getDataSource(jdbcSplit.getDbIndex());
+                Object o = ExecutorContext.getContext(jdbcSplit.getSchemaName())
+                    .getTopologyHandler().get(jdbcSplit.getDbIndex()).getDataSource();
 
-                conn = context.getTransaction()
-                    .getConnection(jdbcSplit.getSchemaName(), jdbcSplit.getDbIndex(), dataSource,
-                        jdbcSplit.getTransactionRw());
+                if (o instanceof TGroupDataSource) {
+//                    conn = context.getTransaction()
+//                        .getConnection(jdbcSplit.getSchemaName(), jdbcSplit.getDbIndex(), (TGroupDataSource) o,
+//                            jdbcSplit.getTransactionRw());
+                    conn = (IConnection) PhyOpTrxConnUtils.getConnection(context.getTransaction(),
+                        jdbcSplit.getSchemaName(), jdbcSplit.getDbIndex(), (TGroupDataSource) o,
+                        jdbcSplit.getTransactionRw(), context, jdbcSplit.getGrpConnId(context));
+                    if (conn == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_MYSQL,
+                            "can't getConnection:" + jdbcSplit.getDbIndex());
+                    }
 
-                if (conn == null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_MYSQL,
-                        "can't getConnection:" + jdbcSplit.getDbIndex());
-                }
+                    if (isPureAsyncMode() && !conn.isWrapperFor(XConnection.class)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_CONNECTION,
+                            "Connection protocol changed:" + jdbcSplit.getDbIndex());
+                    }
 
-                if (isPureAsyncMode() && !conn.isWrapperFor(XConnection.class)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_CONNECTION,
-                        "Connection protocol changed:" + jdbcSplit.getDbIndex());
-                }
+                    if (conn.isWrapperFor(XConnection.class)) {
+                        conn.unwrap(XConnection.class).setTraceId(context.getTraceId());
+                    }
 
-                if (conn.isWrapperFor(XConnection.class)) {
-                    conn.unwrap(XConnection.class).setTraceId(context.getTraceId());
-                }
+                    if (conn.getRealConnection() instanceof TGroupDirectConnection) {
+                        this.connectionStats = conn.getConnectionStats();
+                        collectConnectionStats();
+                    }
 
-                if (conn.getRealConnection() instanceof TGroupDirectConnection) {
-                    this.connectionStats = conn.getConnectionStats();
-                    collectConnectionStats();
-                }
+                    long startInitStmtEnvNano = System.nanoTime();
 
-                long startInitStmtEnvNano = System.nanoTime();
+                    if (socketTimeout >= 0) {
+                        setNetworkTimeout(conn, socketTimeout);
+                    } else if (context.getSocketTimeout() >= 0) {
+                        setNetworkTimeout(conn, context.getSocketTimeout());
+                    }
+                    //TimeZone 已经设置到serverVariables了
+                    conn.setServerVariables(context.getServerVariables());
+                    // 只处理设定过的txIsolation
+                    if (context.getTxIsolation() >= 0) {
+                        conn.setTransactionIsolation(context.getTxIsolation());
+                    }
+                    // 只处理设置过的编码
+                    if (context.getEncoding() != null) {
+                        conn.setEncoding(context.getEncoding());
+                    }
+                    // 只处理设置过的sqlMode
+                    if (context.getSqlMode() != null) {
+                        conn.setSqlMode(context.getSqlMode());
+                    }
 
-                if (socketTimeout >= 0) {
-                    setNetworkTimeout(conn, socketTimeout);
-                } else if (context.getSocketTimeout() >= 0) {
-                    setNetworkTimeout(conn, context.getSocketTimeout());
-                }
-                //TimeZone 已经设置到serverVariables了
-                conn.setServerVariables(context.getServerVariables());
-                // 只处理设定过的txIsolation
-                if (context.getTxIsolation() >= 0) {
-                    conn.setTransactionIsolation(context.getTxIsolation());
-                }
-                // 只处理设置过的编码
-                if (context.getEncoding() != null) {
-                    conn.setEncoding(context.getEncoding());
-                }
-                // 只处理设置过的sqlMode
-                if (context.getSqlMode() != null) {
-                    conn.setSqlMode(context.getSqlMode());
-                }
+                    // FIXME 是否需要把prepareStmt包含进来
+                    if (targetPlanStatGroup != null) {
+                        targetPlanStatGroup.createAndInitJdbcStmtDuration
+                            .addAndGet(System.nanoTime() - startInitStmtEnvNano);
+                    }
 
-                // FIXME 是否需要把prepareStmt包含进来
-                if (targetPlanStatGroup != null) {
-                    targetPlanStatGroup.createAndInitJdbcStmtDuration
-                        .addAndGet(System.nanoTime() - startInitStmtEnvNano);
+                    // Add feedback flag if XCOnnection.
+                    if (conn.isWrapperFor(XConnection.class)) {
+                        conn.unwrap(XConnection.class).setWithFeedback(true);
+                    }
+                } else {
+                    throw new SQLException("TGroupDataSource is null:" + jdbcSplit);
                 }
-
-                // Add feedback flag if XCOnnection.
-                if (conn.isWrapperFor(XConnection.class)) {
-                    conn.unwrap(XConnection.class).setWithFeedback(true);
-                }
-            } else {
-                throw new SQLException("TGroupDataSource is null:" + jdbcSplit);
             }
         }
 
@@ -581,15 +605,34 @@ public class TableScanClient {
             return currentDbKey;
         }
 
-        private PreparedStatement preparedSplit(IConnection conn, String sql, List<ParameterContext> params)
-            throws SQLException {
-            PreparedStatement stmt =
-                conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+        private PreparedStatement preparedSplit(
+            IConnection conn, byte[] hint, BytesSql sql, List<ParameterContext> params, boolean supportGalaxyPrepare,
+            byte[] galaxyDigest) throws SQLException {
+            final PreparedStatement stmt;
+            if (conn.isBytesSqlSupported()) {
+                stmt = conn.prepareStatement(sql, hint);
+            } else {
+                stmt = conn.prepareStatement(new String(hint) + sql.toString(params), ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY);
+            }
+            if (stmt.isWrapperFor(XPreparedStatement.class)) {
+                final XPreparedStatement xPreparedStatement = stmt.unwrap(XPreparedStatement.class);
+                final boolean noDigest = jdbcSplit.getTableNames().size() != 1 || // select with union all
+                    sql.containRawString(params); // compact n-D param array
+                if (noDigest || !supportGalaxyPrepare) {
+                    xPreparedStatement.setUseGalaxyPrepare(false);
+                } else if (galaxyDigest != null) {
+                    xPreparedStatement.setGalaxyDigest(ByteString.copyFrom(galaxyDigest));
+                }
+            }
             stmt.setFetchSize(Integer.MIN_VALUE);
             if (params != null) {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("preparedSplit:" + context.getTraceId() + ",sql=" + sql
+                    logger.debug("preparedSplit:" + context.getTraceId() + ",sql=" + sql.display()
                         + ",params:" + params);
+                }
+                if (!conn.isBytesSqlSupported()) {
+                    params = GeneralUtil.prepareParam(params);
                 }
                 ParameterMethod.setParameters(stmt, params);
             }
@@ -618,7 +661,8 @@ public class TableScanClient {
                         }
                     }
                 }
-                stmt = preparedSplit(conn, jdbcSplit.getHintSql(false), jdbcSplit.getFlattedParams());
+                stmt = preparedSplit(conn, jdbcSplit.getHint(), jdbcSplit.getUnionBytesSql(false),
+                    jdbcSplit.getFlattedParams(), jdbcSplit.isSupportGalaxyPrepare(), jdbcSplit.getGalaxyDigest());
                 if (enableTaskCpu && targetPlanStatGroup != null) {
                     targetPlanStatGroup.prepareStmtEnvDuration
                         .addAndGet(ThreadCpuStatUtil.getThreadCpuTimeNano() - startPrepStmtEnvNano);
@@ -654,7 +698,7 @@ public class TableScanClient {
                         logParams.put(i, jdbcSplit.getFlattedParams().get(i));
                     }
                     String currentDbKey = getCurrentDbkey();
-                    this.op = new ExecuteSQLOperation(jdbcSplit.getDbIndex(), currentDbKey, jdbcSplit.getHintSql(
+                    this.op = new ExecuteSQLOperation(jdbcSplit.getDbIndex(), currentDbKey, jdbcSplit.getSqlString(
                         context.getParamManager().getBoolean(ConnectionParams.ENABLE_SIMPLIFY_TRACE_SQL)),
                         startTime);
                     op.setThreadName(Thread.currentThread().getName());
@@ -678,14 +722,6 @@ public class TableScanClient {
             }
             context.getStats().recordPhysicalTimeCost(sqlCostTime);
 
-            if (xResult != null) {
-                if (!context.getxFeedBackMap().containsKey(xResult.toString()) &&
-                    xResult.getExaminedRowCount() != -1) {
-                    context.getxFeedBackMap().put(xResult.toString(),
-                        new PhyFeedBack(xResult.getExaminedRowCount(), xResult.getChosenIndexes()));
-                }
-            }
-
             if (context.isEnableTrace()) {
                 if (null == op) {
                     HashMap<Integer, ParameterContext> logParams = new HashMap<>();
@@ -693,7 +729,7 @@ public class TableScanClient {
                         logParams.put(i, jdbcSplit.getFlattedParams().get(i));
                     }
                     String currentDbKey = getCurrentDbkey();
-                    this.op = new ExecuteSQLOperation(jdbcSplit.getDbIndex(), currentDbKey, jdbcSplit.getHintSql(
+                    this.op = new ExecuteSQLOperation(jdbcSplit.getDbIndex(), currentDbKey, jdbcSplit.getSqlString(
                         context.getParamManager().getBoolean(ConnectionParams.ENABLE_SIMPLIFY_TRACE_SQL)),
                         startTime);
                     op.setThreadName(Thread.currentThread().getName());
@@ -740,9 +776,9 @@ public class TableScanClient {
                         for (int i = 0; i < jdbcSplit.getFlattedParams().size(); i++) {
                             param.put(i, jdbcSplit.getFlattedParams().get(i));
                         }
-                        String sql = jdbcSplit.getHintSql(false);
+                        String sql = jdbcSplit.getSqlString();
                         String currentDbKey = getCurrentDbkey();
-                        long length = context.getPhysicalRecorder().getMaxSizeThresold();
+                        long length = context.getPhysicalRecorder().getMaxSizeThreshold();
                         if (sql.length() > length) {
                             StringBuilder newSql = new StringBuilder((int) length + 3);
                             newSql.append(sql, 0, (int) length);
@@ -1108,7 +1144,11 @@ public class TableScanClient {
             return false;
         }
 
-        void close(boolean force) {
+        void close() {
+            close(false);
+        }
+
+        void close(boolean ignoreCnt) {
             if (closed.compareAndSet(false, true)) {
                 long startCloseJdbcNano = System.nanoTime();
                 closeConnection();
@@ -1125,10 +1165,16 @@ public class TableScanClient {
                     op.setRowsCount(count);
                     op.setTotalTimeCost(System.currentTimeMillis() - op.getTimestamp());
                     op.setPhysicalCloseCost((System.nanoTime() - startCloseJdbcNano) / 1000 / 1000);
+                    op.setGrpConnId(jdbcSplit.getGrpConnId(context));
+                    op.setTraceId(context.getTraceId());
                     context.getTracer().trace(op);
                     op = null;
                 }
-                completeExecuteNum.incrementAndGet();
+                if (!ignoreCnt) {
+                    completeExecuteNum.incrementAndGet();
+                } else {
+                    logger.warn("ignore calculate the complete num!");
+                }
             }
         }
 
@@ -1202,6 +1248,7 @@ public class TableScanClient {
         final SplitResultSet resultSet;
         JdbcSplit split;
         AtomicReference<ScheduledFuture> timeoutNotify = new AtomicReference<>(null);
+        boolean ignoreCnt;
 
         public PrefetchThread(Split split) {
             this.split = (JdbcSplit) split.getConnectorSplit();
@@ -1214,14 +1261,17 @@ public class TableScanClient {
 
         private void finishFetch() {
             if (isClosed) {
-                resultSet.close(false);
+                resultSet.close(ignoreCnt);
             }
 
             //先关闭ResultSet我们再记录compeletePrefetchNum, 否则可能存在连接未关闭，而查询
             //结束，这样连接未及时关闭导致私有协议的连接状态不符合预期的问题
-            completePrefetchNum.incrementAndGet();
-
-            if (noMoreExecuteSplit()) {
+            if (!ignoreCnt) {
+                completePrefetchNum.incrementAndGet();
+            } else {
+                logger.warn("ignore calculate the prefetch Num!");
+            }
+            if (isReady()) {
                 notifyBlockedCallers();
             }
         }
@@ -1353,10 +1403,11 @@ public class TableScanClient {
             return split;
         }
 
-        public void cancel() {
+        public void cancel(boolean ignoreCnt) {
             if (resultSet != null) {
-                resultSet.close(false);
+                resultSet.close();
             }
+            this.ignoreCnt = ignoreCnt;
         }
 
         public SplitResultSet getResultSet() {

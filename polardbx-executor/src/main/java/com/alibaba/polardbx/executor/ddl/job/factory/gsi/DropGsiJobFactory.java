@@ -64,10 +64,10 @@ public class DropGsiJobFactory extends DdlJobFactory {
      * 3. drop gsi table
      * 4. clean up metadata
      */
-    protected DropGsiJobFactory(String schemaName,
-                                String primaryTableName,
-                                String indexTableName,
-                                ExecutionContext executionContext) {
+    public DropGsiJobFactory(String schemaName,
+                             String primaryTableName,
+                             String indexTableName,
+                             ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
         this.indexTableName = indexTableName;
@@ -116,7 +116,7 @@ public class DropGsiJobFactory extends DdlJobFactory {
         taskList.add(dropGsiTableRemoveTableMetaTask);
 
         //4. sync after drop table
-        TablesSyncTask dropTableSyncTask = new TablesSyncTask(schemaName, Lists.newArrayList(primaryTableName, indexTableName));
+        TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);
         taskList.add(dropTableSyncTask);
 
         final ExecutableDdlJob4DropGsi executableDdlJob = new ExecutableDdlJob4DropGsi();
@@ -187,6 +187,10 @@ public class DropGsiJobFactory extends DdlJobFactory {
         }
         jobFactory.skipSchemaChange = skipSchemaChange;
         return jobFactory.create(validate);
+    }
+
+    public void setSkipSchemaChange(boolean skipSchemaChange) {
+        this.skipSchemaChange = skipSchemaChange;
     }
 
 }

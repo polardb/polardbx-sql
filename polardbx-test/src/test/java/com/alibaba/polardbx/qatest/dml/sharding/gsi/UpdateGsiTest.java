@@ -111,6 +111,30 @@ public class UpdateGsiTest extends GsiDMLTest {
         executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params);
     }
 
+    private void prepareDataForTable(String tableName) {
+        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) ? hint + "insert " : "insert " + hint) + " into "
+            + tableName
+            + " (pk,integer_test,bigint_test,varchar_test,datetime_test,year_test,char_test,smallint_test)"
+            + " values (?,?,?,?,?,?,?,?)";
+
+        List<List<Object>> params = new ArrayList<List<Object>>();
+        for (int i = 0; i < 20; i++) {
+            List<Object> param = new ArrayList<Object>();
+            param.add(i);
+            param.add(i);
+            param.add(i * 100);
+            param.add("test" + i);
+            param.add(columnDataGenerator.datetime_testValue);
+            param.add(2000 + i);
+            param.add(columnDataGenerator.char_testValue);
+            param.add(i);
+
+            params.add(param);
+        }
+
+        executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params);
+    }
+
     /**
      * update only one row
      */
@@ -377,8 +401,34 @@ public class UpdateGsiTest extends GsiDMLTest {
      */
     @Test
     public void updateMultipleTablesTest() throws Exception {
+        prepareDataForTable(baseTwoTableName);
         String sql =
             String.format(hint + "update %s tb1, %s tb2 set tb1.float_test=tb2.float_test * 2 where tb1.pk=tb2.pk",
+                baseOneTableName,
+                baseTwoTableName);
+
+        List<Object> param = new ArrayList<Object>();
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
+
+        sql = hint + "select * from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        assertIndexSame(baseOneTableName);
+
+        assertRouteCorrectness(baseOneTableName);
+    }
+
+    /**
+     * update join by multi
+     */
+    @Test
+    public void updateMultipleTablesByMultiTest() throws Exception {
+        prepareDataForTable(baseTwoTableName);
+
+        String tHint = " /*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+        String sql =
+            String.format(hint + tHint + "update %s tb1, %s tb2 set tb1.float_test=tb2.float_test * 2 where tb1.pk=tb2.pk",
                 baseOneTableName,
                 baseTwoTableName);
 

@@ -32,7 +32,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GsiUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -43,12 +42,13 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRoutingContext;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
@@ -87,6 +87,7 @@ import java.util.stream.IntStream;
 public class BuildPlanUtils {
 
     protected static final Logger LOGGER = LoggerFactory.getLogger("DDL_META_LOG");
+
     public static SqlNode buildTargetTable() {
         return new SqlDynamicParam(PlannerUtils.TABLE_NAME_PARAM_INDEX, SqlParserPos.ZERO);
     }
@@ -211,7 +212,8 @@ public class BuildPlanUtils {
             PartitionTupleRouteInfo tupleRouteInfo = buildPartitionTupleRouteInfo(routingContext, rowsAst, true, ec);
 
             // fast path
-            return routeMultiValueRowWithResult(tupleRouteInfo, routingContext, ec, shardingKeyIndexes, primaryKeyIndexes, values);
+            return routeMultiValueRowWithResult(tupleRouteInfo, routingContext, ec, shardingKeyIndexes,
+                primaryKeyIndexes, values, true);
         } else {
             // slow path
             return shardMultiRowsSlowPath(schemaName, logicalTableName, values, shardingKeyNames, shardingKeyIndexes,
@@ -352,10 +354,11 @@ public class BuildPlanUtils {
                                                          ExecutionContext executionContext) {
 
         // Column name comes from RelDataTypeField, but dataType comes from ColumnMeta
-        Map<String, Comparative> comparatives = TddlRuleManager.getComparatives(shardingKeyMetas,
+        Map<String, Comparative> comparatives = Partitioner.getComparatives(shardingKeyMetas,
             shardingKeyValues,
             shardingKeyNames);
-        Map<String, Comparative> fullComparative = TddlRuleManager.getInsertFullComparative(comparatives);
+        Partitioner partitioner = OptimizerContext.getContext(schemaName).getPartitioner();
+        Map<String, Comparative> fullComparative = partitioner.getInsertFullComparative(comparatives);
 
         // construct calcParams
         Map<String, Object> calcParams = Maps.newHashMap();
@@ -364,6 +367,7 @@ public class BuildPlanUtils {
         stringMapMap.put(logicalTableName, fullComparative);
         calcParams.put(CalcParamsAttribute.COM_DB_TB, stringMapMap);
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
         List<TargetDB> targetDBS =
             executionContext.getSchemaManager(schemaName).getTddlRuleManager()
                 .shard(logicalTableName, true, false, comparatives, Maps.newHashMap(), calcParams, executionContext);
@@ -529,7 +533,7 @@ public class BuildPlanUtils {
      * @param rowValuesAst the tuple templates
      * @param isBatch flag that label if rowValuesAst is a batch sql
      */
-    protected static PartitionTupleRouteInfo buildPartitionTupleRouteInfo(
+    public static PartitionTupleRouteInfo buildPartitionTupleRouteInfo(
         PartitionTupleRoutingContext routingContext,
         SqlNode rowValuesAst,
         boolean isBatch,
@@ -621,10 +625,10 @@ public class BuildPlanUtils {
         ExecutionContext executionContext,
         List<Integer> shardingKeyIndexes,
         List<Integer> primaryKeyIndices,
-        List<List<Object>> multiValues) {
+        List<List<Object>> multiValues,
+        boolean isBatch) {
 
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = new HashMap<>();
-        boolean isBatch = executionContext.getParams().isBatch();
 
         // Ust tmp ExecutionContext to dynamic update the info of params for part pruning
         ExecutionContext tmpEc = executionContext.copy();
@@ -651,7 +655,8 @@ public class BuildPlanUtils {
                 routeSingleValueRow(tupleRouteInfo, tmpEc, false, tupleTemplateIdx, singleValParams);
 
             // add primary keys to the map
-            List<Object> primaryKeyValues = primaryKeyIndices.stream().map(singleValue::get).collect(Collectors.toList());
+            List<Object> primaryKeyValues =
+                primaryKeyIndices.stream().map(singleValue::get).collect(Collectors.toList());
             shardResults.computeIfAbsent(dbAndTable.getKey(), b -> new HashMap<>())
                 .computeIfAbsent(dbAndTable.getValue(), b -> new ArrayList<>())
                 .add(Pair.of(i, primaryKeyValues));
@@ -669,6 +674,21 @@ public class BuildPlanUtils {
         int tupleTemplateIdx,
         Parameters singleValueParams) {
 
+        List<PhysicalPartitionInfo> prunedParts =
+            resetParamsAndDoPruning(tupleRouteInfo, ec, useTmpCtx, tupleTemplateIdx, singleValueParams);
+
+        assert prunedParts.size() == 1;
+        String grpKey = prunedParts.get(0).getGroupKey();
+        String phyTbl = prunedParts.get(0).getPhyTable();
+        Pair<String, String> dbAndTable = new Pair<>(grpKey, phyTbl);
+        return dbAndTable;
+    }
+
+    public static List<PhysicalPartitionInfo> resetParamsAndDoPruning(PartitionTupleRouteInfo tupleRouteInfo,
+                                                                      ExecutionContext ec,
+                                                                      boolean useTmpCtx,
+                                                                      int tupleTemplateIdx,
+                                                                      Parameters singleValueParams) {
         ExecutionContext tmpEc;
         if (useTmpCtx) {
             tmpEc = ec.copy();
@@ -680,13 +700,28 @@ public class BuildPlanUtils {
         // Execute tuple routing and fetch route result.
         PartPrunedResult routeResult =
             PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, tupleTemplateIdx, tmpEc);
-        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedParttions();
+        if (routeResult.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NO_FOUND,
+                "GSI table or temp table has no partition corresponding the value from primary table");
+        }
+        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedPartitions();
+        return prunedParts;
+    }
 
-        assert prunedParts.size() == 1;
-        String grpKey = prunedParts.get(0).getGroupKey();
-        String phyTbl = prunedParts.get(0).getPhyTable();
-        Pair<String, String> dbAndTable = new Pair<>(grpKey, phyTbl);
-        return dbAndTable;
+    public static SearchDatumInfo resetParamsAndDoCalcSearchDatum(PartitionTupleRouteInfo tupleRouteInfo,
+                                                                  ExecutionContext ec,
+                                                                  boolean useTmpCtx,
+                                                                  int tupleTemplateIdx,
+                                                                  Parameters singleValueParams) {
+        ExecutionContext tmpEc;
+        if (useTmpCtx) {
+            tmpEc = ec.copy();
+        } else {
+            tmpEc = ec;
+        }
+        tmpEc.setParams(singleValueParams);
+        // calc hash code for a tuple
+        return PartitionPruner.doCalcSearchDatumByTupleRouteInfo(tupleRouteInfo, tupleTemplateIdx, tmpEc);
     }
 
     /**
@@ -792,7 +827,7 @@ public class BuildPlanUtils {
             physicalTableName = partitionInfo.getPrefixTableName();
 
             Map<String, Set<String>> topology = partitionInfo.getTopology();
-            assert(topology.size() == 1);
+            assert (topology.size() == 1);
             for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
                 dbIndex = entry.getKey();
             }

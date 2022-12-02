@@ -14,11 +14,15 @@
               `meta_version` bigint unsigned not null default '1',
               `manual_create` int not null default 0 comment '0:create implicitly, 1:create manually',
               `tg_type` int(11) NOT NULL DEFAULT '0' COMMENT '0:part_tg_group,1:default single_tg, 2:non default single_tg',
+              `auto_split_policy` int(11) NOT NULL DEFAULT '0' COMMENT '0:NONE, 1:AUTO_SPLIT, 2:AUTO_SPLIT_HOT_VALUE',
                primary key (`id`),
                unique key `uidx_tgname`(`schema_name`,`tg_name`, `meta_version`),
                key `db_tg`(`schema_name`, `tg_name`)
         ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+           alter table `table_group` add column `auto_split_policy` int(11) not null default '0' comment '0:NONE, 1:AUTO_SPLIT, 2:AUTO_SPLIT_HOT_VALUE'
+        ]]></Change>
     </SystemTable>
 
     <SystemTable name="partition_group">
@@ -63,38 +67,13 @@
             ]]></Create>
     </SystemTable>
 
-    <SystemTable name="tablegroup_outline">
-        <Create><![CDATA[
-            create table if not exists `tablegroup_outline` (
-              `id` bigint(21) unsigned not null auto_increment,
-              `batch_id` bigint unsigned not null,
-              `job_id` bigint unsigned not null,
-              `parent_job_id` bigint unsigned not null default '0',
-              `gmt_create` datetime default current_timestamp,
-              `gmt_modified` datetime default current_timestamp,
-              `schema_name` varchar(64) not null,
-              `table_group_id` bigint not null,
-              `partition_group_name` varchar(64) not null comment 'partition group name',
-              `table_name` varchar(128) not null comment 'group key',
-              `partition_info` longtext comment 'json format, new partition meta',
-              `type` int not null comment '1:split, 2:merge, 3:move',
-              `status` int not null default 0 comment '0:creating,1:delete_only',
-               `version` bigint(21) not null comment 'table meta version',
-              `extra` longtext default null,
-              `source_sql` text default null,
-
-              primary key(`id`),
-              unique key `u_id`(`job_id`)
-            ) charset=utf8mb4
-        ]]></Create>
-    </SystemTable>
     <SystemTable name="complex_task_outline">
         <Create><![CDATA[
                 create table if not exists `complex_task_outline` (
                   `id` bigint(21) unsigned not null auto_increment,
                   `job_id` bigint unsigned not null,
                   `gmt_create` datetime default current_timestamp,
-                  `gmt_modified` datetime default current_timestamp,
+                  `gmt_modified` datetime not null default current_timestamp on update current_timestamp,
                   `table_schema` varchar(64) not null,
                   `tg_name` varchar(64) not null default '-' comment 'tablegroup name',
                   `object_name` varchar(128) not null,
@@ -107,6 +86,36 @@
                   KEY `k_sch_job_id` (`table_schema`,`job_id`),
                   KEY `k_sch_job_id_obj` (`table_schema`,`job_id`,`object_name`)
                 ) charset=utf8mb4
+            ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="join_group_info">
+        <Create><![CDATA[
+                create table if not exists `join_group_info` (
+              `id` bigint not null auto_increment,
+              `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `table_schema` varchar(64) not null ,
+              `join_group_name` varchar(64) not null,
+              `locality` text default null,
+               primary key (`id`),
+               unique key `uidx_sch_jgname`(`table_schema`,`join_group_name`)
+        ) charset=utf8mb4
+            ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="join_group_table_detail">
+        <Create><![CDATA[
+                create table if not exists `join_group_table_detail` (
+              `id` bigint not null auto_increment,
+              `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `table_schema` varchar(64) not null ,
+              `join_group_id` bigint not null,
+              `table_name` varchar(64) not null ,
+               primary key (`id`),
+               unique key `uidx_sch_tbname`(`table_schema`,`table_name`)
+        ) charset=utf8mb4
             ]]></Create>
     </SystemTable>
 </SystemTables>

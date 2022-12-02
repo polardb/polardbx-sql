@@ -20,6 +20,9 @@ import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -29,14 +32,14 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IDataSourceGetter;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticCollector;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
@@ -45,6 +48,7 @@ import org.apache.calcite.sql.SqlAnalyzeTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -54,7 +58,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_HLL;
-import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.isBinaryOrJsonColumn;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.forceAnalyzeColumns;
 
 /**
  * @author chenmo.cm
@@ -110,9 +114,7 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
             String schemaName = pair.getKey();
             String table = pair.getValue();
 
-            StatisticManager statisticManager = OptimizerContext.getContext(schemaName).getStatisticManager();
             IDataSourceGetter mysqlDsGetter = new MyDataSourceGetter(schemaName);
-            StatisticCollector statisticCollector = statisticManager.getStatisticCollector();
 
             TableMeta tableMeta;
             try {
@@ -140,10 +142,7 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
                     "no table rule for logicalTableName = " + table + ", analyze this table as the single table!");
             }
 
-            List<ColumnMeta> analyzeColumnList =
-                tableMeta.getAllColumns().stream().filter(x -> !isBinaryOrJsonColumn(x)).collect(Collectors.toList());
-            boolean success = statisticCollector.forceAnalyzeColumns(table, analyzeColumnList,
-                executionContext.getParamManager());
+            boolean success = forceAnalyzeColumns(schemaName, table);
             if (success) {
                 result.addRow(new Object[] {schemaName + "." + table, "analyze", "status", "OK"});
             } else {
@@ -151,30 +150,28 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
             }
 
             // refresh plancache
-            OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager().getPlanCache()
-                .invalidate(table);
+            PlanCache.getInstance().invalidate(table);
         }
         long end = System.currentTimeMillis();
-
-        String msg = "analyze table " + schemaTables.stream().map(pair -> {
-            String schemaName = pair.getKey() == null ? defaultSchemaName : pair.getKey();
-            String tableName = pair.getValue();
-            return schemaName + "." + tableName;
-        }).collect(Collectors.joining(",")) + " consuming "
-            + (end - start) / 1000.0 + " seconds " + executionContext.getTraceId();
-
-        logger.info(msg);
-
-        OptimizerContext.getContext(executionContext.getSchemaName()).getStatisticManager()
-            .getStatisticLogInfo().add(msg);
-
+        ModuleLogInfo.getInstance()
+            .logRecord(Module.STATISTIC,
+                LogPattern.PROCESS_END,
+                new String[] {
+                    "analyze table " + schemaTables.stream().map(pair -> {
+                        String schemaName = pair.getKey() == null ? defaultSchemaName : pair.getKey();
+                        String tableName = pair.getValue();
+                        return schemaName + "." + tableName;
+                    }).collect(Collectors.joining(",")),
+                    "consuming " + (end - start) / 1000.0 + " seconds " + executionContext.getTraceId()
+                },
+                LogLevel.NORMAL);
         return result;
     }
 
     protected void doAnalyzeOneLogicalTable(String schemaName, String logicalTableName,
                                             IDataSourceGetter mysqlDsGetter, ExecutionContext executionContext) {
-        StatisticManager sm = (StatisticManager) OptimizerContext.getContext(schemaName).getStatisticManager();
-        List<Pair<String, String>> keys = sm.buildStatisticKey(logicalTableName, executionContext);
+        List<Pair<String, String>> keys =
+            StatisticManager.getInstance().buildStatisticKey(schemaName, logicalTableName, executionContext);
         for (Pair<String, String> key : keys) {
             String group = key.getKey();
             String physicalTableName = key.getValue();
@@ -183,6 +180,10 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
     }
 
     protected void doAnalyzeOnePhysicalTable(String group, String physicalTableName, IDataSourceGetter mysqlDsGetter) {
+        if (StringUtils.isEmpty(physicalTableName)) {
+            return;
+        }
+        physicalTableName = physicalTableName.toLowerCase();
         DataSource ds = mysqlDsGetter.getDataSource(group);
         if (ds == null) {
             logger.error("Analyze physical table " + physicalTableName

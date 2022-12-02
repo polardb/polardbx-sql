@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -24,7 +23,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
-import java.io.UnsupportedEncodingException;
 import java.util.Base64;
 import java.util.List;
 
@@ -41,14 +39,8 @@ public class ToBase64 extends AbstractScalarFunction {
         if (FunctionUtils.isNull(args[0])) {
             return null;
         }
-        String base64encodedString = null;
-        String str = DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]);
-        try {
-            base64encodedString = Base64.getEncoder().encodeToString(str.getBytes("utf-8"));
-        } catch (UnsupportedEncodingException e) {
-            GeneralUtil.nestedException("Convert to base64 failed, str is : " + str);
-        }
-        return base64encodedString;
+        byte[] bytes = DataTypeUtil.convert(operandTypes.get(0), DataTypes.BytesType, args[0]);
+        return Base64.getEncoder().encodeToString(bytes);
     }
 
     @Override

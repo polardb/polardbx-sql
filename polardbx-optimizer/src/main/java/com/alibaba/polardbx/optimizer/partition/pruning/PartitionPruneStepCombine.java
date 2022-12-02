@@ -97,6 +97,7 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
              * Do pruning by the new prune step from new merged intervals
              */
             PartPrunedResult rs = rngMergedStepInfo.prunePartitions(context, pruningCtx);
+            pruningCtx.setRootStep(rngMergedStepInfo);
             return rs;
         }
 
@@ -113,6 +114,7 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
                 prunedPartBitSet.or(tmpPrunedRs.partBitSet);
             }
         }
+        PartitionPrunerUtils.collateStepExplainInfo(this, context, prunedRs, pruningCtx);
         return prunedRs;
     }
 

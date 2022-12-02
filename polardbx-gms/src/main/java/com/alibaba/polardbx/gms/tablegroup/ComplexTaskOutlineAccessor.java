@@ -86,7 +86,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
     private static final String GET_UNFINISH_COMPLEX_TASK_BY_SCH_TB =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
             + " where status<>-1 and sub_task=1 and table_schema=? and object_name=?"
-            + "union all (select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
+            + " union all (select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
             + " where status<>-1 and sub_task=0 and job_id in "
             + "(select job_id from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
             + " where status<>-1 and sub_task=1 and table_schema=? and object_name=?))";

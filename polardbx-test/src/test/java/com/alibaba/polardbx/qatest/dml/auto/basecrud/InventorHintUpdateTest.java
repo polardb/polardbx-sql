@@ -26,7 +26,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
@@ -40,8 +39,6 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableName.MUlTI_DB_MUTIL_T
 import static com.alibaba.polardbx.qatest.data.ExecuteTableName.ONE_DB_MUTIL_TB_SUFFIX;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
 import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare;
-
-@Ignore
 
 public class InventorHintUpdateTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
@@ -75,7 +72,6 @@ public class InventorHintUpdateTest extends AutoCrudBasedLockTestCase {
     public static Object[] transPolicy() {
         return new Object[] {
             ITransactionPolicy.XA,
-            //ITransactionPolicy.BEST_EFFORT,
             ITransactionPolicy.ALLOW_READ_CROSS_DB,
             ITransactionPolicy.TSO
         };
@@ -114,6 +110,10 @@ public class InventorHintUpdateTest extends AutoCrudBasedLockTestCase {
      */
     @Test
     public void updateTestForInventorHint() throws Exception {
+        if (isGalaxy()) {
+            return;
+        }
+
         String sql = String.format(
             "update %s %s set integer_test = -1 where pk = 1", inventorHint, baseOneTableName);
 
@@ -126,8 +126,7 @@ public class InventorHintUpdateTest extends AutoCrudBasedLockTestCase {
         JdbcUtil.setTxPolicy(transPolicy, tddlConnection);
         if (transPolicy == ITransactionPolicy.XA) {
             // 共享readview不支持inventory hint
-            // 当前默认关闭共享readview特性
-//            JdbcUtil.setShareReadView(false, tddlConnection);
+            JdbcUtil.setShareReadView(false, tddlConnection);
         }
         if (inventorHint.contains(HintType.INVENTORY_TARGET_AFFECT_ROW.getValue())) {
 
@@ -242,7 +241,7 @@ public class InventorHintUpdateTest extends AutoCrudBasedLockTestCase {
 
     @Test
     public void updateWithCommitHintOnShardingTable2() throws Exception {
-        if (baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
+        if (isGalaxy() || baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
             return;
         }
 

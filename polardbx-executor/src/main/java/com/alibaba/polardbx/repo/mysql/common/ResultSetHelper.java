@@ -23,6 +23,8 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -30,6 +32,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ResultSetHelper {
+
+    public static List<Object[]> filterOutHiddenColumns(String schemaName, String tableName, List<Object[]> rows,
+                                                        ExecutionContext ec) {
+        List<Object[]> result = new ArrayList<>();
+        for (Object[] row: rows) {
+            if (!TableColumnUtils.isHiddenColumn(ec, schemaName, tableName, String.valueOf(row[0]))) {
+                result.add(row);
+            }
+        }
+        return result;
+    }
 
     public static void reorgLogicalColumnOrder(String schemaName, String tableName, List<Object[]> rows,
                                                ArrayResultCursor resultCursor) {

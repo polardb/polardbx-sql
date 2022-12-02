@@ -20,10 +20,5 @@ package com.alibaba.polardbx.gms.config;
  * @author youtianyu
  */
 public interface VariableConfigManager {
-    //    void registerDbReceiver(String dbName, VariableConfigReceiver dbReceiver);
-//
-//    void unRegisterDbReceiver(String dbName);
-    void registerVariableReceiver(VariableConfigReceiver variableConfigReceiver);
-
     void reloadVariableConfig();
 }

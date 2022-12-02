@@ -1,0 +1,268 @@
+-
+  sql: |
+    select id from t1 group by name;
+
+  plan: |
+    select `id` as `id`
+    from `t1`
+    group by `name`
+
+-
+  sql: |
+    select id from t1 s where s.name=7;
+
+  plan: |
+    select `id` as `id`
+    from `t1` as `s`
+    where (`s`.`name` = ?)
+
+-
+  sql: |
+    select id from t1 s where s.name=7;
+
+  plan: |
+    select `id` as `id`
+    from `t1` as `s`
+    where (`s`.`name` = ?)
+
+-
+  sql: |
+    select * from t1 s where s.name=7;
+
+  plan: |
+    select *
+    from `t1` as `s`
+    where (`s`.`name` = ?)
+
+-
+  sql: |
+    select * from t1 s where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t1` as `s`
+    where (`s`.`name` = convert(? using 'utf8'))
+
+-
+  sql: |
+    select * from t2 s where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t2` as `s`
+    where (`s`.`name` = convert(? using 'gbk'))
+
+-
+  sql: |
+    select * from t3 s where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t3` as `s`
+    where (`s`.`name` = convert(? using 'latin1'))
+
+-
+  sql: |
+    select * from t5 s where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t5` as `s`
+    where (`s`.`name` = convert(? using 'gbk'))
+
+-
+  sql: |
+    select * from t5 s , t1 on s.id=t1.id where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t5` as `s`,
+    `t1` on (`s`.`id` = `t1`.`id`)
+    where (`s`.`name` = convert(? using 'gbk'))
+
+-
+  sql: |
+    select * from t6 s , t1 on s.id=t1.id where s.name= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t6` as `s`,
+    `t1` on (`s`.`id` = `t1`.`id`)
+    where (`s`.`name` = convert(? using 'utf16le'))
+
+-
+  sql: |
+    insert into t6 values (1, '123', 123);
+
+  plan: |
+    insert
+    into `t6`
+    values(?, ?, ?)
+
+-
+  sql: |
+    insert into t6 values (1, x'123E', 123);
+
+  plan: |
+    insert
+    into `t6`
+    values(?, convert(? using 'utf16le'), ?)
+
+-
+  sql: |
+    select _utf8 x'123E';
+
+  plan: |
+    select ? as `123e`
+
+-
+  sql: |
+    insert into t6 (id, name) values (1, x'123E'), (2, x'223E'), (3, x'323E');
+
+  plan: |
+    insert
+    into `t6` (`id`, `name`)
+    values(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le'))
+
+-
+  sql: |
+    replace into t6 (id, name) values (1, x'123E'), (2, x'223E'), (3, x'323E');
+
+  plan: |
+    replace
+    into `t6` (`id`, `name`)
+    values(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le'))
+
+-
+  sql: |
+    update t6 set name = '7' where id = 7;
+
+  plan: |
+    update `t6` set `name` = ?
+    where (`id` = ?)
+
+-
+  sql: |
+    update t6 set name = x'12E1' where id = x'E11E';
+
+  plan: |
+    update `t6` set `name` = convert(? using 'utf16le')
+    where (`id` = ?)
+
+-
+  sql: |
+    insert into t6 select * from t5 where t5.name= x'13';
+
+  plan: |
+    insert
+    into `t6`
+    (select *
+    from `t5`
+    where (`t5`.`name` = convert(? using 'gbk')))
+
+-
+  sql: |
+    select * from t5 s where s.blobfield= x'E58891E7BD9AE6B688E781ADE588B6E5BAA6';
+
+  plan: |
+    select *
+    from `t5` as `s`
+    where (`s`.`blobfield` = cast(? as binary))
+
+-
+  sql: |
+    update t5 set blobfield = x'12E1' where id = x'E11E';
+
+  plan: |
+    update `t5` set `blobfield` = cast(? as binary)
+    where (`id` = ?)
+
+-
+  sql: |
+    select * from t5 where id in ('5', '6', '8');
+
+  plan: |
+    select *
+    from `t5`
+    where (`id` in (?, ?, ?))
+-
+  sql: |
+    select * from t5 where id in (x'5E', x'6E', x'8E');
+
+  plan: |
+    select *
+    from `t5`
+    where (`id` in (?, ?, ?))
+
+-
+  sql: |
+    select * from t5 where name in (x'5E', x'6E', x'8E');
+
+  plan: |
+    select *
+    from `t5`
+    where (`name` in (convert(? using 'gbk'), convert(? using 'gbk'), convert(? using 'gbk')))
+-
+  sql: |
+    select * from t5 where id in (x'5E', x'6E', x'8E');
+
+  plan: |
+    select *
+    from `t5`
+    where (`id` in (?, ?, ?))
+
+#-
+#  sql: |
+#    select 0xE58891E7BD9AE6B688E781ADE588B6E5BAA6;
+#
+#  plan: |
+#    select convert(? using 'utf8') as `0xe58891e7bd9ae6b688e781ade588b6e5baa6`
+
+-
+  sql: |
+    select 7;
+
+  plan: |
+    select ? as `7`
+
+-
+  sql: |
+    select * from t6 s where s.name != x'13';
+
+  plan: |
+    select *
+    from `t6` as `s`
+    where (`s`.`name` <> convert(? using 'utf16le'))
+
+-
+  sql: |
+    select * from t6 s where s.name between x'13' and '78';
+
+  plan: |
+    select *
+    from `t6` as `s`
+    where (`s`.`name` between (convert(? using 'utf16le')) and ?)
+
+-
+  sql: |
+    update t6 set name = 1 + x'12E1' where id = 1 + x'E11E';
+
+  plan: |
+    update `t6` set `name` = (? + ?)
+    where (`id` = (? + ?))
+
+-
+  sql: |
+    update optest.t6 set name = x'12E1' where id = x'E11E';
+
+  plan: |
+    update `optest`.`t6` set `name` = convert(? using 'utf16le')
+    where (`id` = ?)
+
+-
+  sql: |
+    update `optest`.`t6` set name = x'12E1' where id = x'E11E';
+
+  plan: |
+    update `optest`.`t6` set `name` = convert(? using 'utf16le')
+    where (`id` = ?)

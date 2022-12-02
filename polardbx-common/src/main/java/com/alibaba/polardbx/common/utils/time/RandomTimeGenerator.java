@@ -255,6 +255,9 @@ public class RandomTimeGenerator {
             .collect(Collectors.toList());
     }
 
+    /**
+     * Generate the valid datetime string to MySQL server.
+     */
     public static List<Object> generateValidDatetimeString(int n) {
         return IntStream.range(0, n)
             .mapToObj(
@@ -268,6 +271,30 @@ public class RandomTimeGenerator {
                     case 2:
                     default:
                         return generateStandardDatetime();
+                    }
+                }
+            )
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Generate the nullable datetime string to MySQL server.
+     */
+    public static List<Object> generateNullableDatetimeString(int n) {
+        return IntStream.range(0, n)
+            .mapToObj(
+                i -> {
+                    final int r = Math.abs(R.nextInt()) % 4;
+                    switch (r) {
+                    case 0:
+                        return generateNonStandardDateTime();
+                    case 1:
+                        return generateNoDelimiterStandardDatetime();
+                    case 2:
+                        return generateStandardDatetime();
+                    case 3:
+                    default:
+                        return null;
                     }
                 }
             )

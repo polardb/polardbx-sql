@@ -38,7 +38,7 @@ public class DrivingStreamTableScanSortExec extends ResumeTableScanSortExec {
     protected Chunk fetchChunk() {
         Chunk ret = super.fetchChunk();
         if (ret == null && isFinish) {
-            scanClient.cancelAllThreads();
+            scanClient.cancelAllThreads(false);
             resume();
         }
         return ret;

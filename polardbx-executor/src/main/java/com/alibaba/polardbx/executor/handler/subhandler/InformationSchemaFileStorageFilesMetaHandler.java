@@ -76,7 +76,7 @@ public class InformationSchemaFileStorageFilesMetaHandler extends BaseVirtualVie
                 continue;
             }
 
-            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine);
+            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine, false);
             if (group != null) {
                 handleEngine(engine, executionContext, cursor);
             }

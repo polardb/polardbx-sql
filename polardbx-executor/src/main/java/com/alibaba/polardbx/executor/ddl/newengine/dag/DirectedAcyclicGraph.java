@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.dag;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import org.apache.commons.collections.CollectionUtils;
@@ -108,64 +109,62 @@ public class DirectedAcyclicGraph {
 
     /**
      * append another DAG into current DAG
-     * @param graph
      */
     public synchronized void appendGraph(DirectedAcyclicGraph graph) {
-        synchronized (graph){
+        synchronized (graph) {
             Set<Vertex> outSet = getAllZeroOutDegreeVertexes();
             Set<Vertex> inSet = graph.getAllZeroInDegreeVertexes();
 
             addGraph(graph);
-            for(Vertex out: outSet){
-                for(Vertex in: inSet){
+            for (Vertex out : outSet) {
+                for (Vertex in : inSet) {
                     addEdge(out, in);
                 }
             }
         }
     }
 
-    public synchronized void appendGraphAfter(Vertex vertex, DirectedAcyclicGraph graph){
-        if(vertex == null || !vertexes.contains(vertex)){
+    public synchronized void appendGraphAfter(Vertex vertex, DirectedAcyclicGraph graph) {
+        if (vertex == null || !vertexes.contains(vertex)) {
             throw new IllegalArgumentException("DdlTask not found");
         }
-        synchronized (graph){
+        synchronized (graph) {
             Set<Vertex> inSet = graph.getAllZeroInDegreeVertexes();
 
             addGraph(graph);
-            for(Vertex in: inSet){
+            for (Vertex in : inSet) {
                 addEdge(vertex, in);
             }
         }
     }
 
-    public synchronized Set<Vertex> getAllZeroInDegreeVertexes(){
+    public synchronized Set<Vertex> getAllZeroInDegreeVertexes() {
         Set<Vertex> result = ConcurrentHashMap.newKeySet();
-        if(CollectionUtils.isEmpty(vertexes)){
+        if (CollectionUtils.isEmpty(vertexes)) {
             return result;
         }
         result.addAll(vertexes);
-        for(Edge e: edges){
-            if(result.contains(e.target)){
+        for (Edge e : edges) {
+            if (result.contains(e.target)) {
                 result.remove(e.target);
             }
         }
         return result;
     }
 
-    public synchronized Set<Vertex> getAllZeroOutDegreeVertexes(){
+    public synchronized Set<Vertex> getAllZeroOutDegreeVertexes() {
         Set<Vertex> result = ConcurrentHashMap.newKeySet();
-        if(CollectionUtils.isEmpty(vertexes)){
+        if (CollectionUtils.isEmpty(vertexes)) {
             return result;
         }
         result.addAll(vertexes);
-        for(Edge e: edges){
-            if(result.contains(e.source)){
+        for (Edge e : edges) {
+            if (result.contains(e.source)) {
                 result.remove(e.source);
             }
         }
         return result;
     }
-
 
     /**
      * reverse all edges
@@ -320,7 +319,7 @@ public class DirectedAcyclicGraph {
         dag.append("digraph G {\n");
         for (Vertex v : vertexes) {
             dag.append(String.format("%s [shape=record  label=\"{taskId:%s|name:%s}\"];",
-            v.object.hashCode(), v.object.getTaskId(), v.object.getName()) + "\n");
+                v.object.hashCode(), v.object.getTaskId(), v.object.getName()) + "\n");
         }
         for (Edge e : edges) {
             dag.append(String.format("%s -> %s\n", e.source.hashCode(), e.target.hashCode()));
@@ -352,6 +351,94 @@ public class DirectedAcyclicGraph {
     public synchronized void clear() {
         vertexes.clear();
         edges.clear();
+    }
+
+    public synchronized void removeRedundancyRelations() {
+        List<Pair<Vertex, Vertex>> redundancyRelations = findRedundancyRelations();
+        for (Pair<Vertex,Vertex> pair: redundancyRelations) {
+            removeEdge(pair.getKey().object, pair.getValue().object);
+        }
+    }
+    private synchronized List<Pair<Vertex, Vertex>> findRedundancyRelations() {
+        Map<Vertex, Map<Vertex, Integer>> connectivityMatrix = new HashMap<>();
+        List<Pair<Vertex, Vertex>> redundancyRelations = new ArrayList<>();
+        for (Edge edge : edges) {
+            //1->2, 2->3
+            //cur:1->3
+            if (connectivityMatrix.containsKey(edge.source) && connectivityMatrix.get(edge.source).containsKey(edge.target)) {
+                Pair<Vertex, Vertex> pair = new Pair<>(edge.source, edge.target);
+                redundancyRelations.add(pair);
+            } else {
+                //1)the edge which source/target is edge.source
+                //2)the edge which source/target is edge.target
+                //the connectivity may be change when add edge
+                for (Map.Entry<Vertex, Map<Vertex, Integer>> entry : connectivityMatrix.entrySet()) {
+                    if (entry.getValue().containsKey(edge.source)) {
+                        if (entry.getValue().containsKey(edge.target)) {
+                            // 1->2, 1->3
+                            // cur: 2->3
+                            // remove 1->3
+                            Pair<Vertex, Vertex> pair = new Pair<>(entry.getKey(), edge.target);
+                            redundancyRelations.add(pair);
+                        } else {
+                            entry.getValue().put(edge.target, new Integer(1));
+                            if (connectivityMatrix.containsKey(edge.target)) {
+                                for (Map.Entry<Vertex, Integer> entry1 :connectivityMatrix.get(edge.target).entrySet()) {
+                                    entry.getValue().put(entry1.getKey(), entry1.getValue() + 1);
+                                }
+                            }
+                            //1->2, 1->3, 4->2
+                            //cur: 3->4
+                            //remove:1->2
+                            if (connectivityMatrix.containsKey(edge.target)) {
+                                for (Map.Entry<Vertex,Integer> entry1 : connectivityMatrix.get(edge.target).entrySet()) {
+                                    if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                        Pair<Vertex, Vertex> pair = new Pair<>(entry.getKey(), entry1.getKey());
+                                        redundancyRelations.add(pair);
+                                    }
+                                }
+                            }
+                        }
+                    } else if (entry.getValue().containsKey(edge.target)) {
+                        if (connectivityMatrix.containsKey(edge.source)) {
+                            for (Map.Entry<Vertex,Integer> entry1 : connectivityMatrix.get(edge.source).entrySet()) {
+                                if (entry.getKey().equals(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                    Pair<Vertex, Vertex> pair = new Pair<>(edge.source, edge.target);
+                                    redundancyRelations.add(pair);
+                                }
+                            }
+                        }
+                    } else if (entry.getKey().equals(edge.source)) {
+                        //4->2, 3->2
+                        //cur:4->3
+                        //remove 4->2
+                        if (connectivityMatrix.containsKey(edge.target)) {
+                            for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.target).entrySet()) {
+                                if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                    Pair<Vertex, Vertex> pair = new Pair<>(entry.getKey(), entry1.getKey());
+                                    redundancyRelations.add(pair);
+                                }
+                            }
+                        }
+                    } else if (entry.getKey().equals(edge.target)) {
+                        if (connectivityMatrix.containsKey(edge.source)) {
+                            for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.source).entrySet()) {
+                                if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                    Pair<Vertex, Vertex> pair = new Pair<>(edge.source, entry1.getKey());
+                                    redundancyRelations.add(pair);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!connectivityMatrix.containsKey(edge.source)) {
+                    connectivityMatrix.computeIfAbsent(edge.source, o-> new HashMap<>()).put(edge.target, new Integer(1));
+                } else {
+                    connectivityMatrix.get(edge.source).put(edge.target, new Integer(1));
+                }
+            }
+        }
+        return redundancyRelations;
     }
 
     public synchronized boolean isEmpty() {

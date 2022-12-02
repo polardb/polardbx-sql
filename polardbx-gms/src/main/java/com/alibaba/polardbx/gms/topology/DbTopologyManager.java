@@ -38,10 +38,14 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
+import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockRecord;
+import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.util.AppNameUtil;
 import com.alibaba.polardbx.gms.util.GmsJdbcUtil;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
@@ -52,6 +56,7 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
@@ -123,7 +128,9 @@ public class DbTopologyManager {
             String[] storageInstList = propVal.split(",");
             for (String storageInstId : storageInstList) {
                 if (storageInstId != null && !storageInstId.isEmpty()) {
-                    singleGroupStorageInstList.add(storageInstId);
+                    if (!singleGroupStorageInstList.contains(storageInstId)) {
+                        singleGroupStorageInstList.add(storageInstId);
+                    }
                 }
             }
         }
@@ -286,7 +293,12 @@ public class DbTopologyManager {
                     hasDbConfig = true;
                 } else if (dbInfo.dbStatus == DbInfoRecord.DB_STATUS_DROPPING) {
                     // call dropLogicalDb to clean env, and then continue to creating new db
-                    dropLogicalDbWithConn(dbName, true, metaDbConn, metaDbLockConn, createDbInfo.socketTimeout);
+                    long ts;
+                    int BITS_LOGICAL_TIME = 22;
+                    ts = System.currentTimeMillis() << BITS_LOGICAL_TIME;
+
+                    dropLogicalDbWithConn(dbName, true, metaDbConn, metaDbLockConn, createDbInfo.socketTimeout, ts,
+                        false);
                     hasDbConfig = false;
                 }
             }
@@ -336,7 +348,8 @@ public class DbTopologyManager {
     }
 
     protected static void dropLogicalDbWithConn(String dbName, boolean isDropIfExists, Connection metaDbConn,
-                                                Connection metaDbLockConn, long socketTimeout) throws SQLException {
+                                                Connection metaDbLockConn, long socketTimeout, long ts,
+                                                boolean allowDropForce) throws SQLException {
 
         // acquire MetaDb Lock by for update, to avoiding concurrent create & drop databases
         metaDbLockConn.setAutoCommit(false);
@@ -346,6 +359,20 @@ public class DbTopologyManager {
             // throw exception
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
                 String.format("Get metaDb lock timeout during drop db[%s], please retry", dbName));
+        }
+
+        if (!allowDropForce) {
+            if (checkDbExists(dbName)) {
+                if (!tryAcquireLock(dbName)) {
+                    String recommends = getAcquireRecommends(dbName);
+                    if (StringUtils.isEmpty(recommends)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                            "Drop database not allowed when scale-in/out");
+                    }
+                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                        "Drop database not allowed. " + recommends);
+                }
+            }
         }
 
         // ---- check if logical db exists ----
@@ -381,11 +408,7 @@ public class DbTopologyManager {
                 String.format("Drop db error, db[%s] does not exist", dbName));
         }
 
-
-        long ts;
-        int BITS_LOGICAL_TIME = 22;
-        ts = System.currentTimeMillis() << BITS_LOGICAL_TIME;
-
+        // TODO(shengyu): delete cross schema ddl.
         fileStoreDestroy(dbInfo.dbName, ts);
 
         // ---- update db_status=dropping to running by trx  ----
@@ -429,14 +452,8 @@ public class DbTopologyManager {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection();
             Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
 
-            DdlEngineTaskAccessor accessor = new DdlEngineTaskAccessor();
-            accessor.setConnection(metaDbConn);
-            if (!dropDbInfo.isAllowDropInScale() && accessor.hasOngoingTask(dbName, moveGroupTaskName)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                    "Drop database not allowed when scale-in/out");
-            }
-
-            dropLogicalDbWithConn(dbName, isDropIfExists, metaDbConn, metaDbLockConn, socketTimeout);
+            dropLogicalDbWithConn(dbName, isDropIfExists, metaDbConn, metaDbLockConn, socketTimeout, dropDbInfo.getTs(),
+                dropDbInfo.isAllowDropForce());
 
             // release meta db lock
             LockUtil.releaseMetaDbLockByCommit(metaDbLockConn);
@@ -444,6 +461,21 @@ public class DbTopologyManager {
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
         }
+    }
+
+    private static boolean tryAcquireLock(String dbName) {
+        PersistentReadWriteLock readWriteLock = PersistentReadWriteLock.create();
+        final String resourceName = LockUtil.genRebalanceResourceName(RebalanceTarget.DATABASE, dbName);
+        final String resourceDBName = LockUtil.genForbidDropResourceName(dbName);
+        final String owner = resourceName;
+        return readWriteLock.tryWriteLockBatch(dbName, owner, Sets.newHashSet(resourceName, resourceDBName));
+    }
+
+    private static String getAcquireRecommends(String dbName) {
+        PersistentReadWriteLock readWriteLock = PersistentReadWriteLock.create();
+        final String resourceDBName = LockUtil.genForbidDropResourceName(dbName);
+        List<ReadWriteLockRecord> records = readWriteLock.queryByResource(Sets.newHashSet(resourceDBName));
+        return readWriteLock.toRecommend(records, Sets.newHashSet(resourceDBName));
     }
 
     /**
@@ -1105,6 +1137,16 @@ public class DbTopologyManager {
             GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
             accessor.setConnection(metaDbConn);
             return accessor.getGroupDetailInfoByDbNameAndStorageInstId(dbName, storageInstId);
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static List<DbGroupInfoRecord> getAllDbGroupInfoRecordByInstId(String dbName, String storageInstId) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
+            accessor.setConnection(metaDbConn);
+            return accessor.getAllPhyDbNameByInstId(dbName, storageInstId);
         } catch (SQLException e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -2064,6 +2106,15 @@ public class DbTopologyManager {
     }
 
     public static Connection getConnectionForStorage(String storageInstId) {
+        return getConnectionForStorage(storageInstId, -1);
+    }
+
+    public static Connection getConnectionForStorage(String storageInstId, int socketTimeout) {
+        return getConnectionForStorage(storageInstId, GmsJdbcUtil.DEFAULT_PHY_DB, socketTimeout);
+    }
+
+
+    public static Connection getConnectionForStorage(String storageInstId, String schema, int socketTimeout) {
         HaSwitchParams haSwitchParams = StorageHaManager.getInstance().getStorageHaSwitchParams(storageInstId);
         if (haSwitchParams == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
@@ -2075,9 +2126,9 @@ public class DbTopologyManager {
         String user = haSwitchParams.userName;
         String passwdEnc = haSwitchParams.passwdEnc;
         String storageConnProps = haSwitchParams.storageConnPoolConfig.connProps;
-        String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(-1, storageConnProps);
+        String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(socketTimeout, storageConnProps);
         return GmsJdbcUtil
-            .buildJdbcConnection(host, port, GmsJdbcUtil.DEFAULT_PHY_DB, user, passwdEnc, connProps);
+            .buildJdbcConnection(host, port, schema, user, passwdEnc, connProps);
     }
 
     public static Connection getConnectionForStorage(StorageInfoRecord storageInfoRecord) {
@@ -2262,7 +2313,8 @@ public class DbTopologyManager {
             List<FilesRecord> filesRecordList = tableInfoManager.queryFilesByLogicalSchema(schemaName);
             for (FilesRecord filesRecord : filesRecordList) {
                 if (filesRecord.getCommitTs() != null && filesRecord.getRemoveTs() == null) {
-                    FileStorageMetaStore fileStorageMetaStore = new FileStorageMetaStore(Engine.of(filesRecord.getEngine()));
+                    FileStorageMetaStore fileStorageMetaStore =
+                        new FileStorageMetaStore(Engine.of(filesRecord.getEngine()));
                     fileStorageMetaStore.setConnection(connection);
                     fileStorageMetaStore.updateFileRemoveTs(filesRecord.fileName, ts);
                 }

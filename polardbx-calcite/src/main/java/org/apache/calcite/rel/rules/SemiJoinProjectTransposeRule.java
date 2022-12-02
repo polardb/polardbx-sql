@@ -99,12 +99,15 @@ public class SemiJoinProjectTransposeRule extends RelOptRule {
     // expression; all projection expressions must be RexInputRefs,
     // otherwise, we wouldn't have created this semi-join.
 //    final List<Integer> newLeftKeys = new ArrayList<>();
-//    final List<Integer> leftKeys = logicalSemiJoin.getLeftKeys();
+    final List<Integer> leftKeys = logicalSemiJoin.getLeftKeys();
     final List<RexNode> projExprs = project.getProjects();
-//    for (int leftKey : leftKeys) {
+    for (int leftKey : leftKeys) {
+      if (!(projExprs.get(leftKey) instanceof RexInputRef) && logicalSemiJoin.isFromSetOp()) {
+        return;
+      }
 //      RexInputRef inputRef = (RexInputRef) projExprs.get(leftKey);
 //      newLeftKeys.add(inputRef.getIndex());
-//    }
+    }
 
     // convert the semijoin condition to reflect the LHS with the project
     // pulled up

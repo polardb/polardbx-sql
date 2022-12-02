@@ -75,7 +75,6 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
     public static Object[] transPolicy() {
         return new Object[] {
             ITransactionPolicy.XA,
-            // ITransactionPolicy.BEST_EFFORT,
             ITransactionPolicy.ALLOW_READ_CROSS_DB,
             ITransactionPolicy.TSO
         };
@@ -114,6 +113,10 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
      */
     @Test
     public void updateTestForInventorHint() throws Exception {
+        if (isGalaxy()) {
+            return;
+        }
+
         String sql = String.format(
             "update %s %s set integer_test = -1 where pk = 1", inventorHint, baseOneTableName);
 
@@ -126,8 +129,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
         JdbcUtil.setTxPolicy(transPolicy, tddlConnection);
         if (transPolicy == ITransactionPolicy.XA) {
             // 共享readview不支持inventory hint
-            // 当前默认关闭共享readview特性
-//            JdbcUtil.setShareReadView(false, tddlConnection);
+            JdbcUtil.setShareReadView(false, tddlConnection);
         }
         if (inventorHint.contains(HintType.INVENTORY_TARGET_AFFECT_ROW.getValue())) {
 
@@ -242,7 +244,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
 
     @Test
     public void updateWithCommitHintOnShardingTable2() throws Exception {
-        if (baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
+        if (isGalaxy() || baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
             return;
         }
 

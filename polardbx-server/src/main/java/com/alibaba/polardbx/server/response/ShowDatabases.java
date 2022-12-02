@@ -20,6 +20,7 @@ import com.alibaba.polardbx.CobarConfig;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -107,7 +108,7 @@ public class ShowDatabases {
             pc.isManaged());
     }
 
-    private static TreeSet<String> getSchemas(ServerConnection c) {
+    public static TreeSet<String> getSchemas(ServerConnection c) {
         return getSchemasInternal(c.getUser(),
             c.getHost(),
             c.getSchema(),

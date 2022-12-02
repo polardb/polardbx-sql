@@ -32,6 +32,16 @@ public enum DdlState {
     ROLLBACK_PAUSED,
     ROLLBACK_COMPLETED;
 
+    public static final Set<DdlState> ALL_STATES = EnumSet.of(
+        QUEUED,
+        RUNNING,
+        PAUSED,
+        COMPLETED,
+        ROLLBACK_RUNNING,
+        ROLLBACK_PAUSED,
+        ROLLBACK_COMPLETED
+    );
+
     public static final Set<DdlState> RUNNABLE = EnumSet.of(QUEUED, RUNNING, ROLLBACK_RUNNING);
 
     public static final Set<DdlState> TERMINATED = EnumSet.of(ROLLBACK_PAUSED, PAUSED);
@@ -74,13 +84,14 @@ public enum DdlState {
     public static final Map<DdlState, DdlState> PAUSE_JOB_STATE_TRANSFER =
         new ImmutableMap.Builder<DdlState, DdlState>()
             .put(DdlState.RUNNING, DdlState.PAUSED)
+            .put(DdlState.QUEUED, DdlState.PAUSED)
             .put(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_PAUSED)
             .build();
 
-    public static DdlState tryParse(String str, DdlState defaultState){
+    public static DdlState tryParse(String str, DdlState defaultState) {
         try {
             return valueOf(str);
-        }catch (Exception e){
+        } catch (Exception e) {
             return defaultState;
         }
     }

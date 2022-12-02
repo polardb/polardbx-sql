@@ -33,6 +33,8 @@ import java.sql.Connection;
 import java.util.Map;
 import java.util.Set;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+
 /**
  * created by ziyang.lb
  **/
@@ -70,6 +72,6 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlStmt, DdlType.ALTER_TABLEGROUP,
                 ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
-                executionContext.getExtraCmds(), true, targetTableTopology);
+                buildExtendParameter(executionContext), true, targetTableTopology);
     }
 }

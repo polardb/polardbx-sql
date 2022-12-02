@@ -124,8 +124,7 @@
       where a_uni_b.id=1
 
   plan: |
-
-    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a_uni_b`.`id` FROM (SELECT `a`.`id` FROM ? AS `a` WHERE (`a`.`name` = 'xx') UNION ALL SELECT `b`.`id` FROM ? AS `b` WHERE (`b`.`name` = 'xx')) AS `a_uni_b` WHERE (`a_uni_b`.`id` = 1)")
+    phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="select `a_uni_b`.`id` from (select `a`.`id` from ? as `a` where (`a`.`name` = 'xx') union all select `b`.`id` from ? as `b` where (`b`.`name` = 'xx')) as `a_uni_b` where (`a_uni_b`.`id` = 1)")
 
 - sql: |
     # subquery is union

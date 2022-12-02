@@ -33,7 +33,6 @@ import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.Pair;
@@ -57,8 +56,9 @@ public class ReplicateBroadcastModifyWriter extends BroadcastModifyWriter implem
     protected final TableMeta tableMeta;
 
     public ReplicateBroadcastModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                                          Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta) {
-        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping);
+                                          Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta,
+                                          boolean withoutPk) {
+        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping, withoutPk);
         this.tableMeta = tableMeta;
     }
 
@@ -144,11 +144,11 @@ public class ReplicateBroadcastModifyWriter extends BroadcastModifyWriter implem
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
         case UPDATE:
-            replicatedRelNode
-                .addAll(builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, replicatedShardResult));
+            replicatedRelNode.addAll(
+                builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, qn, replicatedShardResult, ec));
             break;
         case DELETE:
-            replicatedRelNode.addAll(builder.buildDeleteWithPk(modify, replicatedShardResult, ec));
+            replicatedRelNode.addAll(builder.buildDelete(modify, qn, replicatedShardResult, ec, withoutPk));
             break;
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());

@@ -50,7 +50,6 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_PARTIT
 /**
  * @author chenmo.cm
  */
-@Ignore("fix by ???")
 public class GsiBackfillConcurrentWriteTest extends DDLBaseNewDBTestCase {
 
     private static final String PRIMARY_TABLE_NAME = "gsi_concurrent_primary";
@@ -92,6 +91,9 @@ public class GsiBackfillConcurrentWriteTest extends DDLBaseNewDBTestCase {
                     final String insert = GSI_INSERTS.get(ThreadLocalRandom.current().nextInt(GSI_INSERTS.size()));
 
                     count += gsiExecuteUpdate(conn, mysqlConnection, insert, failedList, true, true);
+                    if (count >= 100000){
+                        break;
+                    }
                 } while (!stop.get());
 
                 System.out.println(Thread.currentThread().getName() + " quit after " + count + " records inserted");

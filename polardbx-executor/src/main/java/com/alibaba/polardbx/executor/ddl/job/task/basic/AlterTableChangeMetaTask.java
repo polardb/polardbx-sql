@@ -67,6 +67,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
 
     private SequenceBean sequenceBean;
 
+    private boolean onlineModifyColumnIndexTask;
+
     public AlterTableChangeMetaTask(String schemaName,
                                     String logicalTableName,
                                     String dbIndex,
@@ -89,7 +91,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
                                     boolean requireLogicalColumnOrder,
                                     String tableComment,
                                     String tableRowFormat,
-                                    SequenceBean sequenceBean) {
+                                    SequenceBean sequenceBean,
+                                    boolean onlineModifyColumnIndexTask) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -112,6 +115,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         this.tableComment = tableComment;
         this.tableRowFormat = tableRowFormat;
         this.sequenceBean = sequenceBean;
+        this.onlineModifyColumnIndexTask = onlineModifyColumnIndexTask;
     }
 
     @Override
@@ -125,18 +129,19 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
             isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, hasTimestampColumnDefault,
             binaryColumnDefaultValues, droppedIndexes, addedIndexes, addedIndexesWithoutNames, renamedIndexes,
             primaryKeyDropped, addedPrimaryKeyColumns, columnAfterAnother, requireLogicalColumnOrder, tableComment,
-            tableRowFormat, sequenceBean, executionContext);
-        List<String> alterColumnList = new ArrayList<>();
-        if (updatedColumns != null) {
-            alterColumnList.addAll(updatedColumns);
+            tableRowFormat, sequenceBean, onlineModifyColumnIndexTask, executionContext);
+
+        List<String> columnStatsRemoved = new ArrayList<>();
+        if (GeneralUtil.isNotEmpty(droppedColumns)) {
+            columnStatsRemoved.addAll(droppedColumns);
         }
-        if (changedColumns != null) {
-            alterColumnList.addAll(changedColumns.values());
+        if (GeneralUtil.isNotEmpty(updatedColumns)) {
+            columnStatsRemoved.addAll(updatedColumns);
         }
-        if (droppedColumns != null) {
-            alterColumnList.addAll(droppedColumns);
+        if (GeneralUtil.isNotEmpty(changedColumns)) {
+            changedColumns.keySet().stream().forEach(c -> columnStatsRemoved.add(c));
         }
-        CommonMetaChanger.alterTableColumnFinalOperationsOnSuccess(schemaName, logicalTableName, alterColumnList);
+        CommonMetaChanger.finalOperationsOnAlterTableSuccess(schemaName, logicalTableName, columnStatsRemoved);
     }
 
     @Override

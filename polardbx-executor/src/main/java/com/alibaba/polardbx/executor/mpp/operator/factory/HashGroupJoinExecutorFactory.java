@@ -59,6 +59,7 @@ public class HashGroupJoinExecutorFactory extends ExecutorFactory {
     private int rowCount;
 
     List<DataType> outputDataTypes;
+    List<DataType> joinOutputTypes;
 
     public HashGroupJoinExecutorFactory(HashGroupJoin hashAgg, int parallelism, int taskNumber,
                                         RexNode otherCond, RexNode equalCond, boolean maxOneRow,
@@ -71,6 +72,8 @@ public class HashGroupJoinExecutorFactory extends ExecutorFactory {
         this.equalCond = equalCond;
         this.maxOneRow = maxOneRow;
         this.outputDataTypes = CalciteUtils.getTypes(hashAgg.getRowType());
+        this.joinOutputTypes = CalciteUtils.getTypes(hashAgg.getJoinRowType());
+
     }
 
     @Override
@@ -132,6 +135,7 @@ public class HashGroupJoinExecutorFactory extends ExecutorFactory {
                 Executor exec =
                     new HashGroupJoinExec(outerInput, innerInput, hashAggJoin.getJoinType(),
                         outputDataTypes,
+                        joinOutputTypes,
                         maxOneRow,
                         joinKeys, otherCondition, null, groups, aggregators,
                         context,

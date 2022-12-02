@@ -53,8 +53,6 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectErrorAssert;
 import static com.google.common.truth.Truth.assertWithMessage;
 
-@RunWith(CommonCaseRunner.class)
-@FileStoreIgnore
 public class SelectGroupConcatTest extends AutoCrudBasedLockTestCase {
     private static final Log log = LogFactory.getLog(
         SelectGroupConcatTest.class);
@@ -693,8 +691,10 @@ public class SelectGroupConcatTest extends AutoCrudBasedLockTestCase {
             List<List<Object>> mysqlResults = JdbcUtil.getAllResult(mysqlRs);
             List<List<Object>> tddlResults = JdbcUtil.getAllResult(tddlRs);
             // 不允许为空结果集合
-            Assert.assertTrue("sql语句:" + sql + " 查询的结果集为空，请修改sql语句，保证有结果集", mysqlResults.size() != 0);
-            assertWithMessage(" 非顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + sql).that(mysqlResults)
+            Assert.assertTrue("sql语句:" + sql + " 查询的结果集为空，请修改sql语句，保证有结果集",
+                mysqlResults.size() != 0);
+            assertWithMessage(" 非顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + sql).that(
+                    mysqlResults)
                 .containsExactlyElementsIn(tddlResults);
 
         } catch (Exception e) {

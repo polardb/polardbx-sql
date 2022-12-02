@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -27,15 +28,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLReplaceStatement extends SQLStatementImpl {
-    protected boolean             lowPriority = false;
-    protected boolean             delayed     = false;
+    protected boolean lowPriority = false;
+    protected boolean delayed = false;
 
-    protected SQLExprTableSource  tableSource;
-    protected final List<SQLExpr> columns     = new ArrayList<SQLExpr>();
-    protected List<SQLInsertStatement.ValuesClause>  valuesList  = new ArrayList<SQLInsertStatement.ValuesClause>();
+    protected SQLExprTableSource tableSource;
+    protected final List<SQLExpr> columns = new ArrayList<SQLExpr>();
+    protected List<SQLInsertStatement.ValuesClause> valuesList = new ArrayList<SQLInsertStatement.ValuesClause>();
     protected SQLQueryExpr query;
 
-    protected List<SQLCommentHint>                hints;
+    protected List<SQLCommentHint> hints;
     protected List<SQLAssignItem> partitions;
 
     public SQLName getTableName() {
@@ -196,5 +197,10 @@ public class SQLReplaceStatement extends SQLStatementImpl {
 
     public List<SQLAssignItem> getPartitions() {
         return partitions;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.REPLACE;
     }
 }

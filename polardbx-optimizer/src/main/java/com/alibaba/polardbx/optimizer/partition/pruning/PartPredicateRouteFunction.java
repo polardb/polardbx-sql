@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionException;
+import com.alibaba.polardbx.optimizer.partition.exception.SubQueryDynamicValueNotReadyException;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCall;
@@ -229,7 +230,7 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
             PartitionField partFuncVal = PartitionPrunerUtils
                 .evalPartFuncVal(exprValPartField, partIntFunc, context, endpoints,
                     PartFieldAccessType.QUERY_PRUNING);
-            if (this.needMapInterval) {
+            if (this.needMapInterval && !isNonMonotonic) {
 
                 // leftEndPoint[0]=false => <
                 /**
@@ -294,11 +295,18 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
                 /**
                  *  when it is failed to compute its SearchDatumInfo because of 
                  *  unsupported type conversion exception,
-                 *  the SearchExprInfo should be treated as Always-True expr, 
+                 *  the SearchExprInfo should be ignore and
                  *  so generate a full scan bitset
                  */
                 return PartitionPrunerUtils.buildFullScanPartitionsBitSet(this.partInfo);
-
+            } else if (ex instanceof SubQueryDynamicValueNotReadyException) {
+                /**
+                 *  when it is failed to compute its SearchDatumInfo because of
+                 *  the not-ready subquery-dyanamic value,
+                 *  the SearchExprInfo should be ignore and
+                 *  so generate a full scan bitset
+                 */
+                return PartitionPrunerUtils.buildFullScanPartitionsBitSet(this.partInfo);
             } else {
                 throw ex;
             }

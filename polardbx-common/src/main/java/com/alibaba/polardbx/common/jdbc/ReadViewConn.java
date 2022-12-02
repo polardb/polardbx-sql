@@ -16,17 +16,40 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
-public abstract class ReadViewConn implements IConnection {
+import java.sql.SQLException;
 
-    private int readViewId = -1;
+public abstract class ReadViewConn implements IConnection {
+    /**
+     * Xid 缓存
+     * 避免重复构造 {@link com.alibaba.polardbx.transaction.utils.XAUtils.XATransInfo}
+     */
+    private String xid = null;
+
+    private boolean inShareReadView = false;
 
     @Override
-    public int getReadViewId() {
-        return readViewId;
+    public String getTrxXid() {
+        return xid;
     }
 
     @Override
-    public void setReadViewId(int readViewId) {
-        this.readViewId = readViewId;
+    public void setTrxXid(String xid) {
+        this.xid = xid;
+    }
+
+    @Override
+    public void setInShareReadView(boolean inShareReadView) {
+        this.inShareReadView = inShareReadView;
+    }
+
+    @Override
+    public boolean inShareReadView() {
+        return this.inShareReadView;
+    }
+
+    @Override
+    public void close() throws SQLException {
+        this.xid = null;
+        this.inShareReadView = false;
     }
 }

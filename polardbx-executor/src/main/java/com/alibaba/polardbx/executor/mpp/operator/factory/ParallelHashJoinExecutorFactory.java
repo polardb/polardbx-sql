@@ -96,7 +96,8 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
                 IExpression otherCondition = convertExpression(otherCond, context);
 
                 List<EquiJoinKey> joinKeys = EquiJoinUtils
-                    .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType());
+                    .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType(),
+                        true);
                 List<IExpression> antiJoinOperands = null;
                 if (operands != null && join.getJoinType() == JoinRelType.ANTI && !operands.isEmpty()) {
                     antiJoinOperands =

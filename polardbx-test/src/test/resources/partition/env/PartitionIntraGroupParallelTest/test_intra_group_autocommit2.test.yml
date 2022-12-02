@@ -1,0 +1,86 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+
+create global index idx_b on hash_tbl_bigint (`b`) PARTITION BY KEY(`b`) partitions 32;
+create global index idx_b on hash_tbl_bigint2 (`b`) PARTITION BY KEY(`b`) partitions 32;
+
+SET SESSION GROUP_PARALLELISM=4;
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+
+insert into bro_tbl_bigint values (2,200),(10,100);
+insert into sig_tbl_bigint values (2,200),(10,100);
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into bro_tbl_bigint2 values (2,200),(10,100);
+insert into sig_tbl_bigint2 values (2,200),(10,100);
+insert into hash_tbl_bigint2 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+
+## hash_tbl
+select * from hash_tbl_bigint where a=10 for update;
+update hash_tbl_bigint set b=10 where a=10;
+
+select * from hash_tbl_bigint where a=2 for update;
+update hash_tbl_bigint set b=2 where a=2;
+
+select * from hash_tbl_bigint where a=5 for update;
+update hash_tbl_bigint set b=5 where a=5;
+
+## sig_tbl
+select * from sig_tbl_bigint where a=10 for update;
+update sig_tbl_bigint set b=10 where a=10;
+
+select * from sig_tbl_bigint where a=2 for update;
+update sig_tbl_bigint set b=2 where a=2;
+
+select * from sig_tbl_bigint where a=5 for update;
+update sig_tbl_bigint set b=5 where a=5;
+
+## bro_tbl
+select * from bro_tbl_bigint where a=10 for update;
+update bro_tbl_bigint set b=10 where a=10;
+
+select * from bro_tbl_bigint where a=2 for update;
+update bro_tbl_bigint set b=2 where a=2;
+
+select * from bro_tbl_bigint where a=5 for update;
+update bro_tbl_bigint set b=5 where a=5;
+
+

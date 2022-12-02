@@ -76,6 +76,11 @@ public class RowChunksBuilder {
         return this;
     }
 
+    public RowChunksBuilder addChunk(Chunk chunk) {
+        chunks.add(chunk);
+        return this;
+    }
+
     public RowChunksBuilder addBlocksChunk(Block... blocks) {
         chunks.add(new Chunk(blocks));
         return this;

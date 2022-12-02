@@ -50,6 +50,8 @@ public class PolarPrivUtil {
     public static final String SHOW_VIEW_PRIV = "show_view_priv";
     public static final String CREATE_VIEW_PRIV = "create_view_priv";
     public static final String CREATE_USER_PRIV = "create_user_priv";
+    public static final String REPLICATION_SLAVE_PRIV = "replication_slave_priv";
+    public static final String REPLICATION_CLIENT_PRIV = "replication_client_priv";
     public static final String META_DB_PRIV = "meta_db_priv";
 
     public static final String DB_PRIV_TABLE = "db_priv";
@@ -325,5 +327,9 @@ public class PolarPrivUtil {
     public static int getCommonPrefixLength(String host1, String host2) {
         String prefix = StringUtils.getCommonPrefix(new String[] {host1, host2});
         return prefix.length();
+    }
+
+    public static boolean isPolarxRootUser(String user) {
+        return POLAR_ROOT.equalsIgnoreCase(user);
     }
 }

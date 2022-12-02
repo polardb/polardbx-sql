@@ -32,7 +32,6 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -81,10 +80,10 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
         PartPrunedResult prunedResult = null;
         if (tupleRouteInfo != null) {
             prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
-            phyPartInfos = prunedResult.getPrunedParttions();
+            phyPartInfos = prunedResult.getPrunedPartitions();
         } else {
             prunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, executionContext);
-            phyPartInfos = prunedResult.getPrunedParttions();
+            phyPartInfos = prunedResult.getPrunedPartitions();
         }
 
         String grpKey = null;

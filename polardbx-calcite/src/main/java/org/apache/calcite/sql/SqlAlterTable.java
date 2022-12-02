@@ -23,7 +23,10 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableChangeColumn;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableModifyColumn;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRenameTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatement;
@@ -33,11 +36,13 @@ import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.util.SqlString;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -58,6 +63,7 @@ public class SqlAlterTable extends SqlCreate {
     private final SqlTableOptions tableOptions;
     private final List<SqlAlterSpecification> alters;
     private final SqlIdentifier originTableName;
+    private final List<SqlIdentifier> objectNames;
 
     private List<String> logicalReferencedTables = null;
     private List<String> physicalReferencedTables = null;
@@ -65,7 +71,7 @@ public class SqlAlterTable extends SqlCreate {
     /**
      * Creates a SqlCreateIndex.
      */
-    public SqlAlterTable(SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
                          SqlTableOptions tableOptions, List<SqlAlterSpecification> alters, SqlParserPos pos) {
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.tableOptions = tableOptions;
@@ -74,11 +80,12 @@ public class SqlAlterTable extends SqlCreate {
         this.originTableName = tableName;
         this.sourceSql = sql;
         this.columnOpts = columnOpts;
+        this.objectNames = objectNames;
     }
 
-    public SqlAlterTable(SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
                          SqlParserPos pos) {
-        this(tableName, columnOpts, sql, null, null, pos);
+        this(objectNames, tableName, columnOpts, sql, null, null, pos);
     }
 
     private SequenceBean autoIncrement;
@@ -92,7 +99,10 @@ public class SqlAlterTable extends SqlCreate {
     }
 
     private SqlIdentifier newTableName;
+    //sourceSql maybe change
     private String sourceSql;
+    //originalSql is the same as what user input
+    private String originalSql;
 
     @Override
     public List<SqlNode> getOperandList() {
@@ -221,6 +231,14 @@ public class SqlAlterTable extends SqlCreate {
         return this.sourceSql;
     }
 
+    public String getOriginalSql() {
+        return originalSql;
+    }
+
+    public void setOriginalSql(String originalSql) {
+        this.originalSql = originalSql;
+    }
+
     public SqlString toSqlString(SqlDialect dialect) {
         String sql = prepare();
         return new SqlString(dialect, sql);
@@ -281,12 +299,46 @@ public class SqlAlterTable extends SqlCreate {
             newAlters.add(alterItem.replaceTableName(newTableName));
         }
 
-        return new SqlAlterTable(newTableName,
+        return new SqlAlterTable(objectNames, newTableName,
             new HashMap<>(columnOpts),
             sourceSql,
             tableOptions,
             newAlters,
             getParserPosition());
+    }
+
+    public SqlAlterTable removeAfterColumns() {
+        List<SqlAlterSpecification> newAlters = new ArrayList<>();
+
+        for (SqlAlterSpecification alterItem : getAlters()) {
+            newAlters.add(alterItem.removeAfterColumn());
+        }
+
+        SqlAlterTable sqlAlterTable = new SqlAlterTable(objectNames, null,
+            new HashMap<>(columnOpts),
+            genSourceSqlWithOutAfter(sourceSql),
+            tableOptions,
+            newAlters,
+            getParserPosition());
+        sqlAlterTable.setTargetTable(name);
+        sqlAlterTable.setAutoIncrement(autoIncrement);
+
+        return sqlAlterTable;
+    }
+
+    public static String genSourceSqlWithOutAfter(String sourceSql) {
+        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
+
+        for (SQLAlterTableItem item : stmt.getItems()) {
+            if (item instanceof MySqlAlterTableModifyColumn) {
+                ((MySqlAlterTableModifyColumn) item).setAfterColumn(null);
+            } else if (item instanceof MySqlAlterTableChangeColumn) {
+                ((MySqlAlterTableChangeColumn) item).setAfterColumn(null);
+            }
+        }
+
+        return stmt.toString();
     }
 
     public boolean addIndex() {
@@ -335,6 +387,10 @@ public class SqlAlterTable extends SqlCreate {
 
     public void setPhysicalReferencedTables(List<String> physicalReferencedTables) {
         this.physicalReferencedTables = physicalReferencedTables;
+    }
+
+    public List<SqlIdentifier> getObjectNames() {
+        return objectNames;
     }
 
     public boolean isExchangePartition() {

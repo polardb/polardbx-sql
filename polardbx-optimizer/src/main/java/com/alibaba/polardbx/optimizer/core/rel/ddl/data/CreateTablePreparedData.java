@@ -49,6 +49,7 @@ public class CreateTablePreparedData extends DdlPreparedData {
     private SqlNode partitioning;
     private SqlNode localPartitioning;
     private SqlNode tableGroupName;
+    private SqlNode joinGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
 
     private String tableDefinition;
@@ -70,4 +71,8 @@ public class CreateTablePreparedData extends DdlPreparedData {
      * if Create gsi table
      */
     private boolean gsi;
+
+    private String sourceSql;
+    private boolean needToGetTableGroupLock;
+
 }

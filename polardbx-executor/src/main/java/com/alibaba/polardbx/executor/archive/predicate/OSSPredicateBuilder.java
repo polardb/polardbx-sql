@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64Utils;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
@@ -38,6 +39,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -72,7 +74,10 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
     Map<String, ColumnMeta> columnsWithSortKey;
     SessionProperties sessionProperties;
 
-    public OSSPredicateBuilder(Parameters parameters, List<RelDataTypeField> filterFields, Map<Integer, BloomFilterInfo> bloomFilterInfoMap, List<RelDataTypeField> runtimeFilterFields, TableMeta tableMeta, SessionProperties sessionProperties) {
+    public OSSPredicateBuilder(Parameters parameters, List<RelDataTypeField> filterFields,
+                               Map<Integer, BloomFilterInfo> bloomFilterInfoMap,
+                               List<RelDataTypeField> runtimeFilterFields, TableMeta tableMeta,
+                               SessionProperties sessionProperties) {
         super(false);
         this.builder = SearchArgumentFactory.newBuilder();
         this.parameters = parameters;
@@ -92,7 +97,7 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
     }
 
     public String[] columns() {
-        return this.columns.toArray(new String[]{});
+        return this.columns.toArray(new String[] {});
     }
 
     public SearchArgument build() {
@@ -104,42 +109,42 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         boolean valid = false;
         SqlKind kind = call.op.kind;
         switch (kind) {
-            case AND:
-                valid = visitAnd(call);
-                break;
-            case OR:
-                valid = visitOr(call);
-                break;
-            case NOT:
-                valid = visitNot(call);
-                break;
-            case EQUALS:
-                valid = visitBinary(call, (s, t, objects) -> builder.equals(s, t, objects[0]));
-                break;
-            case LESS_THAN:
-                valid = visitBinary(call, (s, t, objects) -> builder.lessThan(s, t, objects[0]));
-                break;
-            case LESS_THAN_OR_EQUAL:
-                valid = visitBinary(call, (s, t, objects) -> builder.lessThanEquals(s, t, objects[0]));
-                break;
-            case GREATER_THAN:
-                valid = visitBinary(call, (s, t, objects) -> builder.greaterThan(s, t, objects[0]));
-                break;
-            case GREATER_THAN_OR_EQUAL:
-                valid = visitBinary(call, (s, t, objects) -> builder.greaterThanEquals(s, t, objects[0]));
-                break;
-            case BETWEEN:
-                valid = visitBetween(call);
-                break;
-            case IN:
-                valid = visitIn(call);
-                break;
-            case IS_NULL:
-                valid = visitIsNull(call);
-                break;
-            case RUNTIME_FILTER:
-                valid = visitRuntimeFilter(call);
-                break;
+        case AND:
+            valid = visitAnd(call);
+            break;
+        case OR:
+            valid = visitOr(call);
+            break;
+        case NOT:
+            valid = visitNot(call);
+            break;
+        case EQUALS:
+            valid = visitBinary(call, (s, t, objects) -> builder.equals(s, t, objects[0]));
+            break;
+        case LESS_THAN:
+            valid = visitBinary(call, (s, t, objects) -> builder.lessThan(s, t, objects[0]));
+            break;
+        case LESS_THAN_OR_EQUAL:
+            valid = visitBinary(call, (s, t, objects) -> builder.lessThanEquals(s, t, objects[0]));
+            break;
+        case GREATER_THAN:
+            valid = visitBinary(call, (s, t, objects) -> builder.greaterThan(s, t, objects[0]));
+            break;
+        case GREATER_THAN_OR_EQUAL:
+            valid = visitBinary(call, (s, t, objects) -> builder.greaterThanEquals(s, t, objects[0]));
+            break;
+        case BETWEEN:
+            valid = visitBetween(call);
+            break;
+        case IN:
+            valid = visitIn(call);
+            break;
+        case IS_NULL:
+            valid = visitIsNull(call);
+            break;
+        case RUNTIME_FILTER:
+            valid = visitRuntimeFilter(call);
+            break;
         }
         return valid;
     }
@@ -151,7 +156,8 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         if (call.getOperands().get(0) instanceof RexInputRef && call.getOperands().get(1) instanceof RexDynamicParam) {
             field = (RexInputRef) call.getOperands().get(0);
             dynamicParam = (RexDynamicParam) call.getOperands().get(1);
-        } else if (call.getOperands().get(1) instanceof RexInputRef && call.getOperands().get(0) instanceof RexDynamicParam
+        } else if (call.getOperands().get(1) instanceof RexInputRef && call.getOperands()
+            .get(0) instanceof RexDynamicParam
             && call.getOperator().getKind() == SqlKind.EQUALS) {
             field = (RexInputRef) call.getOperands().get(1);
             dynamicParam = (RexDynamicParam) call.getOperands().get(0);
@@ -174,7 +180,7 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType =  columnsWithSortKey.get(columnName).getDataType();
+            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
@@ -182,96 +188,101 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         }
 
         switch (typeName) {
-            case TINYINT:
-            case TINYINT_UNSIGNED:
-            case SMALLINT:
-            case SMALLINT_UNSIGNED:
-            case MEDIUMINT:
-            case MEDIUMINT_UNSIGNED:
-            case INTEGER:
-            case INTEGER_UNSIGNED:
-            case BIGINT:
-                if (value instanceof Number) {
-                    applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[]{((Number) value).longValue()});
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
+        case TINYINT:
+        case TINYINT_UNSIGNED:
+        case SMALLINT:
+        case SMALLINT_UNSIGNED:
+        case MEDIUMINT:
+        case MEDIUMINT_UNSIGNED:
+        case INTEGER:
+        case INTEGER_UNSIGNED:
+        case BIGINT:
+            if (value instanceof Number) {
+                applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[] {((Number) value).longValue()});
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case BIGINT_UNSIGNED:
+            if (value instanceof Number) {
+                applier.apply(columnName, PredicateLeaf.Type.LONG,
+                    new Object[] {((Number) value).longValue() ^ UInt64Utils.FLIP_MASK});
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DOUBLE:
+        case FLOAT:
+            if (value instanceof Number) {
+                applier.apply(columnName, PredicateLeaf.Type.FLOAT, new Object[] {((Number) value).doubleValue()});
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case VARCHAR:
+        case CHAR:
+            if (value instanceof String && redundantColumn != null && preciseDataType != null) {
+                // use sort key to prune
+                String pruneValue = makeSortKeyString(value, (SliceType) preciseDataType);
+                applier.apply(redundantColumn, PredicateLeaf.Type.STRING, new Object[] {pruneValue});
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DECIMAL:
+            if (value instanceof Number) {
+                DataType dataType = tableMeta.getColumn(columnName).getDataType();
+                byte[] bytes = OssOrcFilePruner.decimalToBin(Decimal.fromString(value.toString()).getDecimalStructure(),
+                    dataType.getPrecision(), dataType.getScale());
+                applier.apply(columnName, PredicateLeaf.Type.STRING,
+                    new Object[] {new String(bytes, StandardCharsets.UTF_8)});
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case TIMESTAMP:
+            MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
+                value,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (mysqlDateTime == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case BIGINT_UNSIGNED:
-                if (value instanceof Number) {
-                    applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[]{((Number) value).longValue() ^ UInt64Utils.FLIP_MASK});
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
+            }
+            TimeParseStatus timeParseStatus = new TimeParseStatus();
+            MySQLTimeVal timeVal =
+                MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus,
+                    sessionProperties.getTimezone());
+            if (timeVal == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case DOUBLE:
-            case FLOAT:
-                if (value instanceof Number) {
-                    applier.apply(columnName, PredicateLeaf.Type.FLOAT, new Object[]{((Number) value).doubleValue()});
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
+            }
+            applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[] {XResultUtil.timeValToLong(timeVal)});
+            return true;
+        case DATE:
+        case DATETIME:
+            MysqlDateTime t = DataTypeUtil.toMySQLDatetimeByFlags(
+                value,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (t == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case VARCHAR:
-            case CHAR:
-                if (value instanceof String && redundantColumn != null && preciseDataType != null) {
-                    // use sort key to prune
-                    String pruneValue = makeSortKeyString(value, (SliceType) preciseDataType);
-                    applier.apply(redundantColumn, PredicateLeaf.Type.STRING, new Object[]{pruneValue});
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
+            }
+            long packed = TimeStorage.writeTimestamp(t);
+            applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[] {packed});
+            return true;
+        case TIME:
+            MysqlDateTime time = DataTypeUtil.toMySQLDatetimeByFlags(
+                value,
+                Types.TIME,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (time == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case DECIMAL:
-                if (value instanceof Number) {
-                    DataType dataType = tableMeta.getColumn(columnName).getDataType();
-                    byte[] bytes = OssOrcFilePruner.decimalToBin(Decimal.fromString(value.toString()).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
-                    applier.apply(columnName, PredicateLeaf.Type.STRING, new Object[]{new String(bytes, StandardCharsets.UTF_8)});
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case TIMESTAMP:
-                MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (mysqlDateTime == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                TimeParseStatus timeParseStatus = new TimeParseStatus();
-                MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus, sessionProperties.getTimezone());
-                if (timeVal == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[]{XResultUtil.timeValToLong(timeVal)});
-                return true;
-            case DATE:
-            case DATETIME:
-                MysqlDateTime t = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (t == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packed = TimeStorage.writeTimestamp(t);
-                applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[]{packed});
-                return true;
-            case TIME:
-                MysqlDateTime time = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value,
-                        Types.TIME,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (time == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packedTime = TimeStorage.writeTime(time);
-                applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[]{packedTime});
-                return true;
-            default:
+            }
+            long packedTime = TimeStorage.writeTime(time);
+            applier.apply(columnName, PredicateLeaf.Type.LONG, new Object[] {packedTime});
+            return true;
+        default:
         }
 
         return false;
@@ -306,7 +317,7 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType =  columnsWithSortKey.get(columnName).getDataType();
+            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
@@ -314,138 +325,159 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         }
 
         switch (typeName) {
-            case TINYINT:
-            case TINYINT_UNSIGNED:
-            case SMALLINT:
-            case SMALLINT_UNSIGNED:
-            case MEDIUMINT:
-            case MEDIUMINT_UNSIGNED:
-            case INTEGER:
-            case INTEGER_UNSIGNED:
-            case BIGINT:
-                if (value1 instanceof Number && value2 instanceof Number) {
-                    builder.between(columnName, PredicateLeaf.Type.LONG, ((Number) value1).longValue(),
-                            ((Number) value2).longValue());
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case BIGINT_UNSIGNED:
-                if (value1 instanceof Number && value2 instanceof Number) {
-                    builder.between(columnName, PredicateLeaf.Type.LONG, ((Number) value1).longValue()  ^ UInt64Utils.FLIP_MASK,
-                            ((Number) value2).longValue()  ^ UInt64Utils.FLIP_MASK);
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case DOUBLE:
-            case FLOAT:
-                if (value1 instanceof Number && value2 instanceof Number) {
-                    builder.between(columnName, PredicateLeaf.Type.FLOAT, ((Number) value1).doubleValue(),
-                            ((Number) value2).doubleValue());
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case VARCHAR:
-            case CHAR:
-                if (value1 instanceof String && value2 instanceof String && redundantColumn != null && preciseDataType != null) {
-                    // use sort key to prune
-                    String pruneValue1 = makeSortKeyString(value1, (SliceType) preciseDataType);
-                    String pruneValue2 = makeSortKeyString(value2, (SliceType) preciseDataType);
+        case TINYINT:
+        case TINYINT_UNSIGNED:
+        case SMALLINT:
+        case SMALLINT_UNSIGNED:
+        case MEDIUMINT:
+        case MEDIUMINT_UNSIGNED:
+        case INTEGER:
+        case INTEGER_UNSIGNED:
+        case BIGINT:
+            if (value1 instanceof Number && value2 instanceof Number) {
+                builder.between(columnName, PredicateLeaf.Type.LONG, ((Number) value1).longValue(),
+                    ((Number) value2).longValue());
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case BIGINT_UNSIGNED:
+            if (value1 instanceof Number && value2 instanceof Number) {
+                builder.between(columnName, PredicateLeaf.Type.LONG,
+                    ((Number) value1).longValue() ^ UInt64Utils.FLIP_MASK,
+                    ((Number) value2).longValue() ^ UInt64Utils.FLIP_MASK);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DOUBLE:
+        case FLOAT:
+            if (value1 instanceof Number && value2 instanceof Number) {
+                builder.between(columnName, PredicateLeaf.Type.FLOAT, ((Number) value1).doubleValue(),
+                    ((Number) value2).doubleValue());
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case VARCHAR:
+        case CHAR:
+            if (value1 instanceof String && value2 instanceof String && redundantColumn != null
+                && preciseDataType != null) {
+                // use sort key to prune
+                String pruneValue1 = makeSortKeyString(value1, (SliceType) preciseDataType);
+                String pruneValue2 = makeSortKeyString(value2, (SliceType) preciseDataType);
 
-                    builder.between(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1, pruneValue2);
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case DECIMAL:
-                if (value1 instanceof Number && value2 instanceof Number) {
-                    DataType dataType = tableMeta.getColumn(columnName).getDataType();
-                    byte[] bytes1 = OssOrcFilePruner.decimalToBin(Decimal.fromString(value1.toString()).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
-                    byte[] bytes2 = OssOrcFilePruner.decimalToBin(Decimal.fromString(value2.toString()).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
+                builder.between(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1, pruneValue2);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DECIMAL:
+            if (value1 instanceof Number && value2 instanceof Number) {
+                DataType dataType = tableMeta.getColumn(columnName).getDataType();
+                byte[] bytes1 =
+                    OssOrcFilePruner.decimalToBin(Decimal.fromString(value1.toString()).getDecimalStructure(),
+                        dataType.getPrecision(), dataType.getScale());
+                byte[] bytes2 =
+                    OssOrcFilePruner.decimalToBin(Decimal.fromString(value2.toString()).getDecimalStructure(),
+                        dataType.getPrecision(), dataType.getScale());
 
-                    builder.between(columnName, PredicateLeaf.Type.STRING, new String(bytes1, StandardCharsets.UTF_8), new String(bytes2, StandardCharsets.UTF_8));
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
+                builder.between(columnName, PredicateLeaf.Type.STRING, new String(bytes1, StandardCharsets.UTF_8),
+                    new String(bytes2, StandardCharsets.UTF_8));
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case TIMESTAMP:
+            MysqlDateTime mysqlDateTime1 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value1,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (mysqlDateTime1 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case TIMESTAMP:
-                MysqlDateTime mysqlDateTime1 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value1,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (mysqlDateTime1 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                TimeParseStatus timeParseStatus1 = new TimeParseStatus();
-                MySQLTimeVal timeVal1 = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime1, timeParseStatus1, sessionProperties.getTimezone());
-                if (timeVal1 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
+            }
+            TimeParseStatus timeParseStatus1 = new TimeParseStatus();
+            MySQLTimeVal timeVal1 =
+                MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime1, timeParseStatus1,
+                    sessionProperties.getTimezone());
+            if (timeVal1 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                return true;
+            }
 
-                MysqlDateTime mysqlDateTime2 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value2,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (mysqlDateTime2 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                TimeParseStatus timeParseStatus2 = new TimeParseStatus();
-                MySQLTimeVal timeVal2 = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime2, timeParseStatus2, sessionProperties.getTimezone());
-                if (timeVal2 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
+            MysqlDateTime mysqlDateTime2 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value2,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (mysqlDateTime2 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                return true;
+            }
+            TimeParseStatus timeParseStatus2 = new TimeParseStatus();
+            MySQLTimeVal timeVal2 =
+                MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime2, timeParseStatus2,
+                    sessionProperties.getTimezone());
+            if (timeVal2 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                return true;
+            }
 
-                builder.between(columnName, PredicateLeaf.Type.LONG, XResultUtil.timeValToLong(timeVal1), XResultUtil.timeValToLong(timeVal2));
+            builder.between(columnName, PredicateLeaf.Type.LONG, XResultUtil.timeValToLong(timeVal1),
+                XResultUtil.timeValToLong(timeVal2));
+            return true;
+        case DATE:
+        case DATETIME:
+            MysqlDateTime t1 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value1,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (t1 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case DATE:
-            case DATETIME:
-                MysqlDateTime t1 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value1,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (t1 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packed1 = TimeStorage.writeTimestamp(t1);
-                MysqlDateTime t2 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value2,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (t2 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packed2 = TimeStorage.writeTimestamp(t2);
-                builder.between(columnName, PredicateLeaf.Type.LONG, packed1, packed2);
+            }
+            long packed1 = TimeStorage.writeTimestamp(t1);
+            MysqlDateTime t2 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value2,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (t2 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            case TIME:
-                MysqlDateTime time1 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value1,
-                        Types.TIME,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (time1 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packedTime1 = TimeStorage.writeTimestamp(time1);
-                MysqlDateTime time2 = DataTypeUtil.toMySQLDatetimeByFlags(
-                        value2,
-                        Types.TIME,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                if (time2 == null) {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                    return true;
-                }
-                long packedTime2 = TimeStorage.writeTimestamp(time2);
-                builder.between(columnName, PredicateLeaf.Type.LONG, packedTime1, packedTime2);
+            }
+            long packed2 = TimeStorage.writeTimestamp(t2);
+            builder.between(columnName, PredicateLeaf.Type.LONG, packed1, packed2);
+            return true;
+        case TIME:
+            MysqlDateTime time1 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value1,
+                Types.TIME,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (time1 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
                 return true;
-            default:
+            }
+            long packedTime1 = TimeStorage.writeTimestamp(time1);
+            MysqlDateTime time2 = DataTypeUtil.toMySQLDatetimeByFlags(
+                value2,
+                Types.TIME,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+            if (time2 == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                return true;
+            }
+            long packedTime2 = TimeStorage.writeTimestamp(time2);
+            builder.between(columnName, PredicateLeaf.Type.LONG, packedTime1, packedTime2);
+            return true;
+        default:
         }
 
         return false;
+    }
+
+    private boolean checkInClass(List<Object> objects, Class clazz) {
+        for (Object obj : objects) {
+            if (!clazz.isInstance(obj)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean visitIn(RexCall call) {
@@ -460,16 +492,25 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         RexInputRef field = (RexInputRef) call.getOperands().get(0);
         RexCall inRexCall = ((RexCall) call.getOperands().get(1));
 
-        if (inRexCall.getOperands().size() > 10) {
+        if (inRexCall.getOperands().size() > 1) {
             builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
             return true;
         }
-
-        if (!inRexCall.getOperands().stream().allMatch(x -> x instanceof RexDynamicParam)) {
+        if (!(inRexCall.getOperands().get(0) instanceof RexDynamicParam)) {
             return false;
         }
+        RexDynamicParam para = (RexDynamicParam) inRexCall.getOperands().get(0);
 
-        List<RexDynamicParam> dynamicParamList = inRexCall.getOperands().stream().map(x -> (RexDynamicParam) x).collect(Collectors.toList());
+        Object value = parameters.getCurrentParameter().get(para.getIndex() + 1).getValue();
+        if (!(value instanceof RawString)) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
+        List<Object> paramList = ((RawString) value).getObjList();
+        if (paramList.size() > 10) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
 
         String columnName = filterFields.get(field.getIndex()).getName();
         SqlTypeName typeName = field.getType().getSqlTypeName();
@@ -483,124 +524,138 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType =  columnsWithSortKey.get(columnName).getDataType();
+            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
             }
         }
         switch (typeName) {
-            case TINYINT:
-            case TINYINT_UNSIGNED:
-            case SMALLINT:
-            case SMALLINT_UNSIGNED:
-            case MEDIUMINT:
-            case MEDIUMINT_UNSIGNED:
-            case INTEGER:
-            case INTEGER_UNSIGNED:
-            case BIGINT:
-                if (dynamicParamList.stream().allMatch(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue() instanceof Number)) {
-                    buildIn(columnName, PredicateLeaf.Type.LONG, dynamicParamList.stream().map(dynamicParam -> ((Number) (parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue())).longValue()).collect(Collectors.toList()));
-                } else {
+        case TINYINT:
+        case TINYINT_UNSIGNED:
+        case SMALLINT:
+        case SMALLINT_UNSIGNED:
+        case MEDIUMINT:
+        case MEDIUMINT_UNSIGNED:
+        case INTEGER:
+        case INTEGER_UNSIGNED:
+        case BIGINT:
+            if (checkInClass(paramList, Number.class)) {
+                List<Object> newPara = Lists.newArrayList();
+                for (Object obj : paramList) {
+                    newPara.add(((Number) obj).longValue());
+                }
+                buildIn(columnName, PredicateLeaf.Type.LONG, newPara);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case BIGINT_UNSIGNED:
+            if (checkInClass(paramList, Number.class)) {
+                List<Object> newPara = Lists.newArrayList();
+                for (Object obj : paramList) {
+                    newPara.add(((Number) obj).longValue() ^ UInt64Utils.FLIP_MASK);
+                }
+                buildIn(columnName, PredicateLeaf.Type.LONG, newPara);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DOUBLE:
+        case FLOAT:
+            if (checkInClass(paramList, Number.class)) {
+                List<Object> newPara = Lists.newArrayList();
+                for (Object obj : paramList) {
+                    newPara.add(((Number) obj).doubleValue());
+                }
+                buildIn(columnName, PredicateLeaf.Type.FLOAT, newPara);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case VARCHAR:
+        case CHAR:
+            if (redundantColumn != null && preciseDataType != null && checkInClass(paramList, String.class)) {
+                List<Object> newPara = Lists.newArrayList();
+                final SliceType sliceType = (SliceType) preciseDataType;
+                for (Object obj : paramList) {
+                    newPara.add(makeSortKeyString(obj, sliceType));
+                }
+                buildIn(redundantColumn, PredicateLeaf.Type.STRING, newPara);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case DECIMAL:
+            if (checkInClass(paramList, Number.class)) {
+                List<Object> newPara = Lists.newArrayList();
+                DataType dataType = tableMeta.getColumn(columnName).getDataType();
+                for (Object obj : paramList) {
+                    byte[] bytes =
+                        OssOrcFilePruner.decimalToBin(Decimal.fromString(obj.toString()).getDecimalStructure(),
+                            dataType.getPrecision(), dataType.getScale());
+                    newPara.add(new String(bytes, StandardCharsets.UTF_8));
+                }
+                buildIn(columnName, PredicateLeaf.Type.STRING, newPara);
+            } else {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            }
+            return true;
+        case TIMESTAMP:
+            List<Object> timestampLongValueParams = new ArrayList<>();
+            for (Object obj : paramList) {
+                MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
+                    obj,
+                    TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+                if (mysqlDateTime == null) {
                     builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                    return true;
                 }
-                return true;
-            case BIGINT_UNSIGNED:
-                if (dynamicParamList.stream().allMatch(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue() instanceof Number)) {
-                    buildIn(columnName, PredicateLeaf.Type.LONG, dynamicParamList.stream().map(dynamicParam -> ((Number) (parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue())).longValue() ^ UInt64Utils.FLIP_MASK).collect(Collectors.toList()));
-                } else {
+                TimeParseStatus timeParseStatus = new TimeParseStatus();
+                MySQLTimeVal timeVal =
+                    MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus,
+                        sessionProperties.getTimezone());
+                if (timeVal == null) {
                     builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                    return true;
                 }
-                return true;
-            case DOUBLE:
-            case FLOAT:
-                if (dynamicParamList.stream().allMatch(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue() instanceof Number)) {
-                    buildIn(columnName, PredicateLeaf.Type.FLOAT, dynamicParamList.stream().map(dynamicParam -> ((Number) (parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue())).doubleValue()).collect(Collectors.toList()));
-                } else {
+                timestampLongValueParams.add(XResultUtil.timeValToLong(timeVal));
+            }
+            buildIn(columnName, PredicateLeaf.Type.LONG, timestampLongValueParams);
+            return true;
+        case DATE:
+        case DATETIME:
+            List<Object> packedParams = new ArrayList<>();
+            for (Object obj : paramList) {
+                MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
+                    obj,
+                    TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+                if (mysqlDateTime == null) {
                     builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                    return true;
                 }
-                return true;
-            case VARCHAR:
-            case CHAR:
-                if (redundantColumn != null && preciseDataType != null &&
-                        dynamicParamList.stream().allMatch(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue() instanceof String)) {
-                    // prune by sort key
-                    final SliceType sliceType = (SliceType) preciseDataType;
-                    buildIn(redundantColumn, PredicateLeaf.Type.STRING, dynamicParamList.stream().map(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue())
-                            .map(value -> makeSortKeyString(value, sliceType))
-                            .collect(Collectors.toList()));
-                } else {
+                long packed = TimeStorage.writeTimestamp(mysqlDateTime);
+                packedParams.add(packed);
+            }
+            buildIn(columnName, PredicateLeaf.Type.LONG, packedParams);
+            return true;
+        case TIME:
+            List<Object> packedTimeParams = new ArrayList<>();
+            for (Object obj : paramList) {
+                MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
+                    obj,
+                    Types.TIME,
+                    TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+                if (mysqlDateTime == null) {
                     builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                    return true;
                 }
-                return true;
-            case DECIMAL:
-                if (dynamicParamList.stream().allMatch(dynamicParam -> parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue() instanceof Number)) {
-
-                    DataType dataType = tableMeta.getColumn(columnName).getDataType();
-
-                    buildIn(columnName, PredicateLeaf.Type.STRING, dynamicParamList.stream().map(dynamicParam -> {
-                            Number number = (Number) parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue();
-                            byte[] bytes = OssOrcFilePruner.decimalToBin(Decimal.fromString(number.toString()).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
-                            return new String(bytes, StandardCharsets.UTF_8);
-                        }
-                    ).collect(Collectors.toList()));
-                } else {
-                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                }
-                return true;
-            case TIMESTAMP:
-                List<Object> timestampLongValueParams = new ArrayList<>();
-                for (RexDynamicParam dynamicParam : dynamicParamList) {
-                    MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                            parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue(),
-                            TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                    if (mysqlDateTime == null) {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                        return true;
-                    }
-                    TimeParseStatus timeParseStatus = new TimeParseStatus();
-                    MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus, sessionProperties.getTimezone());
-                    if (timeVal == null) {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                        return true;
-                    }
-                    timestampLongValueParams.add(XResultUtil.timeValToLong(timeVal));
-                }
-                buildIn(columnName, PredicateLeaf.Type.LONG, timestampLongValueParams);
-                return true;
-            case DATE:
-            case DATETIME:
-                List<Object> packedParams = new ArrayList<>();
-                for (RexDynamicParam dynamicParam : dynamicParamList) {
-                    MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                            parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue(),
-                            TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                    if (mysqlDateTime == null) {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                        return true;
-                    }
-                    long packed = TimeStorage.writeTimestamp(mysqlDateTime);
-                    packedParams.add(packed);
-                }
-                buildIn(columnName, PredicateLeaf.Type.LONG, packedParams);
-                return true;
-            case TIME:
-                List<Object> packedTimeParams = new ArrayList<>();
-                for (RexDynamicParam dynamicParam : dynamicParamList) {
-                    MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                            parameters.getCurrentParameter().get(dynamicParam.getIndex() + 1).getValue(),
-                            Types.TIME,
-                            TimeParserFlags.FLAG_TIME_FUZZY_DATE);
-                    if (mysqlDateTime == null) {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
-                        return true;
-                    }
-                    long packed = TimeStorage.writeTimestamp(mysqlDateTime);
-                    packedTimeParams.add(packed);
-                }
-                buildIn(columnName, PredicateLeaf.Type.LONG, packedTimeParams);
-                return true;
-            default:
+                long packed = TimeStorage.writeTimestamp(mysqlDateTime);
+                packedTimeParams.add(packed);
+            }
+            buildIn(columnName, PredicateLeaf.Type.LONG, packedTimeParams);
+            return true;
+        default:
         }
 
         return false;
@@ -608,39 +663,45 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
 
     private void buildIn(String columnName, PredicateLeaf.Type type, List<Object> paramList) {
         switch (paramList.size()) {
-            case 1:
-                builder.in(columnName, type, paramList.get(0));
-                break;
-            case 2:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1));
-                break;
-            case 3:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2));
-                break;
-            case 4:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3));
-                break;
-            case 5:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4));
-                break;
-            case 6:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4), paramList.get(5));
-                break;
-            case 7:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4), paramList.get(5), paramList.get(6));
-                break;
-            case 8:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7));
-                break;
-            case 9:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7), paramList.get(8));
-                break;
-            case 10:
-                builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3), paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7), paramList.get(8), paramList.get(9));
-                break;
+        case 1:
+            builder.in(columnName, type, paramList.get(0));
+            break;
+        case 2:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1));
+            break;
+        case 3:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2));
+            break;
+        case 4:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3));
+            break;
+        case 5:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4));
+            break;
+        case 6:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4), paramList.get(5));
+            break;
+        case 7:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4), paramList.get(5), paramList.get(6));
+            break;
+        case 8:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7));
+            break;
+        case 9:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7), paramList.get(8));
+            break;
+        case 10:
+            builder.in(columnName, type, paramList.get(0), paramList.get(1), paramList.get(2), paramList.get(3),
+                paramList.get(4), paramList.get(5), paramList.get(6), paramList.get(7), paramList.get(8),
+                paramList.get(9));
+            break;
         }
     }
-
 
     private boolean visitAnd(RexCall call) {
         builder.startAnd();
@@ -709,7 +770,9 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         int runtimeFilterId = ((SqlRuntimeFilterFunction) call.getOperator()).getId();
         BloomFilterInfo bloomFilterInfo = bloomFilterInfoMap.get(runtimeFilterId);
 
-        List<MinMaxFilter> minMaxFilters = bloomFilterInfo.getMinMaxFilterInfoList().stream().map(x -> MinMaxFilter.from(x)).collect(Collectors.toList());
+        List<MinMaxFilter> minMaxFilters =
+            bloomFilterInfo.getMinMaxFilterInfoList().stream().map(x -> MinMaxFilter.from(x))
+                .collect(Collectors.toList());
 
         for (int i = 0; i < call.getOperands().size(); i++) {
             if (!(call.getOperands().get(i) instanceof RexInputRef)) {
@@ -731,111 +794,123 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
                 redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
                 columns.add(redundantColumn);
 
-                preciseDataType =  columnsWithSortKey.get(columnName).getDataType();
+                preciseDataType = columnsWithSortKey.get(columnName).getDataType();
                 if (!(preciseDataType instanceof SliceType)) {
                     // sort key unsupported
                     return false;
                 }
             }
             switch (typeName) {
-                case TINYINT:
-                case TINYINT_UNSIGNED:
-                case SMALLINT:
-                case SMALLINT_UNSIGNED:
-                case MEDIUMINT:
-                case MEDIUMINT_UNSIGNED:
-                case INTEGER:
-                case INTEGER_UNSIGNED:
-                case BIGINT:
-                    Number minNumber = minMaxFilter.getMinNumber();
-                    Number maxNumber = minMaxFilter.getMaxNumber();
-                    if (minNumber != null && maxNumber != null) {
-                        if (minNumber.longValue() == maxNumber.longValue()) {
-                            builder.equals(columnName, PredicateLeaf.Type.LONG, minNumber.longValue());
-                        } else {
-                            builder.between(columnName, PredicateLeaf.Type.LONG, minNumber.longValue(), maxNumber.longValue());
-                        }
+            case TINYINT:
+            case TINYINT_UNSIGNED:
+            case SMALLINT:
+            case SMALLINT_UNSIGNED:
+            case MEDIUMINT:
+            case MEDIUMINT_UNSIGNED:
+            case INTEGER:
+            case INTEGER_UNSIGNED:
+            case BIGINT:
+                Number minNumber = minMaxFilter.getMinNumber();
+                Number maxNumber = minMaxFilter.getMaxNumber();
+                if (minNumber != null && maxNumber != null) {
+                    if (minNumber.longValue() == maxNumber.longValue()) {
+                        builder.equals(columnName, PredicateLeaf.Type.LONG, minNumber.longValue());
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(columnName, PredicateLeaf.Type.LONG, minNumber.longValue(),
+                            maxNumber.longValue());
                     }
-                    return true;
-                case BIGINT_UNSIGNED:
-                    Number minNumberUnsigned = minMaxFilter.getMinNumber();
-                    Number maxNumberUnsigned = minMaxFilter.getMaxNumber();
-                    if (minNumberUnsigned != null && maxNumberUnsigned != null) {
-                        if (minNumberUnsigned.longValue() == maxNumberUnsigned.longValue()) {
-                            builder.equals(columnName, PredicateLeaf.Type.LONG, minNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK);
-                        } else {
-                            builder.between(columnName, PredicateLeaf.Type.LONG, minNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK, maxNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK);
-                        }
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            case BIGINT_UNSIGNED:
+                Number minNumberUnsigned = minMaxFilter.getMinNumber();
+                Number maxNumberUnsigned = minMaxFilter.getMaxNumber();
+                if (minNumberUnsigned != null && maxNumberUnsigned != null) {
+                    if (minNumberUnsigned.longValue() == maxNumberUnsigned.longValue()) {
+                        builder.equals(columnName, PredicateLeaf.Type.LONG,
+                            minNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK);
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(columnName, PredicateLeaf.Type.LONG,
+                            minNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK,
+                            maxNumberUnsigned.longValue() ^ UInt64Utils.FLIP_MASK);
                     }
-                    return true;
-                case FLOAT:
-                case DOUBLE:
-                    Number minDouble = minMaxFilter.getMinNumber();
-                    Number maxDouble = minMaxFilter.getMaxNumber();
-                    if (minDouble != null && maxDouble != null) {
-                        if (minDouble.doubleValue() == maxDouble.doubleValue()) {
-                            builder.equals(columnName, PredicateLeaf.Type.FLOAT, minDouble.doubleValue());
-                        } else {
-                            builder.between(columnName, PredicateLeaf.Type.FLOAT, minDouble.doubleValue(), maxDouble.doubleValue());
-                        }
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            case FLOAT:
+            case DOUBLE:
+                Number minDouble = minMaxFilter.getMinNumber();
+                Number maxDouble = minMaxFilter.getMaxNumber();
+                if (minDouble != null && maxDouble != null) {
+                    if (minDouble.doubleValue() == maxDouble.doubleValue()) {
+                        builder.equals(columnName, PredicateLeaf.Type.FLOAT, minDouble.doubleValue());
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(columnName, PredicateLeaf.Type.FLOAT, minDouble.doubleValue(),
+                            maxDouble.doubleValue());
                     }
-                    return true;
-                case VARCHAR:
-                case CHAR:
-                    String minString = minMaxFilter.getMinString();
-                    String maxString = minMaxFilter.getMaxString();
-                    if (minString != null && maxString != null && redundantColumn != null && preciseDataType != null) {
-                        // prune by sort key
-                        String pruneValue1 = makeSortKeyString(minString, (SliceType) preciseDataType);
-                        String pruneValue2 = makeSortKeyString(maxString, (SliceType) preciseDataType);
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            case VARCHAR:
+            case CHAR:
+                String minString = minMaxFilter.getMinString();
+                String maxString = minMaxFilter.getMaxString();
+                if (minString != null && maxString != null && redundantColumn != null && preciseDataType != null) {
+                    // prune by sort key
+                    String pruneValue1 = makeSortKeyString(minString, (SliceType) preciseDataType);
+                    String pruneValue2 = makeSortKeyString(maxString, (SliceType) preciseDataType);
 
-                        if (minString.equals(maxString)) {
-                            builder.equals(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1);
-                        } else {
-                            builder.between(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1, pruneValue2);
-                        }
+                    if (minString.equals(maxString)) {
+                        builder.equals(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1);
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(redundantColumn, PredicateLeaf.Type.STRING, pruneValue1, pruneValue2);
                     }
-                    return true;
-                case TIMESTAMP:
-                case DATETIME:
-                case DATE:
-                    Number minPacked = minMaxFilter.getMinNumber();
-                    Number maxPacked = minMaxFilter.getMaxNumber();
-                    if (minPacked != null && maxPacked != null) {
-                        if (minPacked.longValue() == maxPacked.longValue()) {
-                            builder.equals(columnName, PredicateLeaf.Type.LONG, minPacked.longValue());
-                        } else {
-                            builder.between(columnName, PredicateLeaf.Type.LONG, minPacked.longValue(), maxPacked.longValue());
-                        }
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            case TIMESTAMP:
+            case DATETIME:
+            case DATE:
+                Number minPacked = minMaxFilter.getMinNumber();
+                Number maxPacked = minMaxFilter.getMaxNumber();
+                if (minPacked != null && maxPacked != null) {
+                    if (minPacked.longValue() == maxPacked.longValue()) {
+                        builder.equals(columnName, PredicateLeaf.Type.LONG, minPacked.longValue());
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(columnName, PredicateLeaf.Type.LONG, minPacked.longValue(),
+                            maxPacked.longValue());
                     }
-                    return true;
-                case DECIMAL:
-                    String minDecimalString = minMaxFilter.getMinString();
-                    String maxDecimalString = minMaxFilter.getMaxString();
-                    if (minDecimalString != null && maxDecimalString != null) {
-                        DataType dataType = tableMeta.getColumn(columnName).getDataType();
-                        byte[] bytes1 = OssOrcFilePruner.decimalToBin(Decimal.fromString(minDecimalString).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
-                        byte[] bytes2 = OssOrcFilePruner.decimalToBin(Decimal.fromString(minDecimalString).getDecimalStructure(), dataType.getPrecision(), dataType.getScale());
-                        if (minDecimalString.equals(maxDecimalString)) {
-                            builder.equals(columnName, PredicateLeaf.Type.STRING, new String(bytes1, StandardCharsets.UTF_8));
-                        } else {
-                            builder.between(columnName, PredicateLeaf.Type.STRING, new String(bytes1, StandardCharsets.UTF_8), new String(bytes2, StandardCharsets.UTF_8));
-                        }
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            case DECIMAL:
+                String minDecimalString = minMaxFilter.getMinString();
+                String maxDecimalString = minMaxFilter.getMaxString();
+                if (minDecimalString != null && maxDecimalString != null) {
+                    DataType dataType = tableMeta.getColumn(columnName).getDataType();
+                    byte[] bytes1 =
+                        OssOrcFilePruner.decimalToBin(Decimal.fromString(minDecimalString).getDecimalStructure(),
+                            dataType.getPrecision(), dataType.getScale());
+                    byte[] bytes2 =
+                        OssOrcFilePruner.decimalToBin(Decimal.fromString(minDecimalString).getDecimalStructure(),
+                            dataType.getPrecision(), dataType.getScale());
+                    if (minDecimalString.equals(maxDecimalString)) {
+                        builder.equals(columnName, PredicateLeaf.Type.STRING,
+                            new String(bytes1, StandardCharsets.UTF_8));
                     } else {
-                        builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                        builder.between(columnName, PredicateLeaf.Type.STRING,
+                            new String(bytes1, StandardCharsets.UTF_8), new String(bytes2, StandardCharsets.UTF_8));
                     }
-                    return true;
-                default:
+                } else {
+                    builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                }
+                return true;
+            default:
             }
         }
 

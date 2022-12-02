@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.io.MoreFiles;
-import com.google.common.io.RecursiveDeleteOption;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
@@ -30,6 +27,9 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
+import com.google.common.collect.ImmutableList;
+import com.google.common.io.MoreFiles;
+import com.google.common.io.RecursiveDeleteOption;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -49,7 +49,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.alibaba.polardbx.executor.operator.util.RowChunksBuilder.rowChunksBuilder;
-import static io.airlift.concurrent.MoreFutures.getFutureValue;
 
 @RunWith(value = Parameterized.class)
 public class HybridHashJoinTest extends BaseExecTest {
@@ -138,14 +137,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -172,14 +171,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, true, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -213,14 +212,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -254,14 +253,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, false, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -293,14 +292,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -332,14 +331,14 @@ public class HybridHashJoinTest extends BaseExecTest {
         Executor outerInput = outerInputBuilder.buildBucketExec(bucketNum, partitionChannels);
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, context,
             1, 0,
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
             new ParallelHashJoinExec.Synchronizer(1, false),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, true, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -367,7 +366,7 @@ public class HybridHashJoinTest extends BaseExecTest {
             .buildBucketExec(bucketNum, ImmutableList.of(0));
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false)), null, null, context,
             partititionNum, 0,
             bucketNum, spillerFactory);
 
@@ -408,7 +407,7 @@ public class HybridHashJoinTest extends BaseExecTest {
             .buildBucketExec(bucketNum, ImmutableList.of(0));
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false)), null, null, context,
             partititionNum, 0,
             bucketNum, spillerFactory);
 
@@ -449,7 +448,7 @@ public class HybridHashJoinTest extends BaseExecTest {
             .buildBucketExec(bucketNum, ImmutableList.of(0));
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false)), null, null, context,
             partititionNum, 0,
             bucketNum, spillerFactory);
 
@@ -490,7 +489,7 @@ public class HybridHashJoinTest extends BaseExecTest {
             .buildBucketExec(bucketNum, ImmutableList.of(0));
 
         HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false, false)), null, null, context,
+            ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false)), null, null, context,
             partititionNum, 0,
             bucketNum, spillerFactory);
 
@@ -567,7 +566,7 @@ public class HybridHashJoinTest extends BaseExecTest {
                 MockExec innerInput = builders[i].buildBucketExec(bucketNum, ImmutableList.of(0));
                 MockExec outerInput = builders[j].buildBucketExec(bucketNum, ImmutableList.of(0));
                 HybridHashJoinExec joinExec = new HybridHashJoinExec(outerInput, innerInput, JoinRelType.INNER, false,
-                    ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false, false)), null, null, context,
+                    ImmutableList.of(new EquiJoinKey(0, 0, DataTypes.StringType, false)), null, null, context,
                     partititionNum, 0,
                     bucketNum, spillerFactory);
                 List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 1, true, 1);

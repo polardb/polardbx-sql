@@ -102,6 +102,16 @@ public class StringBlock extends AbstractCommonBlock {
     }
 
     @Override
+    public int checksum(int position) {
+        if (isNull(position)) {
+            return 0;
+        }
+        String str = getString(position);
+        byte[] rawBytes = str.getBytes();
+        return ChunkUtil.hashCode(rawBytes, 0, rawBytes.length);
+    }
+
+    @Override
     public boolean equals(int position, Block other, int otherPosition) {
         if (other instanceof StringBlock) {
             return equals(position, (StringBlock) other, otherPosition);

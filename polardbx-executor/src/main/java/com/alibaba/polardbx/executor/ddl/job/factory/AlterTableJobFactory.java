@@ -36,11 +36,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -110,7 +108,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
         DdlTask validateTask =
             this.validateExistence ?
                 new AlterTableValidateTask(schemaName, logicalTableName,
-                    logicalAlterTable.getSqlAlterTable().getSourceSql(), prepareData.getTableVersion(), tableGroupConfig) :
+                    logicalAlterTable.getSqlAlterTable().getSourceSql(), prepareData.getTableVersion(),
+                    tableGroupConfig) :
                 new EmptyTask(schemaName);
 
         final boolean isDropColumnOrDropIndex =
@@ -153,8 +152,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
         }
 
         physicalPlanData.setAlterTablePreparedData(prepareData);
-        DdlTask cdcDdlMarkTask =
-            this.alterGsiTable ? null : new CdcDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcDdlMarkTask = this.alterGsiTable || this.prepareData.isOnlineModifyColumnIndexTask() ? null :
+            new CdcDdlMarkTask(schemaName, physicalPlanData);
 
         DdlTask updateMetaTask = null;
         if (!this.repartition) {
@@ -181,7 +180,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 prepareData.isLogicalColumnOrder(),
                 prepareData.getTableComment(),
                 prepareData.getTableRowFormat(),
-                physicalPlanData.getSequence()
+                physicalPlanData.getSequence(),
+                prepareData.isOnlineModifyColumnIndexTask()
             );
         } else {
             // only add columns

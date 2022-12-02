@@ -263,7 +263,7 @@ public class OSSTableScanClient implements Closeable {
                 notifyBlockedCallers();
                 isFinished = true;
             } catch (Throwable t) {
-                setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, t));
+                setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, t.getMessage(), t));
             }
 
             // whatever

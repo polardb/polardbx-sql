@@ -46,7 +46,6 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testShowCreateLocalPartition1() {
         String createTableSql = String.format("CREATE TABLE %s (\n"
             + "    c1 bigint,\n"
@@ -74,7 +73,7 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
                 + "\t`gmt_modified` datetime NOT NULL,\n"
                 + "\tPRIMARY KEY (`gmt_modified`),\n"
                 + "\tKEY `auto_shard_key_c1` USING BTREE (`c1`)\n"
-                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_0900_ai_ci\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
                 + "PARTITION BY KEY(`c1`)\n"
                 + "PARTITIONS 4\n"
                 + "LOCAL PARTITION BY RANGE (gmt_modified)\n"

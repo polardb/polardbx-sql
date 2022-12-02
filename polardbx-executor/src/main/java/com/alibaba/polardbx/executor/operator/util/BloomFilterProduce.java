@@ -153,8 +153,7 @@ public class BloomFilterProduce {
                 try {
                     StatusResponseHandler.StatusResponse response =
                         client.execute(request, StatusResponseHandler.createStatusResponseHandler());
-                    logger.debug(String.format("Response for sending bloom filter: %s, %s", response.getStatusCode(),
-                        response.getStatusMessage()));
+                    logger.debug(String.format("Response for sending bloom filter: %s", response.getStatusCode()));
 
                 } catch (Exception e) {
                     logger.error("Failed to send http bloom fliter", e);

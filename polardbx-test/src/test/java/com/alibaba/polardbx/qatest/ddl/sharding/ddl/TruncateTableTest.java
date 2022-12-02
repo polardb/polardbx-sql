@@ -32,6 +32,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+
 public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
     private String testTableName = "truncate_test";
@@ -138,7 +141,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
      */
     @Test
     public void testTruncateShardDbTable() {
-        String tableName = schemaPrefix + testTableName + "_3";
+        String tableName = schemaPrefix + testTableName + "_4";
         dropTableIfExists(tableName);
 
         // 清除表
@@ -169,7 +172,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
      */
     @Test
     public void testTruncateShardDbTbTable() {
-        String tableName = schemaPrefix + testTableName + "_4";
+        String tableName = schemaPrefix + testTableName + "_5";
         dropTableIfExists(tableName);
         String sql = "create table " + tableName
             + " (id int, name varchar(20)) dbpartition by hash (id) tbpartition by hash(id) tbpartitions 2";
@@ -195,21 +198,31 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
      * @since 5.1.22
      */
     @Test
-    public void testTruncateShardDbTableWithGsi() {
+    public void testTruncateShardDbTableWithGsi() throws SQLException {
         // gsi not supported for cross db ddl
-        if (StringUtils.isNotBlank(tddlDatabase2)) {
+        if (crossSchema) {
             return;
         }
 
-        String tableName = schemaPrefix + gsiPrimaryTableName + "_2";
-        String indexTableName = schemaPrefix + gsiIndexTableName + "_2";
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_6";
+        String indexTableName1 = schemaPrefix + gsiIndexTableName + "_6_1";
+        String indexTableName2 = schemaPrefix + gsiIndexTableName + "_6_2";
+        String indexTableName3 = schemaPrefix + gsiIndexTableName + "_6_3";
+        String indexTableName4 = schemaPrefix + gsiIndexTableName + "_6_4";
         dropTableIfExists(tableName);
-        dropTableIfExists(indexTableName);
+        dropTableIfExists(indexTableName1);
+        dropTableIfExists(indexTableName2);
+        dropTableIfExists(indexTableName3);
+        dropTableIfExists(indexTableName4);
 
         String sql = gsiDisableStorageCheckHint + "create table " + tableName
-            + " (id int primary key, name varchar(20), global index "
-            + indexTableName
-            + " (name) dbpartition by hash(name)) dbpartition by hash(id)";
+            + " (id int primary key, "
+            + "name varchar(20), "
+            + "global index " + indexTableName1 + " (name) dbpartition by hash(name),"
+            + "global unique index " + indexTableName2 + " (name) dbpartition by hash(name),"
+            + "clustered index " + indexTableName3 + " (name) dbpartition by hash(name),"
+            + "clustered unique index " + indexTableName4 + " (name) dbpartition by hash(name)"
+            + ") dbpartition by hash(id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         if (supportXA) {
@@ -222,13 +235,19 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
-        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName));
+        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName1));
+        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName2));
+        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName3));
+        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName4));
 
         sql = gsiTruncateHint + "truncate table " + tableName;
 //        Assert.assertEquals(4, getExplainNum(sql));
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
-        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, indexTableName));
+        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, indexTableName1));
+        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, indexTableName2));
+        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, indexTableName3));
+        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, indexTableName4));
 
         if (supportXA) {
             sql = "insert into " + tableName
@@ -240,10 +259,16 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
-        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName));
+        checkGsi(tddlConnection, indexTableName1);
+        checkGsi(tddlConnection, indexTableName2);
+        checkGsi(tddlConnection, indexTableName3);
+        checkGsi(tddlConnection, indexTableName4);
 
         dropTableIfExists(tableName);
-        dropTableIfExists(indexTableName);
+        dropTableIfExists(indexTableName1);
+        dropTableIfExists(indexTableName2);
+        dropTableIfExists(indexTableName3);
+        dropTableIfExists(indexTableName4);
     }
 
     /**
@@ -252,18 +277,18 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     @Test
     public void testTruncateShardDbTableWithGsiShadowTestTableHint() {
         // gsi not supported for cross db ddl
-        if (StringUtils.isNotBlank(tddlDatabase2)) {
+        if (crossSchema) {
             return;
         }
 
         String testPrefixHint = "/* //1/ */";
         String testTablePrefix = "__test_";
 
-        String tableName = schemaPrefix + gsiPrimaryTableName + "_2";
-        String indexTableName = schemaPrefix + gsiIndexTableName + "_2";
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_7";
+        String indexTableName = schemaPrefix + gsiIndexTableName + "_7";
 
-        String tableNameWithPrefix = schemaPrefix + testTablePrefix + gsiPrimaryTableName + "_2";
-        String indexTableNameWithPrefix = schemaPrefix + testTablePrefix + gsiIndexTableName + "_2";
+        String tableNameWithPrefix = schemaPrefix + testTablePrefix + gsiPrimaryTableName + "_7";
+        String indexTableNameWithPrefix = schemaPrefix + testTablePrefix + gsiIndexTableName + "_7";
 
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
@@ -296,17 +321,17 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
      * @since 5.1.22
      */
     @Test
-    public void testTruncateShardDbTableWithGsiLongTableName() {
+    public void testTruncateShardDbTableWithGsiLongTableName() throws SQLException {
         // gsi not supported for cross db ddl
-        if (StringUtils.isNotBlank(tddlDatabase2)) {
+        if (crossSchema) {
             return;
         }
 
-        String tableName = schemaPrefix + gsiPrimaryTableName + "_3";
-        String indexTableName = schemaPrefix + gsiIndexTableName + "_3";
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_8";
+        String indexTableName = schemaPrefix + gsiIndexTableName + "_8";
 
-        tableName = StringUtils.rightPad(tableName, Limits.MAX_LENGTH_OF_LOGICAL_TABLE_NAME, 'p');
-        indexTableName = StringUtils.rightPad(indexTableName, Limits.MAX_LENGTH_OF_INDEX_NAME, 'p');
+        tableName = StringUtils.rightPad(tableName, Limits.MAX_LENGTH_OF_LOGICAL_TABLE_NAME, 'P');
+        indexTableName = StringUtils.rightPad(indexTableName, Limits.MAX_LENGTH_OF_INDEX_NAME, 'P');
 
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
@@ -345,7 +370,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
-        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName));
+        checkGsi(tddlConnection, indexTableName);
 
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
@@ -355,14 +380,14 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
      * @since 5.1.22
      */
     @Test
-    public void testTruncateShardDbTbTableWithGsi() {
+    public void testTruncateShardDbTbTableWithGsi() throws SQLException {
         // gsi not supported for cross db ddl
-        if (StringUtils.isNotBlank(tddlDatabase2)) {
+        if (crossSchema) {
             return;
         }
 
-        String tableName = schemaPrefix + gsiPrimaryTableName + "_3";
-        String indexTableName = schemaPrefix + gsiIndexTableName + "_3";
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_9";
+        String indexTableName = schemaPrefix + gsiIndexTableName + "_9";
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
 
@@ -401,7 +426,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
-        Assert.assertEquals(8, getDataNumFromTable(tddlConnection, indexTableName));
+        checkGsi(tddlConnection, indexTableName);
 
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
@@ -413,11 +438,11 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     @Test
     public void testTruncateShardDbTbTableWithGsiWhileInsert() throws Exception {
         // gsi not supported for cross db ddl
-        if (StringUtils.isNotBlank(tddlDatabase2)) {
+        if (crossSchema) {
             return;
         }
-        String tableName = schemaPrefix + gsiPrimaryTableName + "_3";
-        String indexTableName = schemaPrefix + gsiIndexTableName + "_3";
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_10";
+        String indexTableName = schemaPrefix + gsiIndexTableName + "_10";
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
         String sql = gsiDisableStorageCheckHint + "create table "
@@ -510,4 +535,81 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(indexTableName);
     }
 
+    @Test
+    public void testTruncateShardDbTbTableWithGsiBinaryDefaultValue() throws Exception {
+        // gsi not supported for cross db ddl
+        if (crossSchema) {
+            return;
+        }
+        String tableName = schemaPrefix + gsiPrimaryTableName + "_11";
+        String gsiName = schemaPrefix + gsiIndexTableName + "_11";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTable = String.format("create table %s ("
+            + "`pk` int primary key auto_increment, "
+            + "`bin_col` varbinary(20) default x'0A08080E10011894AB0E', "
+            + "`pad` varchar(20) default 'ggg' "
+            + ")", tableName);
+        String partitionDef = " dbpartition by hash(`pk`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String createGsi =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", gsiName,
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        // Use upsert to test default value on CN
+        String upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", tableName);
+        // Use insert to test default value on DN
+        String insert = String.format("insert into %s(`pk`) values (null)", tableName);
+        String select = String.format("select `bin_col` from %s", tableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        String truncate = String.format("truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, truncate);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testTableNoPk() throws SQLException {
+        if (crossSchema) {
+            return;
+        }
+        String tableName = schemaPrefix + testTableName + "_12";
+        String gsiName = schemaPrefix + gsiIndexTableName + "_12";
+        dropTableIfExists(tableName);
+        dropTableIfExists(gsiName);
+        String sql = "create table " + tableName
+            + " (id int,"
+            + "name varchar(20),"
+            + "global index " + gsiName + "(name) dbpartition by hash(name)) dbpartition by hash(id)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+        checkGsi(tddlConnection, gsiName);
+
+        sql = "truncate table " + tableName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
+        checkGsi(tddlConnection, gsiName);
+
+        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+        checkGsi(tddlConnection, gsiName);
+    }
 }

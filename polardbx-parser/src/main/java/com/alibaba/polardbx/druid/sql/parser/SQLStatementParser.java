@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.parser;
 
 import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
@@ -86,6 +87,88 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateRoleStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateSequenceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTriggerStatement;
+import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLDecimalExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLNCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLQueryExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddClusteringKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAlterColumn;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableArchivePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDeleteByCondition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDisableConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDisableKeys;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDisableLifecycle;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropColumnItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropPrimaryKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropSubpartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableKeys;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableLifecycle;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartitionSetProperties;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRecoverPartitions;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRename;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameColumn;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenamePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReplaceColumn;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetComment;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetLifecycle;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetOption;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSubpartitionAvailablePartitionNum;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableTouch;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableUnarchivePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterViewRenameStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAnalyzeTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCallStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCheck;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCloseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCommentStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateRoleStatement;
@@ -103,6 +186,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -129,6 +213,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLGrantStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertInto;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLObjectType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPartitionRef;
@@ -164,9 +249,82 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLUseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateUserStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDescribeStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropCatalogStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropProcedureStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropResourceGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropResourceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropRoleStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropSequenceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropServerStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableSpaceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTriggerStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropUserStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDumpStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLErrorLoggingClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExplainStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLFetchStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLForStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLGrantStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertInto;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLObjectType;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPartitionRef;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPrimaryKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPrivilegeItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeLogsStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeRecyclebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLRefreshMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReleaseSavePointStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReturnStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLRevokeStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLRollbackStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSavePointStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSetStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowColumnsStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowDatabasesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTableGroupsStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTablesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSubqueryTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTruncateStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnsupportedStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateSetItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLUseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.FullTextType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlCaseStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
@@ -186,6 +344,26 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MysqlDropFullT
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLAlterResourceGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLCreateResourceGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLListResourceGroupStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLShowPartitionsHeatmapStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPurgeTransStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateExternalCatalogStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlExplainPlanCacheStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlManageInstanceGroupStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlUpdatePlanCacheStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MysqlDropFullTextStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLAlterResourceGroupStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLCreateResourceGroupStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLListResourceGroupStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLShowPartitionsHeatmapStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
 import com.alibaba.polardbx.druid.util.FnvHash;
@@ -206,6 +384,23 @@ import static com.alibaba.polardbx.druid.sql.parser.Token.CASCADE;
 import static com.alibaba.polardbx.druid.sql.parser.Token.COMMA;
 import static com.alibaba.polardbx.druid.sql.parser.Token.DEFAULT;
 import static com.alibaba.polardbx.druid.sql.parser.Token.GROUP;
+import static com.alibaba.polardbx.druid.sql.parser.Token.INTO;
+import static com.alibaba.polardbx.druid.sql.parser.Token.LINE_COMMENT;
+import static com.alibaba.polardbx.druid.sql.parser.Token.LITERAL_CHARS;
+import static com.alibaba.polardbx.druid.sql.parser.Token.LPAREN;
+import static com.alibaba.polardbx.druid.sql.parser.Token.MULTI_LINE_COMMENT;
+import static com.alibaba.polardbx.druid.sql.parser.Token.RESTRICT;
+import static com.alibaba.polardbx.druid.sql.parser.Token.ROLE;
+import static com.alibaba.polardbx.druid.sql.parser.Token.RPAREN;
+import static com.alibaba.polardbx.druid.sql.parser.Token.SELECT;
+import static com.alibaba.polardbx.druid.sql.parser.Token.TABLE;
+import static com.alibaba.polardbx.druid.sql.parser.Token.ALL;
+import static com.alibaba.polardbx.druid.sql.parser.Token.ALTER;
+import static com.alibaba.polardbx.druid.sql.parser.Token.CASCADE;
+import static com.alibaba.polardbx.druid.sql.parser.Token.COMMA;
+import static com.alibaba.polardbx.druid.sql.parser.Token.DEFAULT;
+import static com.alibaba.polardbx.druid.sql.parser.Token.GROUP;
+import static com.alibaba.polardbx.druid.sql.parser.Token.INTO;
 import static com.alibaba.polardbx.druid.sql.parser.Token.LINE_COMMENT;
 import static com.alibaba.polardbx.druid.sql.parser.Token.LITERAL_CHARS;
 import static com.alibaba.polardbx.druid.sql.parser.Token.LPAREN;
@@ -291,8 +486,16 @@ public class SQLStatementParser extends SQLParser {
         parseStatementList(statementList, max, null);
     }
 
+    public void checkUnsupportedStatement(List<SQLStatement> statementList) {
+        for (SQLStatement statement : statementList) {
+            if (statement instanceof SQLUnsupportedStatement) {
+                throw new SQLUnsupportedException((SQLUnsupportedStatement) statement);
+            }
+        }
+    }
+
     public void parseStatementList(List<SQLStatement> statementList, int max, SQLObject parent) {
-        if ("select @@session.tx_read_only".equals(lexer.text)
+        if ("select @@session.tx_read_only".equals(lexer.text.toString())
             && lexer.token == Token.SELECT) {
             SQLSelect select = new SQLSelect();
             MySqlSelectQueryBlock queryBlock = new MySqlSelectQueryBlock();
@@ -361,7 +564,7 @@ public class SQLStatementParser extends SQLParser {
                     SQLStatement stmt = statementList.get(statementList.size() - 1);
                     stmt.addAfterComment(lexer.readAndResetComments());
                 }
-                return;
+                checkUnsupportedStatement(statementList);return;
             case SEMI: {
                 int line0 = lexer.getLine();
                 lexer.nextToken();
@@ -478,6 +681,7 @@ public class SQLStatementParser extends SQLParser {
                     stmt.setSourceLine(sourceLine);
                     stmt.setSourceLine(sourceColumn);
                     statementList.add(stmt);
+                    stmt.setParent(parent);
 //                    } else if(lexer.token ==  Token.ANALYZE) {
 //                        lexer.nextToken();
 //
@@ -554,6 +758,12 @@ public class SQLStatementParser extends SQLParser {
                 statementList.add(stmt);
                 continue;
             }
+            case LOOP: {
+                SQLStatement stmt = parseLoop();
+                stmt.setParent(parent);
+                statementList.add(stmt);
+                continue;
+            }
             case WHILE: {
                 SQLStatement stmt = parseWhile();
                 stmt.setParent(parent);
@@ -568,6 +778,16 @@ public class SQLStatementParser extends SQLParser {
             }
             case CASE: {
                 SQLStatement stmt = parseCase();
+                if (stmt instanceof MySqlCaseStatement) {
+                    for (MySqlCaseStatement.MySqlWhenStatement whenStatement : ((MySqlCaseStatement) stmt).getWhenList()) {
+                        whenStatement.setParent(stmt);
+                    }
+                    if (((MySqlCaseStatement) stmt).getElseItem() != null) {
+                        for (SQLStatement statement : ((MySqlCaseStatement) stmt).getElseItem().getStatements()) {
+                            statement.setParent(stmt);
+                        }
+                    }
+                }
                 stmt.setParent(parent);
                 statementList.add(stmt);
                 continue;
@@ -632,6 +852,7 @@ public class SQLStatementParser extends SQLParser {
 
             if (lexer.token == Token.LBRACE || lexer.identifierEquals("CALL")) {
                 SQLCallStatement stmt = parseCall();
+                stmt.setParent(parent);
                 statementList.add(stmt);
                 continue;
             }
@@ -639,6 +860,7 @@ public class SQLStatementParser extends SQLParser {
             if (lexer.identifierEquals("UPSERT")) {
                 SQLStatement stmt = parseUpsert();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
@@ -652,47 +874,55 @@ public class SQLStatementParser extends SQLParser {
                 } else {
                     lexer.reset(mark);
                 }
+                stmt.setParent(parent);
             }
 
             if (lexer.identifierEquals("RENAME")) {
                 SQLStatement stmt = parseRename();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals("RELEASE")) {
                 SQLStatement stmt = parseReleaseSavePoint();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals("SAVEPOINT")) {
                 SQLStatement stmt = parseSavePoint();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals("REFRESH")) {
                 SQLStatement stmt = parseRefresh();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.COPY)) {
                 SQLStatement stmt = parseCopy();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.token == Token.DESC || lexer.identifierEquals(FnvHash.Constants.DESCRIBE)) {
                 SQLStatement stmt = parseDescribe();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals("ROLLBACK")) {
                 SQLStatement stmt = parseRollback();
                 statementList.add(stmt);
+                stmt.setParent(parent);
 
                 if (parent instanceof SQLBlockStatement
                     && DbType.mysql == dbType) {
@@ -705,13 +935,21 @@ public class SQLStatementParser extends SQLParser {
             if (lexer.identifierEquals("DUMP")) {
                 SQLStatement stmt = parseDump();
                 statementList.add(stmt);
-
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.SLOW_SQL_CCL) && isEnabled(SQLParserFeature.DrdsCCL)) {
                 SQLStatement stmt = parseSlowSqlCcl();
                 statementList.add(stmt);
+                stmt.setParent(parent);
+                continue;
+            }
+
+            if (lexer.identifierEquals(Constants.HEATMAP)) {
+                SQLStatement stmt = parsePartitionsHeatmap();
+                statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
@@ -719,6 +957,7 @@ public class SQLStatementParser extends SQLParser {
                 SQLStatement stmt = parseCommit();
 
                 statementList.add(stmt);
+                stmt.setParent(parent);
 
                 if (parent instanceof SQLBlockStatement
                     && DbType.mysql == dbType) {
@@ -731,24 +970,28 @@ public class SQLStatementParser extends SQLParser {
             if (lexer.identifierEquals(FnvHash.Constants.RETURN)) {
                 SQLStatement stmt = parseReturn();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.PURGE)) {
                 SQLStatement stmt = parsePurge();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.FLASHBACK)) {
                 SQLStatement stmt = parseFlashback();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
             if (lexer.identifierEquals(FnvHash.Constants.WHO)) {
                 SQLStatement stmt = parseWhoami();
                 statementList.add(stmt);
+                stmt.setParent(parent);
                 continue;
             }
 
@@ -770,6 +1013,7 @@ public class SQLStatementParser extends SQLParser {
                 if (lexer.token == Token.SELECT) {
                     lexer.reset(markBp, markChar, Token.LPAREN);
                     SQLStatement stmt = parseSelect();
+                    stmt.setParent(parent);
                     statementList.add(stmt);
                     continue;
                 } else {
@@ -850,7 +1094,7 @@ public class SQLStatementParser extends SQLParser {
             stmt.setOverwrite(true);
         }
 
-        if (lexer.token == Token.INTO) {
+        if (lexer.token == INTO) {
             lexer.nextToken();
             if (lexer.token == LITERAL_CHARS) {
                 stmt.setInto(new SQLCharExpr(lexer.stringVal));
@@ -918,10 +1162,12 @@ public class SQLStatementParser extends SQLParser {
             }
             break;
         case SCHEMA:
-            stmt = parseDropDatabaseOrSchema(false);
-            if (physical) {
-                ((SQLDropDatabaseStatement) stmt).setPhysical(physical);
-            }
+
+                stmt = parseDropDatabaseOrSchema(false);
+                if (physical) {
+                    ((SQLDropDatabaseStatement) stmt).setPhysical(physical);
+                }
+
             break;
         case FUNCTION:
             SQLDropFunctionStatement dropFunc = parseDropFunction(false);
@@ -951,8 +1197,8 @@ public class SQLStatementParser extends SQLParser {
             break;
         }
         default:
-            if (lexer.token == Token.TABLE || lexer.identifierEquals("TEMPORARY") || lexer
-                .identifierEquals(FnvHash.Constants.PARTITIONED)) {
+            if (lexer.token == Token.TABLE || lexer.identifierEquals("TEMPORARY") || lexer.identifierEquals(
+                FnvHash.Constants.PARTITIONED)) {
                 SQLDropTableStatement dropTable = parseDropTable(false);
                 if (hints != null) {
                     dropTable.setHints(hints);
@@ -1022,6 +1268,8 @@ public class SQLStatementParser extends SQLParser {
                 stmt = parseDropCclTrigger();
             } else if (lexer.identifierEquals("FileStorage")) {
                 stmt = parseDropFileStorage();
+            } else if (lexer.identifierEquals(Constants.JOINGROUP)) {
+                stmt = parseDropJoinGroup();
             } else {
                 throw new ParserException("TODO " + lexer.info());
             }
@@ -1395,6 +1643,10 @@ public class SQLStatementParser extends SQLParser {
         throw new ParserException("not supported. " + lexer.info());
     }
 
+    public SQLStatement parseLoop() {
+        throw new ParserException("not supported. " + lexer.info());
+    }
+
     public SQLStatement parseWhile() {
         throw new ParserException("not supported. " + lexer.info());
     }
@@ -1483,8 +1735,9 @@ public class SQLStatementParser extends SQLParser {
 
         if (lexer.token == Token.SEMI) {
             accept(Token.SEMI);
-            stmt.setAfterSemi(true);
         }
+
+        stmt.setAfterSemi(true);
 
         return stmt;
     }
@@ -2447,7 +2700,7 @@ public class SQLStatementParser extends SQLParser {
                     item.setNumber(num);
                     stmt.addItem(item);
                 } else if ((stmt.getClusteredBy().size() > 0 || stmt.getSortedBy().size() > 0)
-                    && lexer.token == Token.INTO) {
+                    && lexer.token == INTO) {
                     lexer.nextToken();
 
                     int num;
@@ -2919,7 +3172,7 @@ public class SQLStatementParser extends SQLParser {
         }
 
         SQLName name = this.exprParser.name();
-        stmt.setName(name);
+        stmt.setName(SQLUtils.rewriteUdfName(name));
 
         return stmt;
     }
@@ -3147,7 +3400,7 @@ public class SQLStatementParser extends SQLParser {
     }
 
     protected void parseInsert0(SQLInsertInto insertStatement, boolean acceptSubQuery) {
-        if (lexer.token == Token.INTO) {
+        if (lexer.token == INTO) {
             lexer.nextToken();
 
             SQLName tableName = this.exprParser.name();
@@ -3580,6 +3833,9 @@ public class SQLStatementParser extends SQLParser {
             } else if (lexer.identifierEquals(Constants.RESOURCE)) {
                 lexer.reset(markBp, markChar, Token.CREATE);
                 return parseCreateResourceGroup();
+            } else if (lexer.identifierEquals(FnvHash.Constants.JOINGROUP)) {
+                lexer.reset(markBp, markChar, Token.CREATE);
+                return parseCreateJoinGroup();
             }
 
             throw new ParserException("TODO " + lexer.info());
@@ -3633,6 +3889,56 @@ public class SQLStatementParser extends SQLParser {
             SQLExpr locality = this.exprParser.expr();
             stmt.setLocality(locality);
         }
+
+        return stmt;
+    }
+
+    public SQLStatement parseCreateJoinGroup() {
+        accept(Token.CREATE);
+        acceptIdentifier("JOINGROUP");
+
+        SQLCreateJoinGroupStatement stmt = new SQLCreateJoinGroupStatement();
+
+        if (lexer.token == Token.IF || lexer.identifierEquals(FnvHash.Constants.IF)) {
+            lexer.nextToken();
+            accept(Token.NOT);
+            accept(Token.EXISTS);
+            stmt.setIfNotExists(true);
+        }
+
+        SQLName name = this.exprParser.name();
+        stmt.setName(name);
+
+        if (lexer.identifierEquals("LOCALITY")) {
+            lexer.nextToken();
+            if (lexer.token == Token.EQ) {
+                lexer.nextToken();
+            }
+            SQLExpr locality = this.exprParser.expr();
+            stmt.setLocality(locality);
+        }
+
+        return stmt;
+    }
+
+    protected SQLStatement parseDropJoinGroup() {
+        if (lexer.token == Token.DROP) {
+            lexer.nextToken();
+        }
+
+        acceptIdentifier("JOINGROUP");
+
+        SQLDropJoinGroupStatement stmt = new SQLDropJoinGroupStatement();
+        stmt.setDbType(dbType);
+
+        if (lexer.token == Token.IF) {
+            lexer.nextToken();
+            accept(Token.EXISTS);
+            stmt.setIfExists(true);
+        }
+
+        SQLName name = this.exprParser.name();
+        stmt.setName(name);
 
         return stmt;
     }
@@ -4180,7 +4486,10 @@ public class SQLStatementParser extends SQLParser {
 
         SQLCreateSequenceStatement stmt = new SQLCreateSequenceStatement();
 
-        if (lexer.token == Token.GROUP) {
+        if (lexer.identifierEquals(FnvHash.Constants.NEW)) {
+            lexer.nextToken();
+            stmt.setNewSeq(true);
+        } else if (lexer.token == Token.GROUP) {
             lexer.nextToken();
             stmt.setGroup(true);
         } else if (lexer.identifierEquals(FnvHash.Constants.SIMPLE)) {
@@ -4994,7 +5303,9 @@ public class SQLStatementParser extends SQLParser {
             this.exprParser.exprList(stmt.getUsing(), stmt);
         }
 
-        accept(Token.SEMI);
+        if (lexer.token == Token.SEMI) {
+            accept(Token.SEMI);
+        }
         stmt.setAfterSemi(true);
         return stmt;
     }
@@ -5011,7 +5322,7 @@ public class SQLStatementParser extends SQLParser {
             stmt.setBulkCollect(true);
         }
 
-        accept(Token.INTO);
+        accept(INTO);
         for (; ; ) {
             stmt.getInto().add(this.exprParser.name());
             if (lexer.token == Token.COMMA) {
@@ -5027,6 +5338,7 @@ public class SQLStatementParser extends SQLParser {
             stmt.setLimit(limit);
         }
 
+        stmt.setAfterSemi(true);
         return stmt;
     }
 
@@ -5034,7 +5346,9 @@ public class SQLStatementParser extends SQLParser {
         SQLCloseStatement stmt = new SQLCloseStatement();
         accept(Token.CLOSE);
         stmt.setCursorName(exprParser.name());
-        accept(Token.SEMI);
+        if (lexer.token == Token.SEMI) {
+            accept(Token.SEMI);
+        }
         stmt.setAfterSemi(true);
         return stmt;
     }
@@ -5055,15 +5369,41 @@ public class SQLStatementParser extends SQLParser {
         this.parseValuesSize = parseValuesSize;
     }
 
+    public SQLStatement parseMergeTableGroup() {
+        acceptIdentifier("TABLEGROUPS");
+        SQLMergeTableGroupStatement stmt = new SQLMergeTableGroupStatement();
+        boolean first = true;
+        List<SQLName> SourceTableGroupNames = new ArrayList<SQLName>();
+        do {
+            if (!first) {
+                accept(Token.COMMA);
+            }
+            SQLName tableGroupName = this.exprParser.name();
+            SourceTableGroupNames.add(tableGroupName);
+            first = false;
+        } while (lexer.token() == Token.COMMA);
+        stmt.setSourceTableGroup(SourceTableGroupNames);
+        accept(INTO);
+        stmt.setTargetTableGroup(this.exprParser.name());
+        if (lexer.identifierEquals("FORCE")) {
+            stmt.setForce(true);
+            lexer.nextToken();
+        }
+        return stmt;
+    }
+
     public SQLStatement parseMerge() {
         accept(Token.MERGE);
 
+        if (lexer.identifierEquals("TABLEGROUPS")) {
+            return parseMergeTableGroup();
+        }
         SQLMergeStatement stmt = new SQLMergeStatement();
         stmt.setDbType(dbType);
 
         parseHints(stmt.getHints());
 
-        accept(Token.INTO);
+        accept(INTO);
 
         if (lexer.token == Token.LPAREN) {
             lexer.nextToken();
@@ -5223,7 +5563,7 @@ public class SQLStatementParser extends SQLParser {
 
             lexer.nextToken();
             accept(Token.ERRORS);
-            if (lexer.token == Token.INTO) {
+            if (lexer.token == INTO) {
                 lexer.nextToken();
                 errorClause.setInto(exprParser.name());
             }
@@ -6554,6 +6894,12 @@ public class SQLStatementParser extends SQLParser {
             } else if (lexer.identifierEquals(FnvHash.Constants.TIME)) {
                 stmt.setChangeToTime(true);
                 lexer.nextToken();
+            } else if (lexer.identifierEquals(FnvHash.Constants.NEW)) {
+                stmt.setChangeToNew(true);
+                lexer.nextToken();
+            } else if (lexer.identifierEquals(FnvHash.Constants.NEW)) {
+                stmt.setChangeToNew(true);
+                lexer.nextToken();
             } else {
                 throw new ParserException("TODO " + lexer.info());
             }
@@ -6850,6 +7196,14 @@ public class SQLStatementParser extends SQLParser {
             sqlExprs.add(exprParser.expr());
         }
         return drdsSlowSqlCclStatement;
+    }
+
+    protected SQLStatement parsePartitionsHeatmap() {
+        SQLShowPartitionsHeatmapStatement stmt = new SQLShowPartitionsHeatmapStatement();
+        if (lexer.identifierEquals(Constants.HEATMAP)) {
+            lexer.nextToken();
+        }
+        return stmt;
     }
 
 }

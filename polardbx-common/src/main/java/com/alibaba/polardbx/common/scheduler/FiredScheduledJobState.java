@@ -23,6 +23,6 @@ public enum FiredScheduledJobState {
     SUCCESS,
     FAILED,
     SKIPPED,
-    ;
+    INTERRUPTED;
 
 }

@@ -169,4 +169,10 @@ public abstract class PacketByteBufferOutputProxy extends PacketOutputProxyCommo
         return currentBuffer != null;
     }
 
+    @Override
+    public void close() {
+        if (currentBuffer != null) {
+            c.recycle(currentBuffer);
+        }
+    }
 }

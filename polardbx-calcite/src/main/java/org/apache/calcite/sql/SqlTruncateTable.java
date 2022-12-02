@@ -22,33 +22,49 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  * Parse tree for {@code TRUNCATE TABLE} statement.
  */
 public class SqlTruncateTable extends SqlDrop {
-  private boolean purge = false;
+    private boolean purge = false;
 
-  private static final SqlOperator OPERATOR =
-      new SqlSpecialOperator("TRUNCATE TABLE", SqlKind.TRUNCATE_TABLE);
+    /**
+     * insert overwrite语句，truncate table还包含insert 语句
+     */
+    private boolean isInsertOverwriteSql = false;
 
-  /** Creates a SqlDropTable. */
-  SqlTruncateTable(SqlParserPos pos, boolean ifExists, SqlIdentifier name, boolean purge) {
-    super(OPERATOR, pos, ifExists);
-    this.name = name;
-    this.purge = purge;
-  }
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("TRUNCATE TABLE", SqlKind.TRUNCATE_TABLE);
 
-  public SqlNode getTargetTable() {
-    return name;
-  }
+    /**
+     * Creates a SqlDropTable.
+     */
+    SqlTruncateTable(SqlParserPos pos, boolean ifExists, SqlIdentifier name, boolean purge) {
+        super(OPERATOR, pos, ifExists);
+        this.name = name;
+        this.purge = purge;
+        this.isInsertOverwriteSql = false;
+    }
 
-  public void setTargetTable(SqlNode targetTable) {
-    this.name = targetTable;
-  }
+    public SqlNode getTargetTable() {
+        return name;
+    }
 
-  public boolean isPurge() {
-    return purge;
-  }
+    public void setTargetTable(SqlNode targetTable) {
+        this.name = targetTable;
+    }
 
-  public void setPurge(boolean purge) {
-    this.purge = purge;
-  }
+    public boolean isPurge() {
+        return purge;
+    }
+
+    public void setPurge(boolean purge) {
+        this.purge = purge;
+    }
+
+    public boolean isInsertOverwriteSql() {
+        return isInsertOverwriteSql;
+    }
+
+    public void setInsertOverwriteSql(boolean insert) {
+        isInsertOverwriteSql = insert;
+    }
 }
 
 // End SqlDropTable.java

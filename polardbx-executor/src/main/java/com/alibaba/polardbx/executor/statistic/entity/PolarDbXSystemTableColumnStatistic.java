@@ -16,24 +16,18 @@
 
 package com.alibaba.polardbx.executor.statistic.entity;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.util.JdbcUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.collect.Lists;
 import org.apache.commons.codec.binary.Base64;
 
@@ -44,7 +38,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 /**
  * @author dylan
@@ -75,7 +68,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     private static final String ALTER_TABLE_UTF8MB4 = "ALTER TABLE `" + TABLE_NAME + "` CHARACTER SET = UTF8MB4";
 
     private static final String SELECT_SQL =
-        "SELECT TABLE_NAME, COLUMN_NAME, CARDINALITY, CMSKETCH, HISTOGRAM, TOPN, NULL_COUNT, SAMPLE_RATE, UNIX_TIMESTAMP(GMT_MODIFIED) AS UNIX_TIME FROM `"
+        "SELECT SCHEMA_NAME, TABLE_NAME, COLUMN_NAME, CARDINALITY, CMSKETCH, HISTOGRAM, TOPN, NULL_COUNT, SAMPLE_RATE, UNIX_TIMESTAMP(GMT_MODIFIED) AS UNIX_TIME FROM `"
             + TABLE_NAME + "` ";
 
     private static final String DELETE_TABLE_SQL = "DELETE FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = '%s' AND "
@@ -97,24 +90,6 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
 
     private static final int batchSize = 30;
 
-    private String schemaName;
-
-    private boolean checkTableFromCache() {
-        try {
-            return SystemTableColumnStatistic.APPNAME_TABLE_COLUMN_ENABLED.get(schemaName, this::checkTable);
-        } catch (ExecutionException e) {
-            logger.error("APPNAME_TABLE_COLUMN_ENABLED.get error", e);
-            return false;
-        }
-    }
-
-    public PolarDbXSystemTableColumnStatistic(String appName) {
-        if (appName == null) {
-            logger.error("PolarDbXSystemTableColumnStatistic schemaName is null");
-        }
-        this.schemaName = appName;
-    }
-
     @Override
     public void createTableIfNotExist() {
         if (!canWrite()) {
@@ -125,7 +100,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         PreparedStatement psAlterTopN = null;
         PreparedStatement psAlterCharSet = null;
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             ps = conn.prepareStatement(CREATE_TABLE_IF_NOT_EXIST_SQL);
             ps.executeUpdate();
             psAlterCharSet = conn.prepareStatement(ALTER_TABLE_UTF8MB4);
@@ -145,22 +120,19 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public void renameTable(String oldLogicalTableName, String newLogicalTableName) {
+    public void renameTable(String schema, String oldLogicalTableName, String newLogicalTableName) {
         if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
             return;
         }
         Connection conn = null;
         PreparedStatement ps = null;
         String sql = "";
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             ps = conn.prepareStatement(RENAME_TABLE_SQL);
             ps.setString(1, newLogicalTableName.toLowerCase());
             ps.setString(2, oldLogicalTableName.toLowerCase());
-            ps.setString(3, schemaName.toLowerCase());
+            ps.setString(3, schema.toLowerCase());
             ps.executeUpdate();
         } catch (SQLException e) {
             logger.error("renameTable " + TABLE_NAME + " error, sql = " + sql, e);
@@ -171,11 +143,8 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public void removeLogicalTableColumnList(String logicalTableName, List<String> columnNameList) {
+    public void removeLogicalTableColumnList(String schema, String logicalTableName, List<String> columnNameList) {
         if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
             return;
         }
         if (logicalTableName == null) {
@@ -188,9 +157,9 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         Statement ps = null;
         String sql = "";
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             StringBuilder sqlBuilder =
-                new StringBuilder(String.format(DELETE_TABLE_COLUMN_SQL, schemaName.toLowerCase().replace("'", "\\'")));
+                new StringBuilder(String.format(DELETE_TABLE_COLUMN_SQL, schema.toLowerCase().replace("'", "\\'")));
             sqlBuilder.append("TABLE_NAME = ");
             sqlBuilder.append("'");
             sqlBuilder.append(logicalTableName.toLowerCase().replace("'", "\\'"));
@@ -219,11 +188,8 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public void removeLogicalTableList(List<String> logicalTableNameList) {
+    public void removeLogicalTableList(String schema, List<String> logicalTableNameList) {
         if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
             return;
         }
         if (logicalTableNameList == null) {
@@ -236,9 +202,9 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         Statement ps = null;
         String sql = "";
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             StringBuilder sqlBuilder =
-                new StringBuilder(String.format(DELETE_TABLE_SQL, schemaName.toLowerCase().replace("'", "\\'")));
+                new StringBuilder(String.format(DELETE_TABLE_SQL, schema.toLowerCase().replace("'", "\\'")));
             boolean first = false;
             sqlBuilder.append("(");
             for (String LogicalTableName : logicalTableNameList) {
@@ -262,12 +228,16 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         }
     }
 
-    public static boolean deleteAll(String schemaName, Connection conn) {
+    @Override
+    public boolean deleteAll(String schema, Connection conn) {
+        if (!canWrite()) {
+            return false;
+        }
         PreparedStatement ps = null;
         String sql = "";
         try {
             ps = conn.prepareStatement(DELETE_ALL_SQL);
-            ps.setString(1, schemaName.toLowerCase());
+            ps.setString(1, schema.toLowerCase());
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {
@@ -279,44 +249,25 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public boolean deleteAll(Connection conn) {
-        if (!canWrite()) {
-            return false;
-        }
-        if (!checkTableFromCache()) {
-            return false;
-        }
-        return deleteAll(schemaName, conn);
-    }
-
-    @Override
     public Collection<Row> selectAll(long sinceTime) {
         Collection<Row> rows = Lists.newLinkedList();
-        if (!canRead()) {
-            return rows;
-        }
-        if (!checkTableFromCache()) {
-            return rows;
-        }
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
-            ps =
-                conn.prepareStatement(SELECT_SQL + " WHERE SCHEMA_NAME = '" +
-                    schemaName.toLowerCase().replace("'", "\\'") + "' AND UNIX_TIMESTAMP"
-                    + "(GMT_MODIFIED)"
-                    + " >"
-                    + " " + sinceTime);
+            conn = MetaDbUtil.getConnection();
+            ps = conn.prepareStatement(SELECT_SQL + " WHERE UNIX_TIMESTAMP"
+                + "(GMT_MODIFIED)"
+                + " >"
+                + " " + sinceTime);
             rs = ps.executeQuery();
             while (rs.next()) {
                 try {
                     SystemTableColumnStatistic.Row row = new SystemTableColumnStatistic.Row(
+                        rs.getString("SCHEMA_NAME"),
                         rs.getString("TABLE_NAME"),
                         rs.getString("COLUMN_NAME"),
                         rs.getLong("CARDINALITY"),
-                        CountMinSketch.deserialize(Base64.decodeBase64(rs.getString("CMSKETCH"))),
                         Histogram.deserializeFromJson(rs.getString("HISTOGRAM")),
                         TopN.deserializeFromJson(rs.getString("TOPN")),
                         rs.getLong("NULL_COUNT"),
@@ -354,9 +305,6 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         if (!canWrite()) {
             return false;
         }
-        if (!checkTableFromCache()) {
-            return true;
-        }
         if (rowList == null || rowList.isEmpty()) {
             return true;
         }
@@ -364,14 +312,13 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         PreparedStatement pps = null;
         String sql = "";
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             int index = 0;
             while (index < rowList.size()) {
                 StringBuilder sqlBuilder = new StringBuilder(REPLACE_SQL);
                 boolean first = false;
                 int batchCount = 0;
                 for (; index < rowList.size() && batchCount < batchSize; index++, batchCount++) {
-                    SystemTableColumnStatistic.Row row = rowList.get(index);
                     if (!first) {
                         first = true;
                     } else {
@@ -382,17 +329,12 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
                 pps = conn.prepareStatement(sql = sqlBuilder.toString());
                 for (int k = 0; k < batchCount; k++) {
                     SystemTableColumnStatistic.Row row = rowList.get(k + index - batchCount);
-                    pps.setString(k * 9 + 1, schemaName.toLowerCase());
+                    pps.setString(k * 9 + 1, row.getSchema().toLowerCase());
                     pps.setString(k * 9 + 2, row.getTableName().toLowerCase());
                     pps.setString(k * 9 + 3, row.getColumnName().toLowerCase());
                     pps.setLong(k * 9 + 4, row.getCardinality());
-                    String cmSketchString;
-                    if (row.getCountMinSketch() != null) {
-                        cmSketchString = Base64.encodeBase64String(CountMinSketch.serialize(row.getCountMinSketch()));
-                    } else {
-                        cmSketchString =
-                            Base64.encodeBase64String(CountMinSketch.serialize(new CountMinSketch(1, 1, 1)));
-                    }
+                    String cmSketchString =
+                        Base64.encodeBase64String(CountMinSketch.serialize(new CountMinSketch(1, 1, 1)));
                     pps.setString(k * 9 + 5, cmSketchString);
                     String histogramString;
                     if (row.getHistogram() != null) {
@@ -432,37 +374,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         }
     }
 
-    private boolean canRead() {
-        return MetaDbDataSource.getInstance().getDataSource() != null;
-    }
-
     private boolean canWrite() {
-        return ConfigDataMode.isMasterMode()
-            && MetaDbDataSource.getInstance().getDataSource() != null;
+        return ConfigDataMode.isMasterMode();
     }
-
-    private boolean checkTable() {
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
-            ps = conn.prepareStatement("show tables like '" + TABLE_NAME + "'");
-            ps.executeQuery();
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                return true;
-            } else {
-                return false;
-            }
-        } catch (Exception e) {
-            logger.error("check " + TABLE_NAME + " exist error", e);
-            return false;
-        } finally {
-            JdbcUtils.close(ps);
-            JdbcUtils.close(conn);
-            JdbcUtils.close(rs);
-        }
-    }
-
 }

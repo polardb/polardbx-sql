@@ -55,6 +55,10 @@ public class MemorySetting {
     //默认先不开启 0.70
     public static double AP_HIGH_MEMORY_PROPORTION = 1.00;
 
+    public static double PROCEDURE_CACHE_LIMIT = 0.3;
+
+    public static double FUNCTION_CACHE_LIMIT = 0.3;
+
     /**
      * 设置查询最大使用内存比例
      */

@@ -89,10 +89,11 @@ public class GmsNodeManager extends AbstractLifecycle {
     private final List<NodeInfo> readOnlyNodes = new ArrayList<>();
 
     /**
-     * All the nodes including master and read-only.
+     * All the nodes including master and read-only, it is sorted by node index.
      */
     private final List<NodeInfo> allNodes = new ArrayList<>();
 
+    private int currentIndex = -1;
     /**
      * FIXME 暂时先认为只读实例的cpu cores都是一样的
      */
@@ -136,6 +137,12 @@ public class GmsNodeManager extends AbstractLifecycle {
         return allNodes;
     }
 
+    public int getCurrentIndex() {
+        if (ConfigDataMode.isFastMock()) {
+            return 1;
+        }
+        return currentIndex;
+    }
 
     public List<NodeInfo> getAllTrustedNodes() {
         return allNodes;
@@ -307,6 +314,15 @@ public class GmsNodeManager extends AbstractLifecycle {
             // Need one node at least for local test even if it's null.
             allNodes.add(localNode);
         }
+        allNodes.sort((o1, o2) -> {
+            GmsNode gmsNode1 = (GmsNode) o1;
+            GmsNode gmsNode2 = (GmsNode) o2;
+            if (gmsNode1.instId.equals(gmsNode2.instId)) {
+                return Integer.compare(gmsNode1.uniqueId, gmsNode2.uniqueId);
+            }
+            return gmsNode1.instId.compareTo(gmsNode2.instId);
+        });
+        this.currentIndex = allNodes.indexOf(GmsNodeManager.getInstance().getLocalNode());
     }
 
     private GmsNode buildNode(ServerInfoRecord record, int uniqueId) {

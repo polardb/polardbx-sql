@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.utils.mppchecker;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
@@ -68,7 +68,7 @@ public class MppPlanCheckers {
 
     public static final MppPlanChecker BASIC_CHECKERS =
         input -> Lists.newArrayList(MPP_ENABLED_CHECKER, SUBQUERY_CHECKER, QUERY_CHECKER, INTERNAL_SYSTEM_SQL_CHECKER,
-            EXPLAIN_EXECUTE_CHECKER)
+                EXPLAIN_EXECUTE_CHECKER)
             .stream()
             .allMatch(c -> c.supportsMpp(input));
 

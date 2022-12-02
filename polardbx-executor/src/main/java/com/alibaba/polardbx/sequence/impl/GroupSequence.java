@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.sequence.SequenceDao;
 import com.alibaba.polardbx.sequence.SequenceRange;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 
@@ -32,55 +31,51 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_IN
 
 public class GroupSequence extends BaseSequence {
 
+    protected static final Logger logger = LoggerFactory.getLogger(GroupSequence.class);
+
     private final Lock lock = new ReentrantLock();
-    protected SequenceDao sequenceDao;
-
-    protected volatile SequenceRange currentRange;
-
     private final Lock updateLock = new ReentrantLock();
+
+    protected GroupSequenceDao groupSequenceDao;
+    protected volatile SequenceRange currentRange;
 
     /**
      * The value that is candidate and will probably be updated
      */
     private volatile long valueToUpdate = DEFAULT_INNER_STEP;
 
-    protected static final Logger logger = LoggerFactory.getLogger(GroupSequence.class);
-
-    /**
-     * 初始化一下，如果name不存在，则给其初始值<br>
-     */
     public void init() throws SequenceException, SQLException {
         this.type = Type.GROUP;
-        if (!(sequenceDao instanceof GroupSequenceDao)) {
-            throw new SequenceException("please use  GroupSequenceDao!");
-        }
-        GroupSequenceDao groupSequenceDao = (GroupSequenceDao) sequenceDao;
+
         Exception ex = null;
         synchronized (this) {
-            for (int i = 0; i < sequenceDao.getRetryTimes(); i++) {
+            for (int i = 0; i < this.groupSequenceDao.getRetryTimes(); i++) {
                 try {
                     groupSequenceDao.adjust(name);
                     ex = null;
                     break;
                 } catch (Exception e) {
                     ex = e;
-                    logger.error("Sequence第" + (i + 1) + "次初始化失败, name:" + name, e);
-
+                    String errMsg =
+                        String.format("Failed to initialize Group Sequence %s after %sst retry. Caused by: %s", name,
+                            i + 1, e.getMessage());
+                    logger.error(errMsg, e);
                 }
             }
         }
 
         if (ex != null) {
-            logger.error("Sequence初始化失败，切重试" + sequenceDao.getRetryTimes() + "次后，仍然失败! name:" + name, ex);
-            throw new SequenceException(ex, ex.getMessage());
+            String errMsg =
+                String.format("Failed initialize Group Sequence %s after all %s retries. Caused by: %s", name,
+                    this.groupSequenceDao.getRetryTimes(), ex.getMessage());
+            logger.error(errMsg, ex);
+            throw new SequenceException(ex, errMsg);
         }
     }
 
     @Override
     public long nextValue() throws SequenceException {
-
         checkSequenceRange();
-
         long value = getSequenceRange().getAndIncrement();
         if (value == -1) {
             lock.lock();
@@ -103,9 +98,10 @@ public class GroupSequence extends BaseSequence {
         }
 
         if (value < 0) {
-            throw new SequenceException("Sequence value overflow, value = " + value);
+            throw new SequenceException(String.format("Sequence value %s overflows", value));
         }
 
+        currentValue = value;
         return value;
     }
 
@@ -138,9 +134,10 @@ public class GroupSequence extends BaseSequence {
         }
 
         if (value < 0) {
-            throw new SequenceException("Sequence value overflow, value = " + value);
+            throw new SequenceException(String.format("Sequence value %s overflows", value));
         }
 
+        currentValue = value;
         return value;
     }
 
@@ -158,6 +155,7 @@ public class GroupSequence extends BaseSequence {
         return true;
     }
 
+    @Override
     public void updateValue(long value) {
         updateLock.lock();
         try {
@@ -193,31 +191,30 @@ public class GroupSequence extends BaseSequence {
 
     private boolean updateValueInternal(long minValueInAllRanges) {
         boolean needSync = false;
-        String schemaName = ((GroupSequenceDao) sequenceDao).getSchemaName();
+        String schemaName = groupSequenceDao.getSchemaName();
 
         // currentAndMax[0]: the current value of the current range
         // currentAndMax[1]: the maximum value of the current range
         long[] currentAndMax = getCurrentAndMax();
 
         StringBuilder infoMsg = new StringBuilder();
-        infoMsg.append("Update explicit insert value ").append(valueToUpdate).append(" for sequence '").append(name);
+        infoMsg.append("Update explicit insert value ").append(valueToUpdate);
+        infoMsg.append(" for ").append(schemaName).append(".").append(name).append(" [");
+        infoMsg.append(currentAndMax[0]).append(",").append(currentAndMax[1]).append("]");
 
         // If valueToUpdate is less than minimum value in all ranges, then do nothing.
         if (valueToUpdate > currentAndMax[1]) {
             // The user value exceeds the max value of current range. Let's get the range
             // containing the value to catch up with.
-            boolean updated = ((GroupSequenceDao) sequenceDao).updateExplicitValue(name, valueToUpdate);
+            boolean updated = groupSequenceDao.updateValue(name, valueToUpdate);
             // Invalidate local range
             if (getSequenceRange() != null) {
                 getSequenceRange().setOver(true);
             }
-            if (updated) {
-                infoMsg.append("[").append(currentAndMax[0]).append(",").append(currentAndMax[1]);
-                infoMsg.append("]' in database in ").append(schemaName);
-                LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg.toString());
-            }
             // Need sync to reload cached range on each node.
             needSync = true;
+            infoMsg.append(" in database (updated=").append(updated).append("). Then SYNC");
+            LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg.toString());
         } else if (valueToUpdate >= currentAndMax[0] && valueToUpdate <= currentAndMax[1]) {
             // The user value is within current range. Let's reset current value.
             boolean successful = getSequenceRange().updateValue(currentAndMax[0], valueToUpdate + 1);
@@ -229,14 +226,13 @@ public class GroupSequence extends BaseSequence {
                     successful = true;
                 }
             }
-            if (successful) {
-                infoMsg.append("[").append(currentAndMax[0]).append(",").append(currentAndMax[1]);
-                infoMsg.append("]' in current range in ").append(schemaName);
-                LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg.toString());
-            }
+            infoMsg.append(" in range [").append(currentAndMax[0]).append(",").append(currentAndMax[1]).append("]");
+            LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg.toString());
         } else if (valueToUpdate >= minValueInAllRanges) {
             // The user value may be in less range on other nodes, so we still need sync to
             // avoid conflict, but we don't have to update anything.
+            infoMsg.append(" without change. Then SYNC (minValueInAllRanges=").append(minValueInAllRanges).append(")");
+            LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg.toString());
             needSync = true;
         }
 
@@ -272,7 +268,7 @@ public class GroupSequence extends BaseSequence {
         }
 
         if (currentAndMax[0] < 0) {
-            throw new SequenceException("Sequence value overflow, value = " + currentAndMax[0]);
+            throw new SequenceException(String.format("Sequence value %s overflows", currentAndMax[0]));
         }
 
         return currentAndMax;
@@ -300,22 +296,19 @@ public class GroupSequence extends BaseSequence {
     }
 
     protected void setSequenceRange() {
-        setSequenceRange(sequenceDao.nextRange(name));
+        setSequenceRange(groupSequenceDao.nextRange(name));
     }
 
     protected void checkBatchSize(int size) {
-        if (size > this.getSequenceDao().getStep()) {
-            throw new SequenceException("batch size " + size + " > sequence step " + this.getSequenceDao().getStep()
-                + ", please change batch size");
+        if (size > this.groupSequenceDao.getStep()) {
+            throw new SequenceException(
+                String.format("Batch size %s > sequence step %s. Please change batch size", size,
+                    this.groupSequenceDao.getStep()));
         }
     }
 
-    public SequenceDao getSequenceDao() {
-        return sequenceDao;
-    }
-
-    public void setSequenceDao(SequenceDao sequenceDao) {
-        this.sequenceDao = sequenceDao;
+    public void setGroupSequenceDao(GroupSequenceDao groupSequenceDao) {
+        this.groupSequenceDao = groupSequenceDao;
     }
 
 }

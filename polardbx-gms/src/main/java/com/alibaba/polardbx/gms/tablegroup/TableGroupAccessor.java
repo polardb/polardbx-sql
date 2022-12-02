@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.tablegroup;
 
+import com.alibaba.polardbx.common.ddl.tablegroup.AutoSplitPolicy;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -46,15 +47,18 @@ import java.util.stream.IntStream;
 public class TableGroupAccessor extends AbstractAccessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(TableGroupAccessor.class);
     private static final String ALL_COLUMNS =
-        "`id`,`gmt_create`,`gmt_modified`,`schema_name`,`tg_name`,`locality`, `primary_zone`,`inited`,`meta_version`, `manual_create`, `tg_type`";
+        "`id`,`gmt_create`,`gmt_modified`,`schema_name`,`tg_name`,`locality`, `primary_zone`,`inited`,`meta_version`, `manual_create`, `tg_type`, `auto_split_policy`";
 
-    private static final String ALL_VALUES = "(null,null,now(),?,?,?,?,?,?,?,?)";
+    private static final String ALL_VALUES = "(null,null,now(),?,?,?,?,?,?,?,?,?)";
 
     private static final String INSERT_IGNORE_TABLE_GROUP =
         "insert ignore into " + GmsSystemTables.TABLE_GROUP + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
 
     private static final String UPDATE_GROUP_NAME_BY_ID =
         "update " + GmsSystemTables.TABLE_GROUP + " set tg_name = ? where id = ?";
+
+    private static final String UPDATE_GROUP_LOCALITY_BY_SCHEMA_GROUP_NAME =
+        "update " + GmsSystemTables.TABLE_GROUP + " set locality = ? where schema_name = ? and tg_name = ?";
 
     private static final String GET_TABLE_GROUP_BY_ID =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.TABLE_GROUP + " where id=?";
@@ -86,6 +90,9 @@ public class TableGroupAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INITED_BY_ID =
         "update " + GmsSystemTables.TABLE_GROUP + " set inited = ? where id = ?";
+
+    private static final String UPDATE_AUTO_SPLIT_POLICY_BY_ID =
+        "update " + GmsSystemTables.TABLE_GROUP + " set auto_split_policy = ? where id = ?";
 
     public List<TableGroupRecord> getTableGroupsByID(Long id) {
         try {
@@ -161,6 +168,7 @@ public class TableGroupAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setLong, tableGroupRecord.meta_version);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.manual_create);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.tg_type);
+            MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.auto_split_policy);
 
             paramsBatch.add(params);
             DdlMetaLogUtil.logSql(INSERT_IGNORE_TABLE_GROUP, params);
@@ -168,6 +176,25 @@ public class TableGroupAccessor extends AbstractAccessor {
             return MetaDbUtil.insertAndRetureLastInsertId(INSERT_IGNORE_TABLE_GROUP, paramsBatch, this.connection);
         } catch (Exception e) {
             LOGGER.error("Failed to insert into the system table " + GmsSystemTables.TABLE_GROUP, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void updateTableGroupLocality(String schema, String tableGroupName, String locality) {
+        try {
+
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, locality);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schema);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableGroupName);
+
+            DdlMetaLogUtil.logSql(UPDATE_GROUP_LOCALITY_BY_SCHEMA_GROUP_NAME, params);
+
+            MetaDbUtil.update(UPDATE_GROUP_LOCALITY_BY_SCHEMA_GROUP_NAME, params, connection);
+            return;
+        } catch (Exception e) {
+            LOGGER.error("Failed to update the system table 'table_group'", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 e.getMessage());
         }
@@ -322,6 +349,24 @@ public class TableGroupAccessor extends AbstractAccessor {
             DdlMetaLogUtil.logSql(UPDATE_INITED_BY_ID, params);
 
             MetaDbUtil.update(UPDATE_INITED_BY_ID, params, connection);
+            return;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table 'table_group'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void updateAutoSplitPolicyById(Long groupId, AutoSplitPolicy policy) {
+        try {
+
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, policy.getValue());
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
+
+            DdlMetaLogUtil.logSql(UPDATE_AUTO_SPLIT_POLICY_BY_ID, params);
+
+            MetaDbUtil.update(UPDATE_AUTO_SPLIT_POLICY_BY_ID, params, connection);
             return;
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table 'table_group'", e);

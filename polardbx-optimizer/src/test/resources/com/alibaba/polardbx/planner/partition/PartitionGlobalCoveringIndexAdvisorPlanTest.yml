@@ -129,8 +129,7 @@
 
   plan: |
     gather(concurrent=true)
-      indexscan(tables="orders__what_if_gsi_o_custkey[p1,p2,p3,p4],customer[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where ((`o_custkey` in (select `c_custkey` from `customer` as `customer` where (`c_name` = 'customer#00000112'))) and (`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq'))")
-
+      indexscan(tables="orders__what_if_gsi_o_custkey[p1,p2,p3,p4],customer[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where ((`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq') and (`o_custkey` in (select `c_custkey` from `customer` as `customer` where (`c_name` = 'customer#00000112'))))")
 -
   sql: |
     SELECT * FROM customer left JOIN (select * from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') a ON o_custkey = c_custkey  WHERE c_name = 'Customer#00000112'
@@ -145,7 +144,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="customer[p1,p2,p3,p4],orders__what_if_gsi_o_custkey[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` from `customer` as `customer` where ((`c_custkey` in (select `o_custkey` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where (`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq'))) and (`c_name` = 'customer#00000112'))")
+      logicalview(tables="customer[p1,p2,p3,p4],orders__what_if_gsi_o_custkey[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` from `customer` as `customer` where ((`c_name` = 'customer#00000112') and (`c_custkey` in (select `o_custkey` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where (`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq'))))")
 
   # 3. order by 利用索引的顺序
 - sql: |

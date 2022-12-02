@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
@@ -91,6 +90,15 @@ public abstract class PushAggRule extends RelOptRule {
         return plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_AGG);
     }
 
+    protected boolean containChecksum(LogicalAggregate agg) {
+        for (AggregateCall call : agg.getAggCallList()) {
+            if (call.getAggregation().getKind() == SqlKind.CHECK_SUM) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected boolean shouldPushAgg(LogicalView logicalView) {
         int pushAggInputRowCountThreshold = PlannerContext.getPlannerContext(logicalView).getParamManager()
             .getInt(ConnectionParams.PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD);
@@ -123,6 +131,10 @@ public abstract class PushAggRule extends RelOptRule {
             LogicalView tableScan = (LogicalView) call.rels[1];
 
             if (tableScan instanceof OSSTableScan) {
+                return false;
+            }
+
+            if (containChecksum(aggregate)) {
                 return false;
             }
 
@@ -193,6 +205,10 @@ public abstract class PushAggRule extends RelOptRule {
                 return false;
             }
 
+            if (containChecksum(aggregate)) {
+                return false;
+            }
+
             if (!shouldPushAgg(tableScan)) {
                 return false;
             }
@@ -211,12 +227,6 @@ public abstract class PushAggRule extends RelOptRule {
 
             for (AggregateCall aggCall : aggregate.getAggCallList()) {
                 if (aggCall.getAggregation().getKind() == SqlKind.SINGLE_VALUE) {
-                    return;
-                }
-            }
-
-            if(lv instanceof OSSTableScan) {
-                if (!CBOUtil.canPushAggToOss(aggregate, (OSSTableScan)lv)) {
                     return;
                 }
             }

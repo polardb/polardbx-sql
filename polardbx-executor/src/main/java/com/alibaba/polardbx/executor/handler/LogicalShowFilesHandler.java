@@ -119,7 +119,7 @@ public class LogicalShowFilesHandler extends HandlerCommon {
                     long fileSize = ossOrcFileMeta.getFileSize();
                     long rowCount = ossOrcFileMeta.getTableRows();
                     String createTime = ossOrcFileMeta.getCreateTime();
-                    if (((OSSOrcFileMeta) fileMeta).getRemoveTs() == null) {
+                    if (ossOrcFileMeta.getRemoveTs() == null) {
                         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         rows.add(
                             new Object[] {
@@ -131,8 +131,8 @@ public class LogicalShowFilesHandler extends HandlerCommon {
                                 fileSize,
                                 rowCount,
                                 createTime,
-                                sdf.format(new Date(
-                                    ((OSSOrcFileMeta) fileMeta).getCommitTs() >> ITimestampOracle.BITS_LOGICAL_TIME))
+                                ossOrcFileMeta.getCommitTs() == null ? null :
+                                        sdf.format(new Date(ossOrcFileMeta.getCommitTs() >> ITimestampOracle.BITS_LOGICAL_TIME))
                             });
                     }
                 }

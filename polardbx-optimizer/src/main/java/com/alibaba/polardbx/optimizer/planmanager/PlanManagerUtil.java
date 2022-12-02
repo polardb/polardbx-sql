@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.TDDLHint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
@@ -33,8 +35,8 @@ import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -46,6 +48,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -62,9 +65,13 @@ import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.CollectTableNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
+import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
+import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
+import com.alibaba.polardbx.optimizer.sharding.label.Label;
+import com.alibaba.polardbx.optimizer.sharding.label.PredicateNode;
+import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
-import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.rule.MappingRule;
@@ -83,7 +90,6 @@ import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.schema.Table;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -94,25 +100,25 @@ import org.apache.calcite.sql.TDDLSqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.JsonBuilder;
-import org.apache.calcite.util.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MAX_TOLERANCE_RATIO;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MINOR_TOLERANCE_RATIO;
-import static com.alibaba.polardbx.optimizer.planmanager.parametric.MyParametricQueryAdvisor.INFLATION_NARROW_MAX;
-import static com.alibaba.polardbx.optimizer.planmanager.parametric.MyParametricQueryAdvisor.STEADY_CHOOSE_TIME;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainExecute;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
@@ -168,7 +174,7 @@ public class PlanManagerUtil {
          */
         final ExtractionResult er;
         try {
-            er = ConditionExtractor.partitioningConditionFrom(rel).extract();
+            er = ConditionExtractor.predicateFrom(rel).extract();
         } catch (Exception e) {
             return Maps.newHashMap();
         }
@@ -255,6 +261,9 @@ public class PlanManagerUtil {
 
     public static boolean useSPM(String schemaName, ExecutionPlan executionPlan, String parameterizedSql,
                                  ExecutionContext executionContext) {
+        if (DynamicConfig.getInstance().enableExtremePerformance()) {
+            return false;
+        }
         ParamManager paramManager = executionContext.getParamManager();
 
         if (!paramManager.getBoolean(ConnectionParams.ENABLE_SPM)) {
@@ -265,13 +274,13 @@ public class PlanManagerUtil {
             return false;
         }
 
-        if (executionContext.getSqlType() == SqlType.GET_INFORMATION_SCHEMA) {
-            return false;
-        }
-
-        if (parameterizedSql != null && OptimizerContext.getContext(schemaName).getPlanManager().getBaselineMap()
+        if (parameterizedSql != null && PlanManager.getInstance().getBaselineMap(schemaName)
             .containsKey(parameterizedSql)) {
             return true;
+        }
+
+        if (parameterizedSql != null && parameterizedSql.length() > 100000) {
+            return false;
         }
 
         PlannerContext plannerContext = PlannerContext.getPlannerContext(executionPlan.getPlan());
@@ -317,7 +326,7 @@ public class PlanManagerUtil {
     }
 
     public static Set<Pair<String, String>> getTableSetFromAst(SqlNode ast) {
-        final Set<Pair<String, String>> schemaTables = new HashSet<>();
+        final Set<Pair<String, String>> schemaTables = new TreeSet<>(Comparator.comparing(Pair::getValue));
         ast.accept(new CollectTableNameVisitor() {
             @Override
             protected SqlNode buildSth(SqlNode sqlNode) {
@@ -347,7 +356,6 @@ public class PlanManagerUtil {
                 }
             }
         }
-
         return schemaTables;
     }
 
@@ -394,8 +402,8 @@ public class PlanManagerUtil {
         return schemaTables;
     }
 
-    public static int computeTablesHashCode(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
-                                            ExecutionContext ec) {
+    public static int computeTablesVersion(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
+                                           ExecutionContext ec) {
         if (schemaTables == null) {
             return PlanManager.ERROR_TABLES_HASH_CODE;
         }
@@ -409,7 +417,8 @@ public class PlanManagerUtil {
                 || PerformanceSchema.NAME.equalsIgnoreCase(schema)
                 || MysqlSchema.NAME.equalsIgnoreCase(schema)
                 || MetaDbSchema.NAME.equalsIgnoreCase(schema)) {
-                return schema.hashCode();
+                hash.append(schema.hashCode());
+                continue;
             }
             try {
 
@@ -420,98 +429,8 @@ public class PlanManagerUtil {
                     tableMeta = ec.getSchemaManager(schema).getTable(table);
                 }
 
-                // table name
-                hash.append(tableMeta.getTableName());
-                // all column
-                for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
-                    hash.append(columnMeta);
-                }
-                // secondary index
-                for (IndexMeta indexMeta : tableMeta.getSecondaryIndexes()) {
-                    for (ColumnMeta columnMeta : indexMeta.getKeyColumns()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // primary key
-                if (tableMeta.isHasPrimaryKey()) {
-                    for (ColumnMeta columnMeta : tableMeta.getPrimaryKey()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // unique key
-                for (IndexMeta indexMeta : tableMeta.getUniqueIndexes(false)) {
-                    for (ColumnMeta columnMeta : indexMeta.getKeyColumns()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // global secondary index
-                if (tableMeta.getGsiTableMetaBean() != null) {
-                    hash.append(tableMeta.getGsiTableMetaBean());
-                }
-
-                // scale out status
-                if (tableMeta.getComplexTaskTableMetaBean() != null) {
-                    hash.append(tableMeta.getComplexTaskTableMetaBean());
-                }
-
-                if (tableMeta.getTableGroupOutlineRecord() != null) {
-                    hash.append(tableMeta.getTableGroupOutlineRecord());
-                }
-
-                // curr partition info
-                if (tableMeta.getPartitionInfo() != null) {
-                    hash.append(tableMeta.getPartitionInfo());
-                }
-
-                // new partition info
-                if (tableMeta.getNewPartitionInfo() != null) {
-                    hash.append(tableMeta.getNewPartitionInfo());
-                }
-
-                // Table flag status.
-                if (tableMeta.isAutoPartition()) {
-                    hash.append(0xA55A); // Magic number.
-                }
-
-                TableRule tableRule = OptimizerContext.getContext(schema).getRuleManager().getTableRule(table);
-                if (tableRule != null) {
-                    // tableRule
-                    hash.append(tableRule.isBroadcast());
-                    hash.append(tableRule.isAllowFullTableScan());
-
-                    hash.append(tableRule.getDbNamePattern());
-                    hash.append(tableRule.getTbNamePattern());
-
-                    String[] dbRuleStrs = tableRule.getDbRuleStrs();
-                    if (dbRuleStrs != null) {
-                        for (String s : dbRuleStrs) {
-                            hash.append(s);
-                        }
-                    }
-
-                    String[] tbRuleStrs = tableRule.getTbRulesStrs();
-                    if (tbRuleStrs != null) {
-                        for (String s : tbRuleStrs) {
-                            hash.append(s);
-                        }
-                    }
-
-                    ShardFunctionMeta dbShardFuncTionMeta = tableRule.getDbShardFunctionMeta();
-                    if (dbShardFuncTionMeta != null) {
-                        hash.append(dbShardFuncTionMeta.getRuleShardFuncionName());
-                    }
-
-                    ShardFunctionMeta tbShardFuncTionMeta = tableRule.getTbShardFunctionMeta();
-                    if (tbShardFuncTionMeta != null) {
-                        hash.append(tbShardFuncTionMeta.getRuleShardFuncionName());
-                    }
-
-                    List<MappingRule> extPartitions = tableRule.getExtPartitions();
-                    if (extPartitions != null) {
-                        hash.append(extPartitions);
-                    }
-                }
-
+                // table version
+                hash.append(tableMeta.getVersion());
             } catch (Throwable e) {
                 loggerSpm.debug("plan manager compute tables hash code error", e);
                 return PlanManager.ERROR_TABLES_HASH_CODE;
@@ -577,9 +496,6 @@ public class PlanManagerUtil {
     }
 
     public static boolean useSpm(SqlParameterized sqlParameterized, ExecutionContext ec) {
-        if (ec.getSqlType() == SqlType.GET_SYSTEM_VARIABLE) {
-            return false;
-        }
         ExplainResult explain = ec.getExplain();
         if (isExplainOptimizer(explain)) {
             return false;
@@ -590,6 +506,10 @@ public class PlanManagerUtil {
         }
 
         if (isExplainAdvisor(explain)) {
+            return false;
+        }
+
+        if (isExplainExecute(explain)) {
             return false;
         }
 
@@ -616,7 +536,6 @@ public class PlanManagerUtil {
         /**
          * hint judgement, sql with hint should avoid get into spm
          */
-
         if (sqlParameterized.getAst().getHeadHintsDirect() != null) {
             if (sqlParameterized.getAst().getHeadHintsDirect().stream()
                 .anyMatch(sqlCommentHint -> sqlCommentHint instanceof TDDLHint)) {
@@ -629,17 +548,6 @@ public class PlanManagerUtil {
             if (((SQLObjectImpl) (sqlParameterized.getAst())).getHint() instanceof TDDLHint) {
                 return false;
             }
-        }
-
-        /**
-         * sql type judgement, only support SELECT/INSERT/UPDATE/DELETE get into plancache
-         */
-        if (
-            !(sqlParameterized.getAst() instanceof SQLSelectStatement ||
-                sqlParameterized.getAst() instanceof SQLInsertStatement ||
-                sqlParameterized.getAst() instanceof SQLUpdateStatement ||
-                sqlParameterized.getAst() instanceof SQLDeleteStatement)) {
-            return false;
         }
 
         return ec.getParamManager().getBoolean(ConnectionParams.PLAN_CACHE);
@@ -746,6 +654,10 @@ public class PlanManagerUtil {
         return plannerContext.getBaselineInfo().getId();
     }
 
+    /**
+     * @param columnsMap table -> columns
+     * @param columnsMapTmp table -> columns
+     */
     public static void mergeColumns(Map<String, Set<String>> columnsMap,
                                     Map<String, Set<String>> columnsMapTmp) {
         for (Map.Entry<String, Set<String>> entry : columnsMapTmp.entrySet()) {
@@ -795,7 +707,12 @@ public class PlanManagerUtil {
             for (Integer fieldIndex : bitSet) {
                 String columnName = fieldNames.get(fieldIndex);
                 // TODO try to find the statistic need of multi column by analyzing plan
-                columnsMap.put(tableName, Sets.newHashSet(columnName));
+                if (columnsMap.containsKey(tableName)) {
+                    columnsMap.get(tableName).add(columnName);
+                } else {
+                    columnsMap.put(tableName, Sets.newHashSet(columnName));
+                }
+
             }
         }
         return columnsMap;

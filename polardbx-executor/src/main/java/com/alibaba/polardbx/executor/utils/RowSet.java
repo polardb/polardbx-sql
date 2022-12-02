@@ -81,4 +81,8 @@ public class RowSet {
 
         return new ArrayList<>(groupKeyMap.values());
     }
+
+    public List<ColumnMeta> getMetas() {
+        return metas;
+    }
 }

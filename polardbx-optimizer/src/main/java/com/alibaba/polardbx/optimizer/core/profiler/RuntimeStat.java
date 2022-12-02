@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.profiler;
 
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.utils.thread.CpuCollector;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.core.profiler.cpu.CpuStat;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.MemoryEstimation;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;

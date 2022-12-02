@@ -25,7 +25,6 @@ import java.util.List;
  * @author chenghui.lch
  */
 
-@Ignore("fix by ???")
 public class PartitionTableTest extends PartitionAutoLoadSqlTestBase {
 
     public PartitionTableTest(AutoLoadSqlTestCaseParams parameter) {

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -23,6 +24,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -50,6 +52,7 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.alibaba.polardbx.rpc.result.XResultUtil.ZERO_TIMESTAMP_LONG_VAL;
 
@@ -127,10 +130,10 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, timezone, dataType.getScale());
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, timezone, dataType.getScale(), accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -140,6 +143,7 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((BytesColumnVector) columnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
 
                 MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
@@ -154,6 +158,7 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                     timeVal = new MySQLTimeVal();
                 }
                 ((LongColumnVector) columnVector).vector[rowNumber] = XResultUtil.timeValToLong(timeVal);
+                accumulator.ifPresent(a -> a.appendHash(Long.hashCode(TimeStorage.writeTimestamp(mysqlDateTime))));
             }
         }
     }

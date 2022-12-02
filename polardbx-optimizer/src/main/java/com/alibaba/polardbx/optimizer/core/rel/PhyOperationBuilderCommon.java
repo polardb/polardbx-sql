@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
@@ -44,7 +47,7 @@ public class PhyOperationBuilderCommon {
     public PhyOperationBuilderCommon() {
     }
 
-    protected ShardPlanMemoryContext buildShardPlanMemoryContext(RelNode plan, String sqlTemplateStr,
+    protected ShardPlanMemoryContext buildShardPlanMemoryContext(RelNode plan, BytesSql bytesSql,
                                                                  AbstractRelNode parentRel,
                                                                  Map<Integer, ParameterContext> paramsOfBuilder,
                                                                  Map<String, List<List<String>>> targetTables,
@@ -69,8 +72,9 @@ public class PhyOperationBuilderCommon {
             allShardCount += shardCount;
         }
         shardPlanMemoryContext.allShardCount = allShardCount;
-        if (executionContext.getExplain() != null && executionContext.getTraceId() != null && !executionContext
-            .isOnlyUseTmpTblPool()) {
+        if (MetricLevel.isSQLMetricEnabled(executionContext.getParamManager().getInt(
+            ConnectionParams.MPP_METRIC_LEVEL)) && executionContext.getTraceId() != null
+            && !executionContext.isOnlyUseTmpTblPool()) {
             MemoryPool planBuilderPool = MemoryPoolUtils.getPlanBuilderPool(plan, executionContext);
             if (planBuilderPool != null) {
                 String planBuildingPoolName = parentRel.getRelName();
@@ -81,7 +85,7 @@ public class PhyOperationBuilderCommon {
                  * allocate the memory for logical sql template and the logical
                  * params
                  */
-                long memOfSqlAndParams = MemoryEstimator.calcPhyTableScanAndModifyViewBuilderMemory(sqlTemplateStr,
+                long memOfSqlAndParams = MemoryEstimator.calcPhyTableScanAndModifyViewBuilderMemory(bytesSql.size(),
                     paramsOfBuilder,
                     targetTables);
                 maOfPlanBuildingPool.allocateReservedMemory(memOfSqlAndParams);

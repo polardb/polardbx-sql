@@ -39,6 +39,7 @@ public class ConfigDataMode {
     private static boolean zeroDataTimeToString = false;
 
     private static boolean supportSingleDbMultiTbs = false;
+    private static boolean supportRemoveDdl = false;
     private static boolean supportDropAutoSeq = false;
     private static boolean allowSimpleSequence = false;
 
@@ -65,7 +66,9 @@ public class ConfigDataMode {
     }
 
     protected static void loadConfigDataMode() {
-
+        if (isFastMock()) {
+            return;
+        }
         String m = System.getProperty(CONFIG_MODE, "auto");
         mode = Mode.nameOf(m);
         if (mode == null) {
@@ -87,8 +90,11 @@ public class ConfigDataMode {
         String singleDbMultiTbsSupported = System.getProperty("supportSingleDbMultiTbs");
         supportSingleDbMultiTbs = BooleanUtils.toBoolean(singleDbMultiTbsSupported);
 
-        String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
-        supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
+        String removeDdlSupported = System.getProperty("supportRemoveDdl");
+            supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
+
+            String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
+            supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
 
         String simpleSequenceAllowed = System.getProperty("allowSimpleSequence");
         allowSimpleSequence = BooleanUtils.toBoolean(simpleSequenceAllowed);
@@ -221,10 +227,12 @@ public class ConfigDataMode {
         ConfigDataMode.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
     }
 
-    // ========= The DB type of Server =========
-    public static boolean isPolarDbX() {
-        // PolarDbX load configs by GMS/MetaDB
-        return configServerMode == Mode.GMS;
+    public static boolean isSupportRemoveDdl() {
+        return supportRemoveDdl;
+    }
+
+    public static void setSupportRemoveDdl(boolean supportRemoveDdl) {
+        ConfigDataMode.supportRemoveDdl = supportRemoveDdl;
     }
 
     public static boolean isSupportDropAutoSeq() {

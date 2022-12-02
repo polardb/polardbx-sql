@@ -25,7 +25,6 @@ import java.util.List;
  * @version 1.0
  */
 
-@Ignore("fix by ???")
 public class AutoPartitionTest extends PartitionAutoLoadSqlTestBase {
 
     public AutoPartitionTest(AutoLoadSqlTestCaseParams parameter) {

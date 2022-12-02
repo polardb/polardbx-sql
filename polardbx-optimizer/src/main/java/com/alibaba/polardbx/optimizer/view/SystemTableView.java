@@ -57,6 +57,8 @@ public interface SystemTableView {
 
     Row select(String viewName);
 
+    List<String> selectAllViewName();
+
     boolean delete(String viewName);
 
     boolean deleteAll(Connection conn);

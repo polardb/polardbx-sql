@@ -70,9 +70,10 @@ public class FileMeta {
             ByteBuffer orcTailBuffer = ByteBuffer.wrap(filesRecord.getFileMeta());
             Long commitTs = filesRecord.getCommitTs();
             Long removeTs = filesRecord.getRemoveTs();
+            Long fileHash = filesRecord.getFileHash();
             return new OSSOrcFileMeta(logicalSchemaName, logicalTableName, physicalTableSchema, physicalTableName,
                 fileName, fileSize, tableRows,
-                orcTailBuffer, createTime, updateTime, engine, commitTs, removeTs);
+                orcTailBuffer, createTime, updateTime, engine, commitTs, removeTs, fileHash);
         }
         default:
             GeneralUtil.nestedException("Unsupported file format with engine " + engineStr);

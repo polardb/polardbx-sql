@@ -124,7 +124,28 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
             baseOneTableName);
         String[] columnParams = new String[] {"m1023", "m1017"};
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
 
+    /**
+     * ->
+     */
+    @Test
+    public void testJsonOperator1() {
+        String sql = String.format(
+            "select t220.app_gmt_create as m1017 from %s t220 where json_data->'$.TableField_MINGXI' = '1'",
+            baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    /**
+     * ->>
+     */
+    @Test
+    public void testJsonOperator2() {
+        String sql = String.format(
+            "select t220.app_gmt_create as m1017 from %s t220 where json_data->>'$.cost_detail' = '花费'",
+            baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
     @Test
@@ -291,6 +312,10 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
         Assert.assertEquals(typeName, mysqlTypeName);
     }
 
+    /**
+     * 非下推JSON函数测试
+     */
+
     @Test
     public void jsonInsertTest() {
         String sql = " select json_insert('[1,2,3]', '$[0]', 4)";
@@ -323,6 +348,23 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
     public void jsonMergeTest() {
         String sql = " SELECT JSON_MERGE('{}', '{}')";
         selectContentIgnoreJsonFormatSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void jsonQuoteTest() {
+        String funcPattern = "SELECT JSON_QUOTE(%s);";
+        String[] args = {
+            "'abc'",
+            "'\"abc\"'",
+            "'\"abc\",[\"1,2,3]'",
+            "'\"\"\"abc\"'",
+            "'\"\\\\abc\"'",
+            "'a\nbc\"'",
+        };
+        for (String arg : args) {
+            selectContentSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
     }
 
     @Test

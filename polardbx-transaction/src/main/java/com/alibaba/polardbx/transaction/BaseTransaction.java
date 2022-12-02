@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.transaction;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
@@ -62,11 +63,12 @@ public abstract class BaseTransaction implements ITransaction {
 
     public BaseTransaction(ExecutionContext executionContext, ITransactionManager manager) {
         super();
+        this.id = manager.generateTxid(executionContext);
+//        executionContext = executionContext.subContextForTransaction();
         this.executionContext = executionContext;
         this.isolationLevel = executionContext.getTxIsolation();
         this.autoCommit = executionContext.isAutoCommit();
         this.manager = manager;
-        this.id = manager.generateTxid(executionContext);
         // Register to manager so that we can see it in SHOW TRANS
         manager.register(this);
     }
@@ -74,6 +76,13 @@ public abstract class BaseTransaction implements ITransaction {
     @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw) throws SQLException {
         return getConnection(schemaName, group, ds, rw, this.executionContext);
+    }
+
+    @Override
+    public IConnection getConnection(String schemaName, String group, Long grpConnId, IDataSource ds, RW rw,
+                                     ExecutionContext ec)
+        throws SQLException {
+        throw new NotSupportException();
     }
 
     @Override
@@ -120,6 +129,11 @@ public abstract class BaseTransaction implements ITransaction {
     @Override
     public void setCrucialError(ErrorCode errorCode) {
         this.errorCode = errorCode;
+    }
+
+    @Override
+    public ErrorCode getCrucialError() {
+        return this.errorCode;
     }
 
     /**
@@ -209,5 +223,15 @@ public abstract class BaseTransaction implements ITransaction {
     @Override
     public ITransactionManagerUtil getTransactionManagerUtil() {
         return this.manager;
+    }
+
+    @Override
+    public boolean handleStatementError(Throwable t) {
+        return false;
+    }
+
+    @Override
+    public void releaseAutoSavepoint() {
+        // do nothing
     }
 }

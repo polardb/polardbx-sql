@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineRequester;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -92,6 +93,8 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
                 }
             }
         }
+
+        DdlEngineRequester.notifyLeader(executionContext.getSchemaName(), jobIds);
 
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
         if (!asyncMode && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {

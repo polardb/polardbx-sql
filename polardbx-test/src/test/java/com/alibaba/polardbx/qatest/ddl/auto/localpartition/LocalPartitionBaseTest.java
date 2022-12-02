@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.localpartition;
 
+import com.alibaba.polardbx.common.scheduler.SchedulerJobStatus;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
@@ -80,6 +81,11 @@ public abstract class LocalPartitionBaseTest extends DDLBaseNewDBTestCase {
     }
 
     public void validateScheduledJob(Connection connection, boolean exist, String schemaName, String localTableName) {
+        validateScheduledJob(connection, exist, true, schemaName, localTableName);
+    }
+
+    public void validateScheduledJob(Connection connection, boolean exist, boolean enabled, String schemaName,
+                                     String localTableName) {
         ResultSet resultSet = JdbcUtil.executeQuery(
             String.format(
                 "select * from metadb.scheduled_jobs where table_schema='%s' and table_name='%s'",
@@ -94,6 +100,36 @@ public abstract class LocalPartitionBaseTest extends DDLBaseNewDBTestCase {
             } else {
                 Assert.assertFalse(resultSet.next());
             }
+
+            final String scheduledJobStatus = resultSet.getString("status");
+            Assert.assertEquals(enabled,
+                StringUtils.equalsIgnoreCase(scheduledJobStatus, SchedulerJobStatus.ENABLED.name()));
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+    }
+
+    public void validateScheduledJob(Connection connection, boolean exist, boolean enabled, long scheduleId) {
+        ResultSet resultSet = JdbcUtil.executeQuery(
+            String.format(
+                "select * from metadb.scheduled_jobs where schedule_id=%s",
+                scheduleId
+            ),
+            connection
+        );
+
+        try {
+            if (exist) {
+                Assert.assertTrue(resultSet.next());
+            } else {
+                Assert.assertFalse(resultSet.next());
+            }
+
+            final String scheduledJobStatus = resultSet.getString("status");
+            Assert.assertEquals(enabled,
+                StringUtils.equalsIgnoreCase(scheduledJobStatus, SchedulerJobStatus.ENABLED.name()));
+
         } catch (SQLException throwables) {
             throwables.printStackTrace();
         }

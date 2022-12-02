@@ -108,7 +108,7 @@ public class Reporter implements CheckerCallback {
     }
 
     @Override
-    public boolean batch(String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker,
+    public boolean batch(String logTbName, String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker,
                          boolean primaryToGsi, List<List<Pair<ParameterContext, byte[]>>> baseRows,
                          List<List<Pair<ParameterContext, byte[]>>> checkRows) {
 
@@ -145,6 +145,9 @@ public class Reporter implements CheckerCallback {
             if (null == indexRow) {
                 type = "MISSING";
                 details = detailString(checker, primaryRow, null);
+            } else if (null == primaryRow) {
+                type = "ORPHAN";
+                details = detailString(checker, null, indexRow);
             } else {
                 type = "CONFLICT";
                 details = detailString(checker, primaryRow, indexRow);
@@ -154,14 +157,12 @@ public class Reporter implements CheckerCallback {
                 phyTable,
                 type,
                 CheckerManager.CheckerReportStatus.FOUND,
-                pkString(checker, primaryRow),
+                null == primaryRow ? pkString(checker, indexRow) : pkString(checker, primaryRow),
                 details,
                 "Reporter.",
                 // Only no lock with recheck context.
-                checker.getPrimaryLock() == SqlSelect.LockMode.UNDEF ? new RecheckContext(dbIndex,
-                    phyTable,
-                    true,
-                    primaryRow) : null));
+                checker.getPrimaryLock() == SqlSelect.LockMode.UNDEF && null != primaryRow ?
+                    new RecheckContext(dbIndex, phyTable, true, primaryRow) : null));
 
             return true;
         } : (indexRow, primaryRow) -> {

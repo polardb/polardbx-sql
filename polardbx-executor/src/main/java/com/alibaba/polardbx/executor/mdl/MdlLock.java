@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.mdl;
 
 import com.alibaba.polardbx.common.utils.Assert;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.concurrent.locks.StampedLock;
 
 /**

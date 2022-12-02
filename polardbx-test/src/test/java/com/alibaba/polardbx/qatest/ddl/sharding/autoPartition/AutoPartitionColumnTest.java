@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.sharding.autoPartition;
 
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -27,6 +28,7 @@ import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -326,7 +328,8 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
                             }
                         }
 
-                        JdbcUtil.executeUpdateSuccess(conn, insertSql);
+                        JdbcUtil.executeUpdateSuccessIgnoreErr(conn, insertSql,
+                            ImmutableSet.of("Number of INSERT target columns"));
 
                         // Select primary first.
                         try (Statement statement = conn.createStatement()) {
@@ -344,6 +347,11 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
                                 for (List<String> row : result) {
                                     Assert.assertEquals(row.get(baseIdx), row.get(baseIdx + 4));
                                 }
+                            }
+                        } catch (SQLException e) {
+                            if (!e.getMessage()
+                                .contains("The definition of the table required by the flashback query has changed")) {
+                                throw e;
                             }
                         }
 
@@ -364,6 +372,11 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
                                 for (List<String> row : result) {
                                     Assert.assertEquals(row.get(baseIdx), row.get(baseIdx + 4));
                                 }
+                            }
+                        } catch (SQLException e) {
+                            if (!e.getMessage()
+                                .contains("The definition of the table required by the flashback query has changed")) {
+                                throw e;
                             }
                         }
                     }
@@ -607,7 +620,7 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
 
         runners.forEach(Thread::start);
 
-//        Thread.sleep(2000); // Run for 2s.
+        Thread.sleep(1000); // Run for 1s.
 
         System.out.println("Start alter col default.");
 
@@ -635,9 +648,17 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
         Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, CGSI_NAME).contains("DEFAULT '2'"));
         Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, UCGSI_NAME).contains("DEFAULT '2'"));
 
-        // Assert that data identical.
-        selectContentSameAssert(selectPrimary + " order by `seller_id`", selectGSI + " order by `seller_id`", null,
-            tddlConnection, tddlConnection);
+        // count item first
+        final String countPrimary = MessageFormat
+            .format("select count(1) from `{0}` ignore index({1},{2})", TABLE_NAME, CGSI_NAME,
+                UCGSI_NAME);
+        final String count = JdbcUtil.resultsStr(JdbcUtil.executeQuery(countPrimary, tddlConnection));
+        System.out.println("item count: " + count);
+        if (Long.parseLong(count) > 0) {
+            // Assert that data identical.
+            selectContentSameAssert(selectPrimary + " order by `seller_id`", selectGSI + " order by `seller_id`", null,
+                tddlConnection, tddlConnection);
+        }
 
         System.out.println("done");
     }

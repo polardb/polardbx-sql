@@ -1,1 +1,179 @@
-toBeAdded
+DROP TABLE IF EXISTS tbl_hsh_ts;
+CREATE TABLE IF NOT EXISTS tbl_hsh_ts (
+	a timestamp NOT NULL
+)
+PARTITION BY HASH (unix_timestamp(a)) PARTITIONS 8;
+SET time_zone = '+00:00';
+SHOW VARIABLES LIKE 'time_zone';
+Variable_name,Value
+time_zone,+00:00
+INSERT INTO tbl_hsh_ts
+VALUES ('1999-12-31 20:00:00');
+SET time_zone = '+00:00';
+SELECT *
+FROM tbl_hsh_ts
+WHERE a = '1999-12-31 20:00:00';
+a
+1999-12-31 20:00:00.0
+EXPLAIN SELECT *
+FROM tbl_hsh_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_hsh_ts[p3]", sql="SELECT `a` FROM `tbl_hsh_ts` AS `tbl_hsh_ts` WHERE (`a` = ?)")
+SET time_zone = '+08:00';
+SHOW VARIABLES LIKE 'time_zone';
+Variable_name,Value
+time_zone,+08:00
+SELECT *
+FROM tbl_hsh_ts
+WHERE a = '2000-01-01 04:00:00';
+a
+2000-01-01 04:00:00.0
+EXPLAIN SELECT *
+FROM tbl_hsh_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_hsh_ts[p6]", sql="SELECT `a` FROM `tbl_hsh_ts` AS `tbl_hsh_ts` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_key_ts;
+CREATE TABLE IF NOT EXISTS tbl_key_ts (
+	a timestamp NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+SET time_zone = '+00:00';
+INSERT INTO tbl_key_ts
+VALUES ('1999-12-31 20:00:00');
+SET time_zone = '+00:00';
+SELECT *
+FROM tbl_key_ts
+WHERE a = '1999-12-31 20:00:00';
+a
+1999-12-31 20:00:00.0
+EXPLAIN SELECT *
+FROM tbl_key_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_ts[p7]", sql="SELECT `a` FROM `tbl_key_ts` AS `tbl_key_ts` WHERE (`a` = ?)")
+SET time_zone = '+08:00';
+SELECT *
+FROM tbl_key_ts
+WHERE a = '2000-01-01 04:00:00';
+a
+2000-01-01 04:00:00.0
+EXPLAIN SELECT *
+FROM tbl_key_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_ts[p2]", sql="SELECT `a` FROM `tbl_key_ts` AS `tbl_key_ts` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_rng_ts;
+CREATE TABLE IF NOT EXISTS tbl_rng_ts (
+	a timestamp NOT NULL
+)
+PARTITION BY RANGE (unix_timestamp(a)) (
+	PARTITION p0 VALUES LESS THAN (915148800),
+	PARTITION p1 VALUES LESS THAN (946684800),
+	PARTITION p2 VALUES LESS THAN (978307200),
+	PARTITION p3 VALUES LESS THAN (1009843200)
+);
+SET time_zone = '+00:00';
+INSERT INTO tbl_rng_ts
+VALUES ('1999-12-31 20:00:00');
+SET time_zone = '+00:00';
+SELECT *
+FROM tbl_key_ts
+WHERE a = '1999-12-31 20:00:00';
+a
+1999-12-31 20:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rng_ts[p1]", sql="SELECT `a` FROM `tbl_rng_ts` AS `tbl_rng_ts` WHERE (`a` = ?)")
+SET time_zone = '+08:00';
+SELECT *
+FROM tbl_rng_ts
+WHERE a = '2000-01-01 04:00:00';
+a
+2000-01-01 04:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rng_ts[p1]", sql="SELECT `a` FROM `tbl_rng_ts` AS `tbl_rng_ts` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_rng_ts;
+CREATE TABLE IF NOT EXISTS tbl_rng_ts (
+	a timestamp NOT NULL
+)
+PARTITION BY RANGE (unix_timestamp(a)) (
+	PARTITION p0 VALUES LESS THAN (915120000),
+	PARTITION p1 VALUES LESS THAN (946656000),
+	PARTITION p2 VALUES LESS THAN (978278400),
+	PARTITION p3 VALUES LESS THAN (1009814400)
+);
+SET time_zone = '+00:00';
+INSERT INTO tbl_rng_ts
+VALUES ('1999-12-31 20:00:00');
+SET time_zone = '+00:00';
+SELECT *
+FROM tbl_key_ts
+WHERE a = '1999-12-31 20:00:00';
+a
+1999-12-31 20:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rng_ts[p2]", sql="SELECT `a` FROM `tbl_rng_ts` AS `tbl_rng_ts` WHERE (`a` = ?)")
+SET time_zone = '+08:00';
+SELECT *
+FROM tbl_rng_ts
+WHERE a = '2000-01-01 04:00:00';
+a
+2000-01-01 04:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts
+WHERE a = '1999-12-31 20:00:00';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rng_ts[p1]", sql="SELECT `a` FROM `tbl_rng_ts` AS `tbl_rng_ts` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_rng_ts2;
+SET time_zone = '+00:00';
+CREATE TABLE IF NOT EXISTS tbl_rng_ts2 (
+	a timestamp NOT NULL
+)
+PARTITION BY RANGE (unix_timestamp(a)) (
+	PARTITION p0 VALUES LESS THAN (unix_timestamp('1999-01-01 00:00:00')),
+	PARTITION p1 VALUES LESS THAN (unix_timestamp('2000-01-01 00:00:00')),
+	PARTITION p2 VALUES LESS THAN (unix_timestamp('2001-01-01 00:00:00')),
+	PARTITION p3 VALUES LESS THAN (unix_timestamp('2002-01-01 00:00:00'))
+);
+SET time_zone = '+00:00';
+INSERT INTO tbl_rng_ts2
+VALUES ('1998-12-31 15:00:00'),
+	('1998-12-31 17:00:00');
+SET time_zone = '+00:00';
+SELECT *
+FROM tbl_rng_ts2
+WHERE a = '1998-12-31 15:00:00'
+	OR a = '1998-12-31 17:00:00';
+a
+1998-12-31 15:00:00.0
+1998-12-31 17:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts2
+WHERE a = '1998-12-31 15:00:00'
+	OR a = '1998-12-31 17:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_rng_ts2[p0]", sql="SELECT `tbl_rng_ts2`.`a` FROM ? AS `tbl_rng_ts2` WHERE ((`tbl_rng_ts2`.`a` = ?) OR (`tbl_rng_ts2`.`a` = ?))", params="1998-12-31 17:00:00,1998-12-31 15:00:00")
+SET time_zone = '+08:00';
+SELECT *
+FROM tbl_rng_ts2
+WHERE a = '1998-12-31 23:00:00'
+	OR a = '1999-01-01 01:00:00';
+a
+1998-12-31 23:00:00.0
+1999-01-01 01:00:00.0
+EXPLAIN SELECT *
+FROM tbl_rng_ts2
+WHERE a = '1998-12-31 23:00:00'
+	OR a = '1999-01-01 01:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_rng_ts2[p0]", sql="SELECT `tbl_rng_ts2`.`a` FROM ? AS `tbl_rng_ts2` WHERE ((`tbl_rng_ts2`.`a` = ?) OR (`tbl_rng_ts2`.`a` = ?))", params="1999-01-01 01:00:00,1998-12-31 23:00:00")

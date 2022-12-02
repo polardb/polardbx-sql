@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.row;
 
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import java.math.BigDecimal;
 import java.sql.Blob;
@@ -78,6 +79,12 @@ public interface Row {
      * 特殊的接口,针对server需要根据用户指定的set names返回特定的编码bytes
      */
     byte[] getBytes(int index, String encoding);
+
+    /**
+     * 作用同 getBytes(int index, String encoding)
+     * 若已知数据类型，则应尽可能使用该接口以避免重复生成 data types
+     */
+    byte[] getBytes(DataType dataType, int index, String encoding);
 
     CursorMeta getParentCursorMeta();
 

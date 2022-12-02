@@ -1,0 +1,426 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`a` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL
+);
+ALTER TABLE `t_order`
+	ADD CLUSTERED INDEX cgsi_b (`b`) PARTITION BY KEY (`b`);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	ADD CLUSTERED INDEX cgsi_c (`c`) PARTITION BY KEY (`c`);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`),
+	CLUSTERED INDEX `cgsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	CLUSTERED INDEX /* cgsi_c_$ */ `cgsi_c` (`c`) PARTITION BY KEY (`c`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`),
+	LOCAL KEY `_local_cgsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `_local_cgsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE `cgsi_c`;
+Table,Create Table
+cgsi_c_$,CREATE TABLE `cgsi_c_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `_local_cgsi_b` (`b`),
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	ADD GLOBAL INDEX gsi_d (`d`) PARTITION BY KEY (`d`);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`),
+	CLUSTERED INDEX `cgsi_c` (`c`),
+	INDEX `gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	CLUSTERED INDEX /* cgsi_c_$ */ `cgsi_c` (`c`) PARTITION BY KEY (`c`) PARTITIONS 3,
+	GLOBAL INDEX /* gsi_d_$ */ `gsi_d` (`d`) PARTITION BY KEY (`d`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`),
+	LOCAL KEY `_local_cgsi_c` (`c`),
+	LOCAL KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `_local_cgsi_c` (`c`),
+	KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE `cgsi_c`;
+Table,Create Table
+cgsi_c_$,CREATE TABLE `cgsi_c_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `_local_cgsi_b` (`b`),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE `gsi_d`;
+Table,Create Table
+gsi_d_$,CREATE TABLE `gsi_d_$` (
+	`a` int(11) NOT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	ADD INDEX local_idx (`b`, `c`);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`),
+	CLUSTERED INDEX `cgsi_c` (`c`),
+	INDEX `gsi_d` (`d`),
+	INDEX `local_idx` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	CLUSTERED INDEX /* cgsi_c_$ */ `cgsi_c` (`c`) PARTITION BY KEY (`c`) PARTITIONS 3,
+	GLOBAL INDEX /* gsi_d_$ */ `gsi_d` (`d`) PARTITION BY KEY (`d`) PARTITIONS 3,
+	GLOBAL INDEX /* local_idx_$ */ `local_idx` (`b`, `c`) PARTITION BY KEY (`b`, `c`, `a`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`),
+	LOCAL KEY `_local_cgsi_c` (`c`),
+	LOCAL KEY `_local_gsi_d` (`d`),
+	LOCAL KEY `_local_local_idx` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `_local_cgsi_c` (`c`),
+	KEY `_local_gsi_d` (`d`),
+	KEY `_local_local_idx` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE `cgsi_c`;
+Table,Create Table
+cgsi_c_$,CREATE TABLE `cgsi_c_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `_local_cgsi_b` (`b`),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_local_gsi_d` (`d`),
+	KEY `_local_local_idx` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE `gsi_d`;
+Table,Create Table
+gsi_d_$,CREATE TABLE `gsi_d_$` (
+	`a` int(11) NOT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	DROP INDEX local_idx;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`),
+	CLUSTERED INDEX `cgsi_c` (`c`),
+	INDEX `gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	CLUSTERED INDEX /* cgsi_c_$ */ `cgsi_c` (`c`) PARTITION BY KEY (`c`) PARTITIONS 3,
+	GLOBAL INDEX /* gsi_d_$ */ `gsi_d` (`d`) PARTITION BY KEY (`d`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`),
+	LOCAL KEY `_local_cgsi_c` (`c`),
+	LOCAL KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `_local_cgsi_c` (`c`),
+	KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE `cgsi_c`;
+Table,Create Table
+cgsi_c_$,CREATE TABLE `cgsi_c_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `_local_cgsi_b` (`b`),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE `gsi_d`;
+Table,Create Table
+gsi_d_$,CREATE TABLE `gsi_d_$` (
+	`a` int(11) NOT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	DROP INDEX cgsi_c;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX `cgsi_b` (`b`),
+	INDEX `gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* cgsi_b_$ */ `cgsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
+	GLOBAL INDEX /* gsi_d_$ */ `gsi_d` (`d`) PARTITION BY KEY (`d`) PARTITIONS 3,
+	LOCAL KEY `_local_cgsi_b` (`b`),
+	LOCAL KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `cgsi_b`;
+Table,Create Table
+cgsi_b_$,CREATE TABLE `cgsi_b_$` (
+	`a` int(11) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE `gsi_d`;
+Table,Create Table
+gsi_d_$,CREATE TABLE `gsi_d_$` (
+	`a` int(11) NOT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	DROP INDEX cgsi_b;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_d_$ */ `gsi_d` (`d`) PARTITION BY KEY (`d`) PARTITIONS 3,
+	LOCAL KEY `_local_gsi_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `gsi_d`;
+Table,Create Table
+gsi_d_$,CREATE TABLE `gsi_d_$` (
+	`a` int(11) NOT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE `t_order`
+	DROP INDEX gsi_d;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`d` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */

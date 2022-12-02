@@ -24,9 +24,11 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import lombok.Getter;
 
 import java.sql.Connection;
@@ -48,18 +50,15 @@ public class ShowTableMetaTask extends BaseGmsTask {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
 
-        SystemTableRecord sequenceRecord =
-                tableInfoManager.fetchSequence(schemaName, AUTO_SEQ_PREFIX + logicalTableName);
+        SequenceBaseRecord sequenceRecord =
+            tableInfoManager.fetchSequence(schemaName, AUTO_SEQ_PREFIX + logicalTableName);
 
         TableMetaChanger.triggerSchemaChange(metaDbConnection, schemaName, logicalTableName, sequenceRecord,
-                tableInfoManager);
+            tableInfoManager);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
-        if (optimizerContext != null) {
-            optimizerContext.getPlanManager().invalidateCache();
-        }
+        PlanManager.getInstance().invalidateCacheBySchema(schemaName);
     }
 
     @Override

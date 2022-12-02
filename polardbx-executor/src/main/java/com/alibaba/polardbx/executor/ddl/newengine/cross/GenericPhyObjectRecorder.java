@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.ddl.newengine.cross.AsyncPhyObjectRecorder.PhyObjectTask;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -39,6 +40,7 @@ import org.apache.calcite.rel.RelNode;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.BACKTICK;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
@@ -46,7 +48,6 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_CANT_
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_DUPLICATE_KEY;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_TABLE_EXISTS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_UNKNOWN_TABLE;
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SEMICOLON;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_TABLE_EXISTS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_UNKNOWN_TABLE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_VIOLATION;
@@ -63,6 +64,8 @@ public class GenericPhyObjectRecorder {
     protected final String schemaName;
     protected final String groupName;
     protected final String phyTableName;
+
+    protected final List<PhyObjectTask> phyObjectTaskQueue;
 
     protected final PhyDdlExecutionRecord phyDdlExecutionRecord;
 
@@ -85,6 +88,8 @@ public class GenericPhyObjectRecorder {
         }
 
         this.schemaName = TStringUtil.isEmpty(objectSchema) ? executionContext.getSchemaName() : objectSchema;
+
+        this.phyObjectTaskQueue = AsyncPhyObjectRecorder.getPhyObjectTaskQueue(schemaName);
 
         this.phyDdlExecutionRecord = executionContext.getPhyDdlExecutionRecord();
     }
@@ -173,10 +178,16 @@ public class GenericPhyObjectRecorder {
     }
 
     protected void recordObjectNormal(String phyObjectInfo, boolean afterPhyDdl) {
-        addPhyObjectDone(phyObjectInfo, afterPhyDdl);
-
-        DdlJobManagerUtils.appendPhyTableDone(phyDdlExecutionRecord, phyObjectInfo, afterPhyDdl);
-
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_ASYNC_PHY_OBJ_RECORDING) &&
+            phyObjectTaskQueue != null) {
+            requestPhyObjectRecording(() -> {
+                addPhyObjectDone(phyObjectInfo, afterPhyDdl);
+                return null;
+            });
+        } else {
+            addPhyObjectDone(phyObjectInfo, afterPhyDdl);
+            DdlJobManagerUtils.appendPhyTableDone(phyDdlExecutionRecord, phyObjectInfo, afterPhyDdl);
+        }
         printDebugInfo("GenericPhyObjectRecorder.recordObjectNormal() - " + afterPhyDdl,
             phyDdlExecutionRecord, phyObjectInfo);
     }
@@ -186,20 +197,35 @@ public class GenericPhyObjectRecorder {
     }
 
     protected void resetPhyObjectsDone(String phyObjectInfo, boolean afterPhyDdl) {
-        synchronized (GenericPhyObjectRecorder.class) {
-            removePhyObjectDone(phyObjectInfo, afterPhyDdl);
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_ASYNC_PHY_OBJ_RECORDING) &&
+            phyObjectTaskQueue != null) {
+            requestPhyObjectRecording(() -> {
+                removePhyObjectDone(phyObjectInfo, afterPhyDdl);
+                return null;
+            });
+        } else {
+            synchronized (GenericPhyObjectRecorder.class) {
+                removePhyObjectDone(phyObjectInfo, afterPhyDdl);
+                DdlJobManagerUtils.resetPhyTablesDone(phyDdlExecutionRecord);
+            }
+        }
+        printDebugInfo("GenericPhyObjectRecorder.recordObjectRollback() - " + afterPhyDdl,
+            phyDdlExecutionRecord, phyObjectInfo);
+    }
 
-            // Build new object done list.
-            StringBuilder buf = new StringBuilder();
-            phyDdlExecutionRecord.getPhyObjectsDone().stream()
-                .forEach(phyObjectDone -> buf.append(SEMICOLON).append(phyObjectDone));
+    private void requestPhyObjectRecording(Supplier<?> supplier) {
+        final PhyObjectTask phyObjectTask = new PhyObjectTask(phyDdlExecutionRecord);
 
-            String newPhyObjectsDone = buf.length() > 0 ? buf.deleteCharAt(0).toString() : "";
+        synchronized (this.phyObjectTaskQueue) {
+            supplier.get();
+            phyObjectTaskQueue.add(phyObjectTask);
+            phyObjectTaskQueue.notify();
+        }
 
-            DdlJobManagerUtils.resetPhyTablesDone(phyDdlExecutionRecord, newPhyObjectsDone);
-
-            printDebugInfo("GenericPhyObjectRecorder.recordObjectRollback() - " + afterPhyDdl,
-                phyDdlExecutionRecord, phyObjectInfo);
+        try {
+            phyObjectTask.waitForDone();
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
         }
     }
 

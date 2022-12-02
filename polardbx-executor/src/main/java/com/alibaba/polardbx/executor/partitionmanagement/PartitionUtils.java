@@ -17,15 +17,21 @@
 package com.alibaba.polardbx.executor.partitionmanagement;
 
 import com.alibaba.polardbx.common.DefaultSchema;
-import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -35,7 +41,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfoBuilder;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
@@ -53,20 +58,19 @@ import org.apache.calcite.sql.SqlBinaryStringLiteral;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlRefreshTopology;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -78,10 +82,38 @@ public class PartitionUtils {
 
     public static SqlNode getSqlTemplate(String schemaName, String logicalTableName, String primaryTableDefinition,
                                          ExecutionContext ec) {
-        final SqlCreateTable primaryTableNode = (SqlCreateTable)new FastsqlParser()
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+        if (tableMeta.isGsi() && !tableMeta.isClustered() && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
+            final MySqlCreateTableStatement tableStatement =
+                (MySqlCreateTableStatement) SQLUtils.parseStatements(primaryTableDefinition, JdbcConstants.MYSQL)
+                    .get(0)
+                    .clone();
+
+            final MySqlUnique uniqueIndex = new MySqlUnique();
+            List<String> primaryKeys = Extractor.getPrimaryKeys(tableMeta, ec);
+            List<SQLSelectOrderByItem> sqlSelectOrderByItems = new ArrayList<>();
+            primaryKeys.forEach(e -> {
+                SQLSelectOrderByItem sqlSelectOrderByItem = new SQLSelectOrderByItem(new SQLIdentifierExpr(e));
+                sqlSelectOrderByItem.setParent(uniqueIndex);
+                sqlSelectOrderByItems.add(sqlSelectOrderByItem);
+            });
+
+            uniqueIndex.getIndexDefinition().setType("UNIQUE");
+            uniqueIndex.getIndexDefinition().setKey(true);
+            uniqueIndex.getIndexDefinition().setName(new SQLIdentifierExpr(TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME));
+            uniqueIndex.getIndexDefinition().getOptions().setIndexType("BTREE");
+            uniqueIndex.getIndexDefinition().setParent(uniqueIndex);
+            uniqueIndex.getIndexDefinition().getColumns().addAll(sqlSelectOrderByItems);
+            uniqueIndex.setParent(tableStatement);
+            tableStatement.getTableElementList().add(uniqueIndex);
+
+            primaryTableDefinition = SQLUtils.toSQLString(tableStatement, com.alibaba.polardbx.druid.DbType.mysql);
+        }
+
+        final SqlCreateTable primaryTableNode = (SqlCreateTable) new FastsqlParser()
             .parse(primaryTableDefinition, ec)
             .get(0);
-        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+
         updateBinaryColumnDefault(primaryTableNode, tableMeta);
 
         ReplaceTableNameWithQuestionMarkVisitor visitor =
@@ -123,20 +155,6 @@ public class PartitionUtils {
             }
         }
         sqlCreateTable.setColDefs(newColDefs);
-    }
-
-    public static List<GroupDetailInfoExRecord> getGroupDetailInfoByInstIdAndGroupName(String instId,
-                                                                                       String storageInstId,
-                                                                                       String dbName) {
-        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
-            GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
-            accessor.setConnection(metaDbConn);
-            return accessor.getCompletedGroupInfosByInstIdAndDbName(instId, storageInstId, dbName);
-        } catch (Throwable e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, e,
-                String.format("Failed to create physical db, dbName=[%s], instId=[]", dbName, instId));
-        }
-
     }
 
     /**
@@ -219,12 +237,15 @@ public class PartitionUtils {
         } else if (sqlNode instanceof SqlAlterTableGroupMovePartition) {
             final SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition =
                 (SqlAlterTableGroupMovePartition) sqlNode;
-            Set<String> partitionsToBeMoved = sqlAlterTableGroupMovePartition.getOldPartitions().stream()
-                .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
-                    Collectors.toSet());
+
+            Set<String> partitionsToBeMoved = new TreeSet<>(String::compareToIgnoreCase);
+            for (Map.Entry<SqlNode, List<SqlNode>> entry : sqlAlterTableGroupMovePartition.getInstPartitions()
+                .entrySet()) {
+                entry.getValue().stream().forEach(o -> partitionsToBeMoved.add(Util.last(((SqlIdentifier) (o)).names)));
+            }
 
             List<PartitionGroupRecord> moveRecords = tableGroupConfig.getPartitionGroupRecords().stream()
-                .filter(o -> partitionsToBeMoved.contains(o.partition_name.toLowerCase()))
+                .filter(o -> partitionsToBeMoved.contains(o.partition_name))
                 .collect(Collectors.toList());
             assert GeneralUtil.isNotEmpty(moveRecords);
             Set<Long> partGroupIds = moveRecords.stream().map(o -> o.id).collect(Collectors.toSet());
@@ -362,26 +383,4 @@ public class PartitionUtils {
         }
         return sourcePhyTables;
     }
-
-    public static Map<String, Set<String>> partitionInfoToTopology(PartitionInfo partitionInfo) {
-        Map<String, Set<String>> result = new HashMap<>();
-
-        for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-            if (GeneralUtil.isNotEmpty(partitionSpec.getSubPartitions())) {
-                throw new NotSupportException("subpartition");
-            }
-            final PartitionLocation location = partitionSpec.getLocation();
-
-            Set<String> phyTables = result.get(location.getGroupKey());
-            if (phyTables == null) {
-                phyTables = new HashSet<>();
-                phyTables.add(location.getPhyTableName());
-                result.put(location.getGroupKey(), phyTables);
-            } else {
-                phyTables.add(location.getPhyTableName());
-            }
-        }
-        return result;
-    }
-
 }

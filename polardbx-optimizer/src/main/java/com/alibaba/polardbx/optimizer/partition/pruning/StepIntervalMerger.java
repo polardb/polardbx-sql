@@ -26,6 +26,5 @@ import java.util.List;
  */
 public interface StepIntervalMerger {
     PartitionInfo getPartInfo();
-
     List<StepIntervalInfo> mergeIntervals(ExecutionContext context, PartPruneStepPruningContext pruningCtx);
 }

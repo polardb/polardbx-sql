@@ -21,6 +21,9 @@ import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTime;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
+import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
+import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
+import com.google.protobuf.ByteString;
 import com.alibaba.polardbx.common.utils.convertor.Convertor;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorException;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
@@ -45,6 +48,10 @@ public abstract class AbstractDataType<DATA> implements DataType<DATA> {
         if (value instanceof Slice) {
             // converting from slice, is equal to convert from a string with utf-8 encoding.
             value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+        }
+
+        if (value instanceof org.apache.calcite.avatica.util.ByteString) {
+            value = ((org.apache.calcite.avatica.util.ByteString) value).toString();
         }
 
         if (value instanceof UInt64) {
@@ -88,7 +95,7 @@ public abstract class AbstractDataType<DATA> implements DataType<DATA> {
         } catch (Exception e) {
             logger.error("Failed to convert " + value.getClass() + " to " + this.getDataClass() + ": "
                 + e.getMessage());
-            return null;
+            throw e;
         }
     }
 

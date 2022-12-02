@@ -17,11 +17,15 @@
 package com.alibaba.polardbx.qatest.dql.auto.select;
 
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConfigUtil;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataValidator;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -30,6 +34,7 @@ import org.junit.runners.Parameterized.Parameters;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardCount;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultMatchAssert;
@@ -45,6 +50,8 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectStringCo
  */
 @RunWith(CommonCaseRunner.class)
 public class SelectSubQueryTest extends AutoReadBaseTestCase {
+
+    private static AtomicBoolean shardingAdvise = new AtomicBoolean(false);
 
     long pk = 12l;
     ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();
@@ -93,6 +100,11 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
         sql = "select *  from " + baseOneTableName + " where integer_test >=(select pk from " + baseTwoTableName
             + " where varchar_test='" + columnDataGenerator.varchar_testValue + "'  order by pk limit 1)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        if (shardingAdvise.compareAndSet(false, true)) {
+            sql = "/*+TDDL:cmd_extra(SHARDING_ADVISOR_BROADCAST_THRESHOLD=100)*/shardingadvise";
+            DataValidator.sqlMayErrorAssert(sql, tddlConnection, "ERR_TABLE_NOT_EXIST");
+        }
     }
 
     /**
@@ -1075,6 +1087,8 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
     /**
      * subquery is uncorrelated;
      * outer table is not a split table(by condition).
+     *
+     * subquery can't be pushed to logicalview, so ignore the case
      */
     @Test
     @FileStoreIgnore

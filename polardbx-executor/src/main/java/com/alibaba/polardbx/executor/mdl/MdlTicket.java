@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.mdl;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 /**
  * 获取到的锁对象

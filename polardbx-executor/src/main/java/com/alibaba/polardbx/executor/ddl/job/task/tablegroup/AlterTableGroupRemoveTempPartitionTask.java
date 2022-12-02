@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
@@ -59,7 +61,7 @@ public class AlterTableGroupRemoveTempPartitionTask extends BaseDdlTask {
             partitionGroupAccessor.getTempPartitionGroupsByTableGroupIdAndNameFromDelta(tableGroupId, tempPartition);
         for (PartitionGroupRecord record : partitionGroupRecords) {
             partitionGroupAccessor.deletePartitionGroupByIdFromDelta(record.getTg_id(), record.partition_name);
-            tablePartitionAccessor.deleteTablePartitionByGidAndPartNameFromDelta(record.id, tempPartition);
+            tablePartitionAccessor.deleteTablePartitionByGidAndPartNameFromDelta(schemaName, record.id, tempPartition);
         }
         updateSupportedCommands(true, false, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);

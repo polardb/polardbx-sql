@@ -1485,6 +1485,23 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.gsiMetaBean = gsiMetaBean;
         }
 
+        public GsiTableMetaBean copyWithOutIndexMap() {
+            return new GsiTableMetaBean(
+                this.tableCatalog,
+                this.tableSchema,
+                this.tableName,
+                this.tableType,
+                this.dbPartitionKey,
+                this.dbPartitionPolicy,
+                this.dbPartitionCount,
+                this.tbPartitionKey,
+                this.tbPartitionPolicy,
+                this.tbPartitionCount,
+                TreeMaps.caseInsensitiveMap(),
+                this.comment,
+                this.gsiMetaBean == null ? null : this.gsiMetaBean.clone());
+        }
+
         @Override
         public boolean isWrapperFor(Class<?> iface) throws SQLException {
             return GsiTableMetaBean.class.isAssignableFrom(iface);
@@ -1579,6 +1596,18 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.indexStatus = indexStatus;
             this.version = version;
             this.clusteredIndex = clusteredIndex;
+        }
+
+        public GsiIndexMetaBean clone() {
+            List<GsiIndexColumnMetaBean> newIndexColumns = new ArrayList<>();
+            newIndexColumns.addAll(indexColumns);
+            List<GsiIndexColumnMetaBean> newCoveringColumns = new ArrayList<>();
+            newCoveringColumns.addAll(coveringColumns);
+            return new GsiIndexMetaBean(tableCatalog, tableSchema, tableName, nonUnique,
+                indexSchema, indexName, newIndexColumns,
+                newCoveringColumns , indexType, comment,
+                indexComment, indexLocation, indexTableName,
+                indexStatus, version, clusteredIndex);
         }
 
         @Override

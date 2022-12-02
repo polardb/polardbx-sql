@@ -31,4 +31,6 @@ public interface StatementHandler {
 
     public void send_long_data(byte[] data);
 
+    public void fetchData(byte[] data);
+
 }

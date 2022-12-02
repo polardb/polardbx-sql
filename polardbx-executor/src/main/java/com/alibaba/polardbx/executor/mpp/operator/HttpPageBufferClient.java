@@ -471,7 +471,7 @@ public final class HttpPageBufferClient
                         taskManager.abortTaskResults(location.getTaskId(),
                             new OutputBuffers.OutputBufferId(location.getBufferId()));
                         return new StatusResponseHandler.StatusResponse(
-                            HttpStatus.OK.code(), "ok", ImmutableListMultimap.of());
+                            HttpStatus.OK.code(), ImmutableListMultimap.of());
                     }
                 });
             resultFuture = JdkFutureAdapters.listenInPoolThread(taskInfoFuture, executor);
@@ -627,8 +627,8 @@ public final class HttpPageBufferClient
                         // Ignored. Just return whatever message we were able to decode
                     }
                     throw new PageTransportErrorException(
-                        format("Expected response code to be 200, but was %s %s:%n%s", response.getStatusCode(),
-                            response.getStatusMessage(), body.toString()));
+                        format("Expected response code to be 200, but was %s %s:%s", response.getStatusCode(),
+                            body.toString()));
                 }
 
                 // invalid content type can happen when an error page is returned, but is unlikely given the above 200

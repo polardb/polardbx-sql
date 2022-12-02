@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.matrix.jdbc;
 
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTime;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
@@ -56,7 +58,9 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * @author mengshi.sunmengshi 2013-11-22 下午3:26:23
@@ -70,6 +74,7 @@ public class TResultSet implements ResultSet {
     private Row currentKVPair;
     private Row cacheRowToBuildMeta = null;
     private TResultSetMetaData resultSetMetaData = null;
+    private List<DataType> dataTypes = null;
     private boolean wasNull;
     private Map<String, Integer> columnLabelToIndex;
     private Map<String, Integer> fullColumnNameToIndex;
@@ -179,6 +184,13 @@ public class TResultSet implements ResultSet {
     @Override
     public boolean next() throws SQLException {
         checkClosed();
+        if (dataTypes == null) {
+            dataTypes = Optional.ofNullable(resultCursor.getReturnColumns())
+                .orElseGet(() -> ImmutableList.of())
+                .stream()
+                .map(ColumnMeta::getDataType)
+                .collect(Collectors.toList());
+        }
         Row kvPair;
         try {
             if (cacheRowToBuildMeta != null) {
@@ -424,7 +436,14 @@ public class TResultSet implements ResultSet {
         columnIndex--;
         // byte[] bytes = currentKVPair.getBytes(getActualIndex(columnIndex),
         // encoding);
-        byte[] bytes = currentKVPair.getBytes(columnIndex, encoding);
+        byte[] bytes;
+        if (currentKVPair instanceof Chunk.ChunkRow) {
+            bytes =
+                currentKVPair.getBytes(columnIndex < dataTypes.size() ? dataTypes.get(columnIndex) : null, columnIndex,
+                    encoding);
+        } else {
+            bytes = currentKVPair.getBytes(columnIndex, encoding);
+        }
         if (bytes == null) {
             wasNull = true;
             return null;

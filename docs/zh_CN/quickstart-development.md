@@ -76,6 +76,7 @@ make install
 此步骤编译和安装galaxysql & galaxyglue代码。
 ```yaml
 # 安装依赖 JDK 1.8 和 Maven 3
+# 配置 Maven 仓库地址
 
 # 进入代码目录 
 cd galaxysql/
@@ -84,7 +85,7 @@ cd galaxysql/
 git submodule update --init
 
 # 编译打包
-mvn install -D maven.test.skip=true -D env=release 
+mvn install -D skipTests=true -D env=release
 
 # 解压运行
 tar zxvf target/polardbx-server-5.4.13-SNAPSHOT.tar.gz
@@ -96,7 +97,7 @@ tar zxvf target/polardbx-server-5.4.13-SNAPSHOT.tar.gz
 # 进入CDC代码
 
 # 编译打包
-mvn install -D maven.test.skip=true -D env=release 
+mvn clean install -D skipTests=true -D env=release 
 
 # 包在/polardbx-cdc-assemble/target/
 

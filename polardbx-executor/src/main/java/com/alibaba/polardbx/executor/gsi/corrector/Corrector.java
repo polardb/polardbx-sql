@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.gsi.corrector;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -36,11 +35,14 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlDynamicParam;
@@ -193,7 +195,7 @@ public class Corrector implements CheckerCallback {
     }
 
     @Override
-    public boolean batch(String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker,
+    public boolean batch(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker,
                          boolean primaryToGsi, List<List<Pair<ParameterContext, byte[]>>> baseRows,
                          List<List<Pair<ParameterContext, byte[]>>> checkRows) {
 
@@ -367,7 +369,7 @@ public class Corrector implements CheckerCallback {
                         .mapToObj(row::get)
                         .collect(Collectors.toList());
                     // Delete always on base row(base table).
-                    int affectRows = doDelete(dbIndex, phyTable, pks, selectEc.copy());
+                    int affectRows = doDelete(logTblOrIndexTbl, dbIndex, phyTable, pks, selectEc.copy());
 
                     if (affectRows != 1) {
                         // Fail to delete? Retry.
@@ -417,13 +419,10 @@ public class Corrector implements CheckerCallback {
                 "Corrector.")));
     }
 
-    private int doDelete(String dbIndex, String phyTable, List<ParameterContext> pks, ExecutionContext newEc) {
+    private int doDelete(String logTblOrIdxTbl, String dbIndex, String phyTable, List<ParameterContext> pks, ExecutionContext newEc) {
         final Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-
-        // Get Plan
-        final PhyTableOperation plan = new PhyTableOperation(deletePlan);
 
         int nextParamIndex = 2;
 
@@ -435,9 +434,19 @@ public class Corrector implements CheckerCallback {
             ++nextParamIndex;
         }
 
-        plan.setDbIndex(dbIndex);
-        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
-        plan.setParam(planParams);
+        // Get Plan
+//        final PhyTableOperation plan = new PhyTableOperation(deletePlan);
+//        plan.setDbIndex(dbIndex);
+//        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//        plan.setParam(planParams);
+
+        PhyTableOperation targetPhyOp = deletePlan;
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setLogTables(ImmutableList.of(logTblOrIdxTbl));
+        buildParams.setGroupName(dbIndex);
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(planParams);
+        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         return applyDelete(plan, planParams, newEc);
     }

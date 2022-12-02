@@ -47,7 +47,8 @@ public class PartitionPruner {
                                                                    RelNode relPlan,
                                                                    RexNode partPredInfo,
                                                                    ExecutionContext ec) {
-        return PartitionPruneStepBuilder.generatePartitionPruneStepInfo(partInfo, relPlan == null ? null : relPlan.getRowType(), partPredInfo, ec);
+        return PartitionPruneStepBuilder.generatePartitionPruneStepInfo(partInfo,
+            relPlan == null ? null : relPlan.getRowType(), partPredInfo, ec);
     }
 
     /**
@@ -75,10 +76,6 @@ public class PartitionPruner {
 
     /**
      * Methods for pruning by stepInfo ( for query with condition )
-     * 
-     * @param stepInfo
-     * @param context
-     * @return
      */
     public static PartPrunedResult doPruningByStepInfo(PartitionPruneStep stepInfo, ExecutionContext context) {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
@@ -86,9 +83,15 @@ public class PartitionPruner {
         if (!enablePartPruning) {
             PartitionPruneStep fullScanStep =
                 PartitionPruneStepBuilder.generateFullScanPruneStepInfo(stepInfo.getPartitionInfo());
-            return fullScanStep.prunePartitions(context, pruningCtx);
+            pruningCtx.setRootStep(fullScanStep);
+            PartPrunedResult prunedResult = fullScanStep.prunePartitions(context, pruningCtx);
+            PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
+            return prunedResult;
         }
-        return stepInfo.prunePartitions(context, pruningCtx);
+        pruningCtx.setRootStep(stepInfo);
+        PartPrunedResult prunedResult = stepInfo.prunePartitions(context, pruningCtx);
+        PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
+        return prunedResult;
     }
 
     /**
@@ -97,12 +100,29 @@ public class PartitionPruner {
     public static PartPrunedResult doPruningByTupleRouteInfo(PartitionTupleRouteInfo tupleRouteInfo, int tupleIndex,
                                                              ExecutionContext context) {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
+        pruningCtx.setPruningByTuple(true);
         /**
          * disable const expr eval cache
          */
         pruningCtx.setEnableConstExprEvalCache(false);
         PartPrunedResult rs = tupleRouteInfo.routeTuple(tupleIndex, context, pruningCtx);
+        pruningCtx.setRootTuple(tupleRouteInfo);
+        PartitionPrunerUtils.logStepExplainInfo(context, rs.getPartInfo(), pruningCtx);
         return rs;
+    }
+
+    /**
+     * Methods for calculating partition func expression by tupleRouteInfo
+     */
+    public static SearchDatumInfo doCalcSearchDatumByTupleRouteInfo(PartitionTupleRouteInfo tupleRouteInfo, int tupleIndex,
+                                                                    ExecutionContext context) {
+        PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
+        pruningCtx.setPruningByTuple(true);
+        /**
+         * disable const expr eval cache
+         */
+        pruningCtx.setEnableConstExprEvalCache(false);
+        return tupleRouteInfo.calcSearchDatum(tupleIndex, context, pruningCtx);
     }
 
     /**
@@ -113,18 +133,25 @@ public class PartitionPruner {
         if (relPlan instanceof LogicalView) {
             LogicalView logicalView = (LogicalView) relPlan;
 
+            boolean useSelectPartitions = logicalView.useSelectPartitions();
             if (logicalView.isJoin()) {
                 List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();
                 for (int i = 0; i < logicalView.getTableNames().size(); i++) {
-                    RelShardInfo relShardInfo = logicalView.getRelShardInfo(i);
-                    PartitionPruneStep pruneStepInfo = relShardInfo.getPartPruneStepInfo();
+
+                    PartitionPruneStep pruneStepInfo = null;
+                    RelShardInfo relShardInfo = logicalView.getRelShardInfo(i, context);
+                    if (!useSelectPartitions)  {
+                        pruneStepInfo = relShardInfo.getPartPruneStepInfo();
+                    } else {
+                        PartitionInfo partInfo = relShardInfo.getPartPruneStepInfo().getPartitionInfo();
+                        pruneStepInfo = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
+                    }
 
                     /**
                      * do pruning partitions by context
                      */
                     PartPrunedResult tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
                     allTbPrunedResults.add(tbPrunedResult);
-
                 }
 
                 BitSet bitSet = null;
@@ -142,7 +169,6 @@ public class PartitionPruner {
                         break;
                     }
                 }
-
                 if (!bitSetSame) {
                     List<PartPrunedResult> fullScanResults = new ArrayList<>();
                     for (int i = 0; i < logicalView.getTableNames().size(); i++) {
@@ -158,12 +184,19 @@ public class PartitionPruner {
 
                 return allTbPrunedResults;
             } else {
-                RelShardInfo relShardInfo = logicalView.getRelShardInfo(0);
-                PartitionPruneStep pruneStepInfo = relShardInfo.getPartPruneStepInfo();
-                /**
-                 * do pruning partitions by context
-                 */
-                PartPrunedResult tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
+                PartPrunedResult tbPrunedResult = null;
+                RelShardInfo relShardInfo = logicalView.getRelShardInfo(0, context);
+                if (!useSelectPartitions) {
+                    PartitionPruneStep pruneStepInfo = relShardInfo.getPartPruneStepInfo();
+                    /**
+                     * do pruning partitions by context
+                     */
+                    tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
+                } else {
+                    PartitionInfo partInfo = relShardInfo.getPartPruneStepInfo().getPartitionInfo();
+                    PartitionPruneStep fullScanStep = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
+                    tbPrunedResult = PartitionPruner.doPruningByStepInfo(fullScanStep, context);
+                }
                 List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();
                 allTbPrunedResults.add(tbPrunedResult);
                 return allTbPrunedResults;

@@ -258,7 +258,8 @@ public class SQLSelectParser extends SQLParser {
             return selectQuery;
         }
 
-        if (lexer.token == Token.EXCEPT) {
+        if (lexer.token == Token.EXCEPT || lexer.token == Token.MINUS) {
+            boolean isExcept = lexer.token == Token.EXCEPT;
             lexer.nextToken();
 
             SQLUnionQuery union = new SQLUnionQuery();
@@ -268,7 +269,11 @@ public class SQLSelectParser extends SQLParser {
                 lexer.nextToken();
                 union.setOperator(SQLUnionOperator.EXCEPT_ALL);
             } else {
-                union.setOperator(SQLUnionOperator.EXCEPT);
+                if(isExcept) {
+                    union.setOperator(SQLUnionOperator.EXCEPT);
+                } else {
+                    union.setOperator(SQLUnionOperator.MINUS);
+                }
             }
 
             boolean paren = lexer.token == Token.LPAREN;
@@ -354,20 +359,6 @@ public class SQLSelectParser extends SQLParser {
                     }
                 }
             }
-
-            return queryRest(union, true);
-        }
-
-        if (acceptUnion && lexer.token == Token.MINUS) {
-            lexer.nextToken();
-
-            SQLUnionQuery union = new SQLUnionQuery();
-            union.setLeft(selectQuery);
-
-            union.setOperator(SQLUnionOperator.MINUS);
-
-            SQLSelectQuery right = this.query(union, false);
-            union.setRight(right);
 
             return queryRest(union, true);
         }

@@ -38,8 +38,8 @@ public class ReplicaCheckTest extends CdcCheckTest {
 
     @Test
     public void checkData() throws SQLException, InterruptedException {
-        sendCdcToken(CHECK_CDC_READY_TOKEN, 1);
-        waitCdcToken(CHECK_CDC_READY_TOKEN, 1);
+        sendCdcToken(CHECK_CDC_READY_TOKEN);
+        waitCdcToken(CHECK_CDC_READY_TOKEN);
         doCheck(1);
     }
 }

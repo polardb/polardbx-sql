@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -26,7 +27,10 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -35,45 +39,46 @@ import com.alibaba.polardbx.executor.gsi.InsertIndexExecutor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert.HandlerParams;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder;
-import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
-import com.alibaba.polardbx.optimizer.core.rel.dml.util.RowClassifier;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithSomethingVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.InsertWriter;
-import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
+import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.memory.MemoryControlByBlocked;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.optimizer.workload.WorkloadType;
+import com.alibaba.polardbx.repo.mysql.handler.execute.ExecuteJob;
+import com.alibaba.polardbx.repo.mysql.handler.execute.InsertSelectExecuteJob;
+import com.alibaba.polardbx.repo.mysql.handler.execute.ParallelExecutor;
+import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
+import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.type.RelDataTypeField;
-import org.apache.calcite.rex.RexCall;
-import org.apache.calcite.rex.RexInputRef;
-import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rel.core.Exchange;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlInsert;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Pair;
-import org.apache.calcite.util.mapping.Mapping;
-import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -81,9 +86,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.ErrorCode.ER_DUP_ENTRY;
@@ -115,7 +123,7 @@ public class LogicalInsertHandler extends HandlerCommon {
             if (!logicalInsert.isSourceSelect()) {
                 affectRows = doExecute(logicalInsert, executionContext, handlerParams);
             } else {
-                affectRows = selectForInsert(logicalInsert, executionContext, handlerParams);
+                affectRows = insertSelectHandle(logicalInsert, executionContext, handlerParams);
             }
         } catch (Throwable e) {
             // If exception happens, reset last insert id.
@@ -148,7 +156,7 @@ public class LogicalInsertHandler extends HandlerCommon {
         final RelNode input = logicalInsert.getInput();
         if (input instanceof LogicalDynamicValues && logicalInsert.getBatchSize() > 0) {
             // For batch insert, change params index.
-            logicalInsert.buildParamsForBatch(executionContext.getParams());
+            logicalInsert.buildParamsForBatch(executionContext);
         }
         return executeInsert(logicalInsert, executionContext, handlerParams);
     }
@@ -174,88 +182,6 @@ public class LogicalInsertHandler extends HandlerCommon {
     }
 
     /**
-     * In broadcast tables and gsi tables, data must be consistent. That is,
-     * some functions should be calculated in advance.
-     */
-    private boolean needConsistency(LogicalInsert logicalInsert, ExecutionContext ec) {
-        String schemaName = logicalInsert.getSchemaName();
-        String tableName = logicalInsert.getLogicalTableName();
-        TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
-        return or.isBroadCast(tableName) || GlobalIndexMeta.hasIndex(tableName, schemaName, ec);
-    }
-
-    /**
-     * Find those columns which must be literal. If it's a call, convert it to
-     * literal.
-     *
-     * @return column indexes in the INSERT row type
-     */
-    private static List<Integer> getColumnsToReplaceCall(LogicalInsert logicalInsert, ExecutionContext ec) {
-        Set<String> columnNames = new HashSet<>();
-        String schemaName = logicalInsert.getSchemaName();
-        String tableName = logicalInsert.getLogicalTableName();
-
-        TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
-        // sharding keys of base table
-        List<String> shardColumns = or.getSharedColumns(tableName);
-        shardColumns.forEach(columnName -> columnNames.add(columnName.toUpperCase()));
-
-        List<TableMeta> indexTableMetas = GlobalIndexMeta.getIndex(tableName, logicalInsert.getSchemaName(), ec);
-        if (indexTableMetas != null && !indexTableMetas.isEmpty()) {
-            // sharding keys of index tables
-            for (TableMeta indexMeta : indexTableMetas) {
-                shardColumns = or.getSharedColumns(indexMeta.getTableName());
-                shardColumns.forEach(columnName -> columnNames.add(columnName.toUpperCase()));
-            }
-
-            // Even if it's normal INSERT, unique keys must be literals, so that
-            // we can judge if it's null
-            TableMeta baseTableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
-            baseTableMeta.getUniqueIndexes(true).forEach(indexMeta -> indexMeta.getKeyColumns()
-                .forEach(columnMeta -> columnNames.add(columnMeta.getName().toUpperCase())));
-        }
-
-        // column names to column indexes
-        List<RelDataTypeField> fieldList = logicalInsert.getInput().getRowType().getFieldList();
-        Set<Integer> calcColumnIndexes = new HashSet<>(columnNames.size());
-        for (String name : columnNames) {
-            for (int i = 0; i < fieldList.size(); i++) {
-                if (fieldList.get(i).getName().equalsIgnoreCase(name)) {
-                    calcColumnIndexes.add(i);
-                }
-            }
-        }
-
-        if (indexTableMetas != null && !indexTableMetas.isEmpty()) {
-            // If VALUES(col) appears in the update list, col must be literal
-            List<RexNode> updateList = logicalInsert.getDuplicateKeyUpdateList();
-            if (updateList != null && !updateList.isEmpty()) {
-                for (RexNode rexNode : updateList) {
-                    getUpdateValuesColumns(rexNode, calcColumnIndexes);
-                }
-            }
-        }
-
-        return Lists.newArrayList(calcColumnIndexes);
-    }
-
-    private static void getUpdateValuesColumns(RexNode rexNode, Set<Integer> columnIndexes) {
-        if (rexNode instanceof RexCall) {
-            RexCall call = (RexCall) rexNode;
-            if (call.getOperator() == TddlOperatorTable.VALUES) {
-                int columnIndex = ((RexInputRef) call.getOperands().get(0)).getIndex();
-                columnIndexes.add(columnIndex);
-                return;
-            }
-
-            List<RexNode> subNodes = call.getOperands();
-            for (RexNode subNode : subNodes) {
-                getUpdateValuesColumns(subNode, columnIndexes);
-            }
-        }
-    }
-
-    /**
      * Do physical insertion, return affect rows.
      *
      * @return affectRows
@@ -270,6 +196,10 @@ public class LogicalInsertHandler extends HandlerCommon {
         final String tableName = logicalInsert.getLogicalTableName();
         final boolean isBroadcast = or.isBroadCast(tableName);
 
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = DefaultSchema.getSchemaName();
+        }
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
         if (null != logicalInsert.getPrimaryInsertWriter() && !logicalInsert.hasHint() && executionContext
             .getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE)) {
 
@@ -374,6 +304,26 @@ public class LogicalInsertHandler extends HandlerCommon {
         }
     }
 
+    protected int insertSelectHandle(LogicalInsert logicalInsert, ExecutionContext executionContext,
+                                     HandlerParams handlerParams) {
+        int affectRows;
+        //在优化器OptimizeLogicalInsertRule进行了判断，选择执行模式
+        if (logicalInsert.getInsertSelectMode() == LogicalInsert.InsertSelectMode.MPP) {
+            final boolean useTrans = executionContext.getTransaction() instanceof IDistributedTransaction;
+            if (useTrans) {
+                //MPP暂不支持在事务下运行
+                throw new TddlRuntimeException(ErrorCode.ERR_INSERT_SELECT,
+                    "Insert Select isn't supported use MPP with transaction.");
+            }
+            LoggerFactory.getLogger(LogicalInsertHandler.class).info("Insert Select use MPP");
+            affectRows = selectForInsertByMpp(logicalInsert, executionContext, handlerParams);
+        } else {
+            affectRows = selectForInsert(logicalInsert, executionContext, handlerParams);
+        }
+
+        return affectRows;
+    }
+
     /**
      * In "insert ... select ..." case, select 100 values each time and insert
      * them. Or select all data at once.
@@ -389,16 +339,54 @@ public class LogicalInsertHandler extends HandlerCommon {
 
         // Select all data at once or streaming select for multiple times.
         boolean cacheAllOutput = executionContext.getTransaction() instanceof IDistributedTransaction;
+
+        boolean insertSelectSelfByParallel =
+            executionContext.getParamManager().getBoolean(ConnectionParams.INSERT_SELECT_SELF_BY_PARALLEL);
+        //insert 和 select 操作同一个表时,非事务下可能会导致数据量 > 2倍，检测到自身表时，先select 再 insert (可hint绕过)
+        if (!cacheAllOutput && !insertSelectSelfByParallel) {
+            String insertTableName = logicalInsert.getLogicalTableName();
+            final Set<String> selectTableNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            if (executionContext.getFinalPlan() != null
+                && executionContext.getFinalPlan().getAst() instanceof SqlInsert) {
+                SqlNode ast = executionContext.getFinalPlan().getAst();
+                SqlNode selectSqlNode = ((SqlInsert) ast).getSource();
+
+                ReplaceTableNameWithSomethingVisitor visitor =
+                    new ReplaceTableNameWithSomethingVisitor(logicalInsert.getSchemaName(), executionContext) {
+                        @Override
+                        protected SqlNode buildSth(SqlNode sqlNode) {
+                            if (sqlNode instanceof SqlIdentifier) {
+                                selectTableNames.add(((SqlIdentifier) sqlNode).getLastName());
+                            }
+                            return sqlNode;
+                        }
+                    };
+                selectSqlNode.accept(visitor);
+
+                if (selectTableNames.contains(insertTableName)) {
+                    cacheAllOutput = true;
+                }
+            }
+        }
+        boolean asyncCacheAllOutput = executionContext.isShareReadView() && executionContext.getParamManager()
+            .getBoolean(ConnectionParams.MODIFY_WHILE_SELECT);
+        if (asyncCacheAllOutput) {
+            //todo: 目前无法读写连接同时存在，为后续实现读写并行作准备
+            executionContext.setModifySelectParallel(true);
+        }
+        boolean canInsertByMulti = logicalInsert.getInsertSelectMode() == LogicalInsert.InsertSelectMode.MULTI;
         // How many records to insert each time in "insert ... select"
         long batchSize = executionContext.getParamManager().getLong(ConnectionParams.INSERT_SELECT_BATCH_SIZE);
 
-        final long maxMemoryLimit =
+        final long batchMemoryLimit =
             MemoryEstimator.calcSelectValuesMemCost(batchSize, input.getRowType());
-        final long memoryOfOneRow = maxMemoryLimit / batchSize;
+        final long memoryOfOneRow = batchMemoryLimit / batchSize;
+        long maxMemoryLimit = executionContext.getParamManager().getLong(ConnectionParams.MODIFY_SELECT_BUFFER_SIZE);
+        final long realMemoryPoolSize = Math.max(maxMemoryLimit, Math.max(batchMemoryLimit, BLOCK_SIZE));
 
         final String poolName = getClass().getSimpleName() + "@" + System.identityHashCode(this);
         final MemoryPool selectValuesPool = executionContext.getMemoryPool().getOrCreatePool(
-            poolName, Math.max(BLOCK_SIZE, maxMemoryLimit), MemoryType.OPERATOR);
+            poolName, realMemoryPoolSize, MemoryType.OPERATOR);
 
         final MemoryAllocatorCtx memoryAllocator = selectValuesPool.getMemoryAllocatorCtx();
 
@@ -410,7 +398,7 @@ public class LogicalInsertHandler extends HandlerCommon {
         final ExecutionContext selectEc = executionContext.copy();
 
         try {
-            selectCursor = ExecutorHelper.execute(input, selectEc, cacheAllOutput);
+            selectCursor = ExecutorHelper.execute(input, selectEc, false, cacheAllOutput, asyncCacheAllOutput);
 
             int affectRows = 0;
             List<List<Object>> values = null;
@@ -427,6 +415,13 @@ public class LogicalInsertHandler extends HandlerCommon {
             do {
                 values = selectValues(selectCursor, batchSize, memoryAllocator, memoryOfOneRow);
                 if (values.isEmpty()) {
+                    break;
+                }
+
+                //不是第一次执行（第一次单独执行，获取lastInsertId），values比较多，自适应转多线程doExecute
+                if (canInsertByMulti && !firstBatch && values.size() >= batchSize) {
+                    affectRows += doInsertSelectExecuteMulti(newLogicalInsert, insertEc, values, selectCursor,
+                        batchSize, selectValuesPool, memoryAllocator, memoryOfOneRow, duplicateKeyParamMapping);
                     break;
                 }
 
@@ -464,6 +459,35 @@ public class LogicalInsertHandler extends HandlerCommon {
         }
     }
 
+    private int doInsertSelectExecuteMulti(LogicalInsert logicalInsert, ExecutionContext executionContext,
+                                           List<List<Object>> someValues, Cursor selectCursor,
+                                           long batchSize, MemoryPool selectValuesPool,
+                                           MemoryAllocatorCtx memoryAllocator,
+                                           long memoryOfOneRow, Map<Integer, Integer> duplicateKeyParamMapping) {
+        try {
+            BlockingQueue<List<List<Object>>> selectValues = new LinkedBlockingQueue<>();
+            MemoryControlByBlocked memoryControl = new MemoryControlByBlocked(selectValuesPool, memoryAllocator);
+            ParallelExecutor parallelExecutor = createInsertParallelExecutor(executionContext, logicalInsert,
+                selectValues, duplicateKeyParamMapping, memoryControl);
+            long valuesSize = memoryAllocator.getAllAllocated();
+            parallelExecutor.getPhySqlId().set(executionContext.getPhySqlId());
+
+            int affectRows =
+                doParallelExecute(parallelExecutor, someValues, valuesSize, selectCursor, batchSize, memoryOfOneRow);
+
+            executionContext.setPhySqlId(parallelExecutor.getPhySqlId().get());
+            return affectRows;
+        } catch (Throwable e) {
+            if (!executionContext.getParamManager().getBoolean(ConnectionParams.DML_SKIP_CRUCIAL_ERR_CHECK)
+                || executionContext.isModifyBroadcastTable() || executionContext.isModifyGsiTable()) {
+                // Can't commit
+                executionContext.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL);
+            }
+            throw GeneralUtil.nestedException(e);
+        }
+
+    }
+
     /**
      * Set params by queried result, applying format like [[index1, index2],
      * [index1, index2]].
@@ -471,9 +495,9 @@ public class LogicalInsertHandler extends HandlerCommon {
      * @param values Queried result of select clause.
      * @param logicalInsert Constructed LogicalInsert with LogicalDynamicValues
      */
-    private void buildParamsForSelect(List<List<Object>> values, LogicalInsert logicalInsert,
-                                      Map<Integer, Integer> duplicateKeyParamMapping,
-                                      Parameters parameterSettings) {
+    public static void buildParamsForSelect(List<List<Object>> values, LogicalInsert logicalInsert,
+                                            Map<Integer, Integer> duplicateKeyParamMapping,
+                                            Parameters parameterSettings) {
         final RelNode input = logicalInsert.getInput();
         final Map<Integer, ParameterContext> currentParameter = parameterSettings.getCurrentParameter();
         final int fieldNum = input.getRowType().getFieldList().size();
@@ -578,55 +602,79 @@ public class LogicalInsertHandler extends HandlerCommon {
         throw GeneralUtil.nestedException(e);
     }
 
-    protected RowClassifier buildRowClassifier(final LogicalInsert insertOrReplace,
-                                               final ExecutionContext ec) {
-        return (writer, sourceRows, result) -> {
-            if (null == result) {
-                return result;
-            }
+    protected ParallelExecutor createInsertParallelExecutor(ExecutionContext ec, LogicalInsert logicalInsert,
+                                                            BlockingQueue<List<List<Object>>> selectValues,
+                                                            Map<Integer, Integer> duplicateKeyParamMapping,
+                                                            MemoryControlByBlocked memoryControl) {
+        String schemaName = logicalInsert.getSchemaName();
+        if (StringUtils.isEmpty(schemaName)) {
+            schemaName = ec.getSchemaName();
+        }
 
-            final LogicalDynamicValues input = RelUtils.getRelInput(insertOrReplace);
+        boolean useTrans = ec.getTransaction() instanceof IDistributedTransaction;
+        final TddlRuleManager or = Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getRuleManager();
+        boolean isSingleTable = or.isTableInSingleDb(logicalInsert.getLogicalTableName());
 
-            final BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> identicalPartitionKeyChecker =
-                getIdenticalPartitionKeyChecker(input, ec);
+        Set<String> allGroupNames = new HashSet<>();
+        List<String> groups = ExecUtils.getTableGroupNames(schemaName, logicalInsert.getLogicalTableName());
+        allGroupNames.addAll(groups);
+        //包含gsi情况下，auto库可能主表和GSI的group不同
+        List<String> gsiTables = GlobalIndexMeta.getIndex(logicalInsert.getLogicalTableName(), schemaName, ec)
+            .stream().map(TableMeta::getTableName).collect(Collectors.toList());
+        for (String gsi : gsiTables) {
+            groups = ExecUtils.getTableGroupNames(schemaName, gsi);
+            allGroupNames.addAll(groups);
+        }
+        List<String> groupNames = Lists.newArrayList(allGroupNames);
+        List<String> phyParallelSet = PhyTableOperationUtil.buildGroConnSetFromGroups(ec, groupNames);
 
-            // Classify insert/replace rows for UPDATE/REPLACE/DELETE/INSERT
-            writer.classify(identicalPartitionKeyChecker, sourceRows, ec, result);
+        Pair<Integer, Integer> threads =
+            ExecUtils.calculateLogicalAndPhysicalThread(ec, phyParallelSet.size(), isSingleTable, useTrans);
+        int logicalThreads = threads.getKey();
+        int physicalThreads = threads.getValue();
 
-            return result;
-        };
+        LoggerFactory.getLogger(LogicalInsertHandler.class).info(
+            "Insert select by ParallelExecutor, useTrans: " + useTrans + "; logicalThreads: " + logicalThreads
+                + "; physicalThreads: " + physicalThreads);
+
+        ParallelExecutor parallelExecutor = new ParallelExecutor(memoryControl);
+        List<ExecuteJob> executeJobs = new ArrayList<>();
+
+        for (int i = 0; i < logicalThreads; i++) {
+            ExecuteJob executeJob =
+                new InsertSelectExecuteJob(ec, parallelExecutor, logicalInsert, duplicateKeyParamMapping);
+            executeJobs.add(executeJob);
+        }
+
+        parallelExecutor.createGroupRelQueue(ec, physicalThreads, phyParallelSet, !useTrans);
+        parallelExecutor.setParam(selectValues, executeJobs);
+        return parallelExecutor;
     }
 
     /**
-     * Return a lambda expression for checking partition keys of two input row are identical
+     * Insert select 采用Mpp运行，充分利用CN资源
      */
-    protected BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> getIdenticalPartitionKeyChecker(
-        LogicalDynamicValues input,
-        ExecutionContext executionContext) {
-        final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
+    protected int selectForInsertByMpp(LogicalInsert logicalInsert, ExecutionContext executionContext,
+                                       HandlerParams handlerParams) {
+        RelNode input = logicalInsert.getInput();
+        LogicalInsert newLogicalInsert = logicalInsert;
 
-        // Checker for identical partition key
-        return (w, pair) -> {
-            final RelocateWriter rw = w.unwrap(RelocateWriter.class);
+        //如果select是简单的LogicalView，则直接和Insert合为一个Mpp的PlanFragment，减少values在CN间传递
+        if (input instanceof Gather && ((Gather) input).getInput() instanceof LogicalView) {
+            input = ((Gather) input).getInput();
+            newLogicalInsert = (LogicalInsert) logicalInsert.copy(logicalInsert.getTraitSet(), ImmutableList.of(input));
+        }
+        //如果select较为复杂，如mergeSort等，增加Exchange，防止Insert的并行度为1
+        if (!(newLogicalInsert.getInput() instanceof Exchange)
+            && !(newLogicalInsert.getInput() instanceof LogicalView)) {
+            MppExchange exchange = MppExchange.create(logicalInsert.getInput(), RelDistributions.RANDOM_DISTRIBUTED);
+            newLogicalInsert =
+                (LogicalInsert) newLogicalInsert.copy(newLogicalInsert.getTraitSet(), ImmutableList.of(exchange));
+        }
+        //防止因为WorkloadType导致Insert并行度为1
+        executionContext.setWorkloadType(WorkloadType.AP);
+        Cursor cursor = ExecutorHelper.executeCluster(newLogicalInsert, executionContext);
 
-            // Check partition key modified
-            final List<Object> oldValue = pair.left;
-            final Map<Integer, ParameterContext> newValue = pair.right;
-
-            final Mapping skSourceMapping = rw.getIdentifierKeySourceMapping();
-            final Object[] sourceSkValue = Mappings.permute(oldValue, skSourceMapping).toArray();
-
-            final List<RexNode> targetSkRex = Mappings.permute(rexRow, skSourceMapping);
-            final Object[] targetSkValue =
-                targetSkRex.stream().map(rex -> RexUtils.getValueFromRexNode(rex, executionContext, newValue))
-                    .toArray();
-
-            final List<ColumnMeta> skMetas = rw.getIdentifierKeyMetas();
-            final GroupKey sourceSkGk = new GroupKey(sourceSkValue, skMetas);
-            final GroupKey targetSkGk = new GroupKey(targetSkValue, skMetas);
-
-            // GroupKey(NULL).equals(GroupKey(NULL)) returns true
-            return sourceSkGk.equals(targetSkGk);
-        };
+        return ExecUtils.getAffectRowsByCursor(cursor);
     }
 }

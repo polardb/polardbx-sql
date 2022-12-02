@@ -85,7 +85,8 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
 
   private static final Logger LOG = LoggerFactory.getLogger(WriterImpl.class);
 
-  private static final int MIN_ROW_INDEX_STRIDE = 1000;
+  //private static final int MIN_ROW_INDEX_STRIDE = 1000;
+  private static final int MIN_ROW_INDEX_STRIDE = 10;
 
   private final Path path;
   private final long stripeSize;

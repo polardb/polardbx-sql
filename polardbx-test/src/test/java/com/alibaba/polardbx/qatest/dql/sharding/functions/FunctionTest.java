@@ -27,8 +27,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -38,7 +36,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertContentLengthSame;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentLengthSameAssert;
@@ -122,6 +119,24 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void base64Test() throws Exception {
         String sql = "select to_base64('aa')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void fromBase64Test() {
+        String sql = "select from_base64('EUUF05Uo77SX1bEGje6USA==')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void fromToBase64Test() {
+        String sql = "select from_base64(to_base64('polarbd-x'))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void toBase64WithBinaryInputTest() {
+        String sql = "select to_base64(aes_encrypt(\"123456\", unhex(MD5(\"123\"))));";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -388,7 +403,7 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
-    public void expoetSetTest() throws Exception {
+    public void exportSetTest2() throws Exception {
         String sql = "SELECT EXPORT_SET(6,'1','0',',',10)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -408,6 +423,18 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void hexTest() throws Exception {
         String sql = "SELECT HEX ('abc' )";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void hexFromBase64Test() {
+        String sql = "select hex(from_base64('EUUF05Uo77SX1bEGje6USA=='))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void hexAesEncryptTest() {
+        String sql = "select hex(aes_encrypt('polardbx', 'key'))";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -615,6 +642,9 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void castTest() throws Exception {
         String sql = "SELECT CAST('3.12' AS SIGNED)";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT cast(9999.953990000 as decimal(4,0))";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1152,6 +1182,29 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    public void repeatUpperBoundTest() throws SQLException {
+        String sql = "SELECT length(REPEAT('1', 1024*1024*16))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT length(REPEAT('1', 1024*1024*16+1))";
+        ResultSet resultSet = null;
+        try {
+            resultSet = JdbcUtil.executeQuery(sql, tddlConnection);
+            if (resultSet.next()) {
+                String value = resultSet.getString(1);
+                Assert.assertTrue(value == null);
+                return;
+            }
+            Assert.fail();
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+    }
+
+    @Test
     public void replaceTest() throws Exception {
         String sql = "SELECT REPLACE('www.mysql.com', 'w', 'Ww')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
@@ -1315,9 +1368,16 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
-    @Ignore("JDBC结果与 MYSQL 不符, 后续修复")
     public void unhexTest() throws Exception {
         String sql = "SELECT unhex('4D7953514C')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "SELECT hex(unhex('4D7953514C'))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "SELECT unhex('123')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "SELECT hex(unhex('123'))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "SELECT unhex('GG')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1335,6 +1395,13 @@ public class FunctionTest extends ReadBaseTestCase {
 
     @Test
     public void utcTimeTest() throws Exception {
+        String timeSql = "SELECT time_format(utc_time(), '%H:%i:%s')";
+        List<List<Object>> time = JdbcUtil.getAllResult(JdbcUtil.executeQuery(timeSql, tddlConnection));
+        int seconds = Integer.parseInt(time.get(0).get(0).toString().split(":")[2]);
+        if (seconds > 55) {
+            //当前时间的秒数大于55，等6s再执行，防止分钟数不一样
+            Thread.sleep(6000);
+        }
         String sql = "SELECT time_format(utc_time(), '%H:%i')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -1663,23 +1730,20 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
-    public void randomBytesTest() throws SQLException, UnsupportedEncodingException {
-        // todo 目前系统不支持 set @xx=RANDOM_BYTES(16)
-        //  因为set SqlUserDefVar不支持SqlBasicCall类型
+    public void randomBytesTest() throws SQLException {
         final String randBytesPattern = "select RANDOM_BYTES(%d)";
         final int maxLen = 1024;
         for (int i = 1; i < maxLen; i *= 2) {
             String sql = String.format(randBytesPattern, i);
-            PreparedStatement tddlPs = JdbcUtil.preparedStatementSet(sql, null, tddlConnection);
-            ResultSet rs = JdbcUtil.executeQuery(sql, tddlPs);
+            try (PreparedStatement tddlPs = JdbcUtil.preparedStatementSet(sql, null, tddlConnection);
+                ResultSet rs = JdbcUtil.executeQuery(sql, tddlPs)) {
 
-            Assert.assertTrue(rs.next());
-            String res = rs.getString(1);
-            Assert.assertEquals(i, res.getBytes(StandardCharsets.ISO_8859_1).length);
-            Assert.assertFalse(rs.next());
+                Assert.assertTrue(rs.next());
+                byte[] res = rs.getBytes(1);
+                Assert.assertEquals(i, res.length);
+                Assert.assertFalse(rs.next());
+            }
 
-            JdbcUtil.close(tddlPs);
-            JdbcUtil.close(rs);
         }
         String sql = String.format(randBytesPattern, maxLen + 1);
         executeErrorAssert(tddlConnection, sql, null,
@@ -1740,6 +1804,7 @@ public class FunctionTest extends ReadBaseTestCase {
                     continue;
                 }
                 testEncryptionSameResult(mode, supportOpenSSL);
+                testBinaryEncryptionSameResult(mode, supportOpenSSL);
             }
         }
     }
@@ -1771,22 +1836,33 @@ public class FunctionTest extends ReadBaseTestCase {
         final String varName = "iv";
         setRandomBytes(varName, tddlConnection, mysqlConnection);
 
-        final String key = "key^%#$@#";
         final List<String> randomTextList = genRandomStringList();
+        final List<String> randomKeyList = genRandomStringList();
 
         for (String plainText : randomTextList) {
-            byte[] tddlRes = getEncryptionResult(tddlConnection, plainText, key, varName);
-            byte[] mysqlRes = getEncryptionResult(mysqlConnection, plainText, key, varName);
-            Assert.assertArrayEquals(String.format("Failed in mode %s, plaint text: %s", mode, plainText),
-                tddlRes, mysqlRes);
+            for (String key : randomKeyList) {
+                byte[] tddlRes = getEncryptionResult(tddlConnection, plainText, key, varName);
+                byte[] mysqlRes = getEncryptionResult(mysqlConnection, plainText, key, varName);
+                Assert.assertArrayEquals(
+                    String.format("Failed in mode %s, plaint text: %s, key: %s", mode, plainText, key),
+                    tddlRes, mysqlRes);
+            }
         }
+    }
+
+    private void testBinaryEncryptionSameResult(String mode, boolean supportOpenSSL) throws Exception {
+        final String varName = "iv";
+        setRandomBytes(varName, tddlConnection, mysqlConnection);
         // test binary input
         String plainTextHex = "123456AB";
-        byte[] tddlRes = getEncryptionResultWithHexInput(tddlConnection, plainTextHex, key, varName);
-        byte[] mysqlRes = getEncryptionResultWithHexInput(mysqlConnection, plainTextHex, key, varName);
-        Assert.assertArrayEquals(String.format("Failed in mode %s, "
-                + "binary plaint text in hex: %s", mode, plainTextHex),
-            tddlRes, mysqlRes);
+        final List<String> randomKeyList = genRandomStringList();
+        for (String key : randomKeyList) {
+            byte[] tddlRes = getEncryptionResultWithHexInput(tddlConnection, plainTextHex, key, varName);
+            byte[] mysqlRes = getEncryptionResultWithHexInput(mysqlConnection, plainTextHex, key, varName);
+            Assert.assertArrayEquals(String.format("Failed in mode %s, "
+                    + "binary plaint text in hex: %s, key: %s", mode, plainTextHex, key),
+                tddlRes, mysqlRes);
+        }
     }
 
     /**
@@ -1813,16 +1889,14 @@ public class FunctionTest extends ReadBaseTestCase {
         throws Exception {
         String encryptSql = String.format("select aes_encrypt('%s','%s', @%s)",
             plainText, key, varName);
-        String resStr = getSingleStringResult(conn, encryptSql, null);
-        return resStr.getBytes();
+        return getSingleBytesResult(conn, encryptSql, null);
     }
 
     private byte[] getEncryptionResultWithHexInput(Connection conn, String hex, String key, String varName)
         throws Exception {
         String encryptSql = String.format("select aes_encrypt(unhex('%s'),'%s', @%s)",
             hex, key, varName);
-        String resStr = getSingleStringResult(conn, encryptSql, null);
-        return resStr.getBytes();
+        return getSingleBytesResult(conn, encryptSql, null);
     }
 
     /**
@@ -1845,8 +1919,17 @@ public class FunctionTest extends ReadBaseTestCase {
         return res;
     }
 
+    private byte[] getSingleBytesResult(Connection conn, String sql, List<Object> params) throws SQLException {
+        PreparedStatement ps = JdbcUtil.preparedStatementSet(sql, params, conn);
+        ResultSet rs = JdbcUtil.executeQuery(sql, ps);
+        Assert.assertTrue(rs.next());
+        byte[] res = rs.getBytes(1);
+        Assert.assertFalse(rs.next());
+        return res;
+    }
+
     /**
-     * 通过random_bytes()函数设置相同的随机初始变量
+     * 设置相同的随机初始变量
      */
     private static void setRandomBytes(String varName, Connection... connections) {
         Random random = new Random();
@@ -1874,6 +1957,7 @@ public class FunctionTest extends ReadBaseTestCase {
     /**
      * 不同大小的字符串列表
      * 测试分块加密的正确性
+     * 包括明文与密钥
      */
     private List<String> genRandomStringList() {
         List<String> list = new ArrayList<>(3);

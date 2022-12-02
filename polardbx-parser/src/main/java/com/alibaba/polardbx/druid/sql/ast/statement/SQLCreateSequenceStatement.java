@@ -43,14 +43,13 @@ public class SQLCreateSequenceStatement extends SQLStatementImpl implements SQLC
     private SQLExpr cacheValue;
     private Boolean order;
 
-    // for drds
+    private boolean newSeq;
     private boolean simple;
     private boolean group;
     private boolean time;
 
     private SQLExpr unitCount;
     private SQLExpr unitIndex;
-
     private SQLExpr step;
 
     public SQLCreateSequenceStatement() {
@@ -192,6 +191,14 @@ public class SQLCreateSequenceStatement extends SQLStatementImpl implements SQLC
             cacheValue.setParent(this);
         }
         this.cacheValue = cacheValue;
+    }
+
+    public boolean isNewSeq() {
+        return newSeq;
+    }
+
+    public void setNewSeq(boolean newSeq) {
+        this.newSeq = newSeq;
     }
 
     public boolean isSimple() {

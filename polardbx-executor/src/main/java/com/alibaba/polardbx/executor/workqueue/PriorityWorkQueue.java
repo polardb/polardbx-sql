@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.workqueue;
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -72,6 +73,10 @@ public class PriorityWorkQueue extends ThreadPoolExecutor {
 
     public static PriorityWorkQueue getInstance() {
         return INSTANCE;
+    }
+
+    public static void updateStats() {
+        DdlEngineStats.METRIC_BACKFILL_PARALLELISM.set(INSTANCE.getActiveCount());
     }
 
     /**

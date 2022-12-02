@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -33,10 +34,13 @@ import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -59,25 +63,24 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.*;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import static com.alibaba.polardbx.common.ddl.Attribute.MEDIAN_JOB_IDLE_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.BACKTICK;
@@ -108,30 +111,38 @@ public class DdlHelper {
         return isRunnable() && !SYSTEM_SCHEMATA.contains(schemaName);
     }
 
-    public static ExecutorService createThreadPool(String threadName) {
-        int numJobSchedulers = getNumOfJobSchedulers();
-        return createThreadPool(numJobSchedulers, numJobSchedulers * 2, threadName);
+    public static ExecutorService createThreadPool(int poolSize, String threadName) {
+        return createThreadPool(poolSize, 0L, threadName, new ThreadPoolExecutor.AbortPolicy());
     }
 
-    public static ExecutorService createThreadPool(int coreSize, int maxSize, String threadName) {
-        // Throw an exception to abort the new request
-        // in case all the threads have been occupied.
-        return createThreadPool(coreSize, maxSize, threadName, new ThreadPoolExecutor.AbortPolicy());
+    public static ExecutorService createThreadPool(int poolSize, long keepAliveTime, String threadName) {
+        return createThreadPool(poolSize, keepAliveTime, threadName, new ThreadPoolExecutor.AbortPolicy());
     }
 
-    public static ExecutorService createThreadPool(int coreSize, int maxSize, String threadName,
+    public static ExecutorService createThreadPool(int poolSize, long keepAliveTime, String threadName,
                                                    RejectedExecutionHandler handler) {
-        return new ThreadPoolExecutor(coreSize,
-            maxSize,
-            0L,
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            poolSize,
+            poolSize,
+            keepAliveTime,
             TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(),
             new NamedThreadFactory(threadName, true),
             handler);
+
+        if (keepAliveTime > 0L) {
+            executor.allowCoreThreadTimeOut(true);
+        }
+
+        return executor;
     }
 
     public static ExecutorService createSingleThreadPool(String threadName) {
         return Executors.newSingleThreadExecutor(new NamedThreadFactory(threadName, true));
+    }
+
+    public static ScheduledExecutorService createSingleThreadScheduledPool(String threadName) {
+        return Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory(threadName, true));
     }
 
     public static void renameCurrentThread(String threadNamePrefix, String schemaName) {
@@ -410,6 +421,99 @@ public class DdlHelper {
                 showCreateResultCursor.close(Collections.emptyList());
             }
         }
+    }
+
+    public static boolean hasDdlLeadership() {
+        AtomicReference<LeaseRecord> atomicReference = DdlEngineScheduler.getInstance().getDdlLeaderLease();
+        if (atomicReference.get() == null) {
+            return false;
+        }
+        LeaseRecord leaseRecord = atomicReference.get();
+        return leaseRecord.valid();
+    }
+
+    public static int getInstConfigAsInt(Logger logger, String key, int defaultVal) {
+        String val = MetaDbInstConfigManager.getInstance().getInstProperty(key);
+        if (StringUtils.isEmpty(val)) {
+            return defaultVal;
+        }
+        try {
+            return Integer.parseInt(val);
+        } catch (Exception e) {
+            logger.error(String.format("parse param:[%s=%s] error", key, val), e);
+            return defaultVal;
+        }
+    }
+
+    public static long getInstConfigAsLong(Logger logger, String key, long defaultVal) {
+        String val = MetaDbInstConfigManager.getInstance().getInstProperty(key);
+        if (StringUtils.isEmpty(val)) {
+            return defaultVal;
+        }
+        try {
+            return Long.parseLong(val);
+        } catch (Exception e) {
+            logger.error(String.format("parse param:[%s=%s] error", key, val), e);
+            return defaultVal;
+        }
+    }
+
+    public static boolean getInstConfigAsBoolean(Logger logger, String key, boolean defaultVal) {
+        String val = MetaDbInstConfigManager.getInstance().getInstProperty(key);
+        if (StringUtils.isEmpty(val)) {
+            return defaultVal;
+        }
+        try {
+            return Boolean.parseBoolean(val);
+        } catch (Exception e) {
+            logger.error(String.format("parse param:[%s=%s] error", key, val), e);
+            return defaultVal;
+        }
+    }
+
+    public static CostEstimableDdlTask.CostInfo aggregateCostInfo(DdlJob ddlJob){
+        if(ddlJob == null || ddlJob.getAllTasks() == null){
+            return CostEstimableDdlTask.createCostInfo(0L, 0L);
+        }
+        List<CostEstimableDdlTask.CostInfo> costInfoList = new ArrayList<>();
+        List<DdlTask> ddlTasks = ddlJob.getAllTasks();
+        for(DdlTask task: ddlTasks){
+            if(task != null && task instanceof CostEstimableDdlTask){
+                costInfoList.add(((CostEstimableDdlTask) task).getCostInfo());
+            }
+        }
+        return CostEstimableDdlTask.aggregate(costInfoList);
+    }
+
+    public static String compress(String data) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream(data.length());
+            GZIPOutputStream gzip = new GZIPOutputStream(bos)) {
+            gzip.write(data.getBytes());
+            byte[] compressed = bos.toByteArray();
+            return Base64.getEncoder().encodeToString(compressed);
+        } catch (IOException e) {
+            throw new TddlNestableRuntimeException(e);
+        }
+    }
+
+    public static String decompress(String compressedString) {
+        byte[] compressed = Base64.getDecoder().decode(compressedString);
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(compressed);
+            GZIPInputStream gis = new GZIPInputStream(bis);
+            BufferedReader br = new BufferedReader(new InputStreamReader(gis, "UTF-8"))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            throw new TddlNestableRuntimeException(e);
+        }
+    }
+
+    public static boolean isGzip(String content) {
+        return StringUtils.startsWith(content, "H4");
     }
 
 }

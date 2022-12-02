@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -261,8 +262,12 @@ public class ExplainUtils {
             result.append(column)
                 .append(" ")
                 .append(Comparative.getComparisonName(comparative.getComparison()))
-                .append(" ")
-                .append(comparative.getValue());
+                .append(" ");
+            if (comparative.getValue() instanceof RawString) {
+                result.append(((RawString) comparative.getValue()).display());
+            } else {
+                result.append(comparative.getValue());
+            }
         }
 
         return result.toString();

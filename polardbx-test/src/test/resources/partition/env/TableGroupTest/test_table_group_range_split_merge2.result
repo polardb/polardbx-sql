@@ -1,5 +1,5 @@
 ## DISABLE_FAST_SQL_PARSER
-create tablegroup tg2;
+create tablegroup mytg23;
 CREATE TABLE `rng_t2` (
 `a` varchar(32) DEFAULT NULL,
 `b` int(11) DEFAULT NULL
@@ -9,7 +9,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t2;
 Table,Create Table
 rng_t2,CREATE TABLE `rng_t2` (
@@ -23,7 +23,7 @@ PARTITION BY RANGE COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
+tablegroup = `mytg23`
 CREATE TABLE `rng_t3` (
 `a` varchar(32) DEFAULT NULL,
 `b` int(11) DEFAULT NULL,
@@ -34,7 +34,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t3;
 Table,Create Table
 rng_t3,CREATE TABLE `rng_t3` (
@@ -49,7 +49,7 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
+tablegroup = `mytg23`
 CREATE TABLE `rng_t4` (
 `a` varchar(32) DEFAULT NULL,
 `b` int(11) DEFAULT NULL,
@@ -61,7 +61,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t4;
 Table,Create Table
 rng_t4,CREATE TABLE `rng_t4` (
@@ -77,7 +77,7 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
+tablegroup = `mytg23`
 CREATE TABLE `rng_t5` (
 `a` varchar(32) DEFAULT NULL,
 `b` int(11) DEFAULT NULL,
@@ -90,7 +90,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t5;
 Table,Create Table
 rng_t5,CREATE TABLE `rng_t5` (
@@ -107,8 +107,8 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 split partition p2 into
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc'),
 PARTITION p2_2 VALUES LESS THAN ('efg')
@@ -130,8 +130,8 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 Table,Create Table
 rng_t5,CREATE TABLE `rng_t5` (
@@ -148,8 +148,8 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 split partition p2 into
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
@@ -171,16 +171,16 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2_1 VALUES LESS THAN ('adc',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 ## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
 );
 not all the tables in tablegroup
-alter tablegroup tg2 split partition p3 into
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh'),
 PARTITION p3_2 VALUES LESS THAN ('hij')
@@ -202,9 +202,9 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_1 VALUES LESS THAN ('hhh',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
-alter tablegroup tg2 split partition p3 into
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh',100),
 PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
@@ -226,10 +226,10 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_1 VALUES LESS THAN ('hhh',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
 drop table rng_t2;
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
@@ -251,8 +251,8 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2_1 VALUES LESS THAN ('adc',100,100,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 split partition p3 into
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh'),
 PARTITION p3_2 VALUES LESS THAN ('hij')
@@ -275,9 +275,9 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_1 VALUES LESS THAN ('hhh',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 Table,Create Table
 rng_t5,CREATE TABLE `rng_t5` (
@@ -294,22 +294,22 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
+tablegroup = `mytg23`
 ## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue)
 );
 not all the tables in tablegroup
 ## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue,maxvalue)
 );
 not all the tables in tablegroup
-alter tablegroup tg2 add partition (
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn'),
 PARTITION p5 VALUES LESS THAN ('oqp')
 );
@@ -331,10 +331,10 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p4 VALUES LESS THAN ('lmn',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
-alter tablegroup tg2 add partition (
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn',100),
 PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
 );
@@ -356,10 +356,10 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p4 VALUES LESS THAN ('lmn',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
-alter tablegroup tg2 add partition (
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn',100,100),
 PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
 );
@@ -381,9 +381,9 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p4 VALUES LESS THAN ('lmn',100,100,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 Table,Create Table
 rng_t5,CREATE TABLE `rng_t5` (
@@ -400,9 +400,9 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
 (PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
-tablegroup = `tg2`
+tablegroup = `mytg23`
 ## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 add partition (
+alter tablegroup mytg23 add partition (
 PARTITION p6 VALUES LESS THAN ('rst',100,100,100)
 );
 not all the tables in tablegroup

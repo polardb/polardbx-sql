@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.common.constants;
 
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -42,6 +43,21 @@ public class ServerVariables {
     public static Set<String> mysqlDynamicVariables = new HashSet<>();
 
     public static Set<String> globalBannedVariables = new HashSet<>();
+
+    public static final Set<String> SUPPORT_SET_GLOBAL_VARIABLES;
+
+    /**
+     * Parameters of timer task which are modifiable during runtime.
+     */
+    public static final Set<String> MODIFIABLE_PURGE_TRANS_PARAM = ImmutableSet.of(
+        ConnectionProperties.PURGE_TRANS_INTERVAL,
+        ConnectionProperties.PURGE_TRANS_BEFORE,
+        ConnectionProperties.PURGE_TRANS_START_TIME);
+    public static final Set<String> MODIFIABLE_DEADLOCK_DETECTION_PARAM = ImmutableSet.of(
+        ConnectionProperties.ENABLE_DEADLOCK_DETECTION,
+        ConnectionProperties.DEADLOCK_DETECTION_INTERVAL);
+
+    public static final Set<String> MODIFIABLE_TIMER_TASK_PARAM;
 
     static {
         variables.add("audit_log_current_session");
@@ -179,12 +195,16 @@ public class ServerVariables {
         variables.add("innodb_checksum_algorithm");
         variables.add("innodb_checksums");
         variables.add("innodb_cmp_per_index_enabled");
+        variables.add("innodb_commit_cleanout_max_rows");
         variables.add("innodb_commit_concurrency");
         variables.add("innodb_compression_failure_threshold_pct");
         variables.add("innodb_compression_level");
         variables.add("innodb_compression_pad_pct_max");
         variables.add("innodb_concurrency_tickets");
         variables.add("innodb_data_file_path");
+        variables.add("innodb_data_file_purge");
+        variables.add("innodb_data_file_purge_interval");
+        variables.add("innodb_data_file_purge_max_size");
         variables.add("innodb_data_home_dir");
         variables.add("innodb_disable_sort_file_cache");
         variables.add("innodb_doublewrite");
@@ -455,6 +475,9 @@ public class ServerVariables {
         variables.add("rand_seed2");
         variables.add("range_alloc_block_size");
         variables.add("range_optimizer_max_mem_size");
+        variables.add("polarx_max_allowed_packet");
+        variables.add("polarx_max_connections");
+        variables.add("polarx_connect_timeout");
         variables.add("rbr_exec_mode");
         variables.add("read_buffer_size");
         variables.add("read_only");
@@ -907,6 +930,9 @@ public class ServerVariables {
         writableVariables.add("rand_seed2");
         writableVariables.add("range_alloc_block_size");
         writableVariables.add("range_optimizer_max_mem_size");
+        writableVariables.add("polarx_max_connections");
+        writableVariables.add("polarx_max_allowed_packet");
+        writableVariables.add("polarx_connect_timeout");
         writableVariables.add("rbr_exec_mode");
         writableVariables.add("read_buffer_size");
         writableVariables.add("read_rnd_buffer_size");
@@ -1113,6 +1139,9 @@ public class ServerVariables {
         mysqlBothVariables.add("query_prealloc_size");
         mysqlBothVariables.add("range_alloc_block_size");
         mysqlBothVariables.add("range_optimizer_max_mem_size");
+        mysqlBothVariables.add("polarx_max_connections");
+        mysqlBothVariables.add("polarx_max_allowed_packet");
+        mysqlBothVariables.add("polarx_connect_timeout");
         mysqlBothVariables.add("read_buffer_size");
         mysqlBothVariables.add("read_rnd_buffer_size");
         mysqlBothVariables.add("select_into_buffer_size");
@@ -1404,6 +1433,7 @@ public class ServerVariables {
         mysqlGlobalVariables.add("innodb_checkpoint_disabled");
         mysqlGlobalVariables.add("innodb_checksum_algorithm");
         mysqlGlobalVariables.add("innodb_cmp_per_index_enabled");
+        mysqlGlobalVariables.add("innodb_commit_cleanout_max_rows");
         mysqlGlobalVariables.add("innodb_commit_concurrency");
         mysqlGlobalVariables.add("innodb_compress_debug");
         mysqlGlobalVariables.add("innodb_compression_failure_threshold_pct");
@@ -1411,6 +1441,9 @@ public class ServerVariables {
         mysqlGlobalVariables.add("innodb_compression_pad_pct_max");
         mysqlGlobalVariables.add("innodb_concurrency_tickets");
         mysqlGlobalVariables.add("innodb_data_file_path");
+        mysqlGlobalVariables.add("innodb_data_file_purge");
+        mysqlGlobalVariables.add("innodb_data_file_purge_interval");
+        mysqlGlobalVariables.add("innodb_data_file_purge_max_size");
         mysqlGlobalVariables.add("innodb_data_home_dir");
         mysqlGlobalVariables.add("innodb_ddl_log_crash_reset_debug");
         mysqlGlobalVariables.add("innodb_deadlock_detect");
@@ -2207,12 +2240,16 @@ public class ServerVariables {
         mysqlDynamicVariables.add("innodb_checkpoint_disabled");
         mysqlDynamicVariables.add("innodb_checksum_algorithm");
         mysqlDynamicVariables.add("innodb_cmp_per_index_enabled");
+        mysqlDynamicVariables.add("innodb_commit_cleanout_max_rows");
         mysqlDynamicVariables.add("innodb_commit_concurrency");
         mysqlDynamicVariables.add("innodb_compress_debug");
         mysqlDynamicVariables.add("innodb_compression_failure_threshold_pct");
         mysqlDynamicVariables.add("innodb_compression_level");
         mysqlDynamicVariables.add("innodb_compression_pad_pct_max");
         mysqlDynamicVariables.add("innodb_concurrency_tickets");
+        mysqlDynamicVariables.add("innodb_data_file_purge");
+        mysqlDynamicVariables.add("innodb_data_file_purge_interval");
+        mysqlDynamicVariables.add("innodb_data_file_purge_max_size");
         mysqlDynamicVariables.add("innodb_ddl_log_crash_reset_debug");
         mysqlDynamicVariables.add("innodb_deadlock_detect");
         mysqlDynamicVariables.add("innodb_default_row_format");
@@ -2494,6 +2531,9 @@ public class ServerVariables {
         mysqlDynamicVariables.add("rand_seed2");
         mysqlDynamicVariables.add("range_alloc_block_size");
         mysqlDynamicVariables.add("range_optimizer_max_mem_size");
+        mysqlDynamicVariables.add("polarx_max_allowed_packet");
+        mysqlDynamicVariables.add("polarx_max_connections");
+        mysqlDynamicVariables.add("polarx_connect_timeout");
         mysqlDynamicVariables.add("rbr_exec_mode");
         mysqlDynamicVariables.add("read_buffer_size");
         mysqlDynamicVariables.add("read_only");
@@ -2656,6 +2696,23 @@ public class ServerVariables {
         globalBannedVariables.add("autocommmit");
         globalBannedVariables.add("read_only");
         globalBannedVariables.add("auto_increment_increment");
+
+        ImmutableSet.Builder<String> modifiableTimerTaskVarBuilder = new ImmutableSet.Builder<>();
+        ImmutableSet.Builder<String> supportSetGlobalVarBuilder = new ImmutableSet.Builder<>();
+
+        for (String modifiableTimerTaskParam : MODIFIABLE_PURGE_TRANS_PARAM) {
+            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
+            supportSetGlobalVarBuilder.add(modifiableTimerTaskParam.toLowerCase());
+        }
+
+        for (String modifiableTimerTaskParam : MODIFIABLE_DEADLOCK_DETECTION_PARAM) {
+            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
+            supportSetGlobalVarBuilder.add(modifiableTimerTaskParam.toLowerCase());
+        }
+
+        MODIFIABLE_TIMER_TASK_PARAM = modifiableTimerTaskVarBuilder.build();
+
+        SUPPORT_SET_GLOBAL_VARIABLES = supportSetGlobalVarBuilder.build();
     }
 
     public static boolean contains(String variable) {
@@ -2700,5 +2757,9 @@ public class ServerVariables {
 
     public static boolean isGlobalBanned(String variable) {
         return globalBannedVariables.contains(variable.toLowerCase());
+    }
+
+    public static boolean isSetGlobalSupported(String variable) {
+        return SUPPORT_SET_GLOBAL_VARIABLES.contains(variable.toLowerCase());
     }
 }

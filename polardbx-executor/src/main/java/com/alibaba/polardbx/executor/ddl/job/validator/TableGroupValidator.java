@@ -40,10 +40,7 @@ public class TableGroupValidator {
 
         checkIfTableGroupExists(schemaName, tableGroupName, isAllowEmpty);
 
-        validateTableGroupExistence(schemaName, tableGroupName);
-
         LimitValidator.validateTableCount(schemaName);
-
     }
 
     public static void validateTableGroupName(String tableGroupName) {
@@ -83,6 +80,10 @@ public class TableGroupValidator {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 tableGroupName + " when it's empty");
         }
+    }
+
+    public static void checkIfTargetTablesTopologyCompatibleWithLocality(String schemaName, String targetTablesTopology){
+
     }
 
     public static void validatePhysicalGroupIsNormal(String schemaName, String group) {

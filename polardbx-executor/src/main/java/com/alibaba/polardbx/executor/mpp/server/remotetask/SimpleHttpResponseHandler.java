@@ -66,12 +66,12 @@ public class SimpleHttpResponseHandler<T>
                             format("Expected response from %s is empty", uri));
                     } else {
                         cause = new TddlRuntimeException(ERR_REMOTE_TASK,
-                            format("Expected response code from %s to be %s, but was %s: %s%n%s",
+                            format("Expected response code from %s to be %s, but was %s%n%s",
                                 uri,
                                 HttpStatus.OK.code(),
                                 response.getStatusCode(),
-                                response.getStatusMessage(),
                                 response.getResponseBody()));
+
                     }
                 }
                 callback.fatal(cause);

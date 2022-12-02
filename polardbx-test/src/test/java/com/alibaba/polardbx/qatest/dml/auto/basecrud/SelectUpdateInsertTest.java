@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteCHNTableName;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @author xiaowen.guoxw
  * @since 5.0.1
  */
-
+@RunWith(Parameterized.class)
 public class SelectUpdateInsertTest extends AutoCrudBasedLockTestCase {
 
     @Parameterized.Parameters(name = "{index}:table={0}")

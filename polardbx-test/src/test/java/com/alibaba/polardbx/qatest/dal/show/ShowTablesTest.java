@@ -17,12 +17,15 @@
 package com.alibaba.polardbx.qatest.dal.show;
 
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
+import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+
+import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 
 /**
  * @author arnkore 2017-06-08 15:49
@@ -64,7 +67,7 @@ public class ShowTablesTest extends ReadBaseTestCase {
         String sql = "show full tables from " + polardbxOneDB.toUpperCase() + " like '%'";
         Statement stmt = tddlConnection.createStatement();
         ResultSet rs = stmt.executeQuery(sql);
-        Assert.assertEquals(rs.getMetaData().getColumnCount(), 2);
+        Assert.assertEquals(rs.getMetaData().getColumnCount(), 3);
         Assert
             .assertEquals("TABLES_IN_" + polardbxOneDB.toUpperCase(), rs.getMetaData().getColumnName(1).toUpperCase());
         Assert.assertEquals("TABLE_TYPE", rs.getMetaData().getColumnName(2).toUpperCase());
@@ -75,7 +78,7 @@ public class ShowTablesTest extends ReadBaseTestCase {
         String sql = "show full tables from " + polardbxOneDB.toLowerCase() + " like '%'";
         Statement stmt = tddlConnection.createStatement();
         ResultSet rs = stmt.executeQuery(sql);
-        Assert.assertEquals(rs.getMetaData().getColumnCount(), 2);
+        Assert.assertEquals(rs.getMetaData().getColumnCount(), 3);
         Assert
             .assertEquals("TABLES_IN_" + polardbxOneDB.toUpperCase(), rs.getMetaData().getColumnName(1).toUpperCase());
         Assert.assertEquals("TABLE_TYPE", rs.getMetaData().getColumnName(2).toUpperCase());
@@ -94,5 +97,21 @@ public class ShowTablesTest extends ReadBaseTestCase {
             Assert.assertTrue("this sql: " + sql + " should throw an error", hasError);
         }
 
+    }
+
+    @Test
+    public void descTable_Order() {
+        String table_name = "test_desc_order_table";
+        String sql = "drop table if exists `" + table_name + "`";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, ImmutableList.of());
+
+        sql = "create table `" + table_name + "` (id int)";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, ImmutableList.of());
+
+        sql = "desc `" + table_name + "`";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, ImmutableList.of());
+
+        sql = "desc " + polardbxOneDB + "." + "`" + table_name + "`";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, ImmutableList.of());
     }
 }

@@ -22,25 +22,36 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlPlanAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlPlanManager;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
+import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Sets;
+import org.apache.commons.lang3.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 public class RebalanceDdlPlanManager {
 
     protected static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
     private DdlJobManager ddlJobManager = new DdlJobManager();
     private DdlPlanManager ddlPlanManager = new DdlPlanManager();
+    private GsiBackfillManager gsiBackfillManager = new GsiBackfillManager(DEFAULT_DB_NAME);
 
     public RebalanceDdlPlanManager() {
     }
@@ -129,6 +140,17 @@ public class RebalanceDdlPlanManager {
             if (!ok) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already exist executing rebalance DDL");
             }
+
+            //archive finished rows
+            try {
+                Pair<Long, Long> pair = getBackFillCount(jobId, true);
+                CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
+                CostEstimableDdlTask.CostInfo costInfo = CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                CostEstimableDdlTask.CostInfo newCostInfo = CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
+                ddlPlanManager.updateCostInfo(ddlPlanId, newCostInfo);
+            }catch (Exception e){
+                LOGGER.error("update cost info for ddl_plan error", e);
+            }
         });
     }
 
@@ -162,6 +184,18 @@ public class RebalanceDdlPlanManager {
             @Override
             protected Boolean invoke() {
                 DdlPlanRecord record = ddlPlanAccessor.queryForUpdate(ddlPlanId);
+
+                //archive finished rows
+                try {
+                    Pair<Long, Long> pair = getBackFillCount(jobId, true);
+                    CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
+                    CostEstimableDdlTask.CostInfo costInfo = CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                    CostEstimableDdlTask.CostInfo newCostInfo = CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
+                    ddlPlanAccessor.updateExtra(ddlPlanId, TaskHelper.encodeCostInfo(newCostInfo));
+                }catch (Exception e){
+                    LOGGER.error("update cost info for ddl_plan error", e);
+                }
+
                 return ddlPlanAccessor.updateState(
                     ddlPlanId,
                     DdlPlanState.SUCCESS,
@@ -208,6 +242,45 @@ public class RebalanceDdlPlanManager {
             return true;
         }
         return false;
+    }
+
+    /**
+     * left: finished Rows
+     * right: total Rows
+     *
+     * @param jobId
+     * @return
+     */
+    private Pair<Long, Long> getBackFillCount(long jobId, boolean archive) {
+        long successRowCount = 0L;
+        long totalRowCount = 0L;
+
+        List<DdlEngineTaskRecord> allTasks = archive?
+                ddlJobManager.fetchAllSuccessiveTaskByJobIdInArchive(jobId):
+                ddlJobManager.fetchAllSuccessiveTaskByJobId(jobId);
+        List<DdlEngineTaskRecord> rootDdlJobTaskList =
+                allTasks.stream().filter(e->e.getJobId()==jobId).collect(Collectors.toList());
+        //1. calculate total row count
+        for(DdlEngineTaskRecord record: rootDdlJobTaskList){
+            if(StringUtils.isEmpty(record.getCost())){
+                continue;
+            }
+            CostEstimableDdlTask.CostInfo costInfo = TaskHelper.decodeCostInfo(record.getCost());
+            totalRowCount += costInfo.rows;
+        }
+
+        //2. calculate finished row count
+        List<DdlEngineTaskRecord> backFillTaskList =
+                allTasks.stream().filter(e->StringUtils.containsIgnoreCase(e.getName(), "BackFill"))
+                        .collect(Collectors.toList());
+        List<Long> backFillIdList = backFillTaskList.stream().map(e->e.taskId).collect(Collectors.toList());
+        List<GsiBackfillManager.BackFillAggInfo> backFillAggInfoList = gsiBackfillManager.queryBackFillAggInfoById(backFillIdList);
+
+        for(GsiBackfillManager.BackFillAggInfo aggInfo: backFillAggInfoList){
+            successRowCount += aggInfo.getSuccessRowCount();
+        }
+
+        return Pair.of(successRowCount, totalRowCount);
     }
 
 

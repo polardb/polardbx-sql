@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.json;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -56,9 +57,6 @@ public class JsonQuote extends JsonExtraFunction {
             return JSONConstants.NULL_VALUE;
         }
 
-        return new StringBuilder()
-            .append("\"")
-            .append(DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]))
-            .append("\"");
+        return JSON.toJSONString(DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]));
     }
 }

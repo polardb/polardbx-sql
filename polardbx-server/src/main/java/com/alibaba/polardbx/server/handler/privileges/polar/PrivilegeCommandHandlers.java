@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
+import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
+import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropUserStatement;
@@ -91,11 +94,16 @@ public class PrivilegeCommandHandlers {
         }
     }
 
-    public static void handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore) {
+    public static void handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore,
+                              boolean inProcedureCall) {
         SQLStatement stmt = FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
         PolarAccountInfo granter = PolarHandlerCommon.getMatchGranter(conn);
         PrivilegeCommandHandler handler = createHandler(commandCode, conn, sql, granter, stmt);
         handler.handle(hasMore);
+        if (!inProcedureCall) {
+            PacketOutputProxyFactory.getInstance().createProxy(conn)
+                .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        }
     }
 
     private static PrivilegeCommandHandler createHandler(int commandCode, ServerConnection conn,

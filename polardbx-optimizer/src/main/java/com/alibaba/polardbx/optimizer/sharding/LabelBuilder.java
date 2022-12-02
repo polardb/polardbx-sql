@@ -41,6 +41,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Project;
@@ -87,6 +88,12 @@ public class LabelBuilder {
     }
 
     public Label values(LogicalDynamicValues values) {
+        final ValuesLabel valuesLabel = ValuesLabel.create(values);
+        inputStack.push(valuesLabel);
+        return valuesLabel;
+    }
+
+    public Label values(DynamicValues values) {
         final ValuesLabel valuesLabel = ValuesLabel.create(values);
         inputStack.push(valuesLabel);
         return valuesLabel;

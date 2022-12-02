@@ -25,13 +25,18 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillExecutor;
+import com.alibaba.polardbx.executor.archive.writer.OSSBackFillTimer;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillWriterTask;
+import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.FileStorageAccessorDelegate;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
+import com.alibaba.polardbx.gms.metadb.table.ColumnMetaAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
+import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -57,11 +62,11 @@ import java.util.Set;
 @Getter
 @TaskName(name = "ArchiveOSSTableDataTask")
 public class ArchiveOSSTableDataTask extends BaseGmsTask {
-    private final String loadTableSchema;
-    private final String loadTableName;
-    private final String physicalPartitionName;
+    protected final String loadTableSchema;
+    protected final String loadTableName;
+    protected final String physicalPartitionName;
 
-    private final Engine targetTableEngine;
+    protected final Engine targetTableEngine;
 
     @JSONCreator
     public ArchiveOSSTableDataTask(String schemaName, String logicalTableName,
@@ -84,32 +89,47 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
-        // don't continue the ddl if it was paused
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            try {
-                MetaDbUtil.beginTransaction(metaDbConn);
-                List<FilesRecord> files = TableMetaChanger.lockOssFileMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
+        new FileStorageAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                // don't continue the ddl if it was paused
+                List<FilesRecord> files = filesAccessor.queryByIdAndSchemaAndTable(getTaskId(), schemaName, logicalTableName);
                 if (files != null && files.size() > 0) {
                     throw new TddlRuntimeException(ErrorCode.ERR_CANT_CONTINUE_DDL);
                 }
-                MetaDbUtil.commit(metaDbConn);
-            } catch (Exception e) {
-                MetaDbUtil.rollback(metaDbConn, e, null, null);
-
-                throw GeneralUtil.nestedException(e);
-            } finally {
-                MetaDbUtil.endTransaction(metaDbConn, null);
+                return 0;
             }
-        } catch (Exception e) {
-            throw GeneralUtil.nestedException(e);
-        }
+        }.execute();
+
         loadTable(executionContext);
     }
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        List<FilesRecord> files = TableMetaChanger.lockOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
+        rollbackFileStorage(metaDbConnection, executionContext);
+    }
 
+    protected void rollbackFileStorage(Connection metaDbConnection, ExecutionContext executionContext) {
+
+        new FileStorageAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<FilesRecord> files = filesAccessor.queryByIdAndSchemaAndTable(getTaskId(), schemaName, logicalTableName);
+                List<ColumnMetasRecord> columnMetas = columnMetaAccessor.queryByIdAndSchemaAndTable(getTaskId(), schemaName, logicalTableName);
+                deleteUncommitted(files, columnMetas);
+                filesAccessor.delete(getTaskId(), schemaName, logicalTableName);
+                columnMetaAccessor.delete(getTaskId(), schemaName, logicalTableName);
+                return 0;
+            }
+        }.execute();
+
+        // clear back-fill states
+        // if checkpoint resume is supported, this code block should be removed.
+        GsiBackfillManager manager = new GsiBackfillManager(schemaName);
+        manager.deleteByBackfillId(getTaskId());
+    }
+
+    protected void deleteUncommitted(List<FilesRecord> files, List<ColumnMetasRecord> columnMetas) {
         // delete remote oss files and local tmp files
         for (FilesRecord record : files) {
             FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.targetTableEngine);
@@ -121,99 +141,84 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                 }
             }
         }
-        TableMetaChanger.deleteOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
 
         // delete column meta and bf files
-        List<ColumnMetasRecord> columnMetas = TableMetaChanger.lockOssColumnMeta(metaDbConnection, getTaskId(),
-            schemaName, logicalTableName);
         for (ColumnMetasRecord record : columnMetas) {
             FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.targetTableEngine);
         }
-        TableMetaChanger.deleteOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
-
-        // clear back-fill states
-        // if checkpoint resume is supported, this code block should be removed.
-        GsiBackfillManager manager = new GsiBackfillManager(schemaName);
-        manager.deleteByBackfillId(getTaskId());
     }
 
     private void loadTable(ExecutionContext executionContext) {
+        loadTable(executionContext, false);
+    }
+
+    protected void loadTable(ExecutionContext executionContext, boolean supportPause) {
         Map<Pair<String, String>, OSSBackFillWriterTask> tasks = null;
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            try {
-                String sourceLogicalSchema = this.loadTableSchema;
-                String sourceLogicalTable = this.loadTableName;
-                String targetLogicalSchema = this.schemaName;
-                String targetLogicalTable = this.logicalTableName;
+        try {
+            String sourceLogicalSchema = this.loadTableSchema;
+            String sourceLogicalTable = this.loadTableName;
+            String targetLogicalSchema = this.schemaName;
+            String targetLogicalTable = this.logicalTableName;
 
-                ExecutionContext sourceDbContext = executionContext.copy();
-                sourceDbContext.setSchemaName(sourceLogicalSchema);
+            ExecutionContext sourceDbContext = executionContext.copy();
+            sourceDbContext.setSchemaName(sourceLogicalSchema);
 
-                TableMeta sourceTableMeta =
-                    executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);
-                if (!sourceTableMeta.isHasPrimaryKey()) {
-                    throw new AssertionError("Table must have primary key");
-                }
-
-                // build orc schema
-                PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta);
-
-                // data config
-                Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);
-
-                tasks = buildOssBackFillLoaderTasks(
-                    executionContext,
-                    sourceLogicalSchema,
-                    sourceLogicalTable,
-                    targetLogicalSchema,
-                    targetLogicalTable,
-                    sourceTableMeta,
-                    orcSchema,
-                    conf);
-
-                Map<String, Set<String>> sourcePhyTables = sourceTableMeta.getLatestTopology();
-                final int parallelism =
-                    executionContext.getParamManager().getInt(ConnectionParams.OSS_BACKFILL_PARALLELISM);
-                final long indexStride =
-                    executionContext.getParamManager().getLong(ConnectionParams.OSS_ORC_INDEX_STRIDE);
-
-                // do back fill: select source table -> fill target orc file
-                OSSBackFillExecutor backFillExecutor = new OSSBackFillExecutor(Engine.INNODB, this.targetTableEngine);
-                backFillExecutor
-                    .backFill2FileStore(sourceLogicalSchema, sourceLogicalTable, targetLogicalTable, sourceDbContext, sourcePhyTables,
-                        (int) indexStride,
-                        parallelism, tasks, physicalPartitionName);
-
-                // flush all
-                tasks.forEach((pair, task) -> task.flush(sourceDbContext));
-
-                // wait all async task done.
-                tasks.forEach((pair, task) -> task.waitAsync());
-
-                // valid the meta files and column metas
-                MetaDbUtil.beginTransaction(metaDbConn);
-                TableMetaChanger.lockOssFileMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
-                TableMetaChanger.validOssFileMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
-                TableMetaChanger.lockOssColumnMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
-                TableMetaChanger.validOssColumnMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
-                MetaDbUtil.commit(metaDbConn);
-            } catch (Exception e) {
-                MetaDbUtil.rollback(metaDbConn, e, null, null);
-                if (tasks != null) {
-                    tasks.forEach((pair, task) -> task.cancelAsync());
-                }
-                e.printStackTrace();
-                throw GeneralUtil.nestedException(e);
-            } finally {
-                MetaDbUtil.endTransaction(metaDbConn, null);
+            TableMeta sourceTableMeta =
+                executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);
+            if (!sourceTableMeta.isHasPrimaryKey()) {
+                throw new AssertionError("Table must have primary key");
             }
+
+            // build orc schema
+            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta);
+
+            // data config
+            Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);
+
+            tasks = buildOssBackFillLoaderTasks(
+                executionContext,
+                sourceLogicalSchema,
+                sourceLogicalTable,
+                targetLogicalSchema,
+                targetLogicalTable,
+                sourceTableMeta,
+                orcSchema,
+                conf,
+                supportPause);
+
+            Map<String, Set<String>> sourcePhyTables = sourceTableMeta.getLatestTopology();
+            final int parallelism =
+                executionContext.getParamManager().getInt(ConnectionParams.OSS_BACKFILL_PARALLELISM);
+            final long indexStride =
+                executionContext.getParamManager().getLong(ConnectionParams.OSS_ORC_INDEX_STRIDE);
+
+            // do backfill: select source table -> fill target orc file
+            OSSBackFillExecutor backFillExecutor = new OSSBackFillExecutor(Engine.INNODB, this.targetTableEngine);
+            backFillExecutor
+                .backFill2FileStore(sourceLogicalSchema, sourceLogicalTable, targetLogicalTable, sourceDbContext, sourcePhyTables,
+                    (int) indexStride,
+                    parallelism, tasks, physicalPartitionName, supportPause);
+
+            // flush all
+            tasks.forEach((pair, task) -> task.flush(sourceDbContext));
+
+            // wait all async task done.
+            tasks.forEach((pair, task) -> task.waitAsync());
         } catch (Exception e) {
+            // cancel all tasks
+            if (tasks != null) {
+                tasks.forEach((pair, task) -> task.cancelAsync());
+            }
+            // pause ddl if support
+            if (supportPause) {
+                OSSBackFillTimer.pauseDDL(executionContext);
+            }
             throw GeneralUtil.nestedException(e);
         }
     }
 
     @NotNull
-    private Map<Pair<String, String>, OSSBackFillWriterTask> buildOssBackFillLoaderTasks(
+    protected Map<Pair<String, String>, OSSBackFillWriterTask> buildOssBackFillLoaderTasks(
         ExecutionContext executionContext,
         String sourceLogicalSchema,
         String sourceLogicalTable,
@@ -221,7 +226,8 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
         String targetLogicalTable,
         TableMeta sourceTableMeta,
         PolarDBXOrcSchema orcSchema,
-        Configuration conf) {
+        Configuration conf,
+        Boolean supportPause) {
         final long maxRowsPerFile = executionContext.getParamManager().getLong(ConnectionParams.OSS_MAX_ROWS_PER_FILE);
         final boolean removeTmpFiles =
             executionContext.getParamManager().getBoolean(ConnectionParams.OSS_REMOVE_TMP_FILES);
@@ -249,6 +255,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                 Pair<String, String> sourcePhySchemaAndTable = Optional
                     .ofNullable(singleTopology)
                     .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
+                String sourcePhySchema = sourcePhySchemaAndTable.getKey();
                 String sourcePhyTable = sourcePhySchemaAndTable.getValue();
 
                 // for each physical table, add orc write task.
@@ -260,7 +267,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                     targetPhyTable,
 
                     // for source table
-                    sourcePhySchemaAndTable.getKey(),
+                    sourcePhySchema,
                     sourcePhyTable,
                     sourceTableMeta,
                     targetTableEngine,
@@ -271,7 +278,9 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                     physicalPartitionName,
                     orcSchema,
                     maxRowsPerFile,
-                    removeTmpFiles
+                    removeTmpFiles,
+                    executionContext,
+                    supportPause
                 );
                 tasks.put(sourcePhySchemaAndTable, task);
             }

@@ -333,7 +333,8 @@ bmsql_oorder.o_all_local.sampleRate:
 bmsql_oorder.o_carrier_id.cardinality:
   10
 bmsql_oorder.o_carrier_id.nullCount:
-1633bmsql_oorder.o_carrier_id.sampleRate:
+1633
+bmsql_oorder.o_carrier_id.sampleRate:
   1
 bmsql_oorder.o_c_id.cardinality:
   3000

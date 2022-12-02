@@ -16,26 +16,28 @@
 
 package com.alibaba.polardbx.executor.operator.lookup;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Iterators;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.ChunkHashSet;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
+import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.rule.TableRule;
-import org.apache.calcite.rel.RelNode;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Iterators;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlLiteral;
@@ -52,7 +54,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder.getIdentifierByIndex;
+import static com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder.getJoinKeyColumnName;
 
 /**
  * LookupConditionBuilder builds the filter condition (SqlNode) according to provided LookupPredicate
@@ -69,7 +71,7 @@ public class LookupConditionBuilder {
     static final SqlNode TRUE_CONDITION = SqlLiteral.createBoolean(true, SqlParserPos.ZERO);
     static final SqlNode FALSE_CONDITION = SqlLiteral.createBoolean(false, SqlParserPos.ZERO);
 
-    final List<EquiJoinKey> jk;
+    final List<LookupEquiJoinKey> jk;
     final LookupPredicate p;
     final LogicalView v;
 
@@ -81,7 +83,8 @@ public class LookupConditionBuilder {
      * <p>
      * Lookup predicates (p) must be a subset of join keys (jk).
      */
-    public LookupConditionBuilder(List<EquiJoinKey> jk, LookupPredicate p, LogicalView v, ExecutionContext ec) {
+    public LookupConditionBuilder(
+        List<LookupEquiJoinKey> jk, LookupPredicate p, LogicalView v, ExecutionContext ec) {
         this.jk = jk;
         this.p = p;
         this.v = v;
@@ -159,6 +162,13 @@ public class LookupConditionBuilder {
 
         String logTbNale = v.getShardingTable();
         String schemaName = v.getSchemaName();
+
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logTbNale);
+        if (TableTopologyUtil.isSingle(tableMeta) || TableTopologyUtil.isBroadcast(tableMeta)) {
+            // no need to do lookup sharding
+            return false;
+        }
+
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
         PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
         boolean isPartedTb = partitionInfoManager.isNewPartDbTable(logTbNale);
@@ -176,10 +186,10 @@ public class LookupConditionBuilder {
             return containsAllIgnoreCase(joinKeyColumnNames, rule.getDbPartitionKeys());
         } else {
             PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logTbNale);
-            List<String> allPartCols = partInfo.getPartitionColumns();
-            return containsAllIgnoreCase(joinKeyColumnNames, allPartCols);
+            return partInfo.canPerformPruning(joinKeyColumnNames, PartKeyLevel.PARTITION_KEY);
+//            List<String> allPartCols = partInfo.getPartitionColumns();
+//            return containsAllIgnoreCase(joinKeyColumnNames, allPartCols);
         }
-
     }
 
     public ShardingLookupConditionBuilder createSharding() {
@@ -318,18 +328,8 @@ public class LookupConditionBuilder {
     }
 
     List<String> collectJoinKeyColumns() {
-        return jk.stream().map(key -> {
-            int joinKeyPosition;
-            RelNode lookupSide;
-            if (isMaterializedSemiJoin()) {
-                joinKeyPosition = key.getOuterIndex();
-                lookupSide = v.getJoin().getLeft();
-            } else {
-                joinKeyPosition = key.getInnerIndex();
-                lookupSide = v.getJoin().getInner();
-            }
-            return getIdentifierByIndex(lookupSide, joinKeyPosition).getSimple();
-        }).collect(Collectors.toList());
+        return jk.stream().map(
+            key -> getJoinKeyColumnName(key)).collect(Collectors.toList());
     }
 
     static boolean containsAllIgnoreCase(Collection<String> a, Collection<String> b) {

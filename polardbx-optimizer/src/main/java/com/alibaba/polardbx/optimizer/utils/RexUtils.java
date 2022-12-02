@@ -24,7 +24,11 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
@@ -39,12 +43,14 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
 import org.apache.calcite.rel.logical.LogicalTableLookup;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
@@ -58,6 +64,7 @@ import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexSequenceParam;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexSubQuery;
@@ -67,13 +74,12 @@ import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.fun.SqlQuantifyOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.type.SqlTypeName;
-import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -86,6 +92,7 @@ import java.util.stream.Collectors;
 
 import static org.apache.calcite.sql.SqlKind.ALL;
 import static org.apache.calcite.sql.SqlKind.LITERAL;
+import static org.apache.calcite.sql.SqlKind.ROW;
 import static org.apache.calcite.sql.SqlKind.SOME;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
 
@@ -93,18 +100,6 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
  * Created by chuanqin on 17/8/7.
  */
 public class RexUtils {
-    private final static List<SqlOperator> UN_PUSHABLE_FUNCTION = ImmutableList.of(
-        TddlOperatorTable.CAN_ACCESS_TABLE,
-        TddlOperatorTable.GET_LOCK,
-        TddlOperatorTable.RELEASE_LOCK,
-        TddlOperatorTable.RELEASE_ALL_LOCKS,
-        TddlOperatorTable.IS_FREE_LOCK,
-        TddlOperatorTable.IS_USED_LOCK,
-        TddlOperatorTable.ASSIGNMENT,
-        TddlOperatorTable.VERSION,
-        TddlOperatorTable.PART_ROUTE
-    );
-
     private final static RelDataTypeFactory FACTORY = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     private final static RexBuilder REX_BUILDER = new RexBuilder(FACTORY);
 
@@ -321,6 +316,19 @@ public class RexUtils {
         }
     }
 
+    public static Collection<RexDynamicParam> getDynamicParams(RexNode target) {
+        Collection<RexDynamicParam> collection = Lists.newLinkedList();
+        final RexShuttle visitor = new RexShuttle() {
+            @Override
+            public RexNode visitDynamicParam(RexDynamicParam dynamicParam) {
+                collection.add(dynamicParam);
+                return dynamicParam;
+            }
+        };
+        target.accept(visitor);
+        return collection;
+    }
+
     public static void replaceExpressionForDuplicateKeyUpdate(LogicalInsert upsert, ExecutionContext ec) {
         final LogicalDynamicValues input = RelUtils.getRelInput(upsert);
         final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
@@ -373,11 +381,12 @@ public class RexUtils {
 
             final int expectedImplicitSeqSize =
                 autoIncColumnIndex.size() * (params.isBatch() ? params.getBatchSize() : 1);
+            final boolean isNewSeq = (SequenceAttribute.Type.NEW == visitor.getSeqType());
             final boolean isSimpleSeq = (SequenceAttribute.Type.SIMPLE == visitor.getSeqType());
 
-            if (seqSize == expectedImplicitSeqSize || !isSimpleSeq) {
-                // For SIMPLE sequence, If not all auto increment column are using implicit value,
-                // we cannot get sequence value in batch, because SIMPLE might be updated by insert
+            if (seqSize == expectedImplicitSeqSize || (!isNewSeq && !isSimpleSeq)) {
+                // For NEW/SIMPLE sequence, If not all auto increment column are using implicit value,
+                // we cannot get sequence value in batch, because NEW/SIMPLE might be updated by insert
                 params.getSequenceSize().set(seqSize);
                 params.getSequenceIndex().set(0);
             }
@@ -841,6 +850,9 @@ public class RexUtils {
      */
     public static boolean containsUnPushableFunction(
         RexNode node, boolean postPlanner) {
+        if (node == null) {
+            return false;
+        }
         // test if the root of RexNode tree is IMPLICIT_CAST.
         if (RexUtil.containsRootImplicitCast(node)) {
             return true;
@@ -850,13 +862,12 @@ public class RexUtils {
             RexVisitor<Void> visitor =
                 new RexVisitorImpl<Void>(true) {
                     public Void visitCall(RexCall call) {
-                        if (UN_PUSHABLE_FUNCTION.contains(call.op)) {
+                        if (!call.op.canPushDown()) {
                             throw new Util.FoundOne(call);
                         }
-                        if (!postPlanner) {
-                            if (TddlOperatorTable.ASSIGNMENT == call.getOperator()) {
-                                throw new Util.FoundOne(call);
-                            }
+                        if (call instanceof RexOver) {
+                            LoggerFactory.getLogger(Window.class).error("window should be expand before");
+                            throw new Util.FoundOne(call);
                         }
                         super.visitCall(call);
                         return null;
@@ -893,6 +904,10 @@ public class RexUtils {
         final List<RexNode> onDuplicatedUpdate = relNode.getUnOptimizedDuplicateKeyUpdateList();
         final AtomicInteger paraIndex = new AtomicInteger(0);
         final AtomicInteger seqParamCount = new AtomicInteger(0);
+
+        final String schemaName = relNode.getSchemaName();
+        final String tableName = relNode.getLogicalTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
 
         //1、compute/move all the param to the newParams and update the index for each column param
         Ord.zip(oldInput.getTuples()).forEach(o -> {
@@ -1152,5 +1167,36 @@ public class RexUtils {
     public static boolean allParam(List<RexNode> operands) {
         return operands.stream()
             .allMatch(rex -> (rex instanceof RexDynamicParam && ((RexDynamicParam) rex).getIndex() >= 0));
+    }
+
+    public static boolean isRowDynamic(RexNode rexNode) {
+        if (rexNode == null) {
+            return false;
+        }
+        if (!(rexNode instanceof RexCall) || rexNode.getKind() != ROW) {
+            return false;
+        }
+
+        if (((RexCall) rexNode).getOperands() == null || ((RexCall) rexNode).getOperands().size() == 0) {
+            return false;
+        }
+
+        if (((RexCall) rexNode).getOperands().size() != 1) {
+            return false;
+        }
+
+        RexNode rex = ((RexCall) rexNode).getOperands().get(0);
+        if (!(rex instanceof RexDynamicParam)) {
+            return false;
+        }
+
+        if (((RexDynamicParam) rex).getIndex() < 0) {
+            return false;
+        }
+        return true;
+    }
+
+    public static String buildRexExprStringWithContext(RexNode expr, ExecutionContext ec) {
+        return null;
     }
 }

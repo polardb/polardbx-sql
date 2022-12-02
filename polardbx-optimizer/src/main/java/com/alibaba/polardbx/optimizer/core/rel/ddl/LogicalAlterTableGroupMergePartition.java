@@ -16,43 +16,39 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupMergePartition;
-import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
-import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
-import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlPartition;
-import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-public class LogicalAlterTableGroupMergePartition extends BaseDdlOperation {
-
-    private AlterTableGroupMergePartitionPreparedData preparedData;
+public class LogicalAlterTableGroupMergePartition extends LogicalAlterTableMergePartition {
 
     public LogicalAlterTableGroupMergePartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
-    public void preparedData() {
+    @Override
+    public void preparedData(ExecutionContext ec) {
         AlterTableGroupMergePartition alterTableGroupMergePartition = (AlterTableGroupMergePartition) relDdl;
         String tableGroupName = alterTableGroupMergePartition.getTableGroupName();
         SqlAlterTableGroup sqlAlterTableGroup = (SqlAlterTableGroup) alterTableGroupMergePartition.getAst();
@@ -72,8 +68,22 @@ public class LogicalAlterTableGroupMergePartition extends BaseDdlOperation {
         Map<String, List<String>> mergePartitions = new HashMap<>();
         mergePartitions.put(targetPartitionName, partitionsTobeMerged);
 
+        LocalityInfoUtils.CollectAction collectAction = new LocalityInfoUtils.CollectAction();
+        LocalityInfoUtils.checkTableGroupLocalityCompatiable(schemaName, tableGroupName, partitionsTobeMerged,
+            collectAction);
+
+        List<String> outdatedPartitionGroupLocalities =
+            collectAction.getPartitionsLocalityDesc().stream().map(o -> o.toString()).collect(Collectors.toList());
+        String firstPartitionLocality = outdatedPartitionGroupLocalities.get(0);
+        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+            .getTableGroupConfigByName(tableGroupName);
+        Boolean isIdentical = outdatedPartitionGroupLocalities.stream().allMatch(o -> o.equals(firstPartitionLocality));
+        LocalityDesc targetLocalityDesc =
+            isIdentical ? LocalityDesc.parse(firstPartitionLocality) : tableGroupConfig.getLocalityDesc();
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
+            TableGroupLocation.getOrderedGroupList(schemaName)
+                .stream().filter(group -> targetLocalityDesc.matchStorageInstance(group.storageInstId))
+                .collect(Collectors.toList());
 
         preparedData = new AlterTableGroupMergePartitionPreparedData();
 
@@ -86,10 +96,6 @@ public class LogicalAlterTableGroupMergePartition extends BaseDdlOperation {
         preparedData.prepareInvisiblePartitionGroup();
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION);
 
-    }
-
-    public AlterTableGroupMergePartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupMergePartition create(DDL ddl) {

@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.gms.engine;
 
 import com.alibaba.polardbx.common.oss.filesystem.FetchPolicy;
+import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
@@ -25,9 +27,13 @@ import com.alibaba.polardbx.common.oss.filesystem.cache.CacheType;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import io.airlift.slice.DataSize;
 import io.airlift.slice.Duration;
 import org.apache.hadoop.conf.Configuration;
@@ -36,6 +42,9 @@ import org.apache.hadoop.fs.FileSystem;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ACCESS_KEY_ID;
@@ -54,7 +63,7 @@ public class OSSInstanceInitializer {
      * oss://[accessKeyId:accessKeySecret@]bucket[.endpoint]/object/path
      */
     public static final String URI_FORMAT = "oss://%s/%s";
-    public static final String CACHE_DIR = "cache";
+    public static final String CACHE_FILE_PREFIX = "cache";
     public static final String OSS_CACHE_FLUSHER_THREAD_NAME = "oss-cache-flusher";
     public static final String OSS_CACHE_REMOVER_THREAD_NAME = "oss-cache-remover";
     public static final String OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME = "oss-cache-size-calculator";
@@ -101,7 +110,11 @@ public class OSSInstanceInitializer {
         FileSystem fileSystem;
         CacheManager cacheManager;
         try {
-            cacheManager = createCacheManger();
+            Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
+                ConnectionParams.OSS_FS_CACHE_TTL,
+                ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES
+            );
+            cacheManager = createCacheManger(globalVariables);
         } catch (IOException e) {
             throw GeneralUtil.nestedException("Fail to create cache manager!");
         }
@@ -109,7 +122,8 @@ public class OSSInstanceInitializer {
         URI ossFileUri = URI.create(this.bucketUri);
         FileSystem ossFileSystem;
         try {
-            ossFileSystem = createOSSFileSystem(ossFileUri, cachePolicy == CachePolicy.META_CACHE || cachePolicy == CachePolicy.META_AND_DATA_CACHE);
+            ossFileSystem = createOSSFileSystem(ossFileUri,
+                cachePolicy == CachePolicy.META_CACHE || cachePolicy == CachePolicy.META_AND_DATA_CACHE);
         } catch (IOException e) {
             throw GeneralUtil.nestedException("Fail to create file system!");
         }
@@ -140,10 +154,20 @@ public class OSSInstanceInitializer {
 
     private synchronized OSSFileSystem createOSSFileSystem(URI ossFileUri, boolean enableCache) throws
         IOException {
+        // fetch rate params
+        Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
+            ConnectionParams.OSS_FS_MAX_READ_RATE,
+            ConnectionParams.OSS_FS_MAX_WRITE_RATE
+        );
+        Long maxReadRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
+        Long maxWriteRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
 
         // oss file system
         // oss://[accessKeyId:accessKeySecret@]bucket[.endpoint]/object/path
-        OSSFileSystem OSS_FILE_SYSTEM = new OSSFileSystem(enableCache);
+        FileSystemRateLimiter rateLimiter = new GuavaFileSystemRateLimiter(maxReadRate, maxWriteRate);
+        OSSFileSystem OSS_FILE_SYSTEM = new OSSFileSystem(enableCache, rateLimiter);
         Configuration fsConf = new Configuration();
         fsConf.set(ACCESS_KEY_ID, this.accessKeyIdValue);
         fsConf.set(ACCESS_KEY_SECRET, this.accessKeySecretValue);
@@ -154,21 +178,26 @@ public class OSSInstanceInitializer {
 
     }
 
-    private synchronized CacheManager createCacheManger() throws IOException {
+    private synchronized CacheManager createCacheManger(Map<String, Long> globalVariables) throws IOException {
 
         CacheConfig cacheConfig = new CacheConfig();
         FileMergeCacheConfig fileMergeCacheConfig = new FileMergeCacheConfig();
         CacheStats cacheStats = new CacheStats();
 
-        cacheConfig.setBaseDirectory(Files.createTempDirectory(CACHE_DIR).toUri());
+        Long cacheTTL = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_CACHE_TTL))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_CACHE_TTL.getDefault()));
+        Long maxCacheEntries = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES.getDefault()));
+
+        cacheConfig.setBaseDirectory(Files.createTempDirectory(Paths.get("../spill/temp"), CACHE_FILE_PREFIX).toUri());
         cacheConfig.setCacheQuotaScope(GLOBAL);
         cacheConfig.setCacheType(CacheType.FILE_MERGE);
 
         cacheConfig.setCachingEnabled(true);
         cacheConfig.setValidationEnabled(false);
 
-        fileMergeCacheConfig.setCacheTtl(new Duration(2, DAYS));
-        fileMergeCacheConfig.setMaxCachedEntries(2048);
+        fileMergeCacheConfig.setCacheTtl(new Duration(cacheTTL, DAYS));
+        fileMergeCacheConfig.setMaxCachedEntries(maxCacheEntries.intValue());
         fileMergeCacheConfig.setMaxInMemoryCacheSize(new DataSize(2, GIGABYTE));
 
         fileMergeCacheConfig.setHotCacheTtl(new Duration(3, SECONDS));
@@ -192,4 +221,5 @@ public class OSSInstanceInitializer {
         );
         return cacheManager;
     }
+
 }

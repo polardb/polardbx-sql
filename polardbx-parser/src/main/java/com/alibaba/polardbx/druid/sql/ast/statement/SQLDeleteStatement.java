@@ -23,6 +23,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExprGroup;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator;
@@ -33,21 +34,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLDeleteStatement extends SQLStatementImpl implements SQLReplaceable {
-    protected SQLWithSubqueryClause  with;
+    protected SQLWithSubqueryClause with;
 
     protected SQLTableSource tableSource;
-    protected SQLExpr        where;
+    protected SQLExpr where;
     protected SQLTableSource from;
     protected SQLTableSource using;
 
-    protected boolean        only      = false;
+    protected boolean only = false;
 
-    public SQLDeleteStatement(){
+    public SQLDeleteStatement() {
 
     }
-    
-    public SQLDeleteStatement(DbType dbType){
-        super (dbType);
+
+    public SQLDeleteStatement(DbType dbType) {
+        super(dbType);
     }
 
     protected void cloneTo(SQLDeleteStatement x) {
@@ -315,5 +316,10 @@ public class SQLDeleteStatement extends SQLStatementImpl implements SQLReplaceab
         this.addCondition(where);
 
         return true;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.DELETE;
     }
 }

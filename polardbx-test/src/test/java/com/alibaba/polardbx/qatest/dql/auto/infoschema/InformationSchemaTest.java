@@ -23,6 +23,8 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.ResultSet;
@@ -34,13 +36,37 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXAutoDBName1;
-
 /**
  * @author chenghui.lch 2017年11月25日 上午2:00:02
  * @since 5.0.0
  */
 public class InformationSchemaTest extends AutoReadBaseTestCase {
+
+    private static final String INFORMATION_TEST_DB = "test_information_schema_db";
+
+    private static final String CREATE_TABLE_FORMAT = "CREATE TABLE `%s` (\n"
+        + "\t`pk` bigint(11) NOT NULL,\n"
+        + "\t`integer_test` int(11) DEFAULT NULL,\n"
+        + "\t`varchar_test` varchar(255) DEFAULT NULL,\n"
+        + "\t`char_test` char(255) DEFAULT NULL,\n"
+        + "\t`blob_test` blob,\n"
+        + "\t`tinyint_test` tinyint(4) DEFAULT NULL,\n"
+        + "\t`tinyint_1bit_test` tinyint(1) DEFAULT NULL,\n"
+        + "\t`smallint_test` smallint(6) DEFAULT NULL,\n"
+        + "\t`mediumint_test` mediumint(9) DEFAULT NULL,\n"
+        + "\t`bit_test` bit(1) DEFAULT NULL,\n"
+        + "\t`bigint_test` bigint(20) DEFAULT NULL,\n"
+        + "\t`float_test` float DEFAULT NULL,\n"
+        + "\t`double_test` double DEFAULT NULL,\n"
+        + "\t`decimal_test` decimal(10, 0) DEFAULT NULL,\n"
+        + "\t`date_test` date DEFAULT NULL,\n"
+        + "\t`time_test` time DEFAULT NULL,\n"
+        + "\t`datetime_test` datetime DEFAULT NULL,\n"
+        + "\t`timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+        + "\t`year_test` year(4) DEFAULT NULL,\n"
+        + "\t`mediumtext_test` mediumtext,\n"
+        + "\tPRIMARY KEY (`pk`)\n"
+        + ")";
 
     private static final String[] mustContainTables = {
         "select_base_one_multi_db_multi_tb",
@@ -82,7 +108,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         "select_base_one_multi_db_multi_tb.PRIMARY.pk",
         "select_base_two_multi_db_multi_tb.PRIMARY.pk"};
 
-    private static final String[] mustContainSchema = {polardbXAutoDBName1()};
+    private static final String[] mustContainSchema = {INFORMATION_TEST_DB};
 
     private static final Set<String> mustContainTablesSet = new HashSet<>();
     private static final Set<String> mustContainTableColumnsSet = new HashSet<>();
@@ -91,28 +117,51 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
 
     static {
         for (String tableName : mustContainTables) {
-            mustContainTablesSet.add(polardbXAutoDBName1().toLowerCase() + "." + tableName);
+            mustContainTablesSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + tableName);
         }
         for (String tableColumnName : mustContainTableColumns) {
-            mustContainTableColumnsSet.add(polardbXAutoDBName1().toLowerCase() + "." + tableColumnName);
+            mustContainTableColumnsSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + tableColumnName);
         }
         for (String tableIndexName : mustContainTableIndexes) {
-            mustContainTableIndexesSet.add(polardbXAutoDBName1().toLowerCase() + "." + tableIndexName);
+            mustContainTableIndexesSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + tableIndexName);
         }
         for (String schemaName : mustContainSchema) {
-            mustContainSchemaSet.add(polardbXAutoDBName1().toLowerCase() + "." + schemaName);
+            mustContainSchemaSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + schemaName);
         }
+    }
+
+    @Before
+    public void prepareDb() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop database if exists " + INFORMATION_TEST_DB);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "create database " + INFORMATION_TEST_DB + " mode = 'AUTO'");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "use " + INFORMATION_TEST_DB);
+        for (String table : mustContainTables) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_FORMAT, table));
+        }
+        //加入其它table
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_TABLE_FORMAT, "select_base_three_multi_db_multi_tb"));
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_TABLE_FORMAT, "select_base_four_multi_db_multi_tb"));
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_TABLE_FORMAT, "select_base_five_multi_db_multi_tb"));
+
+    }
+
+    @After
+    public void clearDB() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop database if exists " + INFORMATION_TEST_DB);
     }
 
     @Test
     public void testTables() {
         String sql =
-            String.format("select * from information_schema.tables where table_schema = '%s'", polardbXAutoDBName1());
+            String.format("select * from information_schema.tables where table_schema = '%s'", INFORMATION_TEST_DB);
         int size = assertContainsAllNames(sql, 1, 2, mustContainTablesSet);
         assertEqualsToShowTables(sql, 3);
 
         sql = String
-            .format("select count(*) from information_schema.tables where table_schema = '%s'", polardbXAutoDBName1());
+            .format("select count(*) from information_schema.tables where table_schema = '%s'", INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = "select * from information_schema.tables limit 1";
@@ -121,18 +170,18 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         sql = "select * from information_schema.tables limit 2,3";
         assertSizeEquals(sql, 3);
 
-        sql = String.format("select * from information_schema.tables where table_schema = '%s'", polardbXAutoDBName1());
+        sql = String.format("select * from information_schema.tables where table_schema = '%s'", INFORMATION_TEST_DB);
         size = assertContainsAllNames(sql, 1, 2, mustContainTablesSet);
         assertEqualsToShowTables(sql, 3);
 
         sql = String
             .format("select count(1) from information_schema.tables where table_schema in ('%s')",
-                polardbXAutoDBName1());
+                INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = String.format(
             "select table_schema,table_name,table_type from information_schema.tables where table_schema in ('%s')",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertContainsAllNames(sql, 0, 1, mustContainTablesSet);
 
         sql = String.format(
@@ -150,17 +199,17 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
 
         sql = String.format(
             "select table_schema,table_name,table_type from information_schema.tables t where t.table_schema = '%s' order by t.table_name limit 1",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 1);
 
         sql = String.format(
             "select table_schema,table_name,table_type from information_schema.tables where table_schema in ('%s') order by table_name limit 2,3",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 3);
 
         sql = String.format(
             "select table_schema,table_name,table_type from information_schema.tables where table_schema = '%s' and table_name='%s'",
-            polardbXAutoDBName1(),
+            INFORMATION_TEST_DB,
             "select_base_one_multi_db_multi_tb");
         assertSizeEquals(sql, 1);
     }
@@ -168,11 +217,11 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     @Test
     public void testColumns() {
         String sql =
-            String.format("select * from information_schema.columns where table_schema = '%s'", polardbXAutoDBName1());
+            String.format("select * from information_schema.columns where table_schema = '%s'", INFORMATION_TEST_DB);
         int size = assertContainsAllTablesAndColumns(sql, 1, 2, 3, mustContainTableColumnsSet);
 
         sql = String
-            .format("select count(*) from information_schema.columns where table_schema = '%s'", polardbXAutoDBName1());
+            .format("select count(*) from information_schema.columns where table_schema = '%s'", INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = "select * from information_schema.columns limit 1";
@@ -182,17 +231,17 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         assertSizeEquals(sql, 5);
 
         sql =
-            String.format("select * from information_schema.columns where table_schema = '%s'", polardbXAutoDBName1());
+            String.format("select * from information_schema.columns where table_schema = '%s'", INFORMATION_TEST_DB);
         size = assertContainsAllTablesAndColumns(sql, 1, 2, 3, mustContainTableColumnsSet);
 
         sql = String
             .format("select count(1) from information_schema.columns where table_schema in ('%s')",
-                polardbXAutoDBName1());
+                INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = String.format(
             "select table_schema,table_name,column_name from information_schema.columns where table_schema in ('%s')",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertContainsAllTablesAndColumns(sql, 0, 1, 2, mustContainTableColumnsSet);
 
         sql = String.format(
@@ -208,17 +257,17 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
 
         sql = String.format(
             "select table_schema,table_name,column_name from information_schema.columns c where c.table_schema = '%s' order by c.table_name,c.column_name limit 1",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 1);
 
         sql = String.format(
             "select table_schema,table_name,column_name from information_schema.columns where table_schema in ('%s') order by table_name,column_name limit 4,5",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 5);
 
         sql = String.format(
             "select table_schema,table_name,column_name from information_schema.columns where table_schema = '%s' and table_name='%s'",
-            polardbXAutoDBName1(),
+            INFORMATION_TEST_DB,
             "select_base_one_multi_db_multi_tb");
         assertSizeEquals(sql, 20);
     }
@@ -227,12 +276,12 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     public void testStatistics() {
         String sql =
             String.format("select * from information_schema.statistics where table_schema = '%s'",
-                polardbXAutoDBName1());
+                INFORMATION_TEST_DB);
         int size = assertContainsAllTablesAndIndexesAndColumns(sql, 1, 2, 5, 7, mustContainTableIndexesSet);
 
         sql = String
             .format("select count(*) from information_schema.statistics where table_schema = '%s'",
-                polardbXAutoDBName1());
+                INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = "select * from information_schema.statistics limit 1";
@@ -242,16 +291,16 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         assertSizeEquals(sql, 2);
 
         sql = String.format("select * from information_schema.statistics where table_schema = '%s'",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         size = assertContainsAllTablesAndIndexesAndColumns(sql, 1, 2, 5, 7, mustContainTableIndexesSet);
 
         sql = String.format("select count(1) from information_schema.statistics where table_schema in ('%s')",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertCountResult(sql, size);
 
         sql = String.format(
             "select table_schema,table_name,index_name,column_name from information_schema.statistics where table_schema in ('%s')",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertContainsAllTablesAndIndexesAndColumns(sql, 0, 1, 2, 3, mustContainTableIndexesSet);
 
         sql = String.format(
@@ -268,12 +317,12 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
 
         sql = String.format(
             "select table_schema,table_name,index_name,column_name from information_schema.statistics s where s.table_schema = '%s' order by s.table_name,s.column_name limit 1",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 1);
 
         sql = String.format(
             "select table_schema,table_name,index_name,column_name from information_schema.statistics where table_schema in ('%s') order by table_name,column_name limit 1,2",
-            polardbXAutoDBName1());
+            INFORMATION_TEST_DB);
         assertSizeEquals(sql, 2);
     }
 
@@ -300,7 +349,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, analyzeSql);
 
         String infoSchemaSql =
-            "select count(*) from information_schema.statistics where table_schema = '" + polardbXAutoDBName1()
+            "select count(*) from information_schema.statistics where table_schema = '" + INFORMATION_TEST_DB
                 + "' and table_name='"
                 + tableName + "'";
         assertCountResult(infoSchemaSql, 3);
@@ -319,7 +368,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, analyzeSql);
 
         infoSchemaSql =
-            "select count(*) from information_schema.statistics where table_schema = '" + polardbXAutoDBName1()
+            "select count(*) from information_schema.statistics where table_schema = '" + INFORMATION_TEST_DB
                 + "' and table_name='"
                 + tableName + "'";
         assertCountResult(infoSchemaSql, 2);
@@ -336,7 +385,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, analyzeSql);
 
         infoSchemaSql =
-            "select count(*) from information_schema.statistics where table_schema = '" + polardbXAutoDBName1()
+            "select count(*) from information_schema.statistics where table_schema = '" + INFORMATION_TEST_DB
                 + "' and table_name='"
                 + tableName + "'";
         assertCountResult(infoSchemaSql, 4);
@@ -373,7 +422,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
                 // For better performance
                 sql = String.format(
                     "select * from information_schema.%s where table_schema='%s' and table_name='update_delete_base_date_two_multi_db_one_tb' limit 10",
-                    table, polardbXAutoDBName1());
+                    table, INFORMATION_TEST_DB);
             } else {
                 sql = String.format("select * from information_schema.%s", table);
             }
@@ -388,7 +437,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             "COLUMN_PRIVILEGES", "ENGINES", "EVENTS", "FILES", "KEY_COLUMN_USAGE", "OPTIMIZER_TRACE", "PARAMETERS",
             "PLUGINS", "PROCESSLIST", "PROFILING", "REFERENTIAL_CONSTRAINTS", "ROUTINES",
             "SCHEMA_PRIVILEGES", "TABLESPACES", "TABLE_CONSTRAINTS", "TABLE_PRIVILEGES", "TRIGGERS",
-            "USER_PRIVILEGES", "VIEWS"};
+            "USER_PRIVILEGES", "VIEWS", "MODULE", "MODULE_EVENT", "SCHEDULE_JOBS_HISTORY", "SCHEDULE_JOBS"};
 
         for (String table : tables) {
             String sql;
@@ -399,11 +448,11 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
                 // For better performance
                 sql = String
                     .format("select * from information_schema.%s where table_schema='%s'", table,
-                        polardbXAutoDBName1());
+                        INFORMATION_TEST_DB);
             } else if (TStringUtil.equalsIgnoreCase(table, "REFERENTIAL_CONSTRAINTS")) {
                 // For better performance
                 sql = String.format("select * from information_schema.%s where constraint_schema='%s'", table,
-                    polardbXAutoDBName1());
+                    INFORMATION_TEST_DB);
             } else {
                 sql = String.format("select * from information_schema.%s", table);
             }
@@ -491,7 +540,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
                                     List<String> coveringColumns) {
         // search information_schema.GLOBAL_INDEXES
         String sql = String.format("SELECT * FROM information_schema.GLOBAL_INDEXES "
-                + "where SCHEMA = '%s' and TABLE = '%s' and KEY_NAME like '%s%%'", polardbXAutoDBName1(), tableName,
+                + "where SCHEMA = '%s' and TABLE = '%s' and KEY_NAME like '%s%%'", INFORMATION_TEST_DB, tableName,
             gsiName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
 
@@ -506,7 +555,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             .map(obj -> obj == null ? "" : obj.toString())
             .collect(Collectors.toList());
         // index 0 is schema name
-        Assert.assertTrue(polardbXAutoDBName1().equalsIgnoreCase(result.get(0)));
+        Assert.assertTrue(INFORMATION_TEST_DB.equalsIgnoreCase(result.get(0)));
         // these two gsi should have the same table name (index 1)
         Assert.assertTrue(tableName.equalsIgnoreCase(result.get(1)));
         // index 3 is GSI name
@@ -519,8 +568,9 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         for (String coveringColumn : coveringColumns) {
             Assert.assertTrue(StringUtils.containsIgnoreCase(result.get(5), coveringColumn));
         }
-        // index 14 is GSI size
-        Assert.assertTrue(Double.parseDouble(result.get(14)) > 0);
+        // index 14 is GSI size, since we use the result of a single shard to estimate the whole size,
+        // it may be zero.
+        Assert.assertTrue(Double.parseDouble(result.get(14)) >= 0);
     }
 
     private void assertSizeEquals(String sql, int expectedSize) {

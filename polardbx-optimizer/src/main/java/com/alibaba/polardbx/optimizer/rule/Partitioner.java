@@ -17,7 +17,33 @@
 package com.alibaba.polardbx.optimizer.rule;
 
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.biv.MockDataManager;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeMapChoicer;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
+import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
+import com.alibaba.polardbx.common.model.sqljep.ExtComparative;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -27,30 +53,15 @@ import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
-import com.alibaba.polardbx.common.model.sqljep.Comparative;
-import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
-import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
-import com.alibaba.polardbx.common.model.sqljep.ComparativeMapChoicer;
-import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
-import com.alibaba.polardbx.common.model.sqljep.ExtComparative;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.rule.exception.RouteCompareDiffException;
 import com.alibaba.polardbx.rule.model.MatcherResult;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -68,9 +79,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -85,6 +94,7 @@ public class Partitioner extends AbstractLifecycle {
 
     private final TddlRule tddlRule;
     private final OptimizerContext context;
+    private String schemaName;
 
     private InternalTimeZone shardRouterTimeZone;
 
@@ -107,6 +117,7 @@ public class Partitioner extends AbstractLifecycle {
     public Partitioner(TddlRule tddlRule, OptimizerContext context) {
         this.tddlRule = tddlRule;
         this.context = context;
+        this.schemaName = context.getSchemaName();
     }
 
     public Collection<TableRule> getTableRules() {
@@ -137,13 +148,8 @@ public class Partitioner extends AbstractLifecycle {
     public List<TargetDB> shard(String logicTable, boolean isWrite, boolean forceAllowFullTableScan,
                                 Map<String, Comparative> comparatives, Map<Integer, ParameterContext> param,
                                 Map<String, Object> calcParams, ExecutionContext ec) {
-        List<TargetDB> targetDbs = shard(logicTable,
-            isWrite,
-            forceAllowFullTableScan,
-            null,
-            comparatives,
-            param,
-            calcParams, ec);
+        List<TargetDB> targetDbs =
+            shard(logicTable, isWrite, forceAllowFullTableScan, null, comparatives, param, calcParams, ec);
         if (targetDbs == null || targetDbs.isEmpty()) {
             throw new IllegalArgumentException("can't find target db. table is " + logicTable);
         }
@@ -153,13 +159,10 @@ public class Partitioner extends AbstractLifecycle {
     /**
      *
      */
-    protected List<TargetDB> shard(final String logicTable,
-                                   boolean isWrite,
-                                   boolean forceAllowFullTableScan,
-                                   List<TableRule> ruleList,
-                                   final Map<String, Comparative> comparatives,
-                                   final Map<Integer, ParameterContext> param,
-                                   Map<String, Object> calcParams, ExecutionContext ec) {
+    protected List<TargetDB> shard(final String logicTable, boolean isWrite, boolean forceAllowFullTableScan,
+                                   List<TableRule> ruleList, final Map<String, Comparative> comparatives,
+                                   final Map<Integer, ParameterContext> param, Map<String, Object> calcParams,
+                                   ExecutionContext ec) {
         MatcherResult result;
         /**
          * column name from tddl rule could be upper case
@@ -199,7 +202,11 @@ public class Partitioner extends AbstractLifecycle {
             public Map<String, Comparative> getColumnsMap(List<Object> arguments, Set<String> colNameSet) {
                 Map<String, Comparative> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
                 for (String str : colNameSet) {
-                    map.put(str, getColumnComparative(arguments, str));
+                    Comparative c = getColumnComparative(arguments, str);
+                    if (c != null) {
+                        map.put(str, c);
+                    }
+
                 }
                 return map;
             }
@@ -209,13 +216,8 @@ public class Partitioner extends AbstractLifecycle {
                 if (!((Map) o).containsKey(logicTable)) {
                     return null;
                 }
-                return getComparative(
-                    tbRule,
-                    (Map<String, Comparative>) ((Map) o).get(logicTable),
-                    colName,
-                    param,
-                    dataTypeMapFull,
-                    calcParams);
+                return getComparativeByFetcher(tbRule, (Map<String, Comparative>) ((Map) o).get(logicTable), colName, param,
+                    dataTypeMapFull, calcParams);
             }
         };
         calcParams.put(CalcParamsAttribute.SHARD_CHOISER, c);
@@ -226,213 +228,275 @@ public class Partitioner extends AbstractLifecycle {
                 public Map<String, Comparative> getColumnsMap(List<Object> arguments, Set<String> colNameSet) {
                     Map<String, Comparative> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
                     for (String str : colNameSet) {
-                        map.put(str, getColumnComparative(arguments, str));
+                        Comparative c = getColumnComparative(arguments, str);
+                        if (c != null) {
+                            map.put(str, c);
+                        }
                     }
                     return map;
                 }
 
                 @Override
                 public Comparative getColumnComparative(List<Object> arguments, String colName) {
-                    return getComparative(tbRule, comparatives, colName, param, dataTypeMap, calcParams);
+                    return getComparativeByFetcher(tbRule, comparatives, colName, param, dataTypeMap, calcParams);
                 }
             }, Lists.newArrayList(), forceAllowFullTableScan, ruleList, calcParams);
         } catch (RouteCompareDiffException e) {
             throw GeneralUtil.nestedException(e);
         }
 
-//        if (ConfigDataMode.isFastMock()) {
-//            for (TargetDB targetDB : result.getCalculationResult()) {
-//                for (String tableName : targetDB.getTableNames()) {
-//                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-//                }
-//            }
-//        }
         return result.getCalculationResult();
     }
 
-    public Comparative getComparative(TableRule tableRule,
-                                      Map<String, Comparative> comparatives,
-                                      String colName,
-                                      Map<Integer, ParameterContext> param,
-                                      Map<String, DataType> dataTypeMap,
+    public Comparative getComparativeByFetcher(TableRule tableRule, Map<String, Comparative> comparatives, String colName,
+                                      Map<Integer, ParameterContext> param, Map<String, DataType> dataTypeMap,
                                       Map<String, Object> calcParams) {
-
-        /**
-         *  filter中col与val的动态参数idx的map
-         */
-        Map<String, Integer> condColValIdxMap =
-            (Map<String, Integer>) calcParams.get(CalcParamsAttribute.COND_COL_IDX_MAP);
-
-        if (condColValIdxMap != null) {
-            // 如果指定了 filter中col与val的动态参数idx的映射关系，直接使用
-            // 通常简单的等值点查会有传这个参数
-
-            /**
-             * 没有参数
-             */
-            if (MapUtils.isEmpty(param)) {
-                return null;
-            }
-
-            int index = condColValIdxMap.get(colName);
-            Object paramVal = param.get(index + 1).getValue();
-            DataType dataType = dataTypeMap.get(colName);
-            // Only TIMESTAMP/DATETIME type need correct timezone.
-            if (dataType instanceof TimestampType) {
-                paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
-            }
-            return new Comparative(Comparative.Equivalent, dataType.convertJavaFrom(paramVal));
-        }
-
-        if (MapUtils.isEmpty(comparatives)) {
-            return null;
-        }
-
-        /**
-         * 没有参数
-         */
-        if (MapUtils.isEmpty(param)) {
-            Comparative c = findComparativeIgnoreCase(comparatives, colName);
-            if (c == null) {
-                return null;
-            }
-            c = c.clone();
-            Object paramVal = c.getValue();
-            if (paramVal instanceof RexDynamicParam) {
-                throw new IllegalArgumentException(
-                    "RexDynamicParam should not be enter here, might cause by params missing.");
-            }
-            DataType dataType = dataTypeMap.get(colName);
-            // Only TIMESTAMP/DATETIME type need correct timezone.
-            if (dataType instanceof TimestampType) {
-                paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
-            }
-            c.setValue(dataType.convertJavaFrom(paramVal));
-
-            return c;
-        } else {
-            /**
-             * 用实际值替换参数
-             */
-            final Comparative c = findComparativeIgnoreCase(comparatives, colName);
-            if (c != null) {
-                Comparative clone = (Comparative) c.clone();
-                replaceParamWithValue(tableRule, colName, clone, param, dataTypeMap, colName, calcParams);
-                return clone;
-            } else {
-                return null;
-            }
-        }
+        ComparativeFetcher comparativeFetcher = new ComparativeFetcher(this.shardRouterTimeZone);
+        return comparativeFetcher.getComparativeAndReplaceParams(tableRule, comparatives, colName, param, dataTypeMap, calcParams);
     }
 
-    private Object correctTimeZoneForParamVal(TableRule tableRule, String colName,
-                                              DataType dataType,
-                                              Map<String, Object> calcParams,
-                                              Object paramVal) {
-        InternalTimeZone connTimeZoneInfo = (InternalTimeZone) calcParams.get(CalcParamsAttribute.CONN_TIME_ZONE);
-        TimeZone connTimeZone = null;
-        if (connTimeZoneInfo != null) {
-            connTimeZone = connTimeZoneInfo.getTimeZone();
-        }
-
-        TimeZoneCorrector timeZoneCorrector = new TimeZoneCorrector(shardRouterTimeZone, tableRule, connTimeZone);
-        paramVal = timeZoneCorrector.correctTimeZoneIfNeed(colName, dataType, paramVal, calcParams);
-        Object finalParamVal = dataType.convertJavaFrom(paramVal);
-        return finalParamVal;
-    }
-
-    private static Comparative findComparativeIgnoreCase(Map<String, Comparative> comparatives, String colName) {
-        for (Entry<String, Comparative> entry : comparatives.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(colName)) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private void replaceParamWithValue(TableRule tableRule, String colName,
-                                       Comparative comparative,
-                                       Map<Integer, ParameterContext> param,
-                                       DataType dataType, Map<String, Object> calcParams) {
-        Object v = comparative.getValue();
-        Object paramVal;
-        if (v instanceof RexDynamicParam) {
-            int index = ((RexDynamicParam) v).getIndex();
-            if (index != PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX && index != PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
-                paramVal = param.get(index + 1).getValue();
-            } else {
-                return;
-            }
-        } else if (v instanceof RexNode) {
-            // Construct a temporary ExecutionContext to wrap parameters
-            ExecutionContext context = new ExecutionContext();
-            Parameters parameters = new Parameters();
-            parameters.setParams(param);
-            context.setParams(parameters);
-            context.setTimeZone(shardRouterTimeZone);
-
-            // Eval with null row (must be constant here)
-            IExpression expression = RexUtils.buildRexNode((RexNode) v, context);
-            paramVal = expression.eval(null);
-        } else {
-            /*
-             *  comparative.getValue() may be a Java Object ( such String/Date/Timestamp, ....)
-             *
-             *  e.g.
-             *  for the insert sql (  check_date is timestamp, check_date is shard key ):
-             *  insert into tb (id, check_date, is_freeze) values (1, '2019-12-12 23:00',1)
-             *  ,
-             *  this sql will be constructed a comparative of check_date='2019-12-12 23:00',
-             *  not a comparative of check_date=?.
-             *
-             *  so comparative.getValue() maybe occur a non-RexDynamicParam value
-             */
-            paramVal = v;
-        }
-
-        // Only TIMESTAMP/DATETIME type need correct timezone.
-        if (dataType instanceof TimestampType) {
-            paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
-        }
-        comparative.setValue(dataType.convertJavaFrom(paramVal));
-    }
-
-    private void replaceParamWithValue(TableRule tableRule,
-                                       String colName,
-                                       Comparative comparative,
-                                       Map<Integer, ParameterContext> param,
-                                       Map<String, DataType> dataTypeMap,
-                                       String name,
-                                       Map<String, Object> calcParams) {
-        if (comparative instanceof ComparativeAND || comparative instanceof ComparativeOR) {
-            for (Comparative c : ((ComparativeBaseList) comparative).getList()) {
-                if (c instanceof ComparativeAND || c instanceof ComparativeOR) {
-                    replaceParamWithValue(tableRule, colName, c, param, dataTypeMap, name, calcParams);
-                } else if (c instanceof ExtComparative) {
-                    replaceParamWithValue(tableRule,
-                        colName,
-                        c,
-                        param,
-                        dataTypeMap.get(((ExtComparative) c).getColumnName()),
-                        calcParams);
-                } else {
-                    replaceParamWithValue(tableRule, colName, c, param, dataTypeMap.get(name), calcParams);
-                }
-            }
-        } else if (comparative instanceof ExtComparative) {
-            replaceParamWithValue(tableRule,
-                colName,
-                comparative,
-                param,
-                dataTypeMap.get(((ExtComparative) comparative).getColumnName()),
-                calcParams);
-        } else {
-            replaceParamWithValue(tableRule, colName, comparative, param, dataTypeMap.get(name), calcParams);
-        }
-    }
-
-    public static Map<String, Comparative> getComparatives(List<ColumnMeta> columns,
-                                                           List<Object> values,
+//    public Comparative getComparative(TableRule tableRule,
+//                                      Map<String, Comparative> comparatives,
+//                                      String colName,
+//                                      Map<Integer, ParameterContext> param,
+//                                      Map<String, DataType> dataTypeMap,
+//                                      Map<String, Object> calcParams) {
+//
+//        /**
+//         *  filter中col与val的动态参数idx的map
+//         */
+//        Map<String, Integer> condColValIdxMap =
+//            (Map<String, Integer>) calcParams.get(CalcParamsAttribute.COND_COL_IDX_MAP);
+//
+//        if (condColValIdxMap != null) {
+//            // 如果指定了 filter中col与val的动态参数idx的映射关系，直接使用
+//            // 通常简单的等值点查会有传这个参数
+//
+//            /**
+//             * 没有参数
+//             */
+//            if (MapUtils.isEmpty(param)) {
+//                return null;
+//            }
+//
+//            int index = condColValIdxMap.get(colName);
+//            Object paramVal = param.get(index + 1).getValue();
+//            DataType dataType = dataTypeMap.get(colName);
+//            // Only TIMESTAMP/DATETIME type need correct timezone.
+//            if (dataType instanceof TimestampType) {
+//                paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
+//            }
+//            return new Comparative(Comparative.Equivalent, dataType.convertJavaFrom(paramVal));
+//        }
+//
+//        if (MapUtils.isEmpty(comparatives)) {
+//            return null;
+//        }
+//
+//        /**
+//         * 没有参数
+//         */
+//        if (MapUtils.isEmpty(param)) {
+//            Comparative c = findComparativeIgnoreCase(comparatives, colName);
+//            if (c == null) {
+//                return null;
+//            }
+//            c = c.clone();
+//            Object paramVal = c.getValue();
+//            if (paramVal instanceof RexDynamicParam) {
+//                throw new IllegalArgumentException(
+//                    "RexDynamicParam should not be enter here, might cause by params missing.");
+//            }
+//            DataType dataType = dataTypeMap.get(colName);
+//            // Only TIMESTAMP/DATETIME type need correct timezone.
+//            if (dataType instanceof TimestampType) {
+//                paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
+//            }
+//            c.setValue(dataType.convertJavaFrom(paramVal));
+//
+//            return c;
+//        } else {
+//            /**
+//             * 用实际值替换参数
+//             */
+//            final Comparative c = findComparativeIgnoreCase(comparatives, colName);
+//            if (c != null) {
+//                Comparative clone = (Comparative) c.clone();
+//                replaceParamWithValue(tableRule, colName, clone, param, dataTypeMap, colName, calcParams);
+//                return clone;
+//            } else {
+//                return null;
+//            }
+//        }
+//    }
+//
+//    private Object correctTimeZoneForParamVal(TableRule tableRule, String colName,
+//                                              DataType dataType,
+//                                              Map<String, Object> calcParams,
+//                                              Object paramVal) {
+//        InternalTimeZone connTimeZoneInfo = (InternalTimeZone) calcParams.get(CalcParamsAttribute.CONN_TIME_ZONE);
+//        TimeZone connTimeZone = null;
+//        if (connTimeZoneInfo != null) {
+//            connTimeZone = connTimeZoneInfo.getTimeZone();
+//        }
+//
+//        TimeZoneCorrector timeZoneCorrector = new TimeZoneCorrector(shardRouterTimeZone, tableRule, connTimeZone);
+//        paramVal = timeZoneCorrector.correctTimeZoneIfNeed(colName, dataType, paramVal, calcParams);
+//        Object finalParamVal = dataType.convertJavaFrom(paramVal);
+//        return finalParamVal;
+//    }
+//
+//    private static Comparative findComparativeIgnoreCase(Map<String, Comparative> comparatives, String colName) {
+//        for (Entry<String, Comparative> entry : comparatives.entrySet()) {
+//            if (entry.getKey().equalsIgnoreCase(colName)) {
+//                return entry.getValue();
+//            }
+//        }
+//        return null;
+//    }
+//
+//    private Comparative replaceParamWithValue(TableRule tableRule, String colName,
+//                                       Comparative comparative,
+//                                       Map<Integer, ParameterContext> param,
+//                                       DataType dataType, Map<String, Object> calcParams) {
+//        Object v = comparative.getValue();
+//        Object paramVal = null;
+//        Comparative newComp = comparative;
+//        boolean isSucc = true;
+//        if (v instanceof RexDynamicParam) {
+//            int index = ((RexDynamicParam) v).getIndex();
+//            if (index != PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX && index != PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
+//                paramVal = param.get(index + 1).getValue();
+//            } else if ( index == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX ) {
+//                ExecutionContext ec = (ExecutionContext) calcParams.get(CalcParamsAttribute.EXECUTION_CONTEXT);
+//                Object[] val = new Object[1];
+//                if (SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(v, ec.getScalarSubqueryCtxMap(), true, val)) {
+//                    paramVal = val[0];
+//                } else {
+//                    isSucc = false;
+//                }
+//            } else {
+//                return comparative;
+//            }
+//
+//            if (!isSucc) {
+//                return null;
+//            }
+//
+//        } else if (v instanceof RexNode) {
+//            // Construct a temporary ExecutionContext to wrap parameters
+//            ExecutionContext context = new ExecutionContext();
+//            Parameters parameters = new Parameters();
+//            parameters.setParams(param);
+//            context.setParams(parameters);
+//            context.setTimeZone(shardRouterTimeZone);
+//
+//            // Eval with null row (must be constant here)
+//            IExpression expression = RexUtils.buildRexNode((RexNode) v, context);
+//            paramVal = expression.eval(null);
+//        } else {
+//            /*
+//             *  comparative.getValue() may be a Java Object ( such String/Date/Timestamp, ....)
+//             *
+//             *  e.g.
+//             *  for the insert sql (  check_date is timestamp, check_date is shard key ):
+//             *  insert into tb (id, check_date, is_freeze) values (1, '2019-12-12 23:00',1)
+//             *  ,
+//             *  this sql will be constructed a comparative of check_date='2019-12-12 23:00',
+//             *  not a comparative of check_date=?.
+//             *
+//             *  so comparative.getValue() maybe occur a non-RexDynamicParam value
+//             */
+//            paramVal = v;
+//        }
+//
+//        // Only TIMESTAMP/DATETIME type need correct timezone.
+//        if (dataType instanceof TimestampType) {
+//            paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
+//        }
+//        comparative.setValue(dataType.convertJavaFrom(paramVal));
+//        return comparative;
+//    }
+//
+//    private Comparative replaceParamWithValue(TableRule tableRule,
+//                                       String colName,
+//                                       Comparative comparative,
+//                                       Map<Integer, ParameterContext> param,
+//                                       Map<String, DataType> dataTypeMap,
+//                                       String name,
+//                                       Map<String, Object> calcParams) {
+//        if (comparative instanceof ComparativeAND || comparative instanceof ComparativeOR) {
+//            List<Comparative> compList = ((ComparativeBaseList) comparative).getList();
+//            List<Comparative> newCompList = new ArrayList<>();
+//            boolean isCompOr = comparative instanceof ComparativeOR;
+//            Comparative finalComp = comparative;
+//            for (int i = 0; i < compList.size(); i++) {
+//                Comparative c = compList.get(i);
+//                Comparative newC = null;
+//                if (c instanceof ComparativeAND || c instanceof ComparativeOR) {
+//                    newC = replaceParamWithValue(tableRule, colName, c, param, dataTypeMap, name, calcParams);
+//                } else if (c instanceof ExtComparative) {
+//                    newC = replaceParamWithValue(tableRule,
+//                        colName,
+//                        c,
+//                        param,
+//                        dataTypeMap.get(((ExtComparative) c).getColumnName()),
+//                        calcParams);
+//                } else {
+//                    newC = replaceParamWithValue(tableRule, colName, c, param, dataTypeMap.get(name), calcParams);
+//                }
+//
+//                if (isCompOr) {
+//                    if (newC == null) {
+//                        finalComp = null;
+//                        break;
+//                    }
+//                } else {
+//                    if (newC != null) {
+//                        newCompList.add(newC);
+//                    }
+//                }
+//            }
+//
+//            if (isCompOr) {
+//                return finalComp;
+//            } else {
+//                if (newCompList.size() > 1) {
+//                    ((ComparativeAND) finalComp).setList(newCompList);
+//                } else if (newCompList.size() == 1) {
+//                    finalComp = newCompList.get(0);
+//                } else {
+//                    finalComp = null;
+//                }
+//                return finalComp;
+//            }
+////            for (Comparative c : ((ComparativeBaseList) comparative).getList()) {
+////                if (c instanceof ComparativeAND || c instanceof ComparativeOR) {
+////                    replaceParamWithValue(tableRule, colName, c, param, dataTypeMap, name, calcParams);
+////                } else if (c instanceof ExtComparative) {
+////                    replaceParamWithValue(tableRule,
+////                        colName,
+////                        c,
+////                        param,
+////                        dataTypeMap.get(((ExtComparative) c).getColumnName()),
+////                        calcParams);
+////                } else {
+////                    replaceParamWithValue(tableRule, colName, c, param, dataTypeMap.get(name), calcParams);
+////                }
+////            }
+//        } else if (comparative instanceof ExtComparative) {
+//            return replaceParamWithValue(tableRule,
+//                colName,
+//                comparative,
+//                param,
+//                dataTypeMap.get(((ExtComparative) comparative).getColumnName()),
+//                calcParams);
+//        } else {
+//            return replaceParamWithValue(tableRule, colName, comparative, param, dataTypeMap.get(name), calcParams);
+//        }
+//    }
+//
+    public static Map<String, Comparative> getComparatives(List<ColumnMeta> columns, List<Object> values,
                                                            List<String> names) {
         Map<String, Comparative> comparativeMap = new HashMap<>();
         for (int i = 0; i < columns.size(); i++) {
@@ -446,8 +510,7 @@ public class Partitioner extends AbstractLifecycle {
         return comparativeMap;
     }
 
-    public static Map<String, Comparative> getComparativeORWithSingleColumn(ColumnMeta column,
-                                                                            List<Object> values,
+    public static Map<String, Comparative> getComparativeORWithSingleColumn(ColumnMeta column, List<Object> values,
                                                                             String name) {
         Map<String, Comparative> comparativeMap = new HashMap<>();
         if (values.size() == 0) {
@@ -464,8 +527,7 @@ public class Partitioner extends AbstractLifecycle {
         outerOR = new ComparativeOR();
         comparativeMap.put(name, outerOR);
         for (Object value : values) {
-            tmpComparative =
-                new ExtComparative(name, Comparative.Equivalent, dataType.convertJavaFrom(value));
+            tmpComparative = new ExtComparative(name, Comparative.Equivalent, dataType.convertJavaFrom(value));
             outerOR.getList().add(tmpComparative);
         }
         return comparativeMap;
@@ -509,9 +571,8 @@ public class Partitioner extends AbstractLifecycle {
 
     }
 
-    protected Comparative getComparative(RelDataType rowType, String colName,
-                                         Map<Integer, ParameterContext> param, SqlKind kind, RexNode left,
-                                         RexNode right) {
+    public Comparative getComparative(RelDataType rowType, String colName, Map<Integer, ParameterContext> param,
+                                         SqlKind kind, RexNode left, RexNode right) {
         /**
          * 列名绑定
          */
@@ -567,9 +628,8 @@ public class Partitioner extends AbstractLifecycle {
         if (left instanceof RexInputRef && right.getKind() == SqlKind.ROW) {
             if (right instanceof RexCall && ((RexCall) right).getOperands().size() >= 1) {
                 RexNode rightOperand = ((RexCall) right).getOperands().get(0);
-                if (rightOperand != null &&
-                    rightOperand instanceof RexDynamicParam &&
-                    ((RexDynamicParam) rightOperand).getIndex() == -2) {
+                if (rightOperand != null && rightOperand instanceof RexDynamicParam
+                    && ((RexDynamicParam) rightOperand).getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
                     return null;
                 }
             }
@@ -579,9 +639,8 @@ public class Partitioner extends AbstractLifecycle {
         } else if (left.getKind() == SqlKind.ROW && right.getKind() == SqlKind.ROW) {
             final List<String> fieldNames = rowType.getFieldNames();
             final List<Ord<RexNode>> sk = Ord.zip(((RexCall) left).getOperands()).stream().filter(
-                o -> o.getValue() instanceof RexInputRef && colName
-                    .equalsIgnoreCase(fieldNames.get(((RexInputRef) o.getValue()).getIndex())))
-                .collect(Collectors.toList());
+                o -> o.getValue() instanceof RexInputRef && colName.equalsIgnoreCase(
+                    fieldNames.get(((RexInputRef) o.getValue()).getIndex()))).collect(Collectors.toList());
 
             if (sk.size() != 1) {
                 return null;
@@ -594,9 +653,8 @@ public class Partitioner extends AbstractLifecycle {
         } else if (right.getKind() == SqlKind.ROW) {
             if (right instanceof RexCall && ((RexCall) right).getOperands().size() >= 1) {
                 RexNode rightOperand = ((RexCall) right).getOperands().get(0);
-                if (rightOperand != null &&
-                    rightOperand instanceof RexDynamicParam &&
-                    ((RexDynamicParam) rightOperand).getIndex() == -2) {
+                if (rightOperand != null && rightOperand instanceof RexDynamicParam
+                    && ((RexDynamicParam) rightOperand).getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
                     return null;
                 }
             }
@@ -612,16 +670,20 @@ public class Partitioner extends AbstractLifecycle {
             // should not be here
             return null;
         }
+        boolean rowDynamic = RexUtils.isRowDynamic(row);
 
         final int op = Comparative.Equivalent;
-        if (row.getOperands().size() == 1) {
-            // id in (1)
-            // 1 in (id)
-            RexNode column = columnInValue ? left : row.getOperands().get(0);
-            RexNode valueNode = columnInValue ? row.getOperands().get(0) : left;
+        ComparativeBaseList or = new ComparativeOR();
+        for (RexNode rowValue : row.getOperands()) {
+            RexNode column = columnInValue ? left : rowValue;
+            RexNode valueNode = columnInValue ? rowValue : left;
 
             if (rowExpression) {
-                valueNode = ((RexCall) valueNode).getOperands().get(skIndex);
+                if (valueNode instanceof RexDynamicParam) {
+                    // do nothing
+                } else {
+                    valueNode = ((RexCall) valueNode).getOperands().get(skIndex);
+                }
             }
 
             Object value = null;
@@ -629,7 +691,6 @@ public class Partitioner extends AbstractLifecycle {
             if (column instanceof RexInputRef) {
                 columnInfo = rowType.getFieldList().get(((RexInputRef) column).getIndex());
                 value = getValue(valueNode, columnInfo, param);
-
                 if (value == null) {
                     // value is not a RexLiteral
                     return null;
@@ -637,43 +698,16 @@ public class Partitioner extends AbstractLifecycle {
             }
 
             if (null != value && null != columnInfo && colName.equalsIgnoreCase(columnInfo.getName())) {
-                return new Comparative(op, value);
-            }
-
-        } else if (row.getOperands().size() > 1) {
-
-            ComparativeBaseList or = new ComparativeOR();
-            for (RexNode rowValue : row.getOperands()) {
-                RexNode column = columnInValue ? left : rowValue;
-                RexNode valueNode = columnInValue ? rowValue : left;
-
-                if (rowExpression) {
-                    valueNode = ((RexCall) valueNode).getOperands().get(skIndex);
-                }
-
-                Object value = null;
-                RelDataTypeField columnInfo = null;
-                if (column instanceof RexInputRef) {
-                    columnInfo = rowType.getFieldList().get(((RexInputRef) column).getIndex());
-                    value = getValue(valueNode, columnInfo, param);
-
-                    if (value == null) {
-                        // value is not a RexLiteral
-                        return null;
-                    }
-                }
-
-                if (null != value && null != columnInfo && colName.equalsIgnoreCase(columnInfo.getName())) {
-                    or.getList().add(new Comparative(op, value));
+                if (rowDynamic) {
+                    or.getList().add(new DynamicComparative(op, value, skIndex));
                 } else {
-                    return null;
+                    or.getList().add(new Comparative(op, value));
                 }
-            } // end of for
-
-            return or;
-        }
-
-        return null;
+            } else {
+                return null;
+            }
+        } // end of for
+        return or;
     }
 
     /**
@@ -683,15 +717,13 @@ public class Partitioner extends AbstractLifecycle {
         List<RexNode> operands = rexNode.getOperands();
         RexNode left = operands.get(0);
         RexNode right = operands.get(1);
-
-        if (isInputRef(left) && isConstant(right)) {
+        if (isInputRef(left) && (isConstant(right) || SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(right))) {
             return true;
         }
 
-        if (isConstant(left) && isInputRef(right)) {
+        if (isInputRef(right) && (isConstant(left) || SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(left))) {
             return true;
         }
-
         return false;
     }
 
@@ -910,9 +942,8 @@ public class Partitioner extends AbstractLifecycle {
                 value = getInsertValue(rexNode, param, dataTypes.get(i));
             }
 
-            Comparative comparative = new ExtComparative(column.getValue().getKey(),
-                COMPARATIVE_MAP.get(SqlKind.EQUALS),
-                value);
+            Comparative comparative =
+                new ExtComparative(column.getValue().getKey(), COMPARATIVE_MAP.get(SqlKind.EQUALS), value);
             comparatives.put(columnInfo.getName(), comparative);
         }
         return comparatives;
@@ -921,7 +952,7 @@ public class Partitioner extends AbstractLifecycle {
     /**
      * Used for hot key
      */
-    public static <T extends RexNode> Map<String, Comparative> getInsertFullComparative(
+    public <T extends RexNode> Map<String, Comparative> getInsertFullComparative(
         Map<String, Comparative> insertComparative) {
         if (insertComparative.size() == 1) {
             return insertComparative;
@@ -977,6 +1008,9 @@ public class Partitioner extends AbstractLifecycle {
             // RexDynamicParam index start from 0, param index start from 1
             valueObj = param.get(rdm.getIndex() + 1).getValue();
 
+            if (valueObj instanceof RawString) {
+                valueObj = ((RawString) valueObj).getObj(rdm.getSubIndex(), -1);
+            }
             return dataType.convertJavaFrom(valueObj);
         } else if (constant instanceof RexDynamicParam) {
             return constant;

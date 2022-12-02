@@ -17,11 +17,11 @@
 package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -68,7 +68,7 @@ public class PolarPrivilegeUtils {
         }
     }
 
-    public static void checkPrivilege(String db, String tb, PrivilegePoint priv, ExecutionContext executionContext){
+    public static void checkPrivilege(String db, String tb, PrivilegePoint priv, ExecutionContext executionContext) {
         if (executionContext.isPrivilegeMode()) {
             verifyPrivilege(db, tb, priv, executionContext);
         }
@@ -90,7 +90,7 @@ public class PolarPrivilegeUtils {
             return;
         }
 
-        // the privilegeContext may not initialized
+        // the privilegeContext may not be initialized
         // since some sqls may be executed from DRDS inner, but privilegeContext
         // is initialized by innerExecute() of FrontEndConnection.java
         PrivilegeContext pc = executionContext.getPrivilegeContext();
@@ -109,10 +109,6 @@ public class PolarPrivilegeUtils {
                 db);
         }
 
-//        PolarInstPriv instPriv = pc.getPolarUserInfo().getInstPriv();
-//        PolarDbPriv dbPriv = pc.getPolarUserInfo().getDbPriv(db);
-//        PolarTbPriv tbPriv = pc.getPolarUserInfo().getTbPriv(db, tb);
-
         // check for meta_db
         if (StringUtils.equalsIgnoreCase(MetaDbSchema.NAME, db)) {
             return;
@@ -124,17 +120,6 @@ public class PolarPrivilegeUtils {
                 throw new TddlRuntimeException(ErrorCode.ERR_NO_DB_ERROR, "No database selected");
             }
         }
-
-        // check for information_schema
-//        if (StringUtils.equalsIgnoreCase(InformationSchema.NAME, db)) {
-//            if (priv != PrivilegePoint.SELECT) {
-//                throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED_ON_DB,
-//                    pc.getUser(),
-//                    pc.getHost(),
-//                    db);
-//            }
-//            return;
-//        }
 
         // check for cdc db
         if (StringUtils.equalsIgnoreCase(SystemDbHelper.CDC_DB_NAME, db)) {

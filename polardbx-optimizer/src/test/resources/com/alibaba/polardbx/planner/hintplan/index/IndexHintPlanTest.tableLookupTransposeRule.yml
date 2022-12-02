@@ -4,13 +4,11 @@
     select /*+TDDL:index(t1,t1_i_b)*/ c1, c7 from t1 a where c2 = 3 and pk = 5;
 
   plan: |
-
-    Project(c1="c1", c7="c7")
-      BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
-        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `pk`, `c1` FROM `t1_i_b` AS `t1_i_b` WHERE ((`c2` = ?) AND (`pk` = ?))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c7` FROM `t1` AS `t1` WHERE (((`c2` = ?) AND (`pk` = ?)) AND (`pk` IN (...)))")
-
+    project(c1="c1", c7="c7")
+      bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+        indexscan(tables="optest_0001.t1_i_b_3", sql="select `pk`, `c1` from `t1_i_b` as `t1_i_b` where ((`c2` = ?) and (`pk` = ?))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c7` from `t1` as `t1` where (((`pk` = ?) and (`c2` = ?)) and (`pk` in (...)))")
 
   # filter transpose without copy filter
 - sql: |
@@ -67,11 +65,10 @@
     select * from t1 a ignore index(t1_i_b) join t2 b force index(t2_i_b) on a.c1 = b.c1 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
     project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80")
       bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
         gather(concurrent=true)
-          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
@@ -81,9 +78,8 @@
     select a.*, b.c1, b.c5 from t1 a join t2 b force index(t2_i_b) on a.c1 = b.c1 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
     gather(concurrent=true)
-      indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+      indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
 
   # join transpose, right join, index right, non-covering index
 - sql: |
@@ -146,11 +142,10 @@
     select * from t2 b force index(t2_i_b) join t1 a ignore index(t1_i_b) on a.c1 = b.c1 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
     project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
       bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
         gather(concurrent=true)
-          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
@@ -170,11 +165,10 @@
     select * from t2 b force index(t2_i_b) left join t1 a ignore index(t1_i_b) on a.c1 = b.c1 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
     project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
       bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
         gather(concurrent=true)
-          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
@@ -184,11 +178,10 @@
     select * from t2 b force index(t2_i_b) right join t1 a ignore index(t1_i_b) on a.c1 = b.c1 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
     project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
       bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
         gather(concurrent=true)
-          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
@@ -375,16 +368,14 @@
     /*+TDDL:index(T1, t1_i_b)*/ select a.c1, a.c2, b.* from t1 a  join t2 b  where a.c2 = 1 and b.c2 = 1;
 
   plan: |
-
-    PhyTableOperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="SELECT `a`.`c1` AS `c1`, `a`.`c2` AS `c2`, `b`.`pk`, `b`.`c1` AS `c10`, `b`.`c2` AS `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`c2` = ?) AND (`b`.`c2` = ?))")
+    phytableoperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="select `a`.`c1` as `c1`, `a`.`c2` as `c2`, `b`.`pk`, `b`.`c1` as `c10`, `b`.`c2` as `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` from ? as `a` inner join ? as `b` where ((`a`.`c2` = ?) and (`b`.`c2` = ?))", params="1,1")
 
 - sql: |
 
     select a.c1, a.c2, b.* from t1 a force index(t1_i_b) join t2 b  where a.c2 = 1 and b.c2 = 1;
 
   plan: |
-
-    PhyTableOperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="SELECT `a`.`c1` AS `c1`, `a`.`c2` AS `c2`, `b`.`pk`, `b`.`c1` AS `c10`, `b`.`c2` AS `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`c2` = ?) AND (`b`.`c2` = ?))")
+    phytableoperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="select `a`.`c1` as `c1`, `a`.`c2` as `c2`, `b`.`pk`, `b`.`c1` as `c10`, `b`.`c2` as `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` from ? as `a` inner join ? as `b` where ((`a`.`c2` = ?) and (`b`.`c2` = ?))", params="1,1")
 
 - sql: |
 
@@ -392,7 +383,8 @@
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="SELECT `t1`.`c1` AS `c1`, `t1`.`c2` AS `c2`, `b`.`pk`, `b`.`c1` AS `c10`, `b`.`c2` AS `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` FROM ? AS `t1` INNER JOIN ? AS `b` WHERE ((`t1`.`c2` = ?) AND (`b`.`c2` = ?))")
+    phytableoperation(tables="optest_0000.[t1_i_b_1, t2_1]", sql="select `t1`.`c1` as `c1`, `t1`.`c2` as `c2`, `b`.`pk`, `b`.`c1` as `c10`, `b`.`c2` as `c20`, `b`.`c3`, `b`.`c4`, `b`.`c5`, `b`.`c6`, `b`.`c7`, `b`.`c8` from ? as `t1` inner join ? as `b` where ((`t1`.`c2` = ?) and (`b`.`c2` = ?))", params="1,1")
+
 
 
 - sql: |

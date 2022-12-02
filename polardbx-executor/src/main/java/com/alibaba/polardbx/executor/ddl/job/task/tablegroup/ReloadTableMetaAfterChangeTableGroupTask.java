@@ -63,8 +63,8 @@ public class ReloadTableMetaAfterChangeTableGroupTask extends BaseGmsTask {
 
         DdlJobManager jobManager = new DdlJobManager();
         List<DdlTask> prevTasks = jobManager.getTasksFromMetaDB(getJobId(),
-            (new AlterTableSetTableGroupChangeMetaOnlyTask(null, null, null, null, false, false)).getName());
-        assert prevTasks.size() == 0;
+            (new AlterTableSetTableGroupChangeMetaOnlyTask(null, null, null, null, false, false, null)).getName());
+        assert prevTasks.size() == 1;
         AlterTableSetTableGroupChangeMetaOnlyTask setTableGroupChangeMetaOnlyTask =
             (AlterTableSetTableGroupChangeMetaOnlyTask) prevTasks.get(0);
         //get the targetTableGroup from AlterTableSetTableGroupChangeMetaOnlyTask in the some job

@@ -217,6 +217,9 @@ public class AggregateReduceFunctionsRule extends RelOptRule {
         // replace original AVG(x) with SUM(x) / COUNT(x)
         return reduceAvg(oldAggRel, oldCall, newCalls, aggCallMapping, inputExprs);
       case STDDEV_POP:
+      case STD:
+      case STDDEV:
+        // STD and STDDEV are synonym of STDDEV_POP
         // replace original STDDEV_POP(x) with
         //   SQRT(
         //     (SUM(x * x) - SUM(x) * SUM(x) / COUNT(x))
@@ -224,20 +227,22 @@ public class AggregateReduceFunctionsRule extends RelOptRule {
         return reduceStddev(oldAggRel, oldCall, true, true, newCalls,
             aggCallMapping, inputExprs);
       case STDDEV_SAMP:
-        // replace original STDDEV_POP(x) with
+        // replace original STDDEV_SAMP(x) with
         //   SQRT(
         //     (SUM(x * x) - SUM(x) * SUM(x) / COUNT(x))
         //     / CASE COUNT(x) WHEN 1 THEN NULL ELSE COUNT(x) - 1 END)
         return reduceStddev(oldAggRel, oldCall, false, true, newCalls,
             aggCallMapping, inputExprs);
       case VAR_POP:
+      case VARIANCE:
+        // VARIANCE is synonym of VAR_POP
         // replace original VAR_POP(x) with
         //     (SUM(x * x) - SUM(x) * SUM(x) / COUNT(x))
         //     / COUNT(x)
         return reduceStddev(oldAggRel, oldCall, true, false, newCalls,
             aggCallMapping, inputExprs);
       case VAR_SAMP:
-        // replace original VAR_POP(x) with
+        // replace original VAR_SAMP(x) with
         //     (SUM(x * x) - SUM(x) * SUM(x) / COUNT(x))
         //     / CASE COUNT(x) WHEN 1 THEN NULL ELSE COUNT(x) - 1 END
         return reduceStddev(oldAggRel, oldCall, false, false, newCalls,
@@ -412,11 +417,24 @@ public class AggregateReduceFunctionsRule extends RelOptRule {
     //     / count(x),
     //     .5)
     //
+    // VAR_POP(x) ==>
+    //   power(
+    //     (sum(x * x) - sum(x) * sum(x) / count(x))
+    //     / count(x),
+    //     1.0)
+    //
     // stddev_samp(x) ==>
     //   power(
     //     (sum(x * x) - sum(x) * sum(x) / count(x))
     //     / nullif(count(x) - 1, 0),
     //     .5)
+    //
+    // VAR_SAMP(x) ==>
+    //   power(
+    //     (sum(x * x) - sum(x) * sum(x) / count(x))
+    //     / nullif(count(x) - 1, 0),
+    //     1.0)
+
     final int nGroups = oldAggRel.getGroupCount();
     final RelOptCluster cluster = oldAggRel.getCluster();
     final RexBuilder rexBuilder = cluster.getRexBuilder();
@@ -530,7 +548,15 @@ public class AggregateReduceFunctionsRule extends RelOptRule {
           rexBuilder.makeExactLiteral(new BigDecimal("0.5"));
       result =
           rexBuilder.makeCall(
-              SqlStdOperatorTable.POWER, div, half);
+              SqlStdOperatorTable.SPECIAL_POW, div, half);
+    } else {
+      // You may have a question, why we need this?
+      // Answer: to fix the return type.
+      final RexNode full =
+          rexBuilder.makeExactLiteral(new BigDecimal("1.0"));
+      result =
+          rexBuilder.makeCall(
+              SqlStdOperatorTable.SPECIAL_POW, div, full);
     }
 
     return rexBuilder.makeCast(

@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.net.packet;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -41,14 +43,9 @@ public class StmtExecutePacket extends CommandPacket {
     public byte new_params_bound_flag;                                       // (1)
     public String charset = "UTF-8";
 
-    public Map<Integer, Short> paramType = new HashMap<Integer, Short>();                   // num-params
-    // *
-    // 2
-    /**
-     * Since we should merge into one sql, so that we store it as string for all
-     * type of values
-     */
-    public Map<Integer, Object> values = new HashMap<Integer, Object>();
+    public Map<Integer, Short> paramType = new HashMap<>();                   // num-params
+
+    public List<Object> valuesArr;
 
     @Override
     protected String packetInfo() {
@@ -70,11 +67,11 @@ public class StmtExecutePacket extends CommandPacket {
 
     /**
      * Read another half by num_params Read execute packet except for the
-     * skipParams which msy comes from Send_data_long packet with no indication
+     * skipParams which comes from send_data_long packet with no indication
      * in execute packet new_params_bound_flag may not always be 1 1: first
      * packet can extract value types 0: continuous packet only have value
      */
-    public void readAfterStmtId(MySQLMessage mm, int num_params, Set<Integer> skipParams,
+    public void readAfterStmtId(MySQLMessage mm, int num_params, Map<Integer, Object> skipParams,
                                 Map<Integer, Short> paramTypes) {
         flags = mm.read();
         iteration_count = mm.readInt();
@@ -87,6 +84,7 @@ public class StmtExecutePacket extends CommandPacket {
             for (int i = 0; i < len; i++) {
                 null_bitmap[i] = mm.read();
             }
+            valuesArr = new ArrayList<>(num_params);
         }
 
         // 按照mysql协议，http://dev.mysql.com/doc/internals/en/com-stmt-execute.html#packet-COM_STMT_EXECUTE,
@@ -119,9 +117,16 @@ public class StmtExecutePacket extends CommandPacket {
              * Refer to mysql connector's ServerPreparedStatement.serverExecute
              */
             if ((null_bitmap[i / 8] & (1 << (i & 7))) == 0) {
-                if (!skipParams.contains(i)) {
+                if (skipParams != null && skipParams.containsKey(i)) {
+                    valuesArr.add(skipParams.get(i));
+                    if (logger.isDebugEnabled()) {
+                        StringBuffer info = new StringBuffer();
+                        info.append("[readAfterStmtId skip index:").append(i).append("]");
+                        logger.debug(info.toString());
+                    }
+                } else {
                     Object v = MysqlDefsUtil.readObject(mm, paramType.get(i), false, charset);
-                    values.put(i, v);
+                    valuesArr.add(v);
                     if (logger.isDebugEnabled()) {
                         StringBuffer info = new StringBuffer();
                         info.append("[readAfterStmtId index:").append(i).append("]");
@@ -129,15 +134,9 @@ public class StmtExecutePacket extends CommandPacket {
                         info.append(" value:").append(v).append("]");
                         logger.debug(info.toString());
                     }
-                } else {
-                    if (logger.isDebugEnabled()) {
-                        StringBuffer info = new StringBuffer();
-                        info.append("[readAfterStmtId skip index:").append(i).append("]");
-                        logger.debug(info.toString());
-                    }
                 }
             } else {
-                values.put(i, null);
+                valuesArr.add(null);
                 if (logger.isDebugEnabled()) {
                     StringBuffer info = new StringBuffer();
                     info.append("[readAfterStmtId set index:").append(i).append(" to null]");
@@ -145,7 +144,6 @@ public class StmtExecutePacket extends CommandPacket {
                 }
             }
         }
-
     }
 
 }

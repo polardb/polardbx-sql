@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -35,8 +36,11 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyTableModifyCursor;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.prepare.RelOptTableImpl;
@@ -65,11 +69,20 @@ public class MySingleTableModifyHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        Cursor cursor = handleInner(logicalPlan, executionContext, true);
+        Cursor cursor = handleInner(logicalPlan, executionContext);
         return cursor;
     }
 
-    protected Cursor handleInner(RelNode logicalPlan, ExecutionContext executionContext, boolean enableScaleOutWrite) {
+    protected Cursor handleInner(RelNode logicalPlan, ExecutionContext executionContext) {
+        if (logicalPlan instanceof PhyTableOperation) {
+            if (((PhyTableOperation) logicalPlan).isOnlyOnePartitionAfterPruning()) {
+                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation)logicalPlan).getSchemaName(), executionContext);
+            }
+        } else {
+            if ( logicalPlan instanceof BaseTableOperation && !(logicalPlan instanceof PhyDdlTableOperation)) {
+                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation)logicalPlan).getSchemaName(), executionContext);
+            }
+        }
         MyPhyTableModifyCursor modifyCursor = (MyPhyTableModifyCursor) repo.getCursorFactory()
             .repoCursor(executionContext, logicalPlan);
         long oldLastInsertId = executionContext.getConnection().getLastInsertId();
@@ -101,7 +114,11 @@ public class MySingleTableModifyHandler extends HandlerCommon {
                             // Duplicate entry on GSI.
                             // Replace physical unique index name to GSI table name.
                             final List<String> uniqueConstraint = new ArrayList<>();
-                            uniqueConstraint.add(meta.getPrimaryIndex().getPhysicalIndexName().toLowerCase());
+                            if (meta.hasGsiImplicitPrimaryKey()) {
+                                uniqueConstraint.add(TddlConstants.UGSI_PK_INDEX_NAME);
+                            } else {
+                                uniqueConstraint.add(meta.getPrimaryIndex().getPhysicalIndexName().toLowerCase());
+                            }
                             if (meta.getSecondaryIndexes() != null) {
                                 meta.getSecondaryIndexes()
                                     .forEach(item -> uniqueConstraint.add(item.getPhysicalIndexName().toLowerCase()));
@@ -184,7 +201,7 @@ public class MySingleTableModifyHandler extends HandlerCommon {
         if (StringUtils.isEmpty(schemaName)) {
             schemaName = executionContext.getSchemaName();
         }
-        String tableName = operation.getTableNames().get(0);
+        String tableName = operation.getLogicalTableNames().get(0);
 
         // Sequence calculation is too complex: we need to record lastInsertId
         // and returnedLastInsertId, consider SPLIT mode, and update sequence
@@ -224,7 +241,13 @@ public class MySingleTableModifyHandler extends HandlerCommon {
             return;
         }
 
-        Object tbNames = targetPhyPlan.getTableNames().get(0);
+        Object tbNames = null;
+        if (targetPhyPlan instanceof SingleTableOperation) {
+            tbNames = ((SingleTableOperation) targetPhyPlan).getLogicalTableNames().get(0);
+        } else {
+            tbNames = targetPhyPlan.getTableNames().get(0);
+        }
+
         String tbName = "";
         if (tbNames instanceof List) {
             tbName = (String) ((List) tbNames).get(0);

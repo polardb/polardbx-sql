@@ -128,6 +128,14 @@ public abstract class TimeTableTestBase extends TimeTestBase {
     protected static final String JOIN_SQL_FORMAT =
         "select concat(a.%s), concat(b.%s) from %s a inner join %s b where a.%s = b.%s";
 
+    /**
+     * Test compare
+     */
+    protected static final String COMPARE_SQL_FORMAT =
+        "/*+TDDL:ENABLE_PUSH_PROJECT=false*/ select a.%s, b.%s, a.%s %s b.%s from %s a, %s b;";
+
+    protected static final String[] COMPARE_OP = {">", ">=", "<", "<=", "=", "!="};
+
     public TimeTableTestBase(String TABLE_NAME) {
         this.TABLE_NAME = TABLE_NAME;
     }
@@ -172,5 +180,14 @@ public abstract class TimeTableTestBase extends TimeTestBase {
         insertTimeStrings(timeStringList, col);
         String selectSql = String.format(JOIN_SQL_FORMAT, col, col, TABLE_NAME, TABLE_NAME, col, col);
         selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);
+    }
+
+    protected void testCompareOp(List<String> timeStringList1, String col1, List<String> timeStringList2, String col2) {
+        insertTimeStrings(timeStringList1, col1);
+        insertTimeStrings(timeStringList2, col2);
+        for (String op : COMPARE_OP) {
+            String selectSql = String.format(COMPARE_SQL_FORMAT, col1, col2, col1, op, col2, TABLE_NAME, TABLE_NAME);
+            selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);
+        }
     }
 }

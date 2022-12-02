@@ -17,18 +17,23 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.util.HexBin;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.googlecode.protobuf.format.JsonFormat;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.externalize.RelDrdsJsonWriter;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.commons.collections.MapUtils;
@@ -43,18 +48,19 @@ import java.util.Map;
  *
  * @author lingce.ldm 2017-07-13 10:21
  */
-public class PhyTableOperation extends BaseTableOperation {
+public final class PhyTableOperation extends BaseTableOperation {
 
     public static long INSTANCE_MEM_SIZE = ClassLayout.parseClass(PhyTableOperation.class)
         .instanceSize();
 
-    //
-    // List<String>: the physical table set used by one table partition sql(such join, e.g)
-    // The list of List<String>: the table partition list of physical table set
-    //
+    /**
+     * List<String>: the physical table set used by one table partition sql(such join, e.g)
+     * The list of List<String>: the table partition list of physical table set
+     *
+     */
     private List<List<String>> tableNames;
     private Map<Integer, ParameterContext> param;
-    private List<Map<Integer, ParameterContext>> batchParameters = null;
+    private List<Map<Integer, ParameterContext>> batchParameters;
     protected PhyOperationBuilderCommon phyOperationBuilder;
     // memory cost when executing query on physical db, count in byte
     private long execMemCost = 0;
@@ -62,33 +68,43 @@ public class PhyTableOperation extends BaseTableOperation {
     protected List<String> logicalTableNames;
     protected MemoryAllocatorCtx memoryAllocator;
 
-    public PhyTableOperation(RelNode relNode, RelDataType rowType) {
-        this(relNode.getCluster(), relNode.getTraitSet(), rowType);
-    }
+    /**
+     * Label if there is only on PhyTableOperation and go to pushdown by PostPlanner after pruning LogicalView
+     * if onlyOnePartitionAfterPruning=true, means
+     * In PostPlanner, LogicalView has only one partition of PhyTableOperation left after pruning,
+     * and it will go to SingleTableScanHandler/SingleTableModifyHandler,
+     * instead of going to LogicalViewHandler to its execution.
+     */
+    protected boolean onlyOnePartitionAfterPruning = false;
 
-    // Only Use by Extractor/Checker/Corrector of GsiBackFill Task
-    // These task use this method to build phy relnode to do phy sql
-    public PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType) {
-        this(cluster, traitSet, rowType, null, null);
-    }
-
-    public PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, CursorMeta cursorMeta,
+    /**
+     * NOT allowed to use new PhyTableOperation() build PhyTableOp,
+     * and all the PhyTableOperation building must use PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(PhyTableOpBuildParams params)
+     * <pre>
+     *     所有的 PhyTableOperation 的生成操作必须走以下接口
+     *          PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(PhyTableOpBuildParams params)，
+     *     因为 PhyTableOperation 需要以下的五元组来获取事务的物理写连接ID,缺一不可
+     *     (logDb/logTbl/phyDb/phyTbl/lockMode),
+     *     走 PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(...) 可以保证统一填充这几项的必须信息，
+     *     因为对于Auto库，PhyOp 需要依赖上述几项信息获取正确的物理分库连接ID
+     * </pre>
+     */
+    PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, CursorMeta cursorMeta,
                              RelNode logicalPlan) {
         super(cluster, traitSet, rowType, cursorMeta, logicalPlan);
     }
 
-    public PhyTableOperation(PhyTableOperation operation) {
-        super(operation);
-        tableNames = operation.tableNames;
-        param = operation.param;
-        batchParameters = operation.batchParameters;
-        phyOperationBuilder = operation.phyOperationBuilder;
-        logicalTableNames = operation.logicalTableNames;
-        memoryAllocator = operation.memoryAllocator;
-    }
-
     public void setRowType(RelDataType rowType) {
         this.rowType = rowType;
+    }
+
+    @Override
+    public void setDbIndex(String dbIndex) {
+        this.dbIndex = dbIndex;
+    }
+
+    @Override
+    public void initOperation() {
     }
 
     @Override
@@ -119,7 +135,13 @@ public class PhyTableOperation extends BaseTableOperation {
 
     @Override
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           List<List<String>> phyTableNamesOutput,
                                                                            ExecutionContext executionContext) {
+
+        if (phyTableNamesOutput != null) {
+            phyTableNamesOutput.addAll(this.tableNames);
+        }
+
         /**
          * 由于 PhyTableOperation 的物理SQL对应的叁数化参数（即this.param）
          * 全部会在
@@ -127,6 +149,12 @@ public class PhyTableOperation extends BaseTableOperation {
          *  中计算完成，所以这里就不再需要依赖逻辑SQL级别的参数化参数（即传入参数 param）进行重新计算
          */
         return new Pair<>(dbIndex, this.param);
+    }
+
+    @Override
+    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           ExecutionContext executionContext) {
+        return getDbIndexAndParam(param, null , executionContext);
     }
 
     @Override
@@ -210,15 +238,51 @@ public class PhyTableOperation extends BaseTableOperation {
                 if (v instanceof TableName) {
                     builder.append(((TableName) v).getTableName());
                 } else {
-                    builder.append(v == null ? "NULL" : v.toString());
+                    String valStr;
+                    if (v == null) {
+                        valStr = "NULL";
+                    } else {
+                        valStr = v.toString();
+                        if (v instanceof byte[]) {
+                            valStr =  "0x" + HexBin.encode((byte[]) v);
+                        }
+                    }
+                    builder.append(valStr);
                 }
                 operator = ",";
             }
             pw.item("params", builder.toString());
         }
+        // XPlan explain.
+        final ExecutionContext executionContext;
+        if (pw instanceof RelDrdsWriter) {
+            executionContext = (ExecutionContext) ((RelDrdsWriter) pw).getExecutionContext();
+        } else if (pw instanceof RelDrdsJsonWriter) {
+            executionContext = (ExecutionContext) ((RelDrdsJsonWriter) pw).getExecutionContext();
+        } else {
+            executionContext = null;
+        }
+        if (XTemplate != null && executionContext != null &&
+            executionContext.getParamManager().getBoolean(ConnectionParams.EXPLAIN_X_PLAN)) {
+            final JsonFormat format = new JsonFormat();
+            final PolarxExecPlan.ExecPlan plan = XTemplate.explain(executionContext);
+            if (null == plan) {
+                pw.item("XPlan", "Denied by param.");
+            } else {
+                pw.item("XPlan", format.printToString(plan));
+            }
+        }
         //pw.done(this);
         return pw;
     }
+
+    @Override
+    public String toString() {
+        RelDrdsWriter writer = new RelDrdsWriter();
+        explainTermsForDisplay(writer);
+        return super.toString() + String.format("@[%s]", writer.asString());
+    }
+
 
     public long getExecMemCost() {
         return execMemCost;
@@ -230,7 +294,7 @@ public class PhyTableOperation extends BaseTableOperation {
 
     @Override
     public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
-        PhyTableOperation phyTableOperation = new PhyTableOperation(this);
+        PhyTableOperation phyTableOperation = PhyTableOperationFactory.getInstance().copyFrom(this);
         return phyTableOperation;
     }
 
@@ -250,11 +314,20 @@ public class PhyTableOperation extends BaseTableOperation {
         this.phyOperationBuilder = phyOperationBuilder;
     }
 
+    @Override
     public List<String> getLogicalTableNames() {
         return logicalTableNames;
     }
 
     public void setLogicalTableNames(List<String> logicalTableName) {
         this.logicalTableNames = logicalTableName;
+    }
+
+    public boolean isOnlyOnePartitionAfterPruning() {
+        return onlyOnePartitionAfterPruning;
+    }
+
+    public void setOnlyOnePartitionAfterPruning(boolean onlyOnePartitionAfterPruning) {
+        this.onlyOnePartitionAfterPruning = onlyOnePartitionAfterPruning;
     }
 }

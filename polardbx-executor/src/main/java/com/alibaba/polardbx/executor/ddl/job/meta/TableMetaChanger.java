@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -33,7 +35,7 @@ import com.alibaba.polardbx.executor.gms.util.SequenceUtil;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
-import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
@@ -42,7 +44,6 @@ import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -51,6 +52,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
 
@@ -59,10 +61,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeSet;
 
 import static com.alibaba.polardbx.gms.metadb.table.TableInfoManager.PhyInfoSchemaContext;
 
@@ -95,7 +100,11 @@ public class TableMetaChanger {
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.addTable(phyInfoSchemaContext);
+
+        long newSeqCacheSize = executionContext.getParamManager().getLong(ConnectionParams.NEW_SEQ_CACHE_SIZE);
+        newSeqCacheSize = newSeqCacheSize < 1 ? 0 : newSeqCacheSize;
+        tableInfoManager.addTable(phyInfoSchemaContext, newSeqCacheSize);
+
         if (hasTimestampColumnDefault) {
             Map<String, String> convertedColumnDefaults =
                 convertColumnDefaults(phyInfoSchemaContext, null, executionContext);
@@ -108,6 +117,89 @@ public class TableMetaChanger {
         }
     }
 
+    public static void addOssTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext,
+                                       Engine tableEngine) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOssTable(phyInfoSchemaContext, tableEngine);
+    }
+
+    public static void addOssFileMeta(Connection metaDbConn, String tableSchema, String tableName,
+                                      FilesRecord filesRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOssFile(tableSchema, tableName, filesRecord);
+    }
+
+    public static void changeOssFile(Connection metaDbConn, Long primaryKey, Long fileSize) {
+        changeOssFile(metaDbConn, primaryKey, new byte[] {}, fileSize, 0L);
+    }
+
+    public static void changeOssFile(Connection metaDbConn, Long primaryKey, byte[] fileMeta, Long fileSize,
+                                     Long rowCount) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.changeOssFile(primaryKey, fileMeta, fileSize, rowCount);
+    }
+
+    public static Long addOssFileAndReturnLastInsertId(Connection metaDbConn, String tableSchema, String tableName,
+                                                       FilesRecord filesRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.addOssFileAndReturnLastInsertId(tableSchema, tableName, filesRecord);
+    }
+
+    public static void changeTableEngine(Connection metaDbConn, String tableSchema, String tableName, Engine engine) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.changeTableEngine(tableSchema, tableName, engine.name());
+    }
+
+    public static List<FilesRecord> lockOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema,
+                                                    String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.lockOssFile(taskId, tableSchema, tableName);
+    }
+
+    public static void deleteOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.deleteOssFile(taskId, tableSchema, tableName);
+    }
+
+    public static void validOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.validOssFile(taskId, tableSchema, tableName);
+    }
+
+    public static void addOssColumnMeta(Connection metaDbConn, String tableSchema, String tableName,
+                                        ColumnMetasRecord columnMetasRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOSSColumnsMeta(tableSchema, tableName, columnMetasRecord);
+    }
+
+    public static List<ColumnMetasRecord> lockOssColumnMeta(Connection metaDbConn, Long taskId,
+                                                            String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.queryOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+
+    public static void deleteOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.deleteOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+
+    public static void validOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.validOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+
     public static PhyInfoSchemaContext buildPhyInfoSchemaContext(String schemaName, String logicalTableName,
                                                                  String dbIndex, String phyTableName,
                                                                  SequenceBean sequenceBean,
@@ -117,14 +209,11 @@ public class TableMetaChanger {
         PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
 
-        // Add sequence meta if needed.
-        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-
         sequenceBean = SequenceMetaChanger.createSequenceIfExists(schemaName, logicalTableName, sequenceBean,
             tablesExtRecord, isPartitioned, ifNotExists, sqlKind, executionContext);
 
         if (sequenceBean != null) {
-            SystemTableRecord sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
+            SequenceBaseRecord sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
             phyInfoSchemaContext.sequenceRecord = sequenceRecord;
         }
 
@@ -132,7 +221,7 @@ public class TableMetaChanger {
     }
 
     public static void triggerSchemaChange(Connection metaDbConn, String schemaName, String tableName,
-                                           SystemTableRecord sequenceRecord, TableInfoManager tableInfoManager) {
+                                           SequenceBaseRecord sequenceRecord, TableInfoManager tableInfoManager) {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, tableName);
 
@@ -179,12 +268,12 @@ public class TableMetaChanger {
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
 
         // Remove sequence meta if exists.
-        SystemTableRecord sequenceRecord = null;
+        SequenceBaseRecord sequenceRecord = null;
         SequenceBean sequenceBean = SequenceMetaChanger.dropSequenceIfExists(schemaName, logicalTableName);
         if (sequenceBean != null) {
             sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
         }
-        final SystemTableRecord finalSequenceRecord = sequenceRecord;
+        final SequenceBaseRecord finalSequenceRecord = sequenceRecord;
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
@@ -202,7 +291,7 @@ public class TableMetaChanger {
         CONFIG_MANAGER.notify(tableListDataId, metaDbConnection);
 
         if (sequenceRecord != null) {
-            SequenceManagerProxy.getInstance().invalidate(schemaName, sequenceBean.getSequenceName());
+            SequenceManagerProxy.getInstance().invalidate(schemaName, sequenceBean.getName());
         }
     }
 
@@ -236,7 +325,7 @@ public class TableMetaChanger {
             buildNewTbNamePattern(executionContext, schemaName, logicalTableName, newLogicalTableName);
 
         // Rename sequence if exists.
-        SystemTableRecord sequenceRecord = null;
+        SequenceBaseRecord sequenceRecord = null;
         SequenceBean sequenceBean =
             SequenceMetaChanger.renameSequenceIfExists(schemaName, logicalTableName, newLogicalTableName);
         if (sequenceBean != null) {
@@ -266,7 +355,7 @@ public class TableMetaChanger {
         String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
 
         // Rename sequence if exists.
-        SystemTableRecord sequenceRecord = null;
+        SequenceBaseRecord sequenceRecord = null;
         SequenceBean sequenceBean =
             SequenceMetaChanger.renameSequenceIfExists(schemaName, logicalTableName, newLogicalTableName);
         if (sequenceBean != null) {
@@ -319,7 +408,7 @@ public class TableMetaChanger {
                                        boolean primaryKeyDropped, List<String> addedPrimaryKeyColumns,
                                        List<Pair<String, String>> columnAfterAnother, boolean requireLogicalColumnOrder,
                                        String tableComment, String tableRowFormat, SequenceBean sequenceBean,
-                                       ExecutionContext executionContext) {
+                                       boolean onlineModifyColumnIndexTask, ExecutionContext executionContext) {
         TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
 
@@ -344,7 +433,7 @@ public class TableMetaChanger {
         if (GeneralUtil.isNotEmpty(changedColumns)) {
             tableInfoManager.changeColumns(phyInfoSchemaContext, columnJdbcExtInfo, changedColumns);
             // Reset binary default value flag
-            for (String columnName: changedColumns.keySet()) {
+            for (String columnName : changedColumns.keySet()) {
                 tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
             }
         }
@@ -358,7 +447,7 @@ public class TableMetaChanger {
         if (GeneralUtil.isNotEmpty(updatedColumns)) {
             tableInfoManager.updateColumns(phyInfoSchemaContext, columnJdbcExtInfo, updatedColumns);
             // Clear binary default value flag
-            for (String columnName: updatedColumns) {
+            for (String columnName : updatedColumns) {
                 tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
             }
         }
@@ -396,7 +485,16 @@ public class TableMetaChanger {
 
         // Rename existing index meta.
         if (GeneralUtil.isNotEmpty(renamedIndexes)) {
-            tableInfoManager.renameIndexes(schemaName, logicalTableName, renamedIndexes);
+            if (onlineModifyColumnIndexTask) {
+                Set<String> indexSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+                indexSet.addAll(renamedIndexes.keySet());
+                indexSet.addAll(renamedIndexes.values());
+                List<String> indexes = new ArrayList<>(indexSet);
+                tableInfoManager.removeIndexes(schemaName, logicalTableName, indexes);
+                tableInfoManager.addIndexes(phyInfoSchemaContext, indexes);
+            } else {
+                tableInfoManager.renameIndexes(schemaName, logicalTableName, renamedIndexes);
+            }
         }
 
         // Add new index meta if existed.
@@ -415,10 +513,12 @@ public class TableMetaChanger {
         }
 
         // Sequence meta if needed.
-        SystemTableRecord sequenceRecord = phyInfoSchemaContext.sequenceRecord;
+        SequenceBaseRecord sequenceRecord = phyInfoSchemaContext.sequenceRecord;
         if (sequenceRecord != null) {
             if (sequenceBean.isNew()) {
-                tableInfoManager.createSequence(sequenceRecord);
+                long newSeqCacheSize = executionContext.getParamManager().getLong(ConnectionParams.NEW_SEQ_CACHE_SIZE);
+                newSeqCacheSize = newSeqCacheSize < 1 ? 0 : newSeqCacheSize;
+                tableInfoManager.createSequence(sequenceRecord, newSeqCacheSize);
             } else {
                 tableInfoManager.alterSequence(sequenceRecord);
             }
@@ -432,7 +532,7 @@ public class TableMetaChanger {
             tableInfoManager.updateTableRowFormat(schemaName, logicalTableName, tableRowFormat);
         }
 
-        tableInfoManager.showTable(schemaName, logicalTableName, sequenceRecord);
+        tableInfoManager.showTable(schemaName, logicalTableName, sequenceRecord, !onlineModifyColumnIndexTask);
     }
 
     public static void changeTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
@@ -476,6 +576,190 @@ public class TableMetaChanger {
         }
         // Reset column positions to make them continuous.
         tableInfoManager.resetColumnOrder(tableSchema, tableName);
+    }
+
+    // Set column multi-write source column, which will not trigger column multi-write since target column does not
+    // exist yet
+    public static void onlineModifyColumnInitColumn(Connection metaDbConnection, String schemaName,
+                                                    String logicalTableName, String sourceColumn) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.setMultiWriteSourceColumn(schemaName, logicalTableName, sourceColumn);
+    }
+
+    public static void onlineModifyColumnInitColumnRollBack(Connection metaDbConnection, String schemaName,
+                                                            String logicalTableName, String sourceColumn) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.showColumns(schemaName, logicalTableName, ImmutableList.of(sourceColumn));
+    }
+
+    // Add new column and set column multi-write target column, which will trigger column multi-write
+    public static void onlineModifyColumnAddColumn(Connection metaDbConnection, String schemaName,
+                                                   String logicalTableName, String dbIndex, String phyTableName,
+                                                   String addedColumn, String sourceColumn, String afterColumn,
+                                                   List<String> coveringGsi, List<String> gsiDbIndex,
+                                                   List<String> gsiPhyTableName) {
+        TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        Map<String, Map<String, Object>> columnJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
+            phyInfoSchemaContext.phyTableSchema, phyInfoSchemaContext.phyTableName, phyInfoSchemaContext.dataSource);
+
+        tableInfoManager.addColumns(phyInfoSchemaContext, columnJdbcExtInfo, ImmutableList.of(addedColumn));
+        tableInfoManager.showColumns(schemaName, logicalTableName, ImmutableList.of(addedColumn));
+        tableInfoManager.setMultiWriteSourceColumn(schemaName, logicalTableName, sourceColumn);
+        tableInfoManager.setMultiWriteTargetColumn(schemaName, logicalTableName, addedColumn);
+
+        List<Pair<String, String>> columnAfterAnother = new ArrayList<>();
+        columnAfterAnother.add(new Pair<>(addedColumn, afterColumn));
+        refreshColumnOrder(schemaName, logicalTableName, columnAfterAnother, true, tableInfoManager);
+
+        for (int i = 0; i < coveringGsi.size(); i++) {
+            TableInfoManager.PhyInfoSchemaContext gsiPhyInfoSchemaContext =
+                CommonMetaChanger.getPhyInfoSchemaContext(schemaName, coveringGsi.get(i), gsiDbIndex.get(i),
+                    gsiPhyTableName.get(i));
+            Map<String, Map<String, Object>> gsiColumnJdbcExtInfo =
+                tableInfoManager.fetchColumnJdbcExtInfo(gsiPhyInfoSchemaContext.phyTableSchema,
+                    gsiPhyInfoSchemaContext.phyTableName, gsiPhyInfoSchemaContext.dataSource);
+            tableInfoManager.addColumns(gsiPhyInfoSchemaContext, gsiColumnJdbcExtInfo, ImmutableList.of(addedColumn));
+            // We check whether doing column multi-write only based on primary table
+            tableInfoManager.setMultiWriteTargetColumn(schemaName, coveringGsi.get(i), addedColumn);
+        }
+    }
+
+    public static void onlineModifyColumnAddColumnRollback(Connection metaDbConnection, String schemaName,
+                                                           String logicalTableName, String addedColumn,
+                                                           String sourceColumn, List<String> coveringGsi) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        tableInfoManager.removeColumns(schemaName, logicalTableName, ImmutableList.of(addedColumn));
+        tableInfoManager.setMultiWriteSourceColumn(schemaName, logicalTableName, sourceColumn);
+
+        for (String gsiName : coveringGsi) {
+            tableInfoManager.removeColumns(schemaName, gsiName, ImmutableList.of(addedColumn));
+        }
+        refreshColumnOrder(schemaName, logicalTableName, Collections.emptyList(), true, tableInfoManager);
+    }
+
+    public static void onlineModifyColumnDropColumn(Connection metaDbConnection, String schemaName,
+                                                    String logicalTableName, String dbIndex, String phyTableName,
+                                                    String droppedColumn, List<String> coveringGsi,
+                                                    List<String> gsiDbIndex, List<String> gsiPhyTableName,
+                                                    boolean unique, String uniqueKeyName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        tableInfoManager.removeColumns(schemaName, logicalTableName, ImmutableList.of(droppedColumn));
+        for (String gsiName : coveringGsi) {
+            tableInfoManager.removeColumns(schemaName, gsiName, ImmutableList.of(droppedColumn));
+        }
+        refreshColumnOrder(schemaName, logicalTableName, Collections.emptyList(), true, tableInfoManager);
+    }
+
+    public static void onlineModifyColumnSwapColumn(Connection metaDbConnection, String schemaName,
+                                                    String logicalTableName, boolean isChange, String dbIndex,
+                                                    String phyTableName, String newColumnName, String oldColumnName,
+                                                    String afterColumnName, Map<String, List<String>> localIndexes,
+                                                    Map<String, String> uniqueIndexMap, List<String> coveringGsi,
+                                                    List<String> gsiDbIndex, List<String> gsiPhyTableName) {
+        Map<String, TableInfoManager.PhyInfoSchemaContext> phyInfoMap = new HashMap<>();
+
+        TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+        phyInfoMap.put(logicalTableName, phyInfoSchemaContext);
+
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        Map<String, Map<String, Object>> columnJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
+            phyInfoSchemaContext.phyTableSchema, phyInfoSchemaContext.phyTableName, phyInfoSchemaContext.dataSource);
+
+        List<String> changedColumns = ImmutableList.of(newColumnName, oldColumnName);
+        List<Pair<String, String>> columnAfterAnother = new ArrayList<>();
+        String beforeColumnName = null;
+        if (!isChange) {
+            beforeColumnName = tableInfoManager.getBeforeColumnName(schemaName, logicalTableName, oldColumnName);
+            if (beforeColumnName.equalsIgnoreCase(newColumnName)) {
+                beforeColumnName = tableInfoManager.getBeforeColumnName(schemaName, logicalTableName, newColumnName);
+            }
+        }
+
+        // Need to update column info since we may have changed column nullable
+        tableInfoManager.updateColumns(phyInfoSchemaContext, columnJdbcExtInfo, changedColumns);
+        // Do not support swap column names directly, so we reload column info from DN
+
+        String droppedColumnName = isChange ? oldColumnName : newColumnName;
+        String keptColumnName = isChange ? newColumnName : oldColumnName;
+
+        tableInfoManager.setMultiWriteSourceColumn(schemaName, logicalTableName, keptColumnName);
+        tableInfoManager.setMultiWriteTargetColumn(schemaName, logicalTableName, droppedColumnName);
+
+        List<Pair<String, String>> gsiColumnAfterAnother = new ArrayList<>();
+        gsiColumnAfterAnother.add(new Pair<>(oldColumnName, newColumnName));
+        for (int i = 0; i < coveringGsi.size(); i++) {
+            TableInfoManager.PhyInfoSchemaContext gsiPhyInfoSchemaContext =
+                CommonMetaChanger.getPhyInfoSchemaContext(schemaName, coveringGsi.get(i), gsiDbIndex.get(i),
+                    gsiPhyTableName.get(i));
+            phyInfoMap.put(coveringGsi.get(i), gsiPhyInfoSchemaContext);
+            Map<String, Map<String, Object>> gsiColumnJdbcExtInfo =
+                tableInfoManager.fetchColumnJdbcExtInfo(gsiPhyInfoSchemaContext.phyTableSchema,
+                    gsiPhyInfoSchemaContext.phyTableName, gsiPhyInfoSchemaContext.dataSource);
+            tableInfoManager.updateColumns(gsiPhyInfoSchemaContext, gsiColumnJdbcExtInfo, changedColumns);
+
+            // Move kept column to the end, same as physical order
+            refreshColumnOrder(schemaName, coveringGsi.get(i), gsiColumnAfterAnother, true, tableInfoManager);
+
+            tableInfoManager.showColumns(schemaName, coveringGsi.get(i), changedColumns);
+            tableInfoManager.setMultiWriteTargetColumn(schemaName, coveringGsi.get(i), droppedColumnName);
+        }
+
+        if (!isChange) {
+            // We only need to make sure new column is in right position
+            if (afterColumnName.equalsIgnoreCase(oldColumnName)) {
+                // Add to same position
+                columnAfterAnother.add(new Pair<>(oldColumnName, beforeColumnName));
+            } else {
+                // Add to specified position
+                columnAfterAnother.add(new Pair<>(oldColumnName, afterColumnName));
+            }
+
+            // Reset local index info
+            if (!localIndexes.isEmpty()) {
+                for (Map.Entry<String, List<String>> entry : localIndexes.entrySet()) {
+                    String tableName = entry.getKey();
+                    tableInfoManager.removeIndexes(schemaName, tableName, entry.getValue());
+                    tableInfoManager.addIndexes(phyInfoMap.get(tableName), entry.getValue());
+                    tableInfoManager.showIndexes(schemaName, tableName, entry.getValue());
+                }
+            }
+
+            // Reset unique index info
+            if (!uniqueIndexMap.isEmpty()) {
+                for (Map.Entry<String, String> entry : uniqueIndexMap.entrySet()) {
+                    String tableName = entry.getKey();
+                    tableInfoManager.removeIndex(schemaName, tableName, entry.getValue());
+                    tableInfoManager.addIndex(phyInfoMap.get(tableName), entry.getValue());
+                    tableInfoManager.showIndex(schemaName, tableName, entry.getValue());
+                }
+            }
+        }
+
+        refreshColumnOrder(schemaName, logicalTableName, columnAfterAnother, true, tableInfoManager);
+    }
+
+    public static void onlineModifyColumnStopMultiWrite(Connection metaDbConnection, String schemaName,
+                                                        String logicalTableName, String sourceColumnName,
+                                                        String targetColumnName) {
+        List<String> changedColumns = ImmutableList.of(sourceColumnName, targetColumnName);
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.showColumns(schemaName, logicalTableName, changedColumns);
+        tableInfoManager.setMultiWriteTargetColumn(schemaName, logicalTableName, targetColumnName);
     }
 
     public static void addIndexMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
@@ -589,7 +873,7 @@ public class TableMetaChanger {
         String tmpTbNamePattern = tmpTableRule.getTbNamePattern();
 
         // Rename sequence if exists.
-        SystemTableRecord sequenceRecord = null;
+        SequenceBaseRecord sequenceRecord = null;
         SequenceBean sequenceBean = SequenceMetaChanger.renameSequenceIfExists(schemaName, tableName, binTableName);
         if (sequenceBean != null) {
             sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
@@ -716,6 +1000,13 @@ public class TableMetaChanger {
         tableInfoManager.addScheduledJob(scheduledJobsRecord);
     }
 
+    public static void replaceScheduledJob(Connection metaDbConnection,
+                                           ScheduledJobsRecord scheduledJobsRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.replaceScheduledJob(scheduledJobsRecord);
+    }
+
     public static void removeLocalPartitionMeta(Connection metaDbConnection,
                                                 String schemaName,
                                                 String tableName) {
@@ -738,77 +1029,6 @@ public class TableMetaChanger {
         tableInfoManager.endUpdateColumnDefaultVal(schema, table, column);
     }
 
-    public static void addOssTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext,
-                                       Engine tableEngine) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.addOssTable(phyInfoSchemaContext, tableEngine);
-    }
-    public static void addOssFileMeta(Connection metaDbConn, String tableSchema, String tableName,
-                                      FilesRecord filesRecord) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.addOssFile(tableSchema, tableName, filesRecord);
-    }
-    public static void changeOssFile(Connection metaDbConn, Long primaryKey, Long fileSize) {
-        changeOssFile(metaDbConn, primaryKey, new byte[] {}, fileSize, 0L);
-    }
-    public static void changeOssFile(Connection metaDbConn, Long primaryKey, byte[] fileMeta, Long fileSize,
-                                     Long rowCount) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.changeOssFile(primaryKey, fileMeta, fileSize, rowCount);
-    }
-    public static Long addOssFileAndReturnLastInsertId(Connection metaDbConn, String tableSchema, String tableName,
-                                                       FilesRecord filesRecord) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        return tableInfoManager.addOssFileAndReturnLastInsertId(tableSchema, tableName, filesRecord);
-    }
-    public static void changeTableEngine(Connection metaDbConn, String tableSchema, String tableName, Engine engine) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.changeTableEngine(tableSchema, tableName, engine.name());
-    }
-    public static List<FilesRecord> lockOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema,
-                                                    String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        return tableInfoManager.lockOssFile(taskId, tableSchema, tableName);
-    }
-    public static void deleteOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.deleteOssFile(taskId, tableSchema, tableName);
-    }
-    public static void validOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.validOssFile(taskId, tableSchema, tableName);
-    }
-    public static void addOssColumnMeta(Connection metaDbConn, String tableSchema, String tableName,
-                                        ColumnMetasRecord columnMetasRecord) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.addOSSColumnsMeta(tableSchema, tableName, columnMetasRecord);
-    }
-    public static List<ColumnMetasRecord> lockOssColumnMeta(Connection metaDbConn, Long taskId,
-                                                            String tableSchema, String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        return tableInfoManager.lockOSSColumnsMeta(taskId, tableSchema, tableName);
-    }
-    public static void deleteOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.deleteOSSColumnsMeta(taskId, tableSchema, tableName);
-    }
-    public static void validOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.validOSSColumnsMeta(taskId, tableSchema, tableName);
-    }
-
     public static void updateArchiveTable(Connection metaDbConnection,
                                           String schemaName, String tableName,
                                           String archiveTableSchema, String archiveTableName) {
@@ -816,12 +1036,4 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConnection);
         tableInfoManager.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
     }
-
-    public static void replaceScheduledJob(Connection metaDbConnection,
-                                           ScheduledJobsRecord scheduledJobsRecord) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConnection);
-        tableInfoManager.replaceScheduledJob(scheduledJobsRecord);
-    }
-
 }

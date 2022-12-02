@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.Xplan;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexColumnMeta;
@@ -153,7 +154,7 @@ public class XPlanGetRule extends RelOptRule {
 
         final boolean needExtraFilter = useConditions.stream()
             .anyMatch(cond -> cond.right != 0); // Any sub part in equal condition.
-        if (needExtraFilter) {
+        if (needExtraFilter || DynamicConfig.getInstance().getXprotoAlwaysKeepFilterOnXplanGet()) {
             return; // Just keep the filter and keep the original rel node tree.
         }
 

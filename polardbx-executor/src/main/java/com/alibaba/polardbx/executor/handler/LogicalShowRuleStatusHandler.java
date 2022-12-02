@@ -34,7 +34,6 @@ public class LogicalShowRuleStatusHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-
         throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
             "Do not support SHOW RULE STATUS related commands in PolarDB-X");
     }

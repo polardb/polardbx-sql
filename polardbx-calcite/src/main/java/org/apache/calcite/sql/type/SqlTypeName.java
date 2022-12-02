@@ -16,20 +16,12 @@
  */
 package org.apache.calcite.sql.type;
 
-import java.math.BigDecimal;
-import java.sql.Types;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.charset.CharsetName;
 import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.sql.SqlLiteral;
@@ -39,6 +31,14 @@ import org.apache.calcite.util.TimeString;
 import org.apache.calcite.util.TimestampString;
 import org.apache.calcite.util.Util;
 import org.openjdk.jol.info.ClassLayout;
+
+import java.math.BigDecimal;
+import java.sql.Types;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Enumeration of the type names which can be used to construct a SQL type.
@@ -1032,6 +1032,9 @@ public enum SqlTypeName {
     }
 
     public SqlLiteral createLiteral(Object o, SqlParserPos pos) {
+        if (o == null) {
+            return SqlLiteral.createNull(pos);
+        }
         switch (this) {
         case BOOLEAN:
             if (o instanceof Number) {

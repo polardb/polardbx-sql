@@ -40,7 +40,7 @@ public class LogicalAlterTableGroupRenamePartitionHandler extends LogicalCommonD
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         LogicalAlterTableGroupRenamePartition logicalAlterTableGroupRenamePartition =
             (LogicalAlterTableGroupRenamePartition) logicalDdlPlan;
-        logicalAlterTableGroupRenamePartition.prepareData();
+        logicalAlterTableGroupRenamePartition.prepareData(executionContext);
         CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupRenamePartition.getPreparedData());
         return AlterTableGroupRenamePartitionJobFactory.create(logicalAlterTableGroupRenamePartition.relDdl,
             logicalAlterTableGroupRenamePartition.getPreparedData(), executionContext);
@@ -49,7 +49,8 @@ public class LogicalAlterTableGroupRenamePartitionHandler extends LogicalCommonD
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
-            (SqlAlterTableGroup) (((LogicalAlterTableGroupRenamePartition) logicalDdlPlan).relDdl.getSqlNode()),
+            (SqlAlterTableGroup) ((logicalDdlPlan).relDdl.getSqlNode()),
+            logicalDdlPlan.getSchemaName(),
             executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

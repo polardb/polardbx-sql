@@ -38,6 +38,7 @@ import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.Correlate;
 import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
@@ -127,6 +128,10 @@ public class RelToLabelConverter extends RelShuttleImpl {
         }
 
         public void values(LogicalDynamicValues values) {
+            root(labelBuilder.values(values));
+        }
+
+        public void values(DynamicValues values) {
             root(labelBuilder.values(values));
         }
 
@@ -368,6 +373,11 @@ public class RelToLabelConverter extends RelShuttleImpl {
         return dynamicValues;
     }
 
+    public RelNode visit(DynamicValues dynamicValues) {
+        blackboard.values(dynamicValues);
+        return dynamicValues;
+    }
+
     @Override
     public RelNode visit(RelNode other) {
         if (other instanceof HepRelVertex) {
@@ -461,6 +471,11 @@ public class RelToLabelConverter extends RelShuttleImpl {
         if (other instanceof LogicalDynamicValues) {
             return visit((LogicalDynamicValues) other);
         }
+
+        if (other instanceof DynamicValues) {
+            return visit((DynamicValues) other);
+        }
+
         if (other instanceof LogicalExchange) {
             return visit((LogicalExchange) other);
         }

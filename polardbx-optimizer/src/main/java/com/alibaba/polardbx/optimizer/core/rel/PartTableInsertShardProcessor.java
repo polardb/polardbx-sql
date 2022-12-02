@@ -33,6 +33,10 @@ import java.util.Map;
  */
 public class PartTableInsertShardProcessor extends ShardProcessor {
 
+    public PartitionTupleRouteInfo getTupleRouteInfo() {
+        return tupleRouteInfo;
+    }
+
     protected PartitionTupleRouteInfo tupleRouteInfo;
 
     protected PartTableInsertShardProcessor(PartitionTupleRouteInfo tupleRouteInfo) {
@@ -48,7 +52,7 @@ public class PartTableInsertShardProcessor extends ShardProcessor {
             throw new NoFoundPartitionsException();
         }
 
-        List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedPartitions();
         assert phyPartInfos.size() == 1;
         String grpKey = phyPartInfos.get(0).getGroupKey();
         String phyTbl = phyPartInfos.get(0).getPhyTable();

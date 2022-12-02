@@ -19,23 +19,21 @@ package com.alibaba.polardbx.planner.common;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.PostPlanner;
-import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.hint.HintPlanner;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.visitor.DrdsParameterizeSqlVisitor;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -69,24 +67,25 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
     @Override
     protected String getPlan(String testSql) {
         Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(testSql, currentParameter);
-
-        Map<Integer, ParameterContext> param = OptimizerUtils.buildParam(sqlParameterized.getParameters());
-        SqlNodeList astList = new FastsqlParser().parse(sqlParameterized.getSql(), sqlParameterized.getParameters());
-
-        SqlNode ast = astList.get(0);
         ExecutionContext executionContext = new ExecutionContext();
-        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
-            false);
         executionContext.setServerVariables(new HashMap<>());
+        executionContext.setAppName(appName);
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
+            ByteString.from(testSql), currentParameter, executionContext, false);
+        Map<Integer, ParameterContext> param = OptimizerUtils.buildParam(sqlParameterized.getParameters());
+        SqlNodeList astList = new FastsqlParser().parse(
+            sqlParameterized.getSql(), sqlParameterized.getParameters(), executionContext);
+        SqlNode ast = astList.get(0);
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setParams(new Parameters(param, false));
         executionContext.getExtraCmds().putAll(configMaps);
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName,
-                executionContext.getExtraCmds(),
-                executionContext.getGroupHint());
+            executionContext.getExtraCmds(),
+            executionContext.getGroupHint());
         if (explainCost) {
-            CalcitePlanOptimizerTrace.setSqlExplainLevel(SqlExplainLevel.ALL_ATTRIBUTES);
+            executionContext.setCalcitePlanOptimizerTrace(new CalcitePlanOptimizerTrace());
+            executionContext.getCalcitePlanOptimizerTrace()
+                .ifPresent(x -> x.setSqlExplainLevel(SqlExplainLevel.ALL_ATTRIBUTES));
         }
 
         hintPlanner.collectAndPreExecute(ast, cmdBean, false, executionContext);
@@ -99,7 +98,9 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         String planStr = RelUtils
             .toString(executionPlan.getPlan(), param, RexUtils.getEvalFunc(executionContext), executionContext);
 
-        String code = removeSubqueryHashCode(planStr, executionPlan.getPlan(), null);
+        String code = removeSubqueryHashCode(planStr, executionPlan.getPlan(),
+            executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter(),
+            executionContext.getSqlExplainLevel());
         return code;
     }
 
@@ -124,7 +125,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
                 }
             }
             Parameters parameters = executionContext.getParams();
-            parameters.setParams(OptimizerUtils.buildParam(sqlParameterized.getParameters()));
+            parameters.setParams(OptimizerUtils.buildParam(sqlParameterized.getParameters(), executionContext));
         }
     }
 }

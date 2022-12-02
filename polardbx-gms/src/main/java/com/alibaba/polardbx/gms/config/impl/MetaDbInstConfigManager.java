@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.InstConfigManager;
 import com.alibaba.polardbx.gms.config.InstConfigReceiver;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -57,6 +58,7 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
     protected Map<String, InstConfigReceiver> dbConfigReceiverMap = new ConcurrentHashMap<>();
     protected InstConfigReceiver instConfigReceiver;
     protected static MetaDbInstConfigManager instance = new MetaDbInstConfigManager();
+    private static volatile boolean configFromMetaDb = true;
 
     public static MetaDbInstConfigManager getInstance() {
         if (!instance.isInited()) {
@@ -76,12 +78,20 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
     protected void doInit() {
         SystemDefaultPropertyHelper.initDefaultInstConfig();
         Properties newProps = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            newProps = loadPropertiesFromMetaDbConn(conn);
-        } catch (Throwable ex) {
-            throw GeneralUtil.nestedException(ex);
+        if (configFromMetaDb) {
+            try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+                newProps = loadPropertiesFromMetaDbConn(conn);
+            } catch (Throwable ex) {
+                throw GeneralUtil.nestedException(ex);
+            }
+        } else {
+            newProps = new Properties();
         }
+
         this.propertiesInfoMap = newProps;
+        if ("true".equalsIgnoreCase(getInstProperty(ConnectionProperties.ENABLE_FAST_MOCK, "FALSE"))) {
+            ConfigDataMode.setMode(ConfigDataMode.Mode.FAST_MOCK);
+        }
     }
 
     @Override
@@ -191,11 +201,15 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
         return propVal;
     }
 
-    public String getInstProperty(String propKey, String defaultValue){
+    public String getInstProperty(String propKey, String defaultValue) {
         String value = this.propertiesInfoMap.getProperty(propKey);
         if (StringUtils.isNotEmpty(value)) {
             return value;
         }
         return defaultValue;
+    }
+
+    public static void setConfigFromMetaDb(boolean configFromMetaDb) {
+        MetaDbInstConfigManager.configFromMetaDb = configFromMetaDb;
     }
 }

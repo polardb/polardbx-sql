@@ -16,41 +16,37 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.util.PartitionNameUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.rel.ddl.AlterTableGroup;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlPartition;
-import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-public class LogicalAlterTableGroupSplitPartition extends BaseDdlOperation {
-
-    private AlterTableGroupSplitPartitionPreparedData preparedData;
+public class LogicalAlterTableGroupSplitPartition extends LogicalAlterTableSplitPartition {
 
     public LogicalAlterTableGroupSplitPartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
-    public void preparedData() {
+    public void preparedData(ExecutionContext ec) {
         AlterTableGroupSplitPartition alterTableGroupSplitPartition = (AlterTableGroupSplitPartition) relDdl;
         String tableGroupName = alterTableGroupSplitPartition.getTableGroupName();
         Map<SqlNode, RexNode> partBoundExprInfo = alterTableGroupSplitPartition.getPartBoundExprInfo();
@@ -67,7 +63,7 @@ public class LogicalAlterTableGroupSplitPartition extends BaseDdlOperation {
         splitPartitions.add(splitPartitionName);
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
+            LocalityInfoUtils.getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroupName, splitPartitionName);
 
         preparedData = new AlterTableGroupSplitPartitionPreparedData();
 
@@ -84,29 +80,6 @@ public class LogicalAlterTableGroupSplitPartition extends BaseDdlOperation {
         preparedData.setAtVal(sqlAlterTableGroupSplitPartition.getAtValue());
         preparedData.prepareInvisiblePartitionGroup();
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION);
-    }
-
-    private void normalizeSqlSplitPartition(SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition,
-                                            String tableGroupName) {
-        if (GeneralUtil.isEmpty(sqlAlterTableGroupSplitPartition.getNewPartitions())) {
-            final TableGroupInfoManager tableGroupInfoManager =
-                OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-
-            TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
-            List<String> newPartitionNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2);
-            assert newPartitionNames.size() == 2;
-            SqlIdentifier name1 = new SqlIdentifier(newPartitionNames.get(0), SqlParserPos.ZERO);
-            SqlPartition sqlPartition1 = new SqlPartition(name1, null, SqlParserPos.ZERO);
-            SqlIdentifier name2 = new SqlIdentifier(newPartitionNames.get(1), SqlParserPos.ZERO);
-            SqlPartition sqlPartition2 = new SqlPartition(name2, null, SqlParserPos.ZERO);
-            sqlAlterTableGroupSplitPartition.getNewPartitions().add(sqlPartition1);
-            sqlAlterTableGroupSplitPartition.getNewPartitions().add(sqlPartition2);
-        }
-
-    }
-
-    public AlterTableGroupSplitPartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupSplitPartition create(DDL ddl) {

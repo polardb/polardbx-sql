@@ -38,6 +38,8 @@ import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
@@ -45,10 +47,12 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -64,7 +68,6 @@ import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
-import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
@@ -74,7 +77,9 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
+import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
@@ -83,8 +88,6 @@ import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -104,7 +107,9 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MAX_TABLE_NAME_LENGTH_MYSQL_ALLOWS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
+import static com.alibaba.polardbx.gms.tablegroup.TableGroupLocation.getOrderedGroupListForSingleTable;
 import static com.alibaba.polardbx.optimizer.partition.PartitionLocator.PHYSICAL_TABLENAME_PATTERN;
+import static com.alibaba.polardbx.optimizer.partition.PartitionStrategy.LIST;
 
 /**
  * @author chenghui.lch
@@ -116,36 +121,9 @@ public class PartitionInfoUtil {
     final static long MAX_HASH_VALUE = Long.MAX_VALUE;
     final static long MIN_HASH_VALUE = Long.MIN_VALUE;
     public static final int FULL_PART_COL_COUNT = -1;
-
-    protected static class PartitionColumnFinder extends SqlShuttle {
-
-        protected SqlIdentifier partColumn;
-
-        protected PartitionColumnFinder() {
-        }
-
-        public boolean find(SqlNode partExpr) {
-            partExpr.accept(this);
-            return partColumn != null;
-        }
-
-        @Override
-        public SqlNode visit(SqlIdentifier id) {
-            partColumn = id;
-            return id;
-        }
-
-        @Override
-        public SqlNode visit(SqlLiteral id) {
-            partColumn = new SqlIdentifier(id.toValue(), SqlParserPos.ZERO);
-            return partColumn;
-        }
-
-        public SqlIdentifier getPartColumn() {
-            return partColumn;
-        }
-
-    }
+    public static final int IGNORE_PARTNAME_LOCALITY = 1;
+    public static final int COMPARE_NEW_PART_LOCATION = 2;
+    public static final int COMPARE_EXISTS_PART_LOCATION = 4;
 
     public static ExtraFieldJSON genPartExtrasRecord(PartitionInfo partitionInfo) {
         ExtraFieldJSON extras = new ExtraFieldJSON();
@@ -189,7 +167,7 @@ public class PartitionInfoUtil {
         if (tableNamePattern != null) {
             partExtras.setPartitionPattern(tableNamePattern);
         }
-        partExtras.setLocality("");
+        partExtras.setLocality(partitionInfo.getLocality());
         if (!StringUtils.isEmpty(partitionInfo.getSessionVars().getTimeZone())) {
             partExtras.setTimeZone(partitionInfo.getSessionVars().getTimeZone());
         }
@@ -366,6 +344,7 @@ public class PartitionInfoUtil {
     public static TableGroupRecord prepareRecordForTableGroup(PartitionInfo partitionInfo, boolean isOss) {
         TableGroupRecord tableGroupRecord = new TableGroupRecord();
         tableGroupRecord.schema = partitionInfo.tableSchema;
+        tableGroupRecord.locality = partitionInfo.locality;
         tableGroupRecord.meta_version = 0L;
         if (isOss) {
             tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_OSS_TBL_TG;
@@ -373,7 +352,8 @@ public class PartitionInfoUtil {
         }
         if (partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE
             || partitionInfo.getTableType() == PartitionTableType.GSI_SINGLE_TABLE) {
-            if (partitionInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
+            if ((partitionInfo.getLocality() == null || partitionInfo.getLocality().isEmpty())
+                && !partitionInfo.getBuildNoneDefaultSingleGroup()) {
                 tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG;
             } else {
                 tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
@@ -387,16 +367,15 @@ public class PartitionInfoUtil {
         return tableGroupRecord;
     }
 
-    public static List<PartitionGroupRecord> prepareRecordForPartitionGroups(
-        List<PartitionSpec> partitionSpecs) {
+    public static List<PartitionGroupRecord> prepareRecordForPartitionGroups(List<PartitionSpec> partitionSpecs) {
         List<PartitionGroupRecord> partitionGroupRecords = new ArrayList<>();
         for (PartitionSpec partitionSpec : partitionSpecs) {
             PartitionLocation location = partitionSpec.getLocation();
             PartitionGroupRecord partitionGroupRecord = new PartitionGroupRecord();
-            partitionGroupRecord.phy_db =
-                GroupInfoUtil.buildPhysicalDbNameFromGroupName(location.getGroupKey());
+            partitionGroupRecord.phy_db = GroupInfoUtil.buildPhysicalDbNameFromGroupName(location.getGroupKey());
             partitionGroupRecord.partition_name = partitionSpec.name;
             partitionGroupRecord.id = location.partitionGroupId;
+            partitionGroupRecord.locality = partitionSpec.getLocality();
             partitionGroupRecords.add(partitionGroupRecord);
         }
         return partitionGroupRecords;
@@ -449,7 +428,7 @@ public class PartitionInfoUtil {
 
     protected static String findPartitionColumn(SqlNode partExprSqlNode) {
 
-        PartitionColumnFinder finder = new PartitionColumnFinder();
+        SqlCreateTable.PartitionColumnFinder finder = new SqlCreateTable.PartitionColumnFinder();
         boolean isFound = finder.find(partExprSqlNode);
 
         if (!isFound) {
@@ -469,9 +448,9 @@ public class PartitionInfoUtil {
         int lengthPlaceHolder = 5;
         int numExtraUnderScores = 2;
 
-        int maxAllowedLengthOfTableNamePrefix = MAX_TABLE_NAME_LENGTH_MYSQL_ALLOWS
-            - RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME - numExtraUnderScores
-            - lengthPlaceHolder;
+        int maxAllowedLengthOfTableNamePrefix =
+            MAX_TABLE_NAME_LENGTH_MYSQL_ALLOWS - RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME - numExtraUnderScores
+                - lengthPlaceHolder;
         if (maxAllowedLengthOfTableNamePrefix < 0) {
             throw new OptimizerException("Unexpected large length of table name place holder: " + lengthPlaceHolder);
         }
@@ -490,10 +469,47 @@ public class PartitionInfoUtil {
     }
 
     public static void generatePartitionLocation(PartitionInfo partitionInfo, String tableGroupName,
-                                                 ExecutionContext executionContext) {
+                                                 String joinGroupName, ExecutionContext executionContext,
+                                                 LocalityDesc localityDesc) {
 
         PartitionTableType tblType = partitionInfo.getTableType();
-        TableGroupConfig tableGroupConfig = getTheBestTableGroupInfo(partitionInfo, tableGroupName, executionContext);
+        Boolean singleGroupMissed = false;
+        Boolean singleGroupEmpty = false;
+        TableGroupConfig tableGroupConfig;
+        List<GroupDetailInfoExRecord> groups = new ArrayList<>();
+        if (localityDesc.getBalanceSingleTable()) {
+            if (tblType != PartitionTableType.SINGLE_TABLE) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                    "Failed to create table  [%s] because option 'balance_single_table' is supported only for single table",
+                    partitionInfo.getTableName()));
+            }
+            List<com.alibaba.polardbx.common.utils.Pair<GroupDetailInfoExRecord, TableGroupRecord>>
+                orderedStorageAndTableGroupList =
+                getOrderedGroupListForSingleTable(partitionInfo.getTableSchema(), false);
+            singleGroupMissed = orderedStorageAndTableGroupList.stream().anyMatch(o -> o.getValue() == null);
+            singleGroupEmpty = orderedStorageAndTableGroupList.stream().noneMatch(o -> o.getValue() != null);
+            if (singleGroupMissed) {
+                if (!singleGroupEmpty) {
+                    partitionInfo.setBuildNoneDefaultSingleGroup(true);
+                }
+                tableGroupConfig = null;
+                groups.add(orderedStorageAndTableGroupList.get(0).getKey());
+            } else {
+                partitionInfo.setBuildNoneDefaultSingleGroup(true);
+                TableGroupInfoManager tableGroupInfoManager =
+                    OptimizerContext.getContext(partitionInfo.getTableSchema()).getTableGroupInfoManager();
+                tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(
+                    orderedStorageAndTableGroupList.get(0).getValue().getTg_name());
+            }
+        } else {
+            tableGroupConfig =
+                getTheBestTableGroupInfo(partitionInfo, tableGroupName, joinGroupName, null, 0, executionContext);
+        }
+        if (!StringUtils.isEmpty(tableGroupName) && !localityDesc.holdEmptyDnList() && tableGroupConfig == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                "Failed to create table  [%s] because the partition info and locality you specify conflict with that of tablegroup [%s]",
+                partitionInfo.getTableName(), tableGroupName));
+        }
         String schema = partitionInfo.getTableSchema();
         String logTbName = partitionInfo.getPrefixTableName();
         boolean phyTblNameSameAsLogicalTblName = false;
@@ -501,26 +517,69 @@ public class PartitionInfoUtil {
             || tblType == PartitionTableType.GSI_SINGLE_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
             phyTblNameSameAsLogicalTblName = true;
         }
-        // haven't existing table group mapping to current partition
+
+        if (tblType == PartitionTableType.BROADCAST_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
+            if (localityDesc != null && !localityDesc.holdEmptyDnList()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                    String.format("Unable to set locality for broadcast table: [%s]", partitionInfo.getTableName()));
+            }
+        }
+        if (tblType == PartitionTableType.SINGLE_TABLE) {
+            if (localityDesc != null && !localityDesc.holdEmptyDnList() && localityDesc.getDnList().size() != 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                    "invalid locality for single table! you can only set one dn as locality for single table [%s]",
+                    partitionInfo.getTableName()));
+            }
+            if (localityDesc != null && !localityDesc.holdEmptyDnList()
+                && localityDesc.getBalanceSingleTable() != false) {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                    "invalid locality for single table! you can only set one of dn list and balance option for single table [%s]",
+                    partitionInfo.getTableName()));
+            }
+        }
+        // locality property override, pg locality => table locality => tg locality => schema locality
+        // case 0, tg null, table null: from db allocator.
+        // case 1, tg not null. table null: from tg locality desc.
+        // case 2, table not null: from table locality desc.
+        // case 3, partition not null: from partition locality desc.
+        // TODO: now table locality passed by partition locality desc!!!!
+
+        // case 0
+        TableGroupLocation.GroupAllocator groupAllocator = TableGroupLocation.buildGroupAllocator(schema);
+        LocalityDesc tableGroupLocality = new LocalityDesc();
+        if (localityDesc != null && !localityDesc.holdEmptyDnList()) { // case 2
+            tableGroupLocality = localityDesc;
+            groupAllocator = TableGroupLocation.buildGroupAllocatorByLocality(schema, localityDesc);
+        } else if (localityDesc != null && localityDesc.getBalanceSingleTable()) {
+            groupAllocator = TableGroupLocation.buildGroupAllocatorByGroup(schema, groups);
+        } else if (tableGroupConfig != null && tableGroupConfig.getLocalityDesc() != null
+            && !tableGroupConfig.getLocalityDesc().holdEmptyDnList()) { // case 1
+            tableGroupLocality = tableGroupConfig.getLocalityDesc();
+            partitionInfo.locality = tableGroupLocality.toString();
+            groupAllocator =
+                TableGroupLocation.buildGroupAllocatorByLocality(schema, tableGroupConfig.getLocalityDesc());
+        } else if (tableGroupConfig != null) {
+
+        }
+        // TODO: we will support locality for partition table.
+        // no table group match current table or matched empty tablegroup.
+        // for empty tablegroup, partitionInfo is still empty.
         if (tableGroupConfig == null || tableGroupConfig.isEmpty()) {
             if (tableGroupConfig != null) {
                 partitionInfo.setTableGroupId(tableGroupConfig.getTableGroupRecord().id);
             }
-            TableGroupLocation.GroupAllocator groupAllocator =
-                tableGroupConfig != null && tableGroupConfig.getLocalityDesc() != null ?
-                    TableGroupLocation.buildGroupAllocatorByLocality(schema, tableGroupConfig.getLocalityDesc()) :
-                    TableGroupLocation.buildGroupAllocator(schema);
 
             List<PartitionSpec> partitionSpecs = partitionInfo.getPartitionBy().getOrderedPartitionSpec();
             List<String> allPhyGrpList = HintUtil.allGroup(schema);
             if (tblType == PartitionTableType.BROADCAST_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
                 if (allPhyGrpList.size() != partitionSpecs.size()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "Failed to create table group for the broadcast table [%s] because the number of partitions mismatch the phy group count",
-                            logTbName));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "Failed to create table group for the broadcast table [%s] because the number of partitions mismatch the phy group count",
+                        logTbName));
                 }
             }
+            // keep the identical group allocator among partitions, we have to trace the allocator to support continious allocation.
+            Map<String, TableGroupLocation.GroupAllocator> partitionPgGroupAllocators = new HashMap<>();
             for (int i = 0; i < partitionSpecs.size(); i++) {
                 PartitionSpec partSpec = partitionSpecs.get(i);
                 String partName = partSpec.getName();
@@ -536,17 +595,30 @@ public class PartitionInfoUtil {
                 String grpKey;
                 if (tblType == PartitionTableType.BROADCAST_TABLE
                     || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
-                    if (!ConfigDataMode.getMode().isMock()
-                        && !DbGroupInfoManager.isNormalGroup(schema, allPhyGrpList.get(i))) {
+                    if (!ConfigDataMode.getMode().isMock() && !DbGroupInfoManager.isNormalGroup(schema,
+                        allPhyGrpList.get(i))) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PHYSICAL_TOPOLOGY_CHANGING,
                             String.format("the physical group[%s] is changing, please retry this command later",
                                 allPhyGrpList.get(i)));
                     }
                     grpKey = allPhyGrpList.get(i);
                 } else if (TStringUtil.isNotEmpty(partSpec.getLocality())) {
+                    // case 3
                     LocalityDesc locality = LocalityDesc.parse(partSpec.getLocality());
-                    TableGroupLocation.GroupAllocator pgGroupAllocator =
-                        TableGroupLocation.buildGroupAllocatorByLocality(schema, locality);
+                    TableGroupLocation.GroupAllocator pgGroupAllocator;
+                    if (partitionPgGroupAllocators.containsKey(locality.toString())) {
+                        pgGroupAllocator = partitionPgGroupAllocators.get(locality.toString());
+                    } else {
+                        //support override.
+//                        if(!tableGroupLocality.compactiableWith(locality)){
+//                            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+//                                    String.format("invalid locality '%s', conflict from partition [%s] with table [%s]: [%s]",
+//                                        locality, partSpec.name, logTbName, tableGroupLocality));
+//                        }
+                        pgGroupAllocator =
+                            TableGroupLocation.buildGroupAllocatorOfPartitionByLocality(schema, locality);
+                        partitionPgGroupAllocators.put(locality.toString(), pgGroupAllocator);
+                    }
                     grpKey = pgGroupAllocator.allocate();
                 } else {
                     grpKey = groupAllocator.allocate();
@@ -559,8 +631,7 @@ public class PartitionInfoUtil {
                 PartitionSpec originalPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
                 if (!originalPartSpec.getName().equalsIgnoreCase(partSpec.getName())) {
                     originalPartSpec = partitionInfo.getPartitionBy().getPartitions().stream()
-                        .filter(o -> o.position.equals(partSpec.position))
-                        .findFirst().orElse(null);
+                        .filter(o -> o.position.equals(partSpec.position)).findFirst().orElse(null);
                 }
                 if (originalPartSpec == null) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
@@ -597,6 +668,7 @@ public class PartitionInfoUtil {
                     if (phyTblNameSameAsLogicalTblName) {
                         partPhyTbName = logTbName;
                     }
+                    //If tablegroup matched, then grpkey totally determined by tablegroup.
                     String grpKey = GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db);
                     Long pgId = partitionGroupRecord.id;
                     location.setPhyTableName(partPhyTbName);
@@ -691,46 +763,53 @@ public class PartitionInfoUtil {
         return false;
     }
 
-    public static void validateBoundValueExpr(RexNode bndExpr,
-                                              RelDataType bndColRelDataType,
-                                              PartitionIntFunction partIntFunc,
-                                              PartitionStrategy strategy) {
+    public static void validateBoundValueExpr(RexNode bndExpr, RelDataType bndColRelDataType,
+                                              PartitionIntFunction partIntFunc, PartitionStrategy strategy) {
 
         DataType bndColDataType = DataTypeUtil.calciteToDrdsType(bndColRelDataType);
         switch (strategy) {
         case HASH:
-        case LIST:
+        case LIST: {
+            //specially for "list default"
+            if (strategy.equals(LIST) && bndExpr instanceof RexCall) {
+                RexCall bndExprCall = (RexCall) bndExpr;
+                SqlOperator exprOp = bndExprCall.getOperator();
+                if (exprOp.kind == SqlKind.DEFAULT) {
+                    //validate list default
+                    break;
+                }
+            }
+        }
         case RANGE: {
 
             if (bndExpr instanceof RexCall) {
                 RexCall bndExprCall = (RexCall) bndExpr;
                 SqlOperator exprOp = bndExprCall.getOperator();
                 if (partIntFunc != null) {
-
                     // Use partIntFunc
                     PartitionIntFunction intFunc = PartitionPrunerUtils.getPartitionIntFunction(exprOp.getName());
                     if (intFunc == null && intFunc != partIntFunc) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                            "Partition column values use a invalid function %s", exprOp.getName()));
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format("Partition column values use a invalid function %s", exprOp.getName()));
                     }
 
                 } else {
 
                     // No use partIntFunc
 
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                        "Partition column values use a invalid function %s", exprOp.getName()));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("Partition column values use a invalid function %s", exprOp.getName()));
                 }
 
             } else {
 
                 if (!(bndExpr instanceof RexLiteral)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                        "Partition column values of incorrect expression"));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("Partition column values of incorrect expression"));
                 } else {
                     if (checkIfNullLiteral(bndExpr) && strategy == PartitionStrategy.RANGE) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                            " Not allowed to use NULL value in VALUES LESS THAN"));
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format(" Not allowed to use NULL value in VALUES LESS THAN"));
                     }
                 }
             }
@@ -753,20 +832,21 @@ public class PartitionInfoUtil {
                     }
                 } else {
                     if (!DataTypeUtil.equalsSemantically(bndColDataType, DataTypes.TimestampType)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                            "Partition column values are NOT support to use a function %s", exprOp.getName()));
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format("Partition column values are NOT support to use a function %s",
+                                exprOp.getName()));
                     }
                 }
 
             } else {
 
                 if (!(bndExpr instanceof RexLiteral)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                        "Partition column values of incorrect expression"));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("Partition column values of incorrect expression"));
                 } else {
                     if (checkIfNullLiteral(bndExpr) && strategy == PartitionStrategy.RANGE_COLUMNS) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
-                            " Not allowed to use NULL value in VALUES LESS THAN"));
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format(" Not allowed to use NULL value in VALUES LESS THAN"));
                     }
                 }
             }
@@ -782,11 +862,9 @@ public class PartitionInfoUtil {
         return prefixColCnt == FULL_PART_COL_COUNT;
     }
 
-    protected static void validatePartitionValueFormats(PartitionStrategy partStrategy,
-                                                        int partColCnt,
-                                                        int prefixPartCol,
-                                                        String partName,
-                                                        SqlPartition partSpecAst) {
+    //todo：weiqi 确认校验分区的值的格式
+    protected static void validatePartitionValueFormats(PartitionStrategy partStrategy, int partColCnt,
+                                                        int prefixPartCol, String partName, SqlPartition partSpecAst) {
 
         SqlPartitionValue value = partSpecAst.getValues();
         SqlPartitionValue.Operator operator = value.getOperator();
@@ -795,17 +873,15 @@ public class PartitionInfoUtil {
         case HASH: {
             if (prefixPartCol == PartitionInfoUtil.FULL_PART_COL_COUNT) {
                 if (itemsOfVal.size() != 1) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "only one column count is allowed in the definition of the bound value of partition[%s] in hash strategy",
-                            partName));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "only one column count is allowed in the definition of the bound value of partition[%s] in hash strategy",
+                        partName));
                 }
             } else {
                 if (itemsOfVal.size() != prefixPartCol || prefixPartCol != 1) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "only one column count is allowed in the definition of the bound value of partition[%s] in hash strategy",
-                            partName));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "only one column count is allowed in the definition of the bound value of partition[%s] in hash strategy",
+                        partName));
                 }
             }
         }
@@ -815,14 +891,12 @@ public class PartitionInfoUtil {
 
                 if (itemsOfVal.size() != partColCnt) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("the bound value of partition[%s] must match the partition columns",
-                            partName));
+                        String.format("the bound value of partition[%s] must match the partition columns", partName));
                 }
             } else {
                 if (itemsOfVal.size() != prefixPartCol) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("the bound value of partition[%s] must match the partition columns",
-                            partName));
+                        String.format("the bound value of partition[%s] must match the partition columns", partName));
                 }
             }
         }
@@ -846,22 +920,19 @@ public class PartitionInfoUtil {
             if (prefixPartCol == PartitionInfoUtil.FULL_PART_COL_COUNT) {
                 if (newPrefixColCnt != partColCnt) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("the bound value of partition[%s] must match the partition columns",
-                            partName));
+                        String.format("the bound value of partition[%s] must match the partition columns", partName));
                 }
             } else {
                 if (prefixPartCol > partColCnt) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "the prefix partition column count [%s] is not allowed to be more than the partition columns count [%s] ",
-                            prefixPartCol, partColCnt));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "the prefix partition column count [%s] is not allowed to be more than the partition columns count [%s] ",
+                        prefixPartCol, partColCnt));
                 }
 
                 if (newPrefixColCnt != prefixPartCol) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "the column count[%s] of the bound value of partition[%s] must match the actual partition column count[%s]",
-                            newPrefixColCnt, partName, newPrefixColCnt));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "the column count[%s] of the bound value of partition[%s] must match the actual partition column count[%s]",
+                        newPrefixColCnt, partName, newPrefixColCnt));
                 }
             }
 
@@ -885,8 +956,7 @@ public class PartitionInfoUtil {
                 }
                 if (containInvalidVal) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("the bound value of partition[%s] must match the partition columns",
-                            partName));
+                        String.format("the bound value of partition[%s] must match the partition columns", partName));
                 }
             }
         }
@@ -906,8 +976,7 @@ public class PartitionInfoUtil {
              */
             if (itemsOfVal.isEmpty()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String.format("the bound value of partition[%s] must be not empty",
-                        partName));
+                    String.format("the bound value of partition[%s] must be not empty", partName));
             }
             int listValCnt = itemsOfVal.size();
             for (int i = 0; i < listValCnt; i++) {
@@ -921,6 +990,15 @@ public class PartitionInfoUtil {
                                 String.format("the bound value of partition[%s] must match the partition columns",
                                     partName));
                         }
+                    } else if (call.getKind() == SqlKind.DEFAULT) {
+                        /**
+                         * validate 'default' for List Partition
+                         * */
+                        if (listValCnt > 1) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                                String.format("Default partition[%s] definition error", partName));
+                        }
+
                     }
                 } else if (expr instanceof SqlIdentifier) {
                     String valStr = ((SqlIdentifier) expr).getLastName();
@@ -944,7 +1022,7 @@ public class PartitionInfoUtil {
             /**
              * For LIST_COLUMNS
              *
-             * each SqlPartitionValueItem of itemsOfVal is SqlCall (ROW expr),
+             * each SqlPartitionValueItem of itemsOfVal is SqlCall (ROW expr or Default expr),
              *
              * so the count of SqlPartitionValueItem should be more than one,
              *
@@ -953,8 +1031,7 @@ public class PartitionInfoUtil {
              */
             if (itemsOfVal.isEmpty()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String.format("the bound value of partition[%s] must be not empty",
-                        partName));
+                    String.format("the bound value of partition[%s] must be not empty", partName));
             }
 
             int listValCnt = itemsOfVal.size();
@@ -965,7 +1042,7 @@ public class PartitionInfoUtil {
                 SqlNode expr = val.getValue();
                 if (partColCnt > 1) {
                     /**
-                     * when partCnt > 1, each of SqlPartitionValueItem is a row expr
+                     * when partCnt > 1, each of SqlPartitionValueItem can be a row expr or a default expr
                      */
                     if (expr instanceof SqlCall) {
                         SqlCall rowExprCall = (SqlCall) expr;
@@ -978,6 +1055,14 @@ public class PartitionInfoUtil {
                                 }
                             }
                             continue;
+                        } else if (rowExprCall.getKind() == SqlKind.DEFAULT) {
+                            /**
+                             * default partition only allows one default expr
+                             * */
+                            if (listValCnt > 1) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                                    String.format("Default partition[%s] definition error", partName));
+                            }
                         } else {
 
                             if (expr instanceof SqlIdentifier) {
@@ -1000,9 +1085,10 @@ public class PartitionInfoUtil {
                     }
                 } else {
                     /**
-                     * when partCnt = 1, each of SqlPartitionValueItem is a SqlLiteral
+                     * when partCnt = 1, each of SqlPartitionValueItem is a SqlLiteral or default expr
                      */
-                    if (!(expr instanceof SqlLiteral)) {
+                    if (!(expr instanceof SqlLiteral) && !(expr instanceof SqlBasicCall
+                        && expr.getKind() == SqlKind.DEFAULT)) {
                         containInvalidVal = true;
                         invalidValAst = expr;
                         break;
@@ -1013,8 +1099,7 @@ public class PartitionInfoUtil {
             if (containInvalidVal) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                     String.format("the bound value[%s] of partition[%s] must match the partition columns",
-                        invalidValAst.toString(),
-                        partName));
+                        invalidValAst.toString(), partName));
             }
         }
         break;
@@ -1028,6 +1113,7 @@ public class PartitionInfoUtil {
         PartitionStrategy realStrategy = partitionBy.getStrategy();
         int partCol = partitionBy.getPartitionColumnNameList().size();
         SqlOperator partIntOp = partitionBy.getPartIntFuncOperator();
+        List<SqlNode> partExprs = partitionBy.getPartitionExprList();
 
         PartitionStrategy checkStrategy = realStrategy;
         if (checkStrategy == PartitionStrategy.HASH && partIntOp == null) {
@@ -1039,14 +1125,38 @@ public class PartitionInfoUtil {
             checkStrategy = PartitionStrategy.KEY;
         }
 
-        if (checkStrategy == PartitionStrategy.RANGE
-            || checkStrategy == PartitionStrategy.LIST || checkStrategy == PartitionStrategy.HASH) {
+        for (int i = 0; i < partExprs.size(); i++) {
+            SqlNode partExpr = partExprs.get(i);
+            SqlCreateTable.PartitionColumnFinder columnFinder = new SqlCreateTable.PartitionColumnFinder();
+            partExpr.accept(columnFinder);
+            if (columnFinder.getPartColumn() == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                    String.format("Not allowed to use unknown column[%s] as partition column", partExpr.toString()));
+            } else {
+                if (checkStrategy == PartitionStrategy.KEY || checkStrategy == PartitionStrategy.RANGE_COLUMNS
+                    || checkStrategy == PartitionStrategy.LIST_COLUMNS) {
+                    if (columnFinder.isContainPartFunc()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                            "Not allowed to use partition column[%s] with partition function in key or range/list columns policy",
+                            partExpr.toString()));
+                    }
+                } else {
+                    if (columnFinder.isUseNestingPartFunc()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                            "Not allowed to use nesting partition function [%s] in hash/range/list policy",
+                            partExpr.toString()));
+                    }
+                }
+            }
+        }
+
+        if (checkStrategy == PartitionStrategy.RANGE || checkStrategy == LIST
+            || checkStrategy == PartitionStrategy.HASH) {
             if (checkStrategy == PartitionStrategy.HASH) {
                 PartitionIntFunction partIntFunc = partitionBy.getPartIntFunc();
                 if (partCol != 1 && partIntFunc != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "Not supported to use more than one partition columns on hash strategy with partition functions"));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "Not supported to use more than one partition columns on hash strategy with partition functions"));
                 }
             } else {
                 if (partCol != 1) {
@@ -1061,9 +1171,8 @@ public class PartitionInfoUtil {
             if (partIntOp == null) {
 
                 if (!DataTypeUtil.isUnderBigintType(partFldDt)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String
-                        .format(
-                            "Not supported to use the dataType[%s] as partition columns on this strategy[%s]",
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("Not supported to use the dataType[%s] as partition columns on this strategy[%s]",
                             partFldDt, checkStrategy.toString()));
                 }
             } else {
@@ -1101,17 +1210,15 @@ public class PartitionInfoUtil {
                 ColumnMeta partColMeta = partFldMetaList.get(i);
                 DataType fldDataType = partColMeta.getDataType();
                 if (!PartitionInfoBuilder.isSupportedPartitionDataType(fldDataType)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String
-                        .format("This data type %s are not allowed",
-                            fldDataType.getStringSqlType()));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("This data type %s are not allowed", fldDataType.getStringSqlType()));
                 }
 
                 int fldSqlType = fldDataType.getSqlType();
-                if (fldSqlType == Types.BINARY || (
-                    (fldSqlType == Types.CHAR || fldSqlType == Types.VARCHAR)
-                        && fldDataType.getCollationName() == CollationName.BINARY)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String
-                        .format("This data type 'CHARACTER SET %s COLLATE %s' are not allowed",
+                if (fldSqlType == Types.BINARY || ((fldSqlType == Types.CHAR || fldSqlType == Types.VARCHAR)
+                    && fldDataType.getCollationName() == CollationName.BINARY)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("This data type 'CHARACTER SET %s COLLATE %s' are not allowed",
                             fldDataType.getStringSqlType(), CollationName.BINARY.name()));
                 }
 
@@ -1120,8 +1227,7 @@ public class PartitionInfoUtil {
                         || checkStrategy == PartitionStrategy.LIST_COLUMNS) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                             String.format("Field '%s' is of a not allowed type[%s] for this type of partitioning",
-                                partColMeta.getName(),
-                                partColMeta.getDataType().getStringSqlType()));
+                                partColMeta.getName(), partColMeta.getDataType().getStringSqlType()));
                     }
                 }
 
@@ -1133,17 +1239,15 @@ public class PartitionInfoUtil {
                         String targetCharset = charsetOfType.getJavaCharset();
                         String targetCollate = collationOfType.name();
                         if (!MySQLCharsetDDLValidator.checkCharsetSupported(targetCharset, targetCollate)) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                                String.format(
-                                    "Failed to create table because the charset[%s] or collate[%s] is not supported in partitioning",
-                                    targetCharset, targetCollate));
+                            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
+                                "Failed to create table because the charset[%s] or collate[%s] is not supported in partitioning",
+                                targetCharset, targetCollate));
                         }
 
                     } catch (Throwable ex) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                             String.format("Field '%s' is of a not allowed type[%s] for this type of partitioning",
-                                partColMeta.getName(),
-                                partColMeta.getDataType().getStringSqlType()));
+                                partColMeta.getName(), partColMeta.getDataType().getStringSqlType()));
                     }
                 }
             }
@@ -1157,22 +1261,20 @@ public class PartitionInfoUtil {
             PartitionSpec pSpec = pSpecList.get(i);
             String name = pSpec.getName();
             // If validate error , "PartitionNameUtil.validatePartName" will throw execeptions.
-            PartitionNameUtil.validatePartName(name, KeyWordsUtil.isKeyWord(name));
+            PartitionNameUtil.validatePartName(name, false);
         }
     }
 
     protected static void validatePartitionCount(PartitionInfo partitionInfo, ExecutionContext ec) {
         Integer maxPhysicalPartitions = Integer.valueOf(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT.getDefault());
         if (ec != null) {
-            maxPhysicalPartitions =
-                ec.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
+            maxPhysicalPartitions = ec.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
         }
 
         if (partitionInfo.getPartitionBy().getPartitions().size() > maxPhysicalPartitions) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                String
-                    .format("Too many partitions [%s] (including subpartitions) after altering",
-                        partitionInfo.getPartitionBy().getPartitions().size()));
+                String.format("Too many partitions [%s] (including subpartitions) after altering",
+                    partitionInfo.getPartitionBy().getPartitions().size()));
         }
     }
 
@@ -1181,10 +1283,8 @@ public class PartitionInfoUtil {
         PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
 
         int partColCnt = partitionInfo.getPartitionBy().getPartitionFieldList().size();
-        if (strategy == PartitionStrategy.RANGE
-            || strategy == PartitionStrategy.RANGE_COLUMNS
-            || strategy == PartitionStrategy.HASH
-            || strategy == PartitionStrategy.KEY) {
+        if (strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.RANGE_COLUMNS
+            || strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY) {
 
             List<PartitionSpec> partSpecList = partitionInfo.getPartitionBy().getPartitions();
             for (int i = 0; i < partSpecList.size(); i++) {
@@ -1222,9 +1322,9 @@ public class PartitionInfoUtil {
 
                 // Validate if boundInfos are in ascending order
                 if (partSpec.getPosition() <= lastPartSpec.getPosition()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String
-                        .format("the position of partition[%s] should be larger than the position of partition[%s]",
-                            partSpec.getName(), lastPartSpec.getName()));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "the position of partition[%s] should be larger than the position of partition[%s]",
+                        partSpec.getName(), lastPartSpec.getName()));
 
                 } else {
                     SearchDatumComparator boundCmp = partitionInfo.getPartitionBy().getBoundSpaceComparator();
@@ -1238,7 +1338,7 @@ public class PartitionInfoUtil {
                     }
                 }
             }
-        } else if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
+        } else if (strategy == LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
             //===== validate List/ListColumns =====
 
             List<PartitionSpec> partSpecList = partitionInfo.getPartitionBy().getPartitions();
@@ -1250,7 +1350,7 @@ public class PartitionInfoUtil {
                 for (int j = 0; j < datums.size(); j++) {
                     SearchDatumInfo datum = datums.get(j);
                     int valLen = datum.getDatumInfo().length;
-                    if (partColCnt != valLen) {
+                    if (partColCnt != valLen && !pSpec.isDefault()) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                             String.format("the bound value[%s] of partition[%s] must match the partition columns",
                                 pSpec, partName));
@@ -1269,11 +1369,11 @@ public class PartitionInfoUtil {
                 }
 
                 // Validate if boundInfos exists max values
-                if (partSpec.getBoundSpec().isDefaultPartSpec()) {
+                /*if (partSpec.getBoundSpec().isDefaultPartSpec()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                         String.format("the partition[%s] is NOT support to be defined as default partition",
                             partSpec.getName()));
-                }
+                }*/
 
             }
         } else {
@@ -1281,8 +1381,7 @@ public class PartitionInfoUtil {
         }
     }
 
-    public static void validateAddPartition(PartitionInfo partitionInfo,
-                                            List<PartitionSpec> existPartitionSpecs,
+    public static void validateAddPartition(PartitionInfo partitionInfo, List<PartitionSpec> existPartitionSpecs,
                                             PartitionSpec newPartitionSpec) {
         PartitionStrategy partitionStrategy = existPartitionSpecs.get(0).strategy;
         if (!newPartitionSpec.strategy.equals(partitionStrategy)) {
@@ -1343,8 +1442,7 @@ public class PartitionInfoUtil {
 
         break;
         default:
-            throw new NotSupportException("add partition for " +
-                partitionStrategy.toString() + " type");
+            throw new NotSupportException("add partition for " + partitionStrategy.toString() + " type");
         }
     }
 
@@ -1376,6 +1474,7 @@ public class PartitionInfoUtil {
     }
 
     public static TableGroupConfig getTheBestTableGroupInfo(PartitionInfo partitionInfo, String tableGroupName,
+                                                            String joinGroup, String partitionNamePrefix, int flag,
                                                             ExecutionContext executionContext) {
 
         String schemaName = partitionInfo.getTableSchema();
@@ -1388,6 +1487,8 @@ public class PartitionInfoUtil {
         if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
             copyTableGroupInfo =
                 tableGroupInfoManager.copyTableGroupConfigInfoFromCache(TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG);
+            copyTableGroupInfo.putAll(tableGroupInfoManager.copyTableGroupConfigInfoFromCache(
+                TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG));
         } else if (tblType == PartitionTableType.BROADCAST_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
             TableGroupConfig broadcastTgConf = tableGroupInfoManager.getBroadcastTableGroupConfig();
             copyTableGroupInfo = new HashMap<>();
@@ -1399,16 +1500,24 @@ public class PartitionInfoUtil {
         }
 
         PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
-        boolean isVectorStrategy =
-            (strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.RANGE_COLUMNS);
+        boolean isVectorStrategy = (strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.RANGE_COLUMNS);
 
         TableGroupConfig targetTableGroupConfig = null;
+
         if (tableGroupName != null) {
             targetTableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
             if (targetTableGroupConfig == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                     String.format("Failed to create partition table because the table group[%s] does NOT exists",
                         tableGroupName));
+            }
+            final boolean onlyManualTableGroupAllow =
+                executionContext.getParamManager().getBoolean(ConnectionParams.ONLY_MANUAL_TABLEGROUP_ALLOW);
+
+            if (!targetTableGroupConfig.isManuallyCreated() && onlyManualTableGroupAllow) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_AUTO_CREATED, String.format(
+                    "only the tablegroup create by user manually could be used explicitly, the table group[%s] is created internally",
+                    tableGroupName));
             }
             if (GeneralUtil.isNotEmpty(targetTableGroupConfig.getAllTables())) {
                 String tableName = targetTableGroupConfig.getTables().get(0).getLogTbRec().tableName;
@@ -1430,10 +1539,9 @@ public class PartitionInfoUtil {
                 }
 
                 if (!match) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
-                            tableGroupName));
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
+                        tableGroupName));
                 }
             } else if (GeneralUtil.isEmpty(targetTableGroupConfig.getPartitionGroupRecords())) {
 //                throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_INIT,
@@ -1441,12 +1549,11 @@ public class PartitionInfoUtil {
 //                        "the table group[%s] is not inited yet",
 //                        tableGroupName));
             } else {
-                if (partitionInfo.getPartitionBy().getPartitions().size() != targetTableGroupConfig
-                    .getPartitionGroupRecords().size()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
-                            tableGroupName));
+                if (partitionInfo.getPartitionBy().getPartitions().size()
+                    != targetTableGroupConfig.getPartitionGroupRecords().size()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                        "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
+                        tableGroupName));
                 }
                 for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
                     PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
@@ -1459,49 +1566,143 @@ public class PartitionInfoUtil {
                             .filter(o -> o.getPartition_name().equalsIgnoreCase(partitionSpec.getName())).findFirst()
                             .orElse(null);
                         if (partitionGroupRecord == null) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                                String.format(
-                                    "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
-                                    tableGroupName));
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
+                                "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
+                                tableGroupName));
                         }
                     }
                 }
             }
         } else {
+            final boolean onlyAutoCreatedTableGroupAllowMatch =
+                executionContext.getParamManager().getBoolean(ConnectionParams.MANUAL_TABLEGROUP_NOT_ALLOW_AUTO_MATCH);
+
+            boolean compareLocation =
+                (((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY) || ((flag & COMPARE_NEW_PART_LOCATION)
+                    == COMPARE_NEW_PART_LOCATION) || ((flag & COMPARE_EXISTS_PART_LOCATION)
+                    == COMPARE_EXISTS_PART_LOCATION));
+
             int maxTableCount = -1;
+            PartitionByDefinition originalPartitionBy = partitionInfo.getPartitionBy().copy();
             for (Map.Entry<Long, TableGroupConfig> entry : copyTableGroupInfo.entrySet()) {
+                if (entry.getKey().longValue() == partitionInfo.getTableGroupId().longValue()) {
+                    // don't match itself
+                    continue;
+                }
                 if (entry.getValue().getTableGroupRecord().tg_type == TableGroupRecord.TG_TYPE_OSS_TBL_TG) {
                     continue;
                 }
+                if (entry.getValue().isManuallyCreated() && onlyAutoCreatedTableGroupAllowMatch) {
+                    continue;
+                }
+                if (entry.getValue().isAutoSplit()) {
+                    continue;
+                }
+
                 if (entry.getValue().getTableCount() > maxTableCount) {
-                    if (partitionInfo.isBroadcastTable() || partitionInfo.isSingleTable()) {
+                    if (partitionInfo.isGsiBroadcastOrBroadcast()) {
                         maxTableCount = entry.getValue().getTableCount();
                         targetTableGroupConfig = entry.getValue();
-                    } else if (entry.getValue().getTableCount() > 0) {
+                    } else if (partitionInfo.isGsiSingleOrSingleTable()) {
+                        LocalityDesc tableLocality = LocalityDesc.parse(partitionInfo.getLocality());
+                        LocalityDesc compareTableGroupLocality = entry.getValue().getLocalityDesc();
+                        boolean match = false;
+                        if (tableLocality.match(compareTableGroupLocality)) {
+                            match = true;
+                        }
+
                         String tableName = entry.getValue().getTables().get(0).getLogTbRec().tableName;
 
                         PartitionInfo comparePartitionInfo = partitionInfoManager.getPartitionInfo(tableName);
+
+                        PartitionByDefinition partitionBy = partitionInfo.getPartitionBy();
+                        if ((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY) {
+                            changePartitionNameAndLocality(comparePartitionInfo, partitionBy, partitionNamePrefix);
+                        }
+
+                        if (match) {
+                            match = partitionInfo.equals(comparePartitionInfo);
+                        }
+                        if (match && compareLocation) {
+                            match = comparePartitionInfoLocation(comparePartitionInfo, partitionInfo, true);
+                        }
+
+                        if (match) {
+                            maxTableCount = entry.getValue().getTableCount();
+                            targetTableGroupConfig = entry.getValue();
+                            partitionInfo.setPartitionBy(partitionBy);
+                            originalPartitionBy = partitionBy.copy();
+                        } else {
+                            if ((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY) {
+                                partitionInfo.setPartitionBy(originalPartitionBy.copy());
+                            }
+                        }
+
+                        if (match) {
+                            targetTableGroupConfig = entry.getValue();
+                        }
+                    } else if (entry.getValue().getTableCount() > 0) {
+                        int count = entry.getValue().getTableCount();
+                        PartitionInfo comparePartitionInfo = null;
+                        int i = 0;
+                        do {
+                            String tableName = entry.getValue().getTables().get(i).getLogTbRec().tableName;
+                            comparePartitionInfo = partitionInfoManager.getPartitionInfo(tableName);
+                            i++;
+                        } while (comparePartitionInfo == null && i < count);
+
+                        if (comparePartitionInfo == null) {
+                            continue;
+                        }
+
+                        JoinGroupInfoRecord record = null;
+                        if (!(ConfigDataMode.isFastMock() || ConfigDataMode.isMock())) {
+                            record = JoinGroupUtils.getJoinGroupInfoByTable(comparePartitionInfo.tableSchema,
+                                comparePartitionInfo.tableName, null);
+                        }
+                        boolean differentJoinGroup =
+                            (record == null && StringUtils.isNotEmpty(joinGroup)) || (record != null
+                                && !record.joinGroupName.equalsIgnoreCase(joinGroup));
+                        if (differentJoinGroup) {
+                            continue;
+                        }
+                        PartitionByDefinition partitionBy = partitionInfo.getPartitionBy();
+                        if ((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY) {
+                            changePartitionNameAndLocality(comparePartitionInfo, partitionBy, partitionNamePrefix);
+                        }
                         /**
                          * Check if the partInfo of ddl is equals to the partInfo of the first table of the candidate table group
                          */
                         boolean match = false;
                         if (isVectorStrategy) {
                             List<String> actualPartCols = getActualPartitionColumns(partitionInfo);
-                            if (partitionEquals(partitionInfo, comparePartitionInfo, actualPartCols.size())) {
+                            String tableLocality = partitionInfo.getLocality();
+                            String compareTableGroupLocality = comparePartitionInfo.getLocality();
+                            if (partitionEquals(partitionInfo, comparePartitionInfo, actualPartCols.size()) && tableLocality.equals(compareTableGroupLocality)) {
                                 match = true;
                             }
                         } else if (partitionInfo.equals(comparePartitionInfo)) {
                             match = true;
                         }
+
+                        if (match && compareLocation) {
+                            match = comparePartitionInfoLocation(comparePartitionInfo, partitionInfo,
+                                ((flag & COMPARE_NEW_PART_LOCATION) == COMPARE_NEW_PART_LOCATION));
+                        }
                         if (match) {
                             maxTableCount = entry.getValue().getTableCount();
                             targetTableGroupConfig = entry.getValue();
+                            partitionInfo.setPartitionBy(partitionBy);
+                            originalPartitionBy = partitionBy.copy();
+                        } else {
+                            if ((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY) {
+                                partitionInfo.setPartitionBy(originalPartitionBy.copy());
+                            }
                         }
                     }
                 }
             }
         }
-
         return targetTableGroupConfig;
     }
 
@@ -1537,8 +1738,7 @@ public class PartitionInfoUtil {
         }
     }
 
-    public static List<String> getNextNPhyTableNames(PartitionInfo partitionInfo, int newTableCount,
-                                                     int[] minPostfix) {
+    public static List<String> getNextNPhyTableNames(PartitionInfo partitionInfo, int newTableCount, int[] minPostfix) {
         List<String> phyTableNames = new ArrayList<>(newTableCount);
         if (partitionInfo.isBroadcastTable()) {
             String phyTbName = partitionInfo.getPartitionBy().getPartitions().get(0).getLocation().getPhyTableName();
@@ -1577,7 +1777,6 @@ public class PartitionInfoUtil {
                 phyTableNames.add(phyTableName);
                 newTableCount--;
             }
-            assert phyTableNames.size() == newTableCount;
             return phyTableNames;
         }
     }
@@ -1659,16 +1858,13 @@ public class PartitionInfoUtil {
             } else {
                 Map<String, Set<String>> topology = tableRule.getActualTopology();
                 // convert set to list of list
-                Map<String, List<List<String>>> result =
-                    topology.entrySet().stream()
-                        .collect(
-                            Collectors.toMap(Map.Entry::getKey,
-                                x -> x.getValue().stream().map(ImmutableList::of).collect(Collectors.toList())
-                            ));
+                Map<String, List<List<String>>> result = topology.entrySet().stream().collect(
+                    Collectors.toMap(Map.Entry::getKey,
+                        x -> x.getValue().stream().map(ImmutableList::of).collect(Collectors.toList())));
 
                 if (tableRule.isBroadcast()) {
-                    Set<String> tables = topology.values().stream().findFirst().orElseThrow(() ->
-                        new TddlRuntimeException(ErrorCode.ERR_TABLE_NO_RULE));
+                    Set<String> tables = topology.values().stream().findFirst()
+                        .orElseThrow(() -> new TddlRuntimeException(ErrorCode.ERR_TABLE_NO_RULE));
                     List<List<String>> tableList = ImmutableList.of(ImmutableList.copyOf(tables));
 
                     Map<String, Set<String>> common = RelUtils.getCommonTopology(schema, tableName);
@@ -1679,52 +1875,46 @@ public class PartitionInfoUtil {
         }
     }
 
-    public static PartitionInfo updatePartitionInfoByOutDatePartitionRecords(Connection conn,
+    public static PartitionInfo updatePartitionInfoByOutDatePartitionRecords(Connection conn, Long tgIdInMetadb,
                                                                              PartitionInfo partitionInfo,
                                                                              TableInfoManager tableInfoManager) {
         List<PartitionGroupRecord> outdatedPartitionRecords =
-            TableGroupUtils.getOutDatePartitionGroupsByTgId(conn, partitionInfo.getTableGroupId());
+            TableGroupUtils.getOutDatePartitionGroupsByTgId(conn, tgIdInMetadb);
         partitionInfo = partitionInfo.copy();
         for (PartitionGroupRecord partitionGroupRecord : outdatedPartitionRecords) {
-            PartitionSpec spec =
-                partitionInfo.getPartitionBy().getPartitions().stream().filter(
-                        o -> o.getName().equalsIgnoreCase(partitionGroupRecord.partition_name))
-                    .findFirst().orElseThrow(
-                        () ->
-                            new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                String.format("partition-group %d not found",
-                                    partitionGroupRecord.partition_name)));
+            PartitionSpec spec = partitionInfo.getPartitionBy().getPartitions().stream()
+                .filter(o -> o.getName().equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst().orElseThrow(
+                    () -> new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        String.format("partition-group %d not found", partitionGroupRecord.partition_name)));
             assert spec != null;
             if (partitionInfo.getTableType() != PartitionTableType.BROADCAST_TABLE) {
-                spec.getLocation().setGroupKey(
-                    GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db));
+                spec.getLocation().setGroupKey(GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db));
             } else {
                 spec.getLocation().setGroupKey(tableInfoManager.getDefaultDbIndex(partitionInfo.getTableSchema()));
             }
 
             spec.getLocation().setVisiable(false);
         }
+
+        partitionInfo.initPartSpecSearcher();
         return partitionInfo;
     }
 
-    public static void updatePartitionInfoByNewCommingPartitionRecords(Connection conn, PartitionInfo partitionInfo) {
+    public static void updatePartitionInfoByNewCommingPartitionRecords(Connection conn, Long tgIdInMetadb,
+                                                                       PartitionInfo partitionInfo) {
         //set visible property for newPartitionInfo here
-        List<PartitionGroupRecord> newComingPartitionRecords = TableGroupUtils
-            .getAllUnVisiablePartitionGroupByGroupId(conn, partitionInfo.getTableGroupId());
+        List<PartitionGroupRecord> newComingPartitionRecords =
+            TableGroupUtils.getAllUnVisiablePartitionGroupByGroupId(conn, tgIdInMetadb);
 
         for (PartitionGroupRecord partitionGroupRecord : newComingPartitionRecords) {
-            PartitionSpec spec =
-                partitionInfo.getPartitionBy().getPartitions().stream().filter(
-                        o -> o.getName().equalsIgnoreCase(partitionGroupRecord.partition_name))
-                    .findFirst().orElseThrow(
-                        () ->
-                            new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                String.format("partition-group %s not found",
-                                    partitionGroupRecord.partition_name)));
-            spec.getLocation().setGroupKey(
-                GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db));
+            PartitionSpec spec = partitionInfo.getPartitionBy().getPartitions().stream()
+                .filter(o -> o.getName().equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst().orElseThrow(
+                    () -> new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        String.format("partition-group %s not found", partitionGroupRecord.partition_name)));
+            spec.getLocation().setGroupKey(GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db));
             spec.getLocation().setVisiable(false);
         }
+        partitionInfo.initPartSpecSearcher();
     }
 
     public static long getHashSpaceMaxValue() {
@@ -1742,19 +1932,18 @@ public class PartitionInfoUtil {
         CharsetName charsetName = partColMeta.getField().getDataType().getCharsetName();
         CharsetName otherCharsetName = otherPartColMeta.getField().getDataType().getCharsetName();
 
-        boolean isCharsetDiff = (charsetName == null && otherCharsetName != null)
-            || (charsetName != null && otherCharsetName == null)
-            || (charsetName != null && otherCharsetName != null && !charsetName.equals(otherCharsetName));
+        boolean isCharsetDiff =
+            (charsetName == null && otherCharsetName != null) || (charsetName != null && otherCharsetName == null) || (
+                charsetName != null && otherCharsetName != null && !charsetName.equals(otherCharsetName));
         if (isCharsetDiff) {
             return false;
         }
 
         CollationName collationName = partColMeta.getField().getDataType().getCollationName();
         CollationName otherCollationName = otherPartColMeta.getField().getDataType().getCollationName();
-        boolean isCollationDiff = (collationName == null && otherCollationName != null)
-            || (collationName != null && otherCollationName == null)
-            || (collationName != null && otherCollationName != null && !collationName
-            .equals(otherCollationName));
+        boolean isCollationDiff = (collationName == null && otherCollationName != null) || (collationName != null
+            && otherCollationName == null) || (collationName != null && otherCollationName != null
+            && !collationName.equals(otherCollationName));
         if (isCollationDiff) {
             return false;
         }
@@ -1762,8 +1951,7 @@ public class PartitionInfoUtil {
             if (otherPartColMeta.getDataType() != null) {
                 return false;
             }
-        } else if (!DataTypeUtil
-            .equals(partColMeta.getDataType(), otherPartColMeta.getDataType(), true)) {
+        } else if (!DataTypeUtil.equals(partColMeta.getDataType(), otherPartColMeta.getDataType(), true)) {
             return false;
         }
 
@@ -1803,6 +1991,8 @@ public class PartitionInfoUtil {
             long newPosi = i + 1;
             spec.setPosition(newPosi);
         }
+
+        newPartInfo.initPartSpecSearcher();
     }
 
     public static List<String> getActualPartitionColumns(PartitionInfo partInfo) {
@@ -1856,10 +2046,8 @@ public class PartitionInfoUtil {
      *
      * </pre>
      */
-    public static List<List<String>> classifyTablesByPrefixPartitionColumns(
-        String schemaName,
-        List<String> tableList,
-        int prefixPartColCnt) {
+    public static List<List<String>> classifyTablesByPrefixPartitionColumns(String schemaName, List<String> tableList,
+                                                                            int prefixPartColCnt) {
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         List<PartitionInfo> partInfoList = new ArrayList<>();
         for (int i = 0; i < tableList.size(); i++) {
@@ -1914,11 +2102,10 @@ public class PartitionInfoUtil {
         }
     }
 
-    public static Pair<List<String>, List<String>> classifyTablesByPrefixPartitionColumns(
-        String schemaName,
-        int prefixPartColCnt,
-        String tableGroupName,
-        String baseTableName) {
+    public static Pair<List<String>, List<String>> classifyTablesByPrefixPartitionColumns(String schemaName,
+                                                                                          int prefixPartColCnt,
+                                                                                          String tableGroupName,
+                                                                                          String baseTableName) {
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         TableGroupInfoManager tgMgr = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig tgConfig = tgMgr.getTableGroupConfigByName(tableGroupName);
@@ -1953,8 +2140,7 @@ public class PartitionInfoUtil {
         return result;
     }
 
-    public static List<ColumnMeta> getMaxPartColumnMetasInfoForTableGroup(String schemaName,
-                                                                          String tableGroupName) {
+    public static List<ColumnMeta> getMaxPartColumnMetasInfoForTableGroup(String schemaName, String tableGroupName) {
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         TableGroupInfoManager tgMgr = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig tgConfig = tgMgr.getTableGroupConfigByName(tableGroupName);
@@ -2011,8 +2197,7 @@ public class PartitionInfoUtil {
         return maxPartColMetas;
     }
 
-    public static List<ColumnMeta> getActualPartColumnMetasInfoForTableGroup(String schemaName,
-                                                                             String tableGroupName) {
+    public static List<ColumnMeta> getActualPartColumnMetasInfoForTableGroup(String schemaName, String tableGroupName) {
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         TableGroupInfoManager tgMgr = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig tgConfig = tgMgr.getTableGroupConfigByName(tableGroupName);
@@ -2031,8 +2216,24 @@ public class PartitionInfoUtil {
         return prefixPartFldList;
     }
 
-    public static List<ColumnMeta> getPrefixPartColumnMetasInfoForTableGroup(String schemaName,
-                                                                             String tableGroupName,
+    public static List<TablePartitionRecord> updatePartitionInfoLocalityForTable(String schemaName, String tableName,
+                                                                                 String locality) {
+        PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
+        PartitionInfo partInfoOfTable = partInfoMgr.getPartitionInfo(tableName);
+        List<PartitionSpec> partitionSpecs = partInfoOfTable.getPartitionBy().getPartitions();
+        for (PartitionSpec partitionSpec : partitionSpecs) {
+            partitionSpec.setLocality(locality);
+        }
+        List<TablePartitionRecord> partitionRecords = prepareRecordForAllPartitions(partInfoOfTable);
+        for (TablePartitionRecord tablePartitionRecord : partitionRecords) {
+            tablePartitionRecord.setId(-1L);
+            tablePartitionRecord.setParentId(partitionSpecs.get(0).parentId);
+        }
+
+        return partitionRecords;
+    }
+
+    public static List<ColumnMeta> getPrefixPartColumnMetasInfoForTableGroup(String schemaName, String tableGroupName,
                                                                              int prefixPartColCnt) {
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         TableGroupInfoManager tgMgr = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
@@ -2059,8 +2260,7 @@ public class PartitionInfoUtil {
      * @param actualPartitionCols when -1, all partition columns involve
      * @return
      */
-    public static boolean allTablesWithIdenticalPartitionColumns(String schemaName,
-                                                                 String tgName,
+    public static boolean allTablesWithIdenticalPartitionColumns(String schemaName, String tgName,
                                                                  int actualPartitionCols) {
 
         PartitionInfoManager partInfoMgr = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
@@ -2099,8 +2299,7 @@ public class PartitionInfoUtil {
         return allTheSame;
     }
 
-    public static int getNewPrefixPartColCntBySqlPartitionAst(int fullPartColCnt,
-                                                              int actualPartColCnt,
+    public static int getNewPrefixPartColCntBySqlPartitionAst(int fullPartColCnt, int actualPartColCnt,
                                                               PartitionStrategy strategy,
                                                               List<SqlPartition> newPartitions) {
         int newPrefixPartColCnt = PartitionInfoUtil.FULL_PART_COL_COUNT;
@@ -2108,6 +2307,9 @@ public class PartitionInfoUtil {
             int lastPartValColSize = -1;
             int valPartColSize;
             for (SqlPartition sqlPartition : newPartitions) {
+                if (sqlPartition.getValues() == null) {
+                    continue;
+                }
                 valPartColSize = sqlPartition.getValues().getItems().size();
                 String partName = sqlPartition.getName().toString();
                 newPrefixPartColCnt =
@@ -2115,19 +2317,14 @@ public class PartitionInfoUtil {
                         partName);
                 if (lastPartValColSize == -1) {
                     lastPartValColSize = valPartColSize;
-                } else {
-
                 }
             }
         }
         return newPrefixPartColCnt;
     }
 
-    public static int checkAndGetNewPrefixPartColCnt(int fullPartColCnt,
-                                                     int actualPartColCnt,
-                                                     int lastPartValColSize,
-                                                     int valPartColSize,
-                                                     String partName) {
+    public static int checkAndGetNewPrefixPartColCnt(int fullPartColCnt, int actualPartColCnt, int lastPartValColSize,
+                                                     int valPartColSize, String partName) {
         int newPrefixPartColCnt = PartitionInfoUtil.FULL_PART_COL_COUNT;
 //        if (valPartColSize < actualPartColCnt) {
 //            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
@@ -2143,11 +2340,9 @@ public class PartitionInfoUtil {
         }
 
         if (valPartColSize > fullPartColCnt) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                String.format(
-                    "the column count[%s] of bound values of partition %s is more than the full partition columns count[%s]",
-                    valPartColSize, partName == null ? "" : partName,
-                    fullPartColCnt));
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, String.format(
+                "the column count[%s] of bound values of partition %s is more than the full partition columns count[%s]",
+                valPartColSize, partName == null ? "" : partName, fullPartColCnt));
         }
 
         if (newPrefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
@@ -2160,5 +2355,70 @@ public class PartitionInfoUtil {
             }
         }
         return newPrefixPartColCnt;
+    }
+
+    private static void changePartitionNameAndLocality(PartitionInfo basePartitionInfo,
+                                                       PartitionByDefinition partitionBy, String partitionNamePrefix) {
+        if (basePartitionInfo == null || partitionBy == null) {
+            return;
+        }
+        PartitionByDefinition basePartitionBy = basePartitionInfo.getPartitionBy();
+        if (basePartitionBy.getStrategy() != partitionBy.getStrategy()
+            || basePartitionBy.getPartitions().size() != partitionBy.getPartitions().size()) {
+            return;
+        }
+        Boolean changePartInfo = true;
+        if (StringUtils.isNotEmpty(partitionNamePrefix)) {
+            for (int i = 0; i < partitionBy.getPartitions().size(); i++) {
+                PartitionSpec partitionSpec = partitionBy.getPartitions().get(i);
+                if (!partitionSpec.getLocation().isVisiable()) {
+                    PartitionSpec basePartSpec = basePartitionBy.getPartitions().get(i);
+                    String newPartName = basePartSpec.getName();
+                    if (StringUtils.isNotEmpty(partitionNamePrefix) && newPartName.startsWith(partitionNamePrefix)) {
+                        if (newPartName.length() > partitionNamePrefix.length()) {
+                            String digitString = newPartName.substring(partitionNamePrefix.length());
+                            try {
+                                Integer.parseInt(digitString);
+                            } catch (NumberFormatException ex) {
+                                changePartInfo = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (changePartInfo) {
+            for (int i = 0; i < partitionBy.getPartitions().size(); i++) {
+                PartitionSpec partitionSpec = partitionBy.getPartitions().get(i);
+                if (!partitionSpec.getLocation().isVisiable()) {
+                    PartitionSpec basePartSpec = basePartitionBy.getPartitions().get(i);
+                    partitionSpec.setName(basePartSpec.getName());
+                    partitionSpec.setLocality(basePartSpec.getLocality());
+                }
+            }
+        }
+    }
+
+    private static boolean comparePartitionInfoLocation(PartitionInfo basePartitionInfo, PartitionInfo partitionInfo,
+                                                        boolean compareNewLocation) {
+        PartitionByDefinition basePartitionBy = basePartitionInfo.getPartitionBy();
+        PartitionByDefinition partitionBy = partitionInfo.getPartitionBy();
+        assert basePartitionBy.getPartitions().size() == partitionBy.getPartitions().size();
+        for (int i = 0; i < partitionBy.getPartitions().size(); i++) {
+            PartitionSpec partitionSpec = partitionBy.getPartitions().get(i);
+            PartitionSpec basePartitionSpec = basePartitionBy.getPartitions().get(i);
+            if (compareNewLocation) {
+                if (!partitionSpec.getLocation().isVisiable() && !basePartitionSpec.getLocation().getGroupKey()
+                    .equalsIgnoreCase(partitionSpec.getLocation().getGroupKey())) {
+                    return false;
+                }
+            }
+            if (partitionSpec.getLocation().isVisiable() && !basePartitionSpec.getLocation().getGroupKey()
+                .equalsIgnoreCase(partitionSpec.getLocation().getGroupKey())) {
+                return false;
+            }
+        }
+        return true;
     }
 }

@@ -121,9 +121,8 @@
                 )
 
   plan: |
-
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`int_col4` > 1024))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col4` > 1024) and (`test_hash_tb`.`id` = `id`))))")
 
 - #// @desc
   #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ??? ???
@@ -478,9 +477,8 @@
                 )
 
   plan: |
-
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`int_col5` < 30))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`test_hash_tb`.`id` = `id`))))")
 
 - #// @desc
   #// IN,????????????, where , agg?? ????
@@ -517,19 +515,19 @@
                 )
 
   plan: |
-    Project(id="id")
-      Filter(condition="APPLY_BOOLEAN")
-        CorrelateApply(cor=$cor0, leftConditions=[], opKind=null, type=SEMI)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
-          Limit(offset=0, fetch=100)
-            Filter(condition="$cor0.id = id")
-              Gather(concurrent=true)
-                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    project(id="id")
+      filter(condition="apply_boolean")
+        correlateapply(cor=$cor0, leftconditions=[], opkind=null, type=semi)
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
+          limit(offset=0, fetch=100)
+            filter(condition="$cor0.id = id")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`id` <> 1))")
     cache node:
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`id` <> 1))")
 
 - #// @desc
   #// IN,????????????, where , agg , limit??????
@@ -569,19 +567,19 @@
                 )
 
   plan: |
-    Project(id="id")
-      Filter(condition="APPLY_BOOLEAN")
-        CorrelateApply(cor=$cor, leftConditions=[], opKind=null, type=SEMI)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
-          TopN(sort="id ASC", offset=0, fetch=100)
-            Filter(condition="$cor.id = id")
-              Gather(concurrent=true)
-                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    project(id="id")
+      filter(condition="apply_boolean")
+        correlateapply(cor=$cor1, leftconditions=[], opkind=null, type=semi)
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
+          topn(sort="id asc", offset=0, fetch=100)
+            filter(condition="$cor1.id = id")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`id` <> 1))")
     cache node:
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`id` <> 1))")
 
 - #// @desc
   #// IN,????????????, where , agg , limit?? ????

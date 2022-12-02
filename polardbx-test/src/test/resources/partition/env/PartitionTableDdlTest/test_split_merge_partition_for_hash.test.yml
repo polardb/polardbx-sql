@@ -1,0 +1,19 @@
+## DISABLE_FAST_SQL_PARSER
+
+create tablegroup tbl_tg;
+drop table if exists tbl;
+CREATE TABLE hash_tbl(
+id bigint,
+bid int,
+name varchar(30),
+birthday datetime not null
+)
+PARTITION BY HASH(name, birthday)
+PARTITIONS 8;
+alter table hash_tbl set tablegroup=tbl_tg;
+
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table hash_tbl;
+alter tablegroup `tbl_tg` split partition `p1` into (partition p1_0 values less than (-8058255643327868833), partition p1_1 values less than (-6917529027641081843));
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table hash_tbl;
+
+

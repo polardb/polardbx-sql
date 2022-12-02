@@ -39,10 +39,14 @@ import java.util.concurrent.locks.Lock;
 public abstract class ShareReadViewTransaction extends AbstractTransaction {
 
     private final static Logger logger = LoggerFactory.getLogger(ShareReadViewTransaction.class);
-    protected boolean shareReadView = true;
+    protected boolean shareReadView;
 
-    protected static final String TURN_OFF_TXN_GROUP_SQL = "SET innodb_transaction_group = OFF";
-    protected static final String TURN_ON_TXN_GROUP_SQL = "SET innodb_transaction_group = ON";
+    public static final String TURN_OFF_TXN_GROUP_SQL = "SET innodb_transaction_group = OFF";
+    public static final String TURN_ON_TXN_GROUP_SQL = "SET innodb_transaction_group = ON";
+    /**
+     * do not modify MAX_READ_VIEW_COUNT,
+     * since read view sequence only supports 4-digit number
+     */
     private static final int MAX_READ_VIEW_COUNT = 10000;
 
     private final AtomicInteger readViewConnCounter = new AtomicInteger(0);
@@ -50,26 +54,29 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     public ShareReadViewTransaction(ExecutionContext executionContext,
                                     TransactionManager manager) {
         super(executionContext, manager);
+        this.shareReadView = executionContext.isShareReadView();
     }
 
-    protected String getXid(String group, IConnection conn, boolean shareReadView) {
-        return getXAInfo(group, conn, shareReadView).toXidString();
-    }
-
-    protected XAUtils.XATransInfo getXAInfo(String group, IConnection conn, boolean shareReadView) {
-        if (shareReadView) {
-            int readViewId = conn.getReadViewId();
-            if (readViewId == -1) {
-                readViewId = getReadViewId(group);
-                conn.setReadViewId(readViewId);
-            }
-            return XAUtils.XATransInfo.getReadViewInfo(id, group, primaryGroupUid, readViewId);
-        } else {
-            return new XAUtils.XATransInfo(id, group, primaryGroupUid);
+    protected String getXid(String group, IConnection conn) {
+        if (conn.getTrxXid() != null) {
+            return conn.getTrxXid();
         }
+        conn.setInShareReadView(shareReadView);
+        String xid;
+        if (shareReadView) {
+            xid = XAUtils.XATransInfo.toXidString(id, group, primaryGroupUid, getReadViewSeq(group));
+        } else {
+            xid = XAUtils.XATransInfo.toXidString(id, group, primaryGroupUid);
+        }
+        conn.setTrxXid(xid);
+        return xid;
     }
 
-    private int getReadViewId(String group) {
+    /**
+     * 获取 ReadView 序列号
+     * 用于区分同一个 ReadView 下不同的连接
+     */
+    private int getReadViewSeq(String group) {
         int readViewCount = readViewConnCounter.getAndIncrement();
         if (readViewCount >= MAX_READ_VIEW_COUNT) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONCURRENT_TRANSACTION, group,
@@ -78,20 +85,41 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
         return readViewCount % MAX_READ_VIEW_COUNT;
     }
 
+    protected String getXAIdleRollbackSqls(String xid) {
+        if (shareReadView) {
+            return String.format("XA ROLLBACK %s ;" + TURN_OFF_TXN_GROUP_SQL, xid);
+        } else {
+            return String.format("XA ROLLBACK %s ;", xid);
+        }
+    }
+
     protected String getXARollbackSqls(String xid) {
         if (shareReadView) {
-            return "XA END " + xid + "; XA ROLLBACK " + xid
-                + "; " + TURN_OFF_TXN_GROUP_SQL;
+            return String.format("XA END %s ; XA ROLLBACK %s ;" + TURN_OFF_TXN_GROUP_SQL,
+                xid, xid);
+        } else {
+            return String.format("XA END %s ; XA ROLLBACK %s ;",
+                xid, xid);
         }
-        return "XA END " + xid + "; XA ROLLBACK " + xid;
     }
 
     protected String getXACommitOnePhaseSqls(String xid) {
         if (shareReadView) {
-            return "XA END " + xid + "; XA COMMIT " + xid + " ONE PHASE"
-                + "; " + TURN_OFF_TXN_GROUP_SQL;
+            return String.format("XA END %s ; XA COMMIT %s ONE PHASE ;" + TURN_OFF_TXN_GROUP_SQL,
+                xid, xid);
+        } else {
+            return String.format("XA END %s ; XA COMMIT %s ONE PHASE ;",
+                xid, xid);
         }
-        return "XA END " + xid + "; XA COMMIT " + xid + " ONE PHASE";
+    }
+
+    protected void rollbackNonParticipantShareReadViewSync(String group, IConnection conn) {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(getXARollbackSqls(getXid(group, conn)));
+        } catch (Throwable e) {
+            logger.error("Rollback non-participant share readview group failed on " + group, e);
+            discard(group, conn, e);
+        }
     }
 
     /**
@@ -101,20 +129,25 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
      */
     protected void commitOneShardTrx() {
         forEachHeldConnection((group, conn, participated) -> {
-            if (!participated) {
-                commitNonParticipantSync(group, conn);
-                return;
-            }
+            switch (participated) {
+            case NONE:
+                rollbackNonParticipantSync(group, conn);
+                break;
+            case SHARE_READVIEW_READ:
+                rollbackNonParticipantShareReadViewSync(group, conn);
+                break;
+            case WRITTEN:
+                if (conn != primaryConnection) {
+                    throw new AssertionError("commitOneShardTrx with non-primary participant");
+                }
 
-            if (conn != primaryConnection) {
-                throw new AssertionError("commitOneShardTrx with non-primary participant");
-            }
-
-            try {
-                innerCommitOneShardTrx(group, conn);
-            } catch (Throwable e) {
-                logger.error("XA COMMIT ONE PHASE failed on " + primaryGroup, e);
-                throw GeneralUtil.nestedException(e);
+                try {
+                    innerCommitOneShardTrx(group, conn);
+                } catch (Throwable e) {
+                    logger.error("XA COMMIT ONE PHASE failed on " + primaryGroup, e);
+                    throw GeneralUtil.nestedException(e);
+                }
+                break;
             }
         });
 
@@ -133,7 +166,7 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
         }
 
         // XA transaction must be 'ACTIVE' state on cleanup.
-        String xid = getXid(group, conn, shareReadView);
+        String xid = getXid(group, conn);
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(getXARollbackSqls(xid));
         } catch (SQLException e) {
@@ -148,13 +181,15 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     protected void rollbackConnections() {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
             @Override
-            public boolean condition(String group, IConnection conn, boolean participated) {
+            public boolean condition(String group, IConnection conn,
+                                     TransactionConnectionHolder.ParticipatedState participated) {
                 // Ignore non-participant connections. They were committed during prepare phase.
-                return participated;
+                return participated.participatedTrx();
             }
 
             @Override
-            public void execute(String group, IConnection conn, boolean participated) {
+            public void execute(String group, IConnection conn,
+                                TransactionConnectionHolder.ParticipatedState participated) {
                 innerRollback(group, conn);
             }
         });
@@ -162,10 +197,10 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
 
     protected void innerRollback(String group, IConnection conn) {
         // XA transaction must in 'ACTIVE', 'IDLE' or 'PREPARED' state, so ROLLBACK first.
-        String xid = getXid(group, conn, shareReadView);
+        String xid = getXid(group, conn);
         try (Statement stmt = conn.createStatement()) {
             try {
-                stmt.execute("XA ROLLBACK " + xid);
+                stmt.execute(getXAIdleRollbackSqls(xid));
             } catch (SQLException ex) {
                 if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_RMFAIL) {
                     // XA ROLLBACK got ER_XAER_RMFAIL, XA transaction must in 'ACTIVE' state, so END and ROLLBACK.
@@ -252,6 +287,22 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
         }
     }
 
+    @Override
+    public void innerCleanupAllConnections(String group, IConnection conn,
+                                           TransactionConnectionHolder.ParticipatedState participatedState) {
+        switch (participatedState) {
+        case NONE:
+            rollbackNonParticipantSync(group, conn);
+            return;
+        case SHARE_READVIEW_READ:
+            rollbackNonParticipantShareReadViewSync(group, conn);
+            return;
+        case WRITTEN:
+            cleanupParticipateConn(group, conn);
+            return;
+        }
+    }
+
     protected void discardConnections() {
         forEachHeldConnection((group, conn, participated) -> {
             // XA transaction must be 'PREPARED' state here, The
@@ -269,5 +320,10 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     @Override
     public boolean allowMultipleReadConns() {
         return executionContext.isShareReadView();
+    }
+
+    @Override
+    public boolean allowMultipleWriteConns() {
+        return executionContext.isAllowGroupMultiWriteConns() && executionContext.isShareReadView();
     }
 }

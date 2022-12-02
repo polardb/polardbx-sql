@@ -175,12 +175,12 @@ public class ReadWriteLockAccessor extends AbstractAccessor {
         }
     }
 
-    public List<ReadWriteLockRecord> query(Set<String> resourceList, boolean forUpdate) {
+    public List<ReadWriteLockRecord> query(List<String> resourceList, boolean forUpdate) {
         if (CollectionUtils.isEmpty(resourceList)) {
             return new ArrayList<>();
         }
         try {
-            resourceList = resourceList.stream().map(e -> "'" + e + "'").collect(Collectors.toSet());
+            resourceList = resourceList.stream().map(e -> "'" + e + "'").collect(Collectors.toList());
             String resourceInList = Joiner.on(",").skipNulls().join(resourceList);
             String sql = String.format(SELECT_BY_RESOURCE_LIST_TEMPLATE, resourceInList);
             if (forUpdate) {

@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
+import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
@@ -107,10 +108,9 @@ public class MoveDatabaseAddMetaTask extends BaseDdlTask {
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         if (subTask == 1) {
             //for creating status
-            for (String tableName : objectNames) {
-                SyncManagerHelper.sync(
-                    new TableMetaChangePreemptiveSyncAction(schemaName, tableName, 500L, 500L, TimeUnit.MICROSECONDS));
-            }
+            SyncManagerHelper.sync(
+                new TablesMetaChangePreemptiveSyncAction(schemaName, objectNames, 1500L, 1500L,
+                    TimeUnit.MICROSECONDS));
         }
 
     }

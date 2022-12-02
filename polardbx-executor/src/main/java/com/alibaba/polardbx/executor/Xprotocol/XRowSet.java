@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.Xprotocol;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
@@ -52,6 +53,7 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.TimeZone;
 import java.util.function.BiFunction;
 
@@ -92,33 +94,32 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
         return XResultUtil.resultToBytes(metaData.get(index), row.get(index), targetCharset);
     }
 
-    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber)
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber, Optional<CrcAccumulator> accumulator)
         throws Exception {
-        XResultUtil
-            .resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
-                -1, -1, -1, null, null, null);
+        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
+            -1, -1, -1, null, null, null, accumulator);
     }
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
-                                        ZoneId timezone, int scale) throws Exception {
+                                        ZoneId timezone, int scale, Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
-            false, -1, scale, -1, timezone, null, null);
+            false, -1, scale, -1, timezone, null, null, accumulator);
     }
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
-                                        boolean flipUnsigned) throws Exception {
+                                        boolean flipUnsigned, Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
-            flipUnsigned, -1, -1, -1, null, null, null);
+            flipUnsigned, -1, -1, -1, null, null, null, accumulator);
     }
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
-                                        boolean flipUnsigned, int precision, int scale) throws Exception {
+                                        boolean flipUnsigned, int precision, int scale, Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
-            flipUnsigned, precision, scale, -1, null, null, null);
+            flipUnsigned, precision, scale, -1, null, null, null, accumulator);
     }
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
                                         int length, ColumnVector redundantColumnVector,
-                                        BiFunction<byte[], Integer, byte[]> collationHandler) throws Exception {
+                                        BiFunction<byte[], Integer, byte[]> collationHandler, Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil
             .resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
-                -1, -1, length, null, redundantColumnVector, collationHandler);
+                -1, -1, length, null, redundantColumnVector, collationHandler, accumulator);
     }
 
     @Override

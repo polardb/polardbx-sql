@@ -45,6 +45,10 @@ public class MemoryManager extends AbstractLifecycle {
 
     protected MemoryPool cacheMemoryPool;
 
+    private long procedureCacheLimit = MemorySetting.UNLIMITED_SIZE;
+
+    private long functionCacheLimit = MemorySetting.UNLIMITED_SIZE;
+
     public static MemoryManager getInstance() {
         return instance;
     }
@@ -79,15 +83,20 @@ public class MemoryManager extends AbstractLifecycle {
         tpMemoryPool.setMaxLimit(Math.round(newGlobalLimit * MemorySetting.TP_HIGH_MEMORY_PROPORTION));
         apMemoryPool.setMinLimit(Math.round(newGlobalLimit * MemorySetting.AP_LOW_MEMORY_PROPORTION));
         apMemoryPool.setMaxLimit(Math.round(newGlobalLimit * MemorySetting.AP_HIGH_MEMORY_PROPORTION));
+        procedureCacheLimit = Math.round(newGlobalLimit * MemorySetting.PROCEDURE_CACHE_LIMIT);
+        functionCacheLimit = Math.round(newGlobalLimit * MemorySetting.FUNCTION_CACHE_LIMIT);
         logger.info("The Global Memory Pool size is  " + FileUtils.byteCountToDisplaySize(newGlobalLimit));
     }
 
+    @Deprecated
     public MemoryPool createQueryMemoryPool(boolean ap, String traceId, Map<String, Object> properties) {
-
         long queryMemoryLimit = GeneralUtil.getPropertyLong(
             properties, ConnectionProperties.PER_QUERY_MEMORY_LIMIT,
             MemorySetting.USE_DEFAULT_MEMORY_LIMIT_VALUE);
+        return createQueryMemoryPool(ap, traceId, queryMemoryLimit);
+    }
 
+    private long checkMemoryLimit(long queryMemoryLimit) {
         if (queryMemoryLimit == MemorySetting.USE_DEFAULT_MEMORY_LIMIT_VALUE) {
             // use the default limit value set by drds
             // If not set by user, calculate a default value (1/4 of the general
@@ -96,11 +105,36 @@ public class MemoryManager extends AbstractLifecycle {
             // By default allow a single query to use up to 1/4 memory
             queryMemoryLimit = (long) (globalLimit * MemorySetting.DEFAULT_ONE_QUERY_MAX_MEMORY_PROPORTION);
         }
+        return queryMemoryLimit;
+    }
+
+    public MemoryPool createQueryMemoryPool(boolean ap, String traceId, long queryMemoryLimit) {
+        queryMemoryLimit = checkMemoryLimit(queryMemoryLimit);
 
         if (ap) {
             return apMemoryPool.getOrCreatePool(traceId, queryMemoryLimit, MemoryType.QUERY);
         } else {
             return tpMemoryPool.getOrCreatePool(traceId, queryMemoryLimit, MemoryType.QUERY);
+        }
+    }
+
+    /**
+     * stored procedure or function always use ap memory pool, because we can't estimate it's cost
+     */
+    public MemoryPool createStoredProcedureMemoryPool(String procedureId, long queryMemoryLimit,
+                                                      MemoryPool parentPool) {
+        if (parentPool == null) {
+            return apMemoryPool.getOrCreatePool(procedureId, queryMemoryLimit, MemoryType.STORED_PROCEDURE);
+        } else {
+            return parentPool.getOrCreatePool(procedureId, queryMemoryLimit, MemoryType.STORED_PROCEDURE);
+        }
+    }
+
+    public MemoryPool createStoredFunctionMemoryPool(String procedureId, long queryMemoryLimit, MemoryPool parentPool) {
+        if (parentPool == null) {
+            return apMemoryPool.getOrCreatePool(procedureId, queryMemoryLimit, MemoryType.STORED_FUNCTION);
+        } else {
+            return parentPool.getOrCreatePool(procedureId, queryMemoryLimit, MemoryType.STORED_FUNCTION);
         }
     }
 
@@ -118,5 +152,13 @@ public class MemoryManager extends AbstractLifecycle {
 
     public GlobalMemoryPool getGlobalMemoryPool() {
         return globalMemoryPool;
+    }
+
+    public long getProcedureCacheLimit() {
+        return procedureCacheLimit;
+    }
+
+    public long getFunctionCacheLimit() {
+        return functionCacheLimit;
     }
 }

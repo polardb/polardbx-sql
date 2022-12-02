@@ -79,6 +79,7 @@ public class InformationSchemaTables extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("CHECKSUM", 18, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("CREATE_OPTIONS", 19, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_COMMENT", 20, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("AUTO_PARTITION", 21, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

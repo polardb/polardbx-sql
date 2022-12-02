@@ -125,29 +125,35 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
     }
   }
 
-  /**
-   * Registers a function or operator in the table.
-   */
-  public void register(SqlOperator op) {
-    operators.put(new Key(op.getName(), op.getSyntax()), op);
-  }
-
-  public List<SqlOperator> getOperatorList() {
-    return ImmutableList.copyOf(operators.values());
-  }
-
-  /** Key for looking up operators. The name is stored in upper-case because we
-   * store case-insensitively, even in a case-sensitive session. */
-  private static class Key extends Pair<String, SqlSyntax> {
-    Key(String name, SqlSyntax syntax) {
-      super(name.toUpperCase(Locale.ROOT), normalize(syntax));
+    /**
+     * Registers a function or operator in the table.
+     */
+    public void register(SqlOperator op) {
+        operators.put(new Key(op.getName(), op.getSyntax()), op);
     }
 
-    private static SqlSyntax normalize(SqlSyntax syntax) {
-      switch (syntax) {
-      case BINARY:
-      case PREFIX:
-      case POSTFIX:
+    public void unregister(String name, SqlSyntax sqlSyntax) {
+        operators.removeAll(new Key(name, sqlSyntax));
+    }
+
+    public List<SqlOperator> getOperatorList() {
+        return ImmutableList.copyOf(operators.values());
+    }
+
+    /**
+     * Key for looking up operators. The name is stored in upper-case because we
+     * store case-insensitively, even in a case-sensitive session.
+     */
+    private static class Key extends Pair<String, SqlSyntax> {
+        Key(String name, SqlSyntax syntax) {
+            super(name.toUpperCase(Locale.ROOT), normalize(syntax));
+        }
+
+        private static SqlSyntax normalize(SqlSyntax syntax) {
+            switch (syntax) {
+            case BINARY:
+            case PREFIX:
+            case POSTFIX:
         return syntax;
       default:
         return SqlSyntax.FUNCTION;

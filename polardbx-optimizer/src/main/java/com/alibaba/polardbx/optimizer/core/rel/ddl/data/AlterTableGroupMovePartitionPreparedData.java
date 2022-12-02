@@ -54,6 +54,8 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
         Long tableGroupId = tableGroupConfig.getTableGroupRecord().getId();
         List<PartitionGroupRecord> inVisiblePartitionGroups = new ArrayList<>();
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = getTargetGroupDetailInfoExRecords();
+        List<String> newPartitionNames = new ArrayList<>();
+        List<GroupDetailInfoExRecord> groupDetailInfos = new ArrayList<>();
         for (Map.Entry<String, Set<String>> entry : targetPartitionsLocation.entrySet()) {
             List<GroupDetailInfoExRecord> groupDetailInfoExRecordsForSpecInst =
                 groupDetailInfoExRecords.stream().filter(o -> o.storageInstId.equalsIgnoreCase(entry.getKey())).collect(
@@ -71,8 +73,13 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
                 partitionGroupRecord.locality = "";
                 partitionGroupRecord.pax_group_id = 0L;
                 inVisiblePartitionGroups.add(partitionGroupRecord);
+                newPartitionNames.add(newPartitionName);
+                groupDetailInfos.add(groupDetailInfoExRecordsForSpecInst.get(i % targetDbCount));
             }
         }
         setInvisiblePartitionGroups(inVisiblePartitionGroups);
+        setNewPartitionNames(newPartitionNames);
+        setOldPartitionNames(newPartitionNames);
+        setTargetGroupDetailInfoExRecords(groupDetailInfos);
     }
 }

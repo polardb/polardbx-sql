@@ -1,0 +1,146 @@
+DROP TABLE IF EXISTS `tb2`;
+CREATE TABLE tb2 (
+	id int PRIMARY KEY,
+	a int,
+	UNIQUE INDEX id_index (id)
+);
+SHOW CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE INDEX `id_index` (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE PARTITION TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`id`) PARTITION BY KEY (`id`) PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_id_index` (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_id` USING BTREE (`id`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_id` USING BTREE (`id`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `tb2`;
+CREATE TABLE tb2 (
+	id int PRIMARY KEY,
+	a int,
+	LOCAL INDEX lidx(id),
+	UNIQUE INDEX id_index (a)
+);
+SHOW CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE INDEX `id_index` (`a`),
+	LOCAL KEY `lidx` (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE PARTITION TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_id_index` (`a`),
+	LOCAL KEY `lidx` (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	`a` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	`a` int(11) DEFAULT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `tb2`;
+CREATE TABLE tb2 (
+	id int PRIMARY KEY,
+	a int,
+	UNIQUE LOCAL INDEX luidx (id),
+	UNIQUE INDEX id_index (a)
+);
+SHOW CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE INDEX `id_index` (`a`),
+	UNIQUE LOCAL KEY `luidx` (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `tb2`;
+Table,Create Table
+tb2,CREATE PARTITION TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`a` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE LOCAL KEY `luidx` (`id`),
+	UNIQUE LOCAL KEY `_local_id_index` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	`a` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE `id_index`;
+Table,Create Table
+id_index_$,CREATE TABLE `id_index_$` (
+	`id` int(11) DEFAULT NULL,
+	`a` int(11) DEFAULT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `tb2`;

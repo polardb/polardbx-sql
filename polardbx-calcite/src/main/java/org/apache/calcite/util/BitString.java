@@ -18,6 +18,7 @@ package org.apache.calcite.util;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * String of bits.
@@ -194,14 +195,14 @@ public class BitString {
    * @return BitString
    */
   public static BitString createFromBytes(byte[] bytes) {
-    assert bytes != null;
-    int bitCount = bytes.length * 8;
-    StringBuilder sb = new StringBuilder(bitCount);
+      int bitCount = Objects.requireNonNull(bytes, "bytes").length * 8;
+      StringBuilder sb = new StringBuilder(bitCount);
     for (byte b : bytes) {
-      for (int i = 7; i >= 0; --i) {
-        sb.append(((b & 1) == 0) ? '0' : '1');
-        b >>= 1;
-      }
+        final String s = Integer.toBinaryString(Byte.toUnsignedInt(b));
+        for (int i = s.length(); i < 8; i++) {
+            sb.append('0'); // pad to length 8
+        }
+        sb.append(s);
     }
     return new BitString(sb.toString(), bitCount);
   }

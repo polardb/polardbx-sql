@@ -1,0 +1,35 @@
+drop table if exists tbl_rc;
+CREATE TABLE `tbl_rc` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+insert into tbl_rc values (300,2000,30000,300000,3000000);
+insert into tbl_rc values (300,3000,90000,900000,9000000);
+insert into tbl_rc values (900,2000,90000,900000,9000000);
+insert into tbl_rc values (900,3000,90000,900000,9000000);
+
+explain select a,b from tbl_rc where (a=300 or a=900) and b!=2000 order by a,b,c;
+select a,b from tbl_rc where (a=300 or a=900) and b!=2000 order by a,b,c;
+
+explain select a,b from tbl_rc where a!=100 order by a,b,c;
+select a,b from tbl_rc where a!=100 order by a,b,c;
+
+explain select a,b from tbl_rc where a=300 and (b!=3000 or b!=3000) order by a,b,c;
+select a,b from tbl_rc where a=300 and (b!=3000 or b!=3000) order by a,b,c;
+

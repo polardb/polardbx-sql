@@ -266,7 +266,6 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                                                                        List<ComplexTaskOutlineRecord> subTasks) {
         ComplexTaskTableMetaBean complexTaskTableMetaBean =
             new ComplexTaskTableMetaBean(schemaName, logicalTableName);
-        assert parentTasks.size() == subTasks.size();
         for (ComplexTaskOutlineRecord parentTask : parentTasks) {
             for (ComplexTaskOutlineRecord subTask : subTasks) {
                 if (subTask.getJob_id() == parentTask.getJob_id()) {

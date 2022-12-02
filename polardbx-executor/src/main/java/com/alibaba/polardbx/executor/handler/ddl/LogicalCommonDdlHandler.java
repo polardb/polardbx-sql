@@ -102,7 +102,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         if (executionContext.getDdlContext().isSubJob()){
             return buildSubJobResultCursor(ddlJob, executionContext);
         }
-        return buildResultCursor(logicalDdlPlan, executionContext);
+        return buildResultCursor(logicalDdlPlan, ddlJob, executionContext);
     }
 
     /**
@@ -114,7 +114,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
      * Build a cursor as result, which is empty as default.
      * Some special DDL command could override this method to generate its own result.
      */
-    protected Cursor buildResultCursor(BaseDdlOperation baseDdl, ExecutionContext ec) {
+    protected Cursor buildResultCursor(BaseDdlOperation baseDdl, DdlJob ddlJob, ExecutionContext ec) {
         // Always return 0 rows affected or throw an exception to report error messages.
         // SHOW DDL RESULT can provide more result details for the DDL execution.
         return new AffectRowCursor(new int[] {0});

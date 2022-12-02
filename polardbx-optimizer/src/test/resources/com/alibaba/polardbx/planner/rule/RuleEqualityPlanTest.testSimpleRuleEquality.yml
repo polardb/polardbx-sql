@@ -232,8 +232,7 @@
         a.id>5;
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_tb_no_shard,test_tb2_no_shard", sql="SELECT `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` FROM `test_tb_no_shard` AS `a` INNER JOIN `test_tb2_no_shard` AS `b` ON ((`a`.`id` = `b`.`id`) AND (`a`.`create_time` = `b`.`modify_time`)) WHERE (`a`.`id` > 5)")
+    logicalview(tables="optest_0000.test_tb_no_shard,test_tb2_no_shard", sql="select `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` from `test_tb_no_shard` as `a` inner join `test_tb2_no_shard` as `b` on ((`a`.`id` = `b`.`id`) and (`a`.`create_time` = `b`.`modify_time`)) where (`a`.`id` > 5)")
 
 - sql: |
     /*+TDDL:enable_broadcast_random_read=false*/
@@ -249,8 +248,7 @@
         a.id>5;
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_tb_broadcast,test_tb2_broadcast", sql="SELECT `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` FROM `test_tb_broadcast` AS `a` INNER JOIN `test_tb2_broadcast` AS `b` ON ((`a`.`id` = `b`.`id`) AND (`a`.`create_time` = `b`.`modify_time`)) WHERE (`a`.`id` > 5)")
+    logicalview(tables="optest_0000.test_tb_broadcast,test_tb2_broadcast", sql="select `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` from `test_tb_broadcast` as `a` inner join `test_tb2_broadcast` as `b` on ((`a`.`id` = `b`.`id`) and (`a`.`create_time` = `b`.`modify_time`)) where (`a`.`id` > 5)")
 
 - sql: |
     select *
@@ -265,8 +263,7 @@
         a.id>5;
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_tb_no_shard,test_tb_broadcast", sql="SELECT `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` FROM `test_tb_no_shard` AS `a` INNER JOIN `test_tb_broadcast` AS `b` ON ((`a`.`id` = `b`.`id`) AND (`a`.`create_time` = `b`.`modify_time`)) WHERE (`a`.`id` > 5)")
+    logicalview(tables="optest_0000.test_tb_no_shard,test_tb_broadcast", sql="select `a`.`id`, `a`.`name`, `a`.`sk`, `a`.`create_time`, `a`.`modify_time`, `b`.`id`, `b`.`name`, `b`.`sk`, `b`.`create_time`, `b`.`modify_time` from `test_tb_no_shard` as `a` inner join `test_tb_broadcast` as `b` on ((`a`.`id` = `b`.`id`) and (`a`.`create_time` = `b`.`modify_time`)) where (`a`.`id` > 5)")
 
 - sql: |
     select *
@@ -387,5 +384,5 @@
         a.MemberId=11;
 
   plan: |
-    PhyTableOperation(tables="optest_0003.[testorder]", sql="SELECT `a`.`Id`, `a`.`Source`, `a`.`Type`, `a`.`OriOrderId`, `a`.`MemberId` FROM ? AS `a` WHERE (`a`.`MemberId` = 11)")
+    phytableoperation(tables="optest_0003.[testorder]", sql="select `a`.`id`, `a`.`source`, `a`.`type`, `a`.`oriorderid`, `a`.`memberid` from ? as `a` where (`a`.`memberid` = 11)")
 

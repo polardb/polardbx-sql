@@ -39,9 +39,9 @@ create global unique index `agsi_4` on `t_order_2`(`order_id`) partition by key(
 
 create index `agsi_0b` using btree on `t_order_0`(`order_id`);
 create unique index `agsi_1b` using btree on `t_order_0`(`order_id`,`seller_id`);
-create global index `agsi_2b` using hash on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
+create global index `agsi_2b` using btree on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
 create unique global index `agsi_3b` using btree on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
-create global unique index `agsi_4b` using hash on `t_order_2`(`order_id`) partition by key(`order_id`) partitions 2;
+create global unique index `agsi_4b` using btree on `t_order_2`(`order_id`) partition by key(`order_id`) partitions 2;
 
 alter table `t_order_0` add index `agsi_5` (`order_id`);
 alter table `t_order_0` add unique index `agsi_6` (`order_id`,`seller_id`);
@@ -49,10 +49,10 @@ alter table `t_order_1` add global index `agsi_7` (`order_id`) partition by key(
 alter table `t_order_1` add unique global index `agsi_8` (`order_id`) partition by key(`order_id`) partitions 2;
 alter table `t_order_2` add global unique index `agsi_9` (`order_id`) partition by key(`order_id`) partitions 2;
 
-alter table `t_order_0` add index `agsi_5b` using hash (`order_id`);
-alter table `t_order_0` add unique index `agsi_6b` using hash (`order_id`,`seller_id`);
+alter table `t_order_0` add index `agsi_5b` using btree (`order_id`);
+alter table `t_order_0` add unique index `agsi_6b` using btree (`order_id`,`seller_id`);
 alter table `t_order_1` add global index `agsi_7b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
-alter table `t_order_1` add unique global index `agsi_8b` using hash (`order_id`) partition by key(`order_id`) partitions 2;
+alter table `t_order_1` add unique global index `agsi_8b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
 alter table `t_order_2` add global unique index `agsi_9b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
 
 show full create table agsi_0;

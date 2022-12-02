@@ -108,6 +108,30 @@ public class DeleteGsiTest extends GsiDMLTest {
         executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params);
     }
 
+    private void prepareDataForTable(String tableName) {
+        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) ? hint + "insert " : "insert " + hint) + " into "
+            + tableName
+            + " (pk,integer_test,bigint_test,varchar_test,datetime_test,year_test,char_test,smallint_test)"
+            + " values (?,?,?,?,?,?,?,?)";
+
+        List<List<Object>> params = new ArrayList<List<Object>>();
+        for (int i = 0; i < 20; i++) {
+            List<Object> param = new ArrayList<Object>();
+            param.add(i);
+            param.add(i);
+            param.add(i * 100);
+            param.add("test" + i);
+            param.add(columnDataGenerator.datetime_testValue);
+            param.add(2000 + i);
+            param.add(columnDataGenerator.char_testValue);
+            param.add(i);
+
+            params.add(param);
+        }
+
+        executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params);
+    }
+
     /**
      * delete one row
      */
@@ -264,6 +288,7 @@ public class DeleteGsiTest extends GsiDMLTest {
      */
     @Test
     public void deleteMultipleTablesTest() throws Exception {
+        prepareDataForTable(baseTwoTableName);
         String sql = String.format(hint + "delete %s from %s inner join %s where %s.pk=%s.pk",
             baseOneTableName,
             baseOneTableName,
@@ -276,7 +301,33 @@ public class DeleteGsiTest extends GsiDMLTest {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param);
 
         sql = hint + "select * from " + baseOneTableName;
-        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+
+        assertIndexSame(baseOneTableName);
+
+        assertRouteCorrectness(baseOneTableName);
+    }
+
+    /**
+     * delete join
+     */
+    @Test
+    public void deleteMultipleTablesByMultiTest() throws Exception {
+        prepareDataForTable(baseTwoTableName);
+        String tHint = " /*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+        String sql = String.format(hint + tHint + "delete %s from %s inner join %s where %s.pk=%s.pk",
+            baseOneTableName,
+            baseOneTableName,
+            baseTwoTableName,
+            baseOneTableName,
+            baseTwoTableName);
+
+        List<Object> param = new ArrayList<Object>();
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param);
+
+        sql = hint + "select * from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
 
         assertIndexSame(baseOneTableName);
 

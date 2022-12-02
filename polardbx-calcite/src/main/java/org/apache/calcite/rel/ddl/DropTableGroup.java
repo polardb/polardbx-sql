@@ -22,7 +22,6 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.sql.SqlCreateTableGroup;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlDropTableGroup;
 
@@ -39,9 +38,12 @@ public class DropTableGroup extends DDL {
         super(cluster, traits, ddl, rowType);
         this.sqlNode = ddl;
     }
-    public static DropTableGroup create(SqlDropTableGroup sqlDropTableGroup, RelDataType rowType, RelOptCluster cluster) {
+
+    public static DropTableGroup create(SqlDropTableGroup sqlDropTableGroup, RelDataType rowType,
+                                        RelOptCluster cluster) {
         return new DropTableGroup(cluster, cluster.traitSetOf(Convention.NONE), sqlDropTableGroup, rowType);
     }
+
     @Override
     public DropTableGroup copy(RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);

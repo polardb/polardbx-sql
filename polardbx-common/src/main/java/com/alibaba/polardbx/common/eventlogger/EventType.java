@@ -28,9 +28,23 @@ public enum EventType {
     MOVE_DATABASE_PENDING(EventLevel.WARN),
 
     DEAD_LOCK_DETECTION(EventLevel.INFO),
+
+    /**
+     * DN need do ha
+     */
     DN_HA(EventLevel.INFO),
+
+    /**
+     * event for creating db with mode=auto
+     */
+    CREATE_AUTO_MODE_DB(EventLevel.WARN),
     ONLINE(EventLevel.INFO),
-    OFFLINE(EventLevel.INFO);
+    OFFLINE(EventLevel.INFO),
+
+    /**
+     * MODULE unexpected critical log
+     */
+    MODULE_ERROR(EventLevel.WARN);
 
     private final EventLevel level;
 

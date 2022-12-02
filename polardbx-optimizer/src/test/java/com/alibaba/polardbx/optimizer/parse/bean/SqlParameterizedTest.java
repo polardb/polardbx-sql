@@ -31,7 +31,7 @@ public class SqlParameterizedTest {
             "select * from t where integer_test in (1, '2', 9223372036854775807, 18446744073709551615, 18446744073709551616, 8.8)",
             "SELECT *\n"
                 + "FROM t\n"
-                + "WHERE integer_test IN (?, ?, ?, ?, ?, ?)",
+                + "WHERE integer_test IN (?)",
             72098196L);
 
         doTest(
@@ -40,7 +40,7 @@ public class SqlParameterizedTest {
                 + "FROM t\n"
                 + "WHERE varchar_test = ?\n"
                 + "\tAND decimal_test = concat(?)\n"
-                + "\tAND integer_test IN (?, ?, ?)",
+                + "\tAND integer_test IN (?)",
             72513720L);
 
         // test int, varchar, bigint, bigint_unsigned, decimal.
@@ -81,7 +81,7 @@ public class SqlParameterizedTest {
 
     private void doTest(String sql, String expectedParameterizedSql, long expectTypeDigest) {
         Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter);
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter, false);
         Assert.assertEquals(expectedParameterizedSql, sqlParameterized.getSql());
         Assert.assertEquals(expectTypeDigest, sqlParameterized.getDigest());
     }

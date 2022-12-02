@@ -68,6 +68,7 @@ import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
@@ -89,6 +90,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
+import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
 public class GsiUtils {
 
@@ -401,6 +403,35 @@ public class GsiUtils {
                 indexTableName,
                 indexTableName,
                 nullable(primaryTableMeta, columnName),
+                "NULL",
+                1,
+                indexStatus,
+                0,
+                "NULL",
+                seqInIndex,
+                columnName));
+            seqInIndex++;
+        }
+        return indexRecords;
+    }
+
+    public static List<IndexRecord> buildIndexMetaByAddColumns(List<String> columnNames,
+                                                               String schemaName,
+                                                               String tableName,
+                                                               String indexTableName,
+                                                               boolean nullable,
+                                                               int seqInIndex,
+                                                               IndexStatus indexStatus) {
+        final List<IndexRecord> indexRecords = new ArrayList<>();
+        final String catalog = DEFAULT_CATALOG;
+
+        for (String columnName : columnNames) {
+            indexRecords.add(indexCoveringRecord(catalog,
+                schemaName,
+                tableName,
+                indexTableName,
+                indexTableName,
+                nullable ? "YES" : "",
                 "NULL",
                 1,
                 indexStatus,
@@ -778,7 +809,8 @@ public class GsiUtils {
 
     public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, String schema, String tableName,
                                                                  String indexName, String physicalDb,
-                                                                 String physicalTable, long columnIndex) {
+                                                                 String physicalTable, long columnIndex,
+                                                                 String extra) {
         return new BackfillObjectRecord(-1,
             jobId,
             schema,
@@ -796,13 +828,14 @@ public class GsiUtils {
             0,
             new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
             new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-            "");
+            extra);
     }
 
     public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, String schema, String tableName,
                                                                  String indexName, String physicalDb,
                                                                  String physicalTable, long columnIndex,
-                                                                 String paramMethod, String maxValue) {
+                                                                 String paramMethod, String lastValue,
+                                                                 String maxValue, String extra) {
         return new BackfillObjectRecord(-1,
             jobId,
             schema,
@@ -813,14 +846,14 @@ public class GsiUtils {
             physicalTable,
             columnIndex,
             paramMethod,
-            null,
+            lastValue,
             maxValue,
             BackfillStatus.INIT.getValue(),
             "",
             0,
             new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
             new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-            "");
+            extra);
     }
 
     public static <R> R wrapWithDistributedTrx(ITransactionManager tm, ExecutionContext baseEc,
@@ -883,7 +916,7 @@ public class GsiUtils {
         return GeneralUtil.isEmpty(row) ? "" : row.entrySet()
             .stream()
             .sorted(Comparator.comparingInt(Entry::getKey))
-            .map(e -> String.valueOf(e.getValue().getArgs()[1]))
+            .map(e -> e.getValue() == null ? "null" : String.valueOf(e.getValue().getArgs()[1]))
             .collect(Collectors.joining(","));
     }
 
@@ -921,5 +954,17 @@ public class GsiUtils {
                 }
             }
         } while (true);
+    }
+
+    /**
+     * create gsi for repartition
+     *
+     * @return randomGsiName
+     */
+    public static String generateRandomGsiName(String logicalSourceTableName) {
+        String randomSuffix =
+            RandomStringUtils.randomAlphanumeric(RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME).toLowerCase();
+        String targetTableName = logicalSourceTableName + "_" + randomSuffix;
+        return targetTableName;
     }
 }

@@ -19,6 +19,8 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 
 import java.sql.Types;
 
@@ -62,5 +64,14 @@ public class VarcharType extends SliceType {
     @Override
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_VAR_STRING;
+    }
+
+    @Override
+    public Slice convertFrom(Object value) {
+        if (getCharsetName() == CharsetName.BINARY && value instanceof byte[]) {
+            return Slices.wrappedBuffer((byte[]) value);
+        } else {
+            return super.convertFrom(value);
+        }
     }
 }

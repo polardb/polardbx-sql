@@ -24,12 +24,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLBlockStatement extends SQLStatementImpl {
-    private String             labelName;
-    private String             endLabel;
-    private List<SQLParameter> parameters    = new ArrayList<SQLParameter>();
+    private String labelName;
+    private String endLabel;
+    private List<SQLParameter> parameters = new ArrayList<SQLParameter>();
     private List<SQLStatement> statementList = new ArrayList<SQLStatement>();
-    public SQLStatement        exception;
-    private boolean            endOfCommit;
+    public SQLStatement exception;
+    private boolean endOfCommit;
+    private boolean implicit = false;
 
     public SQLBlockStatement() {
 
@@ -42,7 +43,7 @@ public class SQLBlockStatement extends SQLStatementImpl {
     public void setStatementList(List<SQLStatement> statementList) {
         this.statementList = statementList;
     }
-    
+
     public String getLabelName() {
         return labelName;
     }
@@ -92,6 +93,7 @@ public class SQLBlockStatement extends SQLStatementImpl {
         SQLBlockStatement x = new SQLBlockStatement();
         x.labelName = labelName;
         x.endLabel = endLabel;
+        x.implicit = implicit;
 
         for (SQLParameter p : parameters) {
             SQLParameter p2 = p.clone();
@@ -128,5 +130,13 @@ public class SQLBlockStatement extends SQLStatementImpl {
 
     public void setEndOfCommit(boolean value) {
         this.endOfCommit = value;
+    }
+
+    public void setImplicit(boolean implicit) {
+        this.implicit = implicit;
+    }
+
+    public boolean isImplicit() {
+        return implicit;
     }
 }

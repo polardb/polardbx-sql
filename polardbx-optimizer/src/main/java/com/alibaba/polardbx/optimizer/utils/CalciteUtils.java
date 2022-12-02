@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.utils;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -288,7 +289,8 @@ public class CalciteUtils {
         return columnMeta;
     }
 
-    public static List<ColumnMeta> buildColumnMeta(RelDataType dataType, List<String> tableNames) {
+    public static List<ColumnMeta> buildColumnMeta(RelDataType dataType, List<String> tableNames,
+                                                   List<TableMeta> tableMetas) {
         if (tableNames == null) {
             return buildColumnMeta(dataType, "");
         }
@@ -298,12 +300,16 @@ public class CalciteUtils {
         if (relDataTypeList.size() != tableNames.size()) {
             return buildColumnMeta(dataType, "");
         }
+        if (tableMetas != null && tableMetas.size() != tableNames.size()) {
+            return buildColumnMeta(dataType, "");
+        }
 
         for (int i = 0; i < relDataTypeList.size(); i++) {
             final RelDataTypeField relDataTypeField = relDataTypeList.get(i);
             final RelDataType relDataType = relDataTypeField.getType();
-
-            Field field = new Field(tableNames.get(i), relDataTypeField.getName(), relDataType);
+            final boolean isPrimary = tableMetas != null && tableMetas.get(i) != null
+                && tableMetas.get(i).getPrimaryKeyMap().containsKey(relDataTypeField.getName());
+            Field field = new Field(tableNames.get(i), relDataTypeField.getName(), relDataType, isPrimary);
             columnMeta.add(new ColumnMeta(tableNames.get(i), relDataTypeField.getName(), null, field));
         }
         return columnMeta;

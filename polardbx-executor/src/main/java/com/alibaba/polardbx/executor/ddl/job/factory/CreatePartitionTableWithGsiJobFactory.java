@@ -83,7 +83,6 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         ExecutableDdlJob result = new ExecutableDdlJob();
-
         boolean isAutoPartition = this.preparedData.getPrimaryTablePreparedData().isAutoPartition();
 
         PhysicalPlanData physicalPlanData =
@@ -92,14 +91,20 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                 primaryTablePhysicalPlans,
                 false,
                 isAutoPartition);
-        ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable)
+        ExecutableDdlJob thisParentJob =
             new CreatePartitionTableJobFactory(preparedData.getPrimaryTablePreparedData().isAutoPartition(),
                 preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault(),
                 preparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues(),
                 physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null).create();
+        if (preparedData.getPrimaryTablePreparedData().isNeedToGetTableGroupLock()) {
+            return thisParentJob;
+        }
+
+        ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable) thisParentJob;
+        ;
         createTableJob.removeTaskRelationship(
-                createTableJob.getCreateTableAddTablesMetaTask(),
-                createTableJob.getCdcDdlMarkTask()
+            createTableJob.getCreateTableAddTablesMetaTask(),
+            createTableJob.getCdcDdlMarkTask()
         );
         result.combineTasks(createTableJob);
         result.addExcludeResources(createTableJob.getExcludeResources());
@@ -107,12 +112,16 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
             final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
-            ExecutableDdlJob4CreatePartitionGsi gsiJob = (ExecutableDdlJob4CreatePartitionGsi)
+            ExecutableDdlJob thisJob =
                 CreatePartitionGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
+            if (gsiPreparedData.isNeedToGetTableGroupLock()) {
+                return thisJob;
+            }
+            ExecutableDdlJob4CreatePartitionGsi gsiJob = (ExecutableDdlJob4CreatePartitionGsi) thisJob;
             result.combineTasks(gsiJob);
             result.addTaskRelationship(
-                    createTableJob.getCreateTableAddTablesMetaTask(),
-                    gsiJob.getCreateGsiValidateTask()
+                createTableJob.getCreateTableAddTablesMetaTask(),
+                gsiJob.getCreateGsiValidateTask()
             );
             result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
             result.addExcludeResources(gsiJob.getExcludeResources());
@@ -122,7 +131,6 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             result.addTaskRelationship(gsiJob.getCreateGsiPreCheckTask(),
                 createTableJob.getCreateTableAddTablesPartitionInfoMetaTask());
         }
-
         return result;
     }
 

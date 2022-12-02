@@ -73,7 +73,7 @@ public class InformationSchemaPlanCacheHandler extends BaseVirtualViewSubClassHa
                     final String sql = DataTypes.StringType.convertFrom(row.get("SQL"));
                     final Long typeDigest = DataTypes.LongType.convertFrom(row.get("TYPE_DIGEST"));
                     final String plan = DataTypes.StringType.convertFrom(row.get("PLAN"));
-
+                    String parameter = DataTypes.StringType.convertFrom(row.get("PARAMETER"));
                     cursor.addRow(new Object[] {
                         host,
                         schemaName,
@@ -82,7 +82,8 @@ public class InformationSchemaPlanCacheHandler extends BaseVirtualViewSubClassHa
                         hitCount,
                         sql,
                         typeDigest,
-                        plan
+                        plan,
+                        parameter
                     });
                 }
             }

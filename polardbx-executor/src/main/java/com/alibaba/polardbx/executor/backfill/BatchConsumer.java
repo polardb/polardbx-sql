@@ -27,7 +27,7 @@ import java.util.Map;
 public interface BatchConsumer {
 
     default void consume(List<Map<Integer, ParameterContext>> batch,
-                         Pair<ExecutionContext, String> extractEcAndIndexPair) {
+                         Pair<ExecutionContext, Pair<String, String>> extractEcAndIndexPair) {
         throw new UnsupportedOperationException();
     }
 

@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.executor.archive.writer;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -89,7 +105,7 @@ public class OSSBackFillChecker {
     /**
      * check whether the orc file is right or not
      */
-    boolean checkTable(int fileIndex, ExecutionContext ec) {
+    boolean checkTable(ExecutionContext ec) {
         // read orc files
         Path path = new Path(localFilePath);
 
@@ -99,8 +115,7 @@ public class OSSBackFillChecker {
 
         try (Reader reader = OrcFile.createReader(path, OrcFile.readerOptions(conf));
             RecordReader rows = reader.rows(readerOptions);
-            DBCursor cursor = new DBCursor(
-                ec, fileIndex)) {
+            DBCursor cursor = new DBCursor(ec)) {
 
             VectorizedRowBatch batch = reader.getSchema().createRowBatch();
             Row row = null;
@@ -119,7 +134,7 @@ public class OSSBackFillChecker {
                         ResultSet rs = ((ResultSetRow) row).getResultSet();
                         ResultSetCursorExec
                             .buildOneRow(rs, dataTypes.stream().toArray(DataType[]::new),
-                                dbBlockBuilder);
+                                dbBlockBuilder, ec);
                     } else if (row instanceof IXRowChunk) {
                         // XResult and deal with new interface.
                         ((IXRowChunk) row)
@@ -128,7 +143,7 @@ public class OSSBackFillChecker {
                     } else {
                         ResultSetCursorExec
                             .buildOneRow(row, dataTypes.stream().toArray(DataType[]::new),
-                                dbBlockBuilder);
+                                dbBlockBuilder, ec);
                     }
                     blockLen++;
                 }
@@ -231,9 +246,8 @@ public class OSSBackFillChecker {
         PhyTableOperation plan;
         Cursor extractCursor;
         ExecutionContext ec;
-        int fileIndex;
 
-        DBCursor(ExecutionContext ec, int fileIndex) {
+        DBCursor(ExecutionContext ec) {
 
             info = Extractor.buildExtractorInfo(ec, sourceLogicalSchemaName,
                 sourceLogicalTableName, sourceLogicalTableName);
@@ -241,16 +255,13 @@ public class OSSBackFillChecker {
             // build the plan
             final PhysicalPlanBuilder builder =
                 new PhysicalPlanBuilder(sourceLogicalSchemaName, ec);
-            planWithoutLower = new PhyTableOperation(
-                builder.buildSelectForBackfill(info, false, true,
-                    SqlSelect.LockMode.SHARED_LOCK, physicalPartitionName));
+            planWithoutLower = builder.buildSelectForBackfill(info, false, true,
+                SqlSelect.LockMode.SHARED_LOCK, physicalPartitionName);
 
-            plan = new PhyTableOperation(
-                builder.buildSelectForBackfill(info, true, true,
-                    SqlSelect.LockMode.SHARED_LOCK, physicalPartitionName));
+            plan = builder.buildSelectForBackfill(info, true, true,
+                SqlSelect.LockMode.SHARED_LOCK, physicalPartitionName);
             this.ec = ec;
             extractCursor = null;
-            this.fileIndex = fileIndex;
         }
 
         Row next(Row lastRow) {

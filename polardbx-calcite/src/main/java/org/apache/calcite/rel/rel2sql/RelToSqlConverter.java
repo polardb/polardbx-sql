@@ -68,7 +68,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlReplace;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUpdate;
-import org.apache.calcite.sql.dialect.CalciteSqlDialect;
+import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlSingleValueAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -763,7 +763,29 @@ public class RelToSqlConverter extends SqlImplementor
       // Put it in ordinalMap
       ordinalMap.put(lowerName, node);
     } else if (alias == null || !alias.equals(name)) {
-      node = as(node, name);
+        if (lowerName.startsWith("gen$")) {
+            if (null == alias) {
+                alias = SqlUtil.deriveAliasFromSqlNode(node);
+            }
+            // check duplicate name
+            boolean duplicate_exists = false;
+            for (SqlNode check_node : selectList) {
+                String check_name = SqlValidatorUtil.getAlias(check_node, -1);
+                if (null == check_name) {
+                    check_name = SqlUtil.deriveAliasFromSqlNode(check_node);
+                }
+                // place holder return null
+                if (check_name.equals(alias)) {
+                    duplicate_exists = true;
+                    break;
+                }
+            }
+            if (duplicate_exists) {
+                node = as(node, name);
+            }
+        } else {
+            node = as(node, name);
+        }
     }
     selectList.add(node);
   }

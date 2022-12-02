@@ -25,6 +25,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.utils.VariableProxy;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.planmanager.SystemTableBaselineInfo;
@@ -49,10 +50,10 @@ public class ReloadUtils {
         }
         executorContext.getSequenceManager().destroy();
         optimizerContext.getRuleManager().destroy();
+        // TODO yuehan check this
+//        GsiMetaManager.invalidateCache(executorContext.getTopologyHandler().getAppName());
         SystemTableTableStatistic.invalidateAll();
-        SystemTableColumnStatistic.invalidateAll();
-        SystemTableBaselineInfo.invalidateAll();
-        SystemTablePlanInfo.invalidateAll();
+//        SystemTableColumnStatistic.invalidateAll();
         SystemTableView.invalidateAll();
 
         executorContext.getTopologyHandler().reload();
@@ -77,6 +78,6 @@ public class ReloadUtils {
     }
 
     public enum ReloadType {
-        USERS, SCHEMA, DATASOURCES;
+        USERS, SCHEMA, DATASOURCES, FILESTORAGE, PROCEDURES, FUNCTIONS;
     }
 }

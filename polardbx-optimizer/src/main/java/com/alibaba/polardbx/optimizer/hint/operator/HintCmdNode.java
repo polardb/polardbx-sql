@@ -99,4 +99,16 @@ public class HintCmdNode extends BaseHintOperator implements HintCmdOperator {
     protected List<HintArgKey> getArgKeys() {
         return HintArgKey.NODE_HINT;
     }
+
+    public boolean isNodeZero() {
+        if (this.groups.size() == 1) {
+            try {
+                int groupIndex = Integer.valueOf(this.groups.get(0));
+                return groupIndex == 0;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        return false;
+    }
 }

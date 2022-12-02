@@ -41,7 +41,7 @@ public class DropPartitionTableValidateTask extends BaseValidateTask {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.tableGroupIds = tableGroupIds;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override

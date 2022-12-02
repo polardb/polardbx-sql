@@ -61,6 +61,11 @@ public class LogUtils {
         recordSql(c, "", sql, endTimeNano, ex != null ? -1 : 0);
     }
 
+    public static void recordSql(ServerConnection c, ByteString sql, boolean success) {
+        long endTimeNano = System.nanoTime();
+        recordSql(c, "", sql, endTimeNano, success ? 0 : -1);
+    }
+
     public static void recordSql(ServerConnection c, String tag, ByteString sql, long endTimeNano, long affectedRows) {
         recordSql(c, tag, sql, null, null, affectedRows, endTimeNano, null, null, null, WorkloadType.TP, null, null,
             false);
@@ -75,7 +80,7 @@ public class LogUtils {
         tagInfo.append("[prepare] ");
         tagInfo.append("[stmt:").append(stmtId).append("]");
         recordSql(c, tagInfo.toString(), sql, null, null, affectedRows, endTimeNano, null, null, null, WorkloadType.TP,
-            null, null, false);
+            null, null, true);
     }
 
     public static void recordSql(ServerConnection c, String tag, ByteString sqlBytes,
@@ -121,12 +126,14 @@ public class LogUtils {
                 RuntimeStatistics runTimeStat = metrics.runTimeStat;
                 if (runTimeStat != null && runTimeStat.isRunningWithCpuProfile()) {
                     statMetrics = runTimeStat.toMetrics();
+                    runTimeStat.setStoredMetrics(statMetrics);
                 }
             }
 
             long sqlBeginTs = c.getSqlBeginTimestamp();
             long startTime = c.getLastActiveTime();
-            long duration = (endTimeNano - startTime) / 1000; // milliseconds
+            // microseconds
+            long duration = (endTimeNano - startTime) / 1000;
 
             StringBuilder sqlInfo = new StringBuilder();
             if (tag != null && !tag.isEmpty()) {
@@ -188,7 +195,7 @@ public class LogUtils {
                 cclSqlMetric = new CclSqlMetric();
                 cclSqlMetric.setSchemaName(schema.getName());
                 cclSqlMetric.setOriginalSql(sqlBytes.toString());
-                cclSqlMetric.setResponseTime(duration/1000);
+                cclSqlMetric.setResponseTime(duration /1000);
                 cclSqlMetric.setAffectedRows(affectRow);
                 if (metrics != null && metrics.runTimeStat != null && metrics.runTimeStat.getSqlType() != null) {
                     cclSqlMetric.setSqlType(metrics.runTimeStat.getSqlType().getI());

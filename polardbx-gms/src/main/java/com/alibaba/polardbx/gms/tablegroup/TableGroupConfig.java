@@ -70,10 +70,12 @@ public class TableGroupConfig {
 
     public TableGroupConfig(TableGroupRecord tableGroupRecord,
                             List<PartitionGroupRecord> partitionGroupRecords,
-                            List<TablePartRecordInfoContext> tables) {
+                            List<TablePartRecordInfoContext> tables,
+                            String locality) {
         this.tableGroupRecord = tableGroupRecord;
         this.partitionGroupRecords = partitionGroupRecords;
         this.tables = tables;
+        this.localityDesc = LocalityDesc.parse(locality);
     }
 
     /**
@@ -133,6 +135,14 @@ public class TableGroupConfig {
             CollectionUtils.isEmpty(this.tables);
     }
 
+    public boolean isManuallyCreated() {
+        return tableGroupRecord != null && tableGroupRecord.manual_create == 1;
+    }
+
+    public boolean isAutoSplit() {
+        return tableGroupRecord != null && tableGroupRecord.auto_split_policy != 0;
+    }
+
     public boolean containsTable(String tableName) {
         if (tables == null) {
             return false;
@@ -165,5 +175,17 @@ public class TableGroupConfig {
             }
         }
         return res;
+    }
+
+    public static TableGroupConfig copyWithoutTables(TableGroupConfig source) {
+        if (source == null) {
+            return null;
+        }
+        TableGroupConfig tableGroupConfig = new TableGroupConfig();
+        tableGroupConfig.tableGroupRecord = source.tableGroupRecord;
+        tableGroupConfig.partitionGroupRecords = source.partitionGroupRecords;
+        tableGroupConfig.tables = new ArrayList<>();
+        tableGroupConfig.localityDesc = source.localityDesc;
+        return tableGroupConfig;
     }
 }

@@ -29,6 +29,14 @@ public enum DdlType {
     CREATE_INDEX,
     DROP_INDEX,
 
+    CREATE_FUNCTION,
+    DROP_FUNCTION,
+    CREATE_PROCEDURE,
+    DROP_PROCEDURE,
+    ALTER_PROCEDURE,
+    ALTER_FUNCTION,
+    PUSH_DOWN_UDF,
+
     CREATE_GLOBAL_INDEX,
     ALTER_GLOBAL_INDEX,
     DROP_GLOBAL_INDEX,
@@ -43,13 +51,16 @@ public enum DdlType {
     REFRESH_TOPOLOGY,
     ;
 
-    public static boolean needDefaultDdlShareLock(DdlType type){
-        if(type == null){
+    public static boolean needDefaultDdlShareLock(DdlType type) {
+        if (type == null) {
             return true;
         }
-        switch (type){
+        switch (type) {
         case REFRESH_TOPOLOGY:
         case REBALANCE:
+        case CREATE_FUNCTION:
+        case DROP_FUNCTION:
+        case PUSH_DOWN_UDF:
             return false;
         default:
             return true;

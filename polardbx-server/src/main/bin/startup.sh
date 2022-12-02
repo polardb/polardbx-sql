@@ -346,7 +346,6 @@ if [ x"$enable_bianque" == "xtrue" ]; then
   fi
 fi
 
-
 if [ ! -d $base_log ] ; then
 	mkdir -p $base_log
 fi
@@ -380,7 +379,7 @@ if [ -f $pidfile ] ; then
   fi
 fi
 
-JavaVersion=`$JAVA -version 2>&1 |awk 'NR==1{ gsub(/"/,""); print $3 }' | awk  -F '.' '{print $1}'`
+JavaVersion=`$JAVA -version 2>&1 |awk -F "version" '{print $2}' | sed -e '/^$/d' -e 's/"//g' | awk 'NR==1{ gsub(/"/,""); print $1}' | awk -F "." '{print $1}'`
 
 if [ -f $pidfile ] ; then
 	echo "found $pidfile , Please run shutdown.sh first ,then startup.sh" 2>&2
@@ -400,21 +399,21 @@ if [ -n "$str" ]; then
     fi
 
     if [ $freecount -lt 2048 ] ; then
-        JAVA_OPTS="-server -Xms1024m -Xmx1024m"
+        JAVA_OPTS="-server -Xms1024m -Xmx1024m "
     elif [ $freecount -le 4096 ] ; then
-        JAVA_OPTS="-server -Xms2g -Xmx2g"
+        JAVA_OPTS="-server -Xms2g -Xmx2g "
     elif [ $freecount -le 8192 ] ; then
-        JAVA_OPTS="-server -Xms4g -Xmx4g"
+        JAVA_OPTS="-server -Xms4g -Xmx4g "
     elif [ $freecount -le 16384 ] ; then
-        JAVA_OPTS="-server -Xms10g -Xmx10g"
+        JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
     elif [ $freecount -le 32768 ] ; then
-        JAVA_OPTS="-server -Xms24g -Xmx24g"
+        JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
     elif [ $freecount -le 65536 ] ; then
-        JAVA_OPTS="-server -Xms50g -Xmx50g"
+        JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
     elif [ $freecount -le 131072 ] ; then
-        JAVA_OPTS="-server -Xms110g -Xmx110g"
+        JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=24g"
     elif [ $freecount -gt 131072 ] ; then
-        JAVA_OPTS="-server -Xms120g -Xmx120g"
+        JAVA_OPTS="-server -Xms120g -Xmx120g -XX:MaxDirectMemorySize=32g"
     fi
 else
 	echo "not support 32-bit java startup"
@@ -423,11 +422,8 @@ fi
 
 #2.6.32-220.23.2.al.ali1.1.alios6.x86_64 not support Wisp2
 if [ "$wisp" == "wisp" ] && [ "$KERNEL_VERSION" != "2.6.32-220.23.2.al.ali1.1.alios6.x86_64" ]; then
-    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2 -Dio.grpc.netty.shaded.io.netty.transport.noNative=true"
+    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2 -Dio.grpc.netty.shaded.io.netty.transport.noNative=true -Dio.netty.transport.noNative=true"
 fi
-
-#disable netty-native in order to support Wisp2
-TDDL_OPTS=" $TDDL_OPTS -Dio.grpc.netty.shaded.io.netty.transport.noNative=true -Dio.netty.transport.noNative=true"
 
 # in docker container, limit cpu cores
 if [ x"$cpu_cores" != "x" ]; then
@@ -459,7 +455,6 @@ fi
 export LD_LIBRARY_PATH=../lib/native
 
 JAVA_OPTS=" $JAVA_OPTS -Djava.awt.headless=true -Dcom.alibaba.java.net.VTOAEnabled=true -Djava.net.preferIPv4Stack=true -Dfile.encoding=UTF-8 -Ddruid.logType=slf4j"
-JAVA_OPTS=" $JAVA_OPTS -Xloggc:$base_log/gc.log -XX:+PrintGCDetails "
 
 if [ $JavaVersion -ge 11 ] ; then
   JAVA_OPTS=" $JAVA_OPTS -Xlog:gc*:$base_log/gc.log:time "
@@ -468,9 +463,7 @@ else
   JAVA_OPTS=" $JAVA_OPTS -Xloggc:$base_log/gc.log -XX:+PrintGCDetails "
   JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime"
 fi
-
-JAVA_OPTS=" $JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$base_log -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=$base_log/hs_err_pid%p.log"
-
+JAVA_OPTS=" $JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$base_log  -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=$base_log/hs_err_pid%p.log"
 # JAVA_OPTS=" $JAVA_OPTS -XX:+UseWisp2"
 TDDL_OPTS=" $TDDL_OPTS -Dlogback.configurationFile=$logback_configurationFile -Dtddl.conf=$tddl_conf"
 

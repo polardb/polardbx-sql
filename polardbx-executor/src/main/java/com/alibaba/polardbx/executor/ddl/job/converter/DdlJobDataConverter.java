@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.executor.ddl.job.converter;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.executor.gms.util.TableMetaUtil;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
@@ -40,6 +42,7 @@ import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -93,16 +96,17 @@ public class DdlJobDataConverter {
             PartitionInfo partitionInfo = physicalPlan.getPartitionInfo();
             if (partitionInfo != null || isOSS) {
                 TableGroupConfig tableGroupConfig = buildTableGroupConfig(partitionInfo, isOSS);
-                data.setTableGroupConfig(tableGroupConfig);		                data.setTableGroupConfig(tableGroupConfig);
+                data.setTableGroupConfig(tableGroupConfig);
                 Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology = physicalPlan.getPartitionInfo().getPhysicalPartitionTopology(null, false);
                 data.setPhysicalPartitionTopology(physicalPartitionTopology);
+                data.setLocalityDesc(LocalityDesc.parse(partitionInfo.getLocality()));
             }
         }
         data.setTableTopology(tableTopology);
 
         data.setKind(physicalPlan.getKind());
 
-        data.setSqlTemplate(physicalPlan.getNativeSql());
+        data.setSqlTemplate(physicalPlan.getBytesSql().toString(null));
 
         List<Map<Integer, ParameterContext>> paramsList = new ArrayList<>();
         for (PhyDdlTableOperation phyDdlTableOperation : physicalPlans) {
@@ -158,7 +162,7 @@ public class DdlJobDataConverter {
 
                 phyDdlTableOperation.setKind(data.getKind());
 
-                phyDdlTableOperation.setSqlTemplate(data.getSqlTemplate());
+                phyDdlTableOperation.setBytesSql(BytesSql.getBytesSql(data.getSqlTemplate()));
                 phyDdlTableOperation.setParam(data.getParamsList().get(index++));
 
                 phyDdlTableOperation.setNativeSqlNode(null);
@@ -214,6 +218,7 @@ public class DdlJobDataConverter {
         tableGroupConfig.setTableGroupRecord(tableGroupRecord);
         tableGroupConfig.setPartitionGroupRecords(partitionGroupRecords);
         tableGroupConfig.setTables(tablePartRecordInfoContexts);
+        tableGroupConfig.setLocality(partitionInfo.getLocality());
         return tableGroupConfig;
     }
 }

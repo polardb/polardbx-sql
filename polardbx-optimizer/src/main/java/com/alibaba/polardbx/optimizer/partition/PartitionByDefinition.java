@@ -28,6 +28,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
+import com.alibaba.polardbx.optimizer.partition.pruning.ListPartRouter;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionRouter;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
@@ -43,6 +44,7 @@ import org.apache.calcite.sql.SqlOperator;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -204,10 +206,25 @@ public class PartitionByDefinition {
         return null;
     }
 
+    public PartitionSpec getPartitionByPhyGrpAndPhyTbl(String phyGrp, String phyTbl) {
+        PartitionSpec targetPartSpec =  null;
+        for (int i = 0; i < partitions.size(); i++) {
+            PartitionSpec ps = partitions.get(i);
+            String name = ps.getName();
+            String grp = ps.getLocation().getGroupKey();
+            String tbl = ps.getLocation().getPhyTableName();
+            if (phyGrp.equalsIgnoreCase(grp) && phyTbl.equalsIgnoreCase(tbl)) {
+                targetPartSpec = ps;
+                break;
+            }
+        }
+        return targetPartSpec;
+    }
+
     public List<String> getActualPartitionColumns() {
         List<String> fullPartColList = this.partitionColumnNameList;
         int fullPartColCnt = fullPartColList.size();
-        int actualPartColCnt = -1;
+        int actualPartColCnt = 0;
         List<String> targetPartColList = new ArrayList<>();
         if (strategy == PartitionStrategy.HASH) {
             actualPartColCnt = fullPartColCnt;
@@ -216,7 +233,8 @@ public class PartitionByDefinition {
         } else {
             boolean findActualPartColCnt = false;
             for (int i = fullPartColCnt - 1; i > -1; i--) {
-                for (int j = 0; j < this.partitions.size(); j++) {
+                int partCnt = this.partitions.size();
+                for (int j = 0; j < partCnt; j++) {
                     PartitionSpec spec = this.partitions.get(j);
                     SingleValuePartitionBoundSpec bndSpec = (SingleValuePartitionBoundSpec) spec.getBoundSpec();
                     PartitionBoundVal[] bndVal = bndSpec.getSingleDatum().getDatumInfo();
@@ -235,7 +253,6 @@ public class PartitionByDefinition {
                             findActualPartColCnt = true;
                             break;
                         }
-
                     } else if (strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.RANGE_COLUMNS) {
                         if (bndValKind != PartitionBoundValueKind.DATUM_MAX_VALUE) {
                             actualPartColCnt = i+1;
@@ -618,12 +635,23 @@ public class PartitionByDefinition {
             router = PartitionRouter.createByComparator(strategy, datumArr, comp);
         } else if (strategy.isList()) {
             TreeMap<Object, Integer> boundValPartPosiInfo = new TreeMap<>(comp);
+            boolean containDefaultPartition = false;
+            int defaultPartitionPosition = 0;
             for (PartitionSpec ps : partDef.getPartitions()) {
+                if(ps.getIsDefaultPartition()) {
+                    containDefaultPartition = true;
+                    defaultPartitionPosition = ps.getPosition().intValue();
+                    continue;
+                }
                 for (SearchDatumInfo datum : ps.getBoundSpec().getMultiDatums()) {
                     boundValPartPosiInfo.put(datum, ps.getPosition().intValue());
                 }
             }
             router = PartitionRouter.createByList(strategy, boundValPartPosiInfo, comp);
+            if(containDefaultPartition && router instanceof ListPartRouter) {
+                ((ListPartRouter) router).setHasDefaultPartition(true);
+                ((ListPartRouter) router).setDefaultPartitionPosition(defaultPartitionPosition);
+            }
         } else {
             throw new UnsupportedOperationException("partition strategy " + strategy);
         }
@@ -639,9 +667,14 @@ public class PartitionByDefinition {
         SearchDatumComparator cmp = getBoundSpaceComparator();
         TreeMap<SearchDatumInfo, PartitionSpec> partFirstValMap = new TreeMap(cmp);
         TreeMap<SearchDatumInfo, PartitionSpec> listValPartMap = new TreeMap(cmp);
+        PartitionSpec mayHaveDefaultSpec = null;
         for (int i = 0; i < this.partitions.size(); i++) {
             PartitionSpec pSpec = this.partitions.get(i);
             PartitionSpec newSpec = pSpec.copy();
+            if(newSpec.getIsDefaultPartition()) {
+                mayHaveDefaultSpec = newSpec;
+                continue;
+            }
             PartitionBoundSpec newSortedValsBndSpec = sortListPartitionsAllValues(cmp, newSpec.getBoundSpec());
 
             for (int j = 0; j < newSortedValsBndSpec.getMultiDatums().size(); j++) {
@@ -660,6 +693,9 @@ public class PartitionByDefinition {
 
         for (SearchDatumInfo datumInfo : partFirstValMap.keySet()) {
             newPartSpecList.add(partFirstValMap.get(datumInfo));
+        }
+        if(mayHaveDefaultSpec != null) {
+            newPartSpecList.add(mayHaveDefaultSpec);
         }
         return newPartSpecList;
     }
@@ -700,91 +736,6 @@ public class PartitionByDefinition {
 
         return hashCodeVal;
     }
-
-//    @Override
-//    public boolean equals(Object obj) {
-//        if (this == obj) {
-//            return true;
-//        }
-//        if (obj != null && obj.getClass() == this.getClass()) {
-//            if (strategy != ((PartitionByDefinition) (obj)).getStrategy()) {
-//                return false;
-//            }
-//            int partColCnt = partitionExprList.size();
-//            PartitionByDefinition other = (PartitionByDefinition) obj;
-//            if (other.getPartitionExprList().size() != partColCnt) {
-//                return false;
-//            }
-//            for (int i = 0; i < partColCnt; i++) {
-//
-//                ColumnMeta partColMeta = partitionFieldList.get(i);
-//                ColumnMeta otherPartColMeta = other.getPartitionFieldList().get(i);
-//                CharsetName charsetName = partColMeta.getField().getDataType().getCharsetName();
-//                CharsetName otherCharsetName = otherPartColMeta.getField().getDataType().getCharsetName();
-//
-//                boolean isCharsetDiff = (charsetName == null && otherCharsetName != null)
-//                    || (charsetName != null && otherCharsetName == null)
-//                    || (charsetName != null && otherCharsetName != null && !charsetName.equals(otherCharsetName));
-//                if (isCharsetDiff) {
-//                    return false;
-//                }
-//
-//                CollationName collationName = partColMeta.getField().getDataType().getCollationName();
-//                CollationName otherCollationName = otherPartColMeta.getField().getDataType().getCollationName();
-//
-//                boolean isCollationDiff = (collationName == null && otherCollationName != null)
-//                    || (collationName != null && otherCollationName == null)
-//                    || (collationName != null && otherCollationName != null && !collationName
-//                    .equals(otherCollationName));
-//                if (isCollationDiff) {
-//                    return false;
-//                }
-//
-//                if (partColMeta.getDataType() == null) {
-//                    if (otherPartColMeta.getDataType() != null) {
-//                        return false;
-//                    }
-//                } else if (!DataTypeUtil
-//                    .equals(partColMeta.getDataType(), otherPartColMeta.getDataType(), true)) {
-//                    return false;
-//                }
-//
-//                if (partIntFunc == null && other.getPartIntFunc() != null ||
-//                    partIntFunc != null && other.getPartIntFunc() == null) {
-//                    return false;
-//                } else if (partIntFunc != null) {
-//                    if (partIntFunc.getFunctionNames().length != other.getPartIntFunc().getFunctionNames().length) {
-//                        return false;
-//                    } else {
-//                        for (int j = 0; j < partIntFunc.getFunctionNames().length; j++) {
-//                            if (partIntFunc.getFunctionNames()[j] == null
-//                                && other.getPartIntFunc().getFunctionNames()[j] != null ||
-//                                partIntFunc.getFunctionNames()[j] != null
-//                                    && other.getPartIntFunc().getFunctionNames()[j] == null) {
-//                                return false;
-//                            }
-//                            if (!partIntFunc.getFunctionNames()[j]
-//                                .equalsIgnoreCase(other.getPartIntFunc().getFunctionNames()[j])) {
-//                                return false;
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//            List<PartitionSpec> partitionSpecs1 = getOrderedPartitionSpec();
-//            List<PartitionSpec> partitionSpecs2 = ((PartitionByDefinition) (obj)).getOrderedPartitionSpec();
-//            if (GeneralUtil.isNotEmpty(partitionSpecs1) && GeneralUtil.isNotEmpty(partitionSpecs2)
-//                && partitionSpecs1.size() == partitionSpecs2.size()) {
-//                for (int i = 0; i < partitionSpecs1.size(); i++) {
-//                    if (partitionSpecs1.get(i) == null || !partitionSpecs1.get(i).equals(partitionSpecs2.get(i))) {
-//                        return false;
-//                    }
-//                }
-//                return true;
-//            }
-//        }
-//        return false;
-//    }
 
     @Override
     public boolean equals(Object obj) {
@@ -978,5 +929,27 @@ public class PartitionByDefinition {
 
     protected void setRouter(PartitionRouter router) {
         this.router = router;
+    }
+
+    public boolean canPerformPruning(List<String> actualUsedPartCols) {
+        List<String> allPartCols = this.partitionColumnNameList;
+        if (this.strategy == PartitionStrategy.KEY || this.strategy == PartitionStrategy.RANGE_COLUMNS) {
+            return containsPrefixPartCols(actualUsedPartCols, allPartCols);
+        } else {
+            return containsAllIgnoreCase(actualUsedPartCols, allPartCols);
+        }
+    }
+
+    private static boolean containsPrefixPartCols(Collection<String> actualPartCols, Collection<String> allPartCols) {
+        List<String> ca = actualPartCols.stream().map(String::toLowerCase).collect(Collectors.toList());
+        List<String> cb = allPartCols.stream().map(String::toLowerCase).collect(Collectors.toList());
+        String firstPartCol = cb.get(0);
+        return ca.contains(firstPartCol);
+    }
+
+    private static boolean containsAllIgnoreCase(Collection<String> actualPartCols, Collection<String> allPartCols) {
+        List<String> ca = actualPartCols.stream().map(String::toLowerCase).collect(Collectors.toList());
+        List<String> cb = allPartCols.stream().map(String::toLowerCase).collect(Collectors.toList());
+        return ca.containsAll(cb);
     }
 }

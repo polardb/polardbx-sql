@@ -298,4 +298,9 @@ public class DataOperator {
     public static void executeOnMysqlOrTddl(Connection tddlConnection, String sql, List<Object> param) {
         JdbcUtil.updateData(tddlConnection, sql, param);
     }
+
+
+    public static void queryOnMysqlOrTddl(Connection conn, String sql) {
+        JdbcUtil.executeQuery(sql, conn);
+    }
 }

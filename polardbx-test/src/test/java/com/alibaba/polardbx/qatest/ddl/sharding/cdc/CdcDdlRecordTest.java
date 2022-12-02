@@ -16,16 +16,31 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.cdc;
 
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.cdc.entity.DDLExtInfo;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
+import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS;
@@ -33,10 +48,34 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecy
 /**
  * Created by ziyang.lb
  **/
-@Ignore
+
 public class CdcDdlRecordTest extends CdcBaseTest {
 
     private static final Logger logger = LoggerFactory.getLogger(CdcDdlRecordTest.class);
+    private final static SQLParserFeature[] FEATURES = {
+        SQLParserFeature.EnableSQLBinaryOpExprGroup,
+        SQLParserFeature.UseInsertColumnsCache, SQLParserFeature.OptimizedForParameterized,
+        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
+        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
+    };
+    private final static String DB_NAME_PREFIX = "cdc_ddl_test_";
+    private final static AtomicInteger DB_NAME_SUFFIX = new AtomicInteger(0);
+    private final String dbName;
+    private final String serverId;
+
+    public CdcDdlRecordTest(String serverId) {
+        this.dbName = DB_NAME_PREFIX + DB_NAME_SUFFIX.incrementAndGet();
+        if (StringUtils.equals(serverId, "8989")) {
+            this.serverId = serverId;
+        } else {
+            this.serverId = null;
+        }
+    }
+
+    @Parameterized.Parameters
+    public static List<String[]> getTestParameters() {
+        return Arrays.asList(new String[][] {{"9999"}, {"8989"},});
+    }
 
     @Test
     public void testCdcDdlRecord() throws SQLException, InterruptedException {
@@ -46,20 +85,27 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.executeQuery("select database()");
 
+            if (StringUtils.isNotBlank(serverId)) {
+                sql = "set polardbx_server_id=" + serverId;
+                executeSql(stmt, sql);
+            }
+
             tokenHints = buildTokenHints();
-            sql = tokenHints + "drop database if exists ddl_test";
+            sql = tokenHints + "drop database if exists " + dbName;
             executeSql(stmt, sql);
             Thread.sleep(2000);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
 
             tokenHints = buildTokenHints();
-            sql = tokenHints + "create database ddl_test";
+            sql = tokenHints + "create database " + dbName;
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
 
-            sql = "use ddl_test";
+            sql = "use " + dbName;
             executeSql(stmt, sql);
 
             doDDl(stmt, jobIdSeed, "t_ddl_test_normal", 0);
@@ -68,13 +114,15 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             doDDl(stmt, jobIdSeed, "t_ddl_test_without_primary", 3);
             doDDl(stmt, jobIdSeed, "t_ddl_test_single", 4);
             testRecycleBin(stmt);
+            testDropManyTable(stmt);
 
             tokenHints = buildTokenHints();
-            sql = tokenHints + "drop database ddl_test";
+            sql = tokenHints + "drop database " + dbName;
             executeSql(stmt, sql);
             stmt.execute("use __cdc__");
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         }
     }
 
@@ -89,6 +137,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         // 连续执行两次drop ... if exists ...，验证第二次也需要打标(和mysql行为保持一致)
@@ -97,6 +146,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         if (testType == 0) {
@@ -118,6 +168,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         //打标的建表语句和传入的建表语句并不完全一样，此处只演示是否是create语句
         Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         doDml(jobIdSeed, tableName, 10);
@@ -132,6 +183,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -142,6 +194,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -154,6 +207,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -165,6 +219,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -175,6 +230,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -183,6 +239,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -191,6 +248,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         //--------------------------------------------------------------------------------
@@ -202,6 +260,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -210,6 +269,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -218,6 +278,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -228,6 +289,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -236,6 +298,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         //--------------------------------------------------------------------------------
@@ -301,6 +364,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -315,6 +379,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -330,9 +395,21 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, newTableName, 10);
             tableName = newTableName;
         }
+
+        // Test Step
+        String tmpTableName = tableName + "_tmp_test_" + System.currentTimeMillis();
+        sql = String.format("create table %s like %s", tmpTableName, tableName);
+        executeSql(stmt, sql);
+        String markSql = getDdlRecordSqlByTableName(tmpTableName);
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(markSql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement sqlStatement = statementList.get(0);
+        MySqlCreateTableStatement createTableStatement = (MySqlCreateTableStatement) sqlStatement;
+        Assert.assertEquals(tmpTableName, SQLUtils.normalize(createTableStatement.getTableName()));
 
         // Test Step
         tokenHints = buildTokenHints();
@@ -340,9 +417,10 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
     }
 
-    private void testRecycleBin(Statement stmt) throws SQLException {
+    private void testRecycleBin(Statement stmt) throws SQLException, InterruptedException {
         String tokenHints = buildTokenHints();
         String sql = tokenHints + "CREATE TABLE `t_recycle_test_1` (\n"
             + " `id` int(11) NOT NULL,\n"
@@ -354,12 +432,12 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
-        long maxId = getMaxDdlRecordId();
+        Timestamp lastTs = getLastDdlRecordTimestamp(dbName);
         sql = "/!TDDL:ENABLE_RECYCLEBIN=true*/drop table t_recycle_test_1";
         executeSql(stmt, sql);
-        List<String> recordSqls = getDdlRecordListMaxThan(maxId);
-        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(0), CDC_RECYCLE_HINTS));
-        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(0), "rename"));
+        List<Map<String, String>> recordSqls = getDdlRecordListNewerThan(dbName, lastTs);
+        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(0).get("ddl_sql"), CDC_RECYCLE_HINTS));
+        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(0).get("ddl_sql"), "rename"));
         Assert.assertEquals(1, recordSqls.size());
 
         tokenHints = buildTokenHints();
@@ -373,17 +451,38 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
-        maxId = getMaxDdlRecordId();
+        lastTs = getLastDdlRecordTimestamp(dbName);
+        // sleep一段时间,避免truncate产生的ddl record时间戳与建表ddl record相同
+        TimeUnit.SECONDS.sleep(5);
         sql = "/!TDDL:ENABLE_RECYCLEBIN=true*/truncate t_recycle_test_2";
         executeSql(stmt, sql);
-        recordSqls = getDdlRecordListMaxThan(maxId);
+        recordSqls = getDdlRecordListNewerThan(dbName, lastTs);
         Assert.assertEquals(3, recordSqls.size());
-        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(0), CDC_RECYCLE_HINTS));
-        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(1), CDC_RECYCLE_HINTS));
-        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(2), CDC_RECYCLE_HINTS));
-        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(0), "create table"));
-        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(1), "rename"));
-        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(2), "rename"));
+        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(0).get("ddl_sql"), CDC_RECYCLE_HINTS));
+        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(1).get("ddl_sql"), CDC_RECYCLE_HINTS));
+        Assert.assertTrue(StringUtils.startsWith(recordSqls.get(2).get("ddl_sql"), CDC_RECYCLE_HINTS));
+        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(0).get("ddl_sql"), "create table"));
+        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(1).get("ddl_sql"), "rename"));
+        Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(2).get("ddl_sql"), "rename"));
+        Assert.assertEquals(JSONObject.parseObject(recordSqls.get(0).get("ext"), DDLExtInfo.class).getServerId(),
+            serverId);
+        Assert.assertEquals(JSONObject.parseObject(recordSqls.get(1).get("ext"), DDLExtInfo.class).getServerId(),
+            serverId);
+        Assert.assertEquals(JSONObject.parseObject(recordSqls.get(2).get("ext"), DDLExtInfo.class).getServerId(),
+            serverId);
+    }
+
+    private void testDropManyTable(Statement stmt) throws SQLException {
+        try {
+            stmt.execute("create table test_drop_1(id int)");
+            stmt.execute("create table test_drop_2(id int)");
+            stmt.execute("create table test_drop_3(id int)");
+            Timestamp lastTs = getLastDdlRecordTimestamp(dbName);
+            stmt.execute("drop table test_drop_1,test_drop_2,test_drop_3");
+            throw new TddlNestableRuntimeException("dro many table should received error,but not");
+        } catch (Throwable e) {
+            // igonre
+        }
     }
 
     private void executeSql(Statement stmt, String sql) throws SQLException {

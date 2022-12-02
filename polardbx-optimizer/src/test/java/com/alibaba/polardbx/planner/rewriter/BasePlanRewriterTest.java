@@ -55,6 +55,7 @@ public abstract class BasePlanRewriterTest extends BasePlannerTest {
         executionContext.getExtraCmds().put(ConnectionProperties.PARALLELISM, enableParallelQuery ? -1 : 0);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_JOIN_CLUSTERING, enableJoinClustering);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, enableMpp);
+        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_LV_SUBQUERY_UNWRAP, false);
         if (forceWorkloadTypeAP) {
             executionContext.getExtraCmds().put(ConnectionProperties.WORKLOAD_TYPE, "AP");
         }

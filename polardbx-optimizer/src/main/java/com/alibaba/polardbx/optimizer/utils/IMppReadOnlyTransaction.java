@@ -24,5 +24,5 @@ public interface IMppReadOnlyTransaction extends ITransaction {
 
     void setLsnMap(Map<String, Long> lsnMap);
 
-    void enableOmitTso(boolean omitTso);
+    void enableOmitTso(boolean omitTso, boolean lizard1PC);
 }

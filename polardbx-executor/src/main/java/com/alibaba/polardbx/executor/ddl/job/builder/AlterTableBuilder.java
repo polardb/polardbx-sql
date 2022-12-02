@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.common.ddl.Attribute;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -90,7 +91,8 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
         columnOpts.put(SqlAlterTable.ColumnOpt.ADD, columns);
 
         SqlAlterTable sqlAlterTable =
-            SqlDdlNodes.alterTable(logicalTableNameNode, columnOpts, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
+            SqlDdlNodes.alterTable(null, logicalTableNameNode, columnOpts, sql, null, new ArrayList<>(),
+                SqlParserPos.ZERO);
 
         final RelOptCluster cluster = SqlConverter.getInstance(executionContext).createRelOptCluster(null);
         AlterTable alterTable = AlterTable.create(cluster, sqlAlterTable, logicalTableNameNode, null);
@@ -141,6 +143,10 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
 
     @Override
     public void buildPhysicalPlans() {
+        if (preparedData.getIsGsi()) {
+            relDdl.setSqlNode(((SqlAlterTable) relDdl.getSqlNode()).removeAfterColumns());
+        }
+
         buildSqlTemplate();
         buildPhysicalPlans(preparedData.getTableName());
         handleInstantAddColumn();
@@ -152,7 +158,7 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
         this.sequenceBean = ((SqlAlterTable) this.sqlTemplate).getAutoIncrement();
     }
 
-    private void handleInstantAddColumn() {
+    protected void handleInstantAddColumn() {
         PhyDdlTableOperation ddl = this.physicalPlans.get(0);
 
         boolean instantAddColumnSupported =
@@ -176,9 +182,9 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
                 if (TStringUtil.isNotEmpty(newSql)) {
                     String origSql = sqlAlterTable.getSourceSql();
                     sqlAlterTable.setSourceSql(newSql);
-                    String nativeSql = RelUtils.toNativeSql(sqlAlterTable);
+                    BytesSql nativeSql = BytesSql.getBytesSql(RelUtils.toNativeSql(sqlAlterTable));
                     for (PhyDdlTableOperation phyDdl : physicalPlans) {
-                        phyDdl.setSqlTemplate(nativeSql);
+                        phyDdl.setBytesSql(nativeSql);
                     }
                     sqlAlterTable.setSourceSql(origSql);
                 }

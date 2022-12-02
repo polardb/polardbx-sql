@@ -448,6 +448,9 @@ public class CclService implements ICclService {
                     //match table
                     if (cclRuleInfo.isNeedMatchTable()) {
                         String table = privilegeVerifyItem.getTable();
+                        if (StringUtils.startsWith(table, "`")) {
+                            table = StringUtils.replace(table, "`", "");
+                        }
                         if (!StringUtils.equals(cclRuleRecord.tableName, table) && !StringUtils.equals("*", table)) {
                             continue;
                         }

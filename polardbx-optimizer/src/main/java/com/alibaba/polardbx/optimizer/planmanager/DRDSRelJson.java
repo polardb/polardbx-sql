@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to you under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Copyright [2013-2021], Alibaba Group Holding Limited
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +15,7 @@
  */
 package com.alibaba.polardbx.optimizer.planmanager;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
@@ -371,6 +371,7 @@ public class DRDSRelJson extends RelJson {
             map = jsonBuilder.map();
             map.put("input", ((RexSlot) node).getIndex());
             map.put("name", ((RexSlot) node).getName());
+            map.put("type", toJson(node.getType()));
             return map;
         case CORREL_VARIABLE:
             map = jsonBuilder.map();
@@ -507,6 +508,11 @@ public class DRDSRelJson extends RelJson {
                 if (relInput.get("constants") != null && relInput.getIntegerList("constants").size() > 0) {
                     return rexBuilder.makeInputRef(typeFactory.createSqlType(SqlTypeName.INTEGER), input);
                 }
+                //logicalInsert:duplicateKeyUpdateList的RexInputRef是以Insert表，而不是relInput.getInputs();
+                if (relInput.get("duplicateKeyUpdateList") != null && map.get("type") != null) {
+                    return rexBuilder.makeInputRef(toType(typeFactory, map.get("type")), input);
+                }
+
                 throw new RuntimeException("input field " + input + " is out of range");
             }
             final String field = (String) map.get("field");
@@ -624,7 +630,11 @@ public class DRDSRelJson extends RelJson {
             return rexBuilder.makeLiteral((String) o);
         } else if (o instanceof Number) {
             final Number number = (Number) o;
-            if (number instanceof Double || number instanceof Float) {
+            if (number instanceof BigDecimal) {
+                return rexBuilder.makeExactLiteral((BigDecimal)number);
+            } else if (number instanceof Decimal) {
+                return rexBuilder.makeExactLiteral(((Decimal)number).toBigDecimal());
+            } else if (number instanceof Double || number instanceof Float) {
                 return rexBuilder.makeApproxLiteral(
                     BigDecimal.valueOf(number.doubleValue()));
             } else {

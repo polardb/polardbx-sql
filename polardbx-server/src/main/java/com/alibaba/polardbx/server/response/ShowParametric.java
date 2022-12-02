@@ -19,7 +19,9 @@ package com.alibaba.polardbx.server.response;
 import com.alibaba.polardbx.CobarConfig;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -28,24 +30,22 @@ import com.alibaba.polardbx.net.packet.EOFPacket;
 import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
-import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.polardbx.server.util.PacketUtil;
-import com.alibaba.polardbx.server.util.StringUtil;
-import com.google.common.collect.Sets;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
+import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.server.util.PacketUtil;
+import com.alibaba.polardbx.server.util.StringUtil;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
 
 import java.text.NumberFormat;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -131,60 +131,57 @@ public class ShowParametric {
 
         String schemaName = c.getSchema();
         if (OptimizerContext.getContext(schemaName) != null) {
-            PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-            for (Map.Entry<String, Set<Point>> pointEntry : planManager.getParametricQueryAdvisor().dump().entrySet()) {
-                BaselineInfo baselineInfo = planManager.getBaselineMap().get(pointEntry.getKey());
-                if (baselineInfo == null) {
-                    continue;
-                }
-                Set<Point> tempPoint = Sets.newHashSet();
-                tempPoint.addAll(pointEntry.getValue());
-                for (Point point : tempPoint) {
-                    RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-                    row.add(StringUtil.encode(schemaName, c.getCharset()));
-                    row.add(StringUtil.encode(baselineInfo.getId() + "", c.getCharset()));
-                    row.add(StringUtil.encode(pointEntry.getKey().replaceAll("\n", " ").trim(), c.getCharset()));
-                    long planId = point.getPlanId();
-                    row.add(StringUtil.encode(planId + "", c.getCharset()));
-                    /**
-                     * plan info
-                     */
-                    if (planId == -1) {
-//                        row.add(null);
-//                        row.add(null);
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schemaName);
+            if (baselineInfoMap != null) {
+                for (BaselineInfo baselineInfo : baselineInfoMap.values()) {
+                    if (baselineInfo == null) {
                         continue;
-                    } else {
-                        PlanInfo planInfo = baselineInfo.getPlan((int) planId);
-                        if (planInfo == null || !planInfo.inited()) {
-                            row.add(null);
-                            row.add(null);
-//                            continue;
-                        } else {
-
-                            RelNode plan = planInfo.getPlan(null, null);
-                            String planExplain = null;
-                            if (plan != null) {
-                                planExplain = "\n" + RelOptUtil.dumpPlan("",
-                                    plan,
-                                    SqlExplainFormat.TEXT,
-                                    SqlExplainLevel.NO_ATTRIBUTES);
-                            }
-                            row.add(StringUtil.encode(planExplain, c.getCharset()));
-                            row.add(StringUtil.encode(planInfo.isAccepted() ? "TRUE" : "FALSE", c.getCharset()));
-                        }
                     }
-                    NumberFormat numberFormat = NumberFormat.getPercentInstance();
-                    row.add(StringUtil.encode(point.getSelectivityMap().toString(), c.getCharset()));
-                    row.add(StringUtil.encode(point.getInflationNarrow() + "", c.getCharset()));
-                    row.add(StringUtil.encode(point.getParams().toString(), c.getCharset()));
-                    row.add(StringUtil.encode(point.getChooseTime() + "", c.getCharset()));
-                    row.add(StringUtil
-                        .encode(numberFormat.format(point.getLastRecentlyChooseRate()) + "", c.getCharset()));
-                    row.add(StringUtil.encode(point.getRowcountExpected() + "", c.getCharset()));
-                    row.add(StringUtil.encode(point.getMaxRowcountExpected() + "", c.getCharset()));
-                    row.add(StringUtil.encode(point.getMinRowcountExpected() + "", c.getCharset()));
-                    row.packetId = ++packetId;
-                    proxy = row.write(proxy);
+                    for (Point point : baselineInfo.getPointSet()) {
+                        RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+                        row.add(StringUtil.encode(schemaName, c.getCharset()));
+                        row.add(StringUtil.encode(baselineInfo.getId() + "", c.getCharset()));
+                        row.add(StringUtil.encode(baselineInfo.getParameterSql().replaceAll("\n", " ").trim(),
+                            c.getCharset()));
+                        long planId = point.getPlanId();
+                        row.add(StringUtil.encode(planId + "", c.getCharset()));
+                        /**
+                         * plan info
+                         */
+                        if (planId == -1) {
+                            continue;
+                        } else {
+                            PlanInfo planInfo = baselineInfo.getPlan((int) planId);
+                            if (planInfo == null || !planInfo.inited()) {
+                                row.add(null);
+                                row.add(null);
+                            } else {
+
+                                RelNode plan = planInfo.getPlan(null, null);
+                                String planExplain = null;
+                                if (plan != null) {
+                                    planExplain = "\n" + RelOptUtil.dumpPlan("",
+                                        plan,
+                                        SqlExplainFormat.TEXT,
+                                        SqlExplainLevel.NO_ATTRIBUTES);
+                                }
+                                row.add(StringUtil.encode(planExplain, c.getCharset()));
+                                row.add(StringUtil.encode(planInfo.isAccepted() ? "TRUE" : "FALSE", c.getCharset()));
+                            }
+                        }
+                        NumberFormat numberFormat = NumberFormat.getPercentInstance();
+                        row.add(StringUtil.encode(point.getSelectivityMap().toString(), c.getCharset()));
+                        row.add(StringUtil.encode(point.getInflationNarrow() + "", c.getCharset()));
+                        row.add(StringUtil.encode(point.getParams().toString(), c.getCharset()));
+                        row.add(StringUtil.encode(point.getChooseTime() + "", c.getCharset()));
+                        row.add(StringUtil
+                            .encode(numberFormat.format(point.getLastRecentlyChooseRate()) + "", c.getCharset()));
+                        row.add(StringUtil.encode(point.getRowcountExpected() + "", c.getCharset()));
+                        row.add(StringUtil.encode(point.getMaxRowcountExpected() + "", c.getCharset()));
+                        row.add(StringUtil.encode(point.getMinRowcountExpected() + "", c.getCharset()));
+                        row.packetId = ++packetId;
+                        proxy = row.write(proxy);
+                    }
                 }
             }
         }

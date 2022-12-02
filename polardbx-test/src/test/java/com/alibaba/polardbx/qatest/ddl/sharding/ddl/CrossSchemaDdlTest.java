@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang.StringUtils;
@@ -128,17 +128,17 @@ public class CrossSchemaDdlTest extends DDLBaseNewDBTestCase {
         for (String seqType : seqTypes) {
             // Create sequence
             String seqName = schemaPrefix + "cross_seq";
-            dropSeqence(seqName);
+            dropSequence(seqName);
             String createSql = String.format("create %s sequence %s ", seqType, seqName);
             JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
             assertThat(getSequenceNextVal(seqName)).isAtLeast(1L);
             simpleCheckSequence(seqName, seqType);
 
             // Alter sequence
-            NewSequence sequenceBefore = showSequence(seqName);
+            TestSequence sequenceBefore = showSequence(seqName);
             String alterSeqSql = String.format("alter sequence %s maxvalue 100", seqName);
             JdbcUtil.executeUpdateSuccess(tddlConnection, alterSeqSql);
-            NewSequence sequenceAfter = showSequence(seqName);
+            TestSequence sequenceAfter = showSequence(seqName);
             assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
             assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
             assertThat(sequenceBefore.getStartWith()).isEqualTo(sequenceAfter.getStartWith());
@@ -150,7 +150,7 @@ public class CrossSchemaDdlTest extends DDLBaseNewDBTestCase {
 
             // Rename sequence
             String seqNameNew = schemaPrefix + "cross_new_seq";
-            dropSeqence(seqNameNew);
+            dropSequence(seqNameNew);
             String renameSql = String.format("rename sequence %s to %s", seqName, seqNameNew);
             JdbcUtil.executeUpdateSuccess(tddlConnection, renameSql);
             sequenceAfter = showSequence(seqNameNew);
@@ -159,7 +159,7 @@ public class CrossSchemaDdlTest extends DDLBaseNewDBTestCase {
             simpleCheckSequence(seqNameNew, seqType);
 
             // Drop sequence
-            dropSeqence(seqNameNew);
+            dropSequence(seqNameNew);
             sequenceAfter = showSequence(seqNameNew);
             Assert.assertNull(sequenceAfter);
         }
@@ -188,7 +188,7 @@ public class CrossSchemaDdlTest extends DDLBaseNewDBTestCase {
     public void testClearSeqCache() throws Exception {
         String seqName = schemaPrefix + "simpleSeq";
 
-        dropSeqence(seqName);
+        dropSequence(seqName);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create simple sequence " + seqName);
         simpleCheckSequence(seqName, "simple");

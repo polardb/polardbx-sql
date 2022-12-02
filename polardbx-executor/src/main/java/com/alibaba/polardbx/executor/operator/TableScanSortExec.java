@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.google.common.collect.Lists;
@@ -33,10 +34,10 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelFieldCollation;
-import org.apache.calcite.rel.core.Sort;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -73,11 +74,11 @@ public class TableScanSortExec extends TableScanExec {
         if ((this.scanClient.getSplitNum() > 1) || (fetched < Long.MAX_VALUE || skipped > 0)) {
             mergeSort = true;
         }
-        
+
         if (this.scanClient.getSplitNum() == 0) {
             mergeSort = false;
         }
-        
+
         if (fetched > 0) {
             super.doOpen();
         }
@@ -85,6 +86,7 @@ public class TableScanSortExec extends TableScanExec {
 
     @Override
     public void addSplit(Split split) {
+        getJdbcByDeletegate(split);
         if (fetched > 0) {
             JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
             jdbcSplit.setLimit(skipped + fetched);
@@ -94,7 +96,7 @@ public class TableScanSortExec extends TableScanExec {
 
     @Override
     protected void appendRow(TableScanClient.SplitResultSet consumeResultSet) throws SQLException {
-        ResultSetCursorExec.buildOneRow(consumeResultSet.current(), dataTypes, blockBuilders);
+        ResultSetCursorExec.buildOneRow(consumeResultSet.current(), dataTypes, blockBuilders, context);
     }
 
     @Override
@@ -105,7 +107,7 @@ public class TableScanSortExec extends TableScanExec {
 
         if (isFinish) {
             //stop early, so close the connection in time.
-            scanClient.cancelAllThreads();
+            scanClient.cancelAllThreads(false);
             return null;
         }
 
@@ -117,8 +119,11 @@ public class TableScanSortExec extends TableScanExec {
             try {
                 if (sortedRows == null) {
                     if (orderComparator == null) {
-                        Sort sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
-                        RelCollation collation = sort.getCollation();
+                        Collection<RelCollation> collations = logicalView.getCollations();
+                        if (collations == null || collations.isEmpty()) {
+                            GeneralUtil.nestedException("logicalview should provided one sort collation at least");
+                        }
+                        RelCollation collation = collations.iterator().next();
                         if (log.isDebugEnabled()) {
                             log.debug(logicalView.getRelatedId() + " table scan need sort by:" + collation);
                         }
@@ -176,7 +181,7 @@ public class TableScanSortExec extends TableScanExec {
                 skipped--;
             } else {
                 if (row.isPresent() && fetched > 0) {
-                    ResultSetCursorExec.buildOneRow(row.get(), dataTypes, blockBuilders);
+                    ResultSetCursorExec.buildOneRow(row.get(), dataTypes, blockBuilders, context);
                     fetched--;
                 } else {
                     isFinish = true;

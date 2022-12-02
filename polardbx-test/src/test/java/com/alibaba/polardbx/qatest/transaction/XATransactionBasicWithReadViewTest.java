@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.transaction;
 
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
+import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
@@ -39,6 +40,8 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 
 /**
  * 测试显式打开/关闭共享ReadView分布式事务的正确性
+ *
+ * @see XATransactionBasicTest
  */
 
 public class XATransactionBasicWithReadViewTest extends CrudBasedLockTestCase {
@@ -55,7 +58,7 @@ public class XATransactionBasicWithReadViewTest extends CrudBasedLockTestCase {
         return Arrays.asList(ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));
     }
 
-    public XATransactionBasicWithReadViewTest(String baseOneTableName) throws SQLException {
+    public XATransactionBasicWithReadViewTest(String baseOneTableName) {
         this.baseOneTableName = baseOneTableName;
         try (Connection connection = ConnectionManager.getInstance().newPolarDBXConnection()) {
             JdbcUtil.useDb(connection, PropertiesUtil.polardbXShardingDBName1());
@@ -79,8 +82,9 @@ public class XATransactionBasicWithReadViewTest extends CrudBasedLockTestCase {
     }
 
     @Test
-    public void testNonParticipant() throws Exception {
-        tableDataPrepare(baseOneTableName, (int) (RANDOM_ID + 1), MAX_DATA_SIZE,
+    public void testCommitOneShard() throws Exception {
+        int startId = (int) (RANDOM_ID + 1);
+        tableDataPrepare(baseOneTableName, startId, MAX_DATA_SIZE,
             TableColumnGenerator.getBaseMinColum(), PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
@@ -89,27 +93,28 @@ public class XATransactionBasicWithReadViewTest extends CrudBasedLockTestCase {
 
         switchShareReadView();
 
-        // Should commit one phase.
+        // When read/write from one single group,
+        // should commit one phase.
         String hint = "/* +TDDL:cmd_extra(FAILURE_INJECTION='FAIL_BEFORE_PRIMARY_COMMIT') */";
 
-        String sql = SELECT_FROM + baseOneTableName;
+        String sql = SELECT_FROM + baseOneTableName + " where pk = " + startId;
         try {
             selectContentSameAssert(hint + sql, null, mysqlConnection, tddlConnection);
         } catch (Exception e) {
             Assert.fail(e.getMessage());
         }
 
-        sql = "insert into " + baseOneTableName
-            + "(pk, integer_test, date_test, timestamp_test, datetime_test, varchar_test, float_test)  values(?,?,?,?,?,?,?)";
+        sql = "update " + baseOneTableName
+            + " set integer_test=?, date_test=?, timestamp_test=?, datetime_test=?, varchar_test=?, float_test=? where pk = ?";
 
         List<Object> param = new ArrayList<>();
-        param.add(RANDOM_ID);
         param.add(columnDataGenerator.integer_testValue);
         param.add(columnDataGenerator.date_testValue);
         param.add(columnDataGenerator.timestamp_testValue);
         param.add(columnDataGenerator.datetime_testValue);
         param.add(null);
         param.add(columnDataGenerator.float_testValue);
+        param.add(startId);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + sql, param, true);
 
         tddlConnection.commit();

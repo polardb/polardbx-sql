@@ -37,6 +37,8 @@ public class RuntimeStatHelper {
 
     private static final Logger logger = LoggerFactory.getLogger(RuntimeStatHelper.class);
 
+    public static final RuntimeStatistics SHARE_RUNTIME_STATISTICS = new RuntimeStatistics("", new ExecutionContext());
+
     public static RuntimeStatistics buildRuntimeStat(ExecutionContext executionContext) {
         return new RuntimeStatistics(executionContext.getSchemaName(), executionContext);
     }
@@ -71,7 +73,8 @@ public class RuntimeStatHelper {
 
         try {
             RuntimeStatistics runtimeStatistics = (RuntimeStatistics) executionContext.getRuntimeStatistics();
-            RuntimeStatistics.OperatorStatisticsGroup operatorStatisticsGroup = ((AbstractCursor) parentCursor).getTargetPlanStatGroup();
+            RuntimeStatistics.OperatorStatisticsGroup operatorStatisticsGroup =
+                ((AbstractCursor) parentCursor).getTargetPlanStatGroup();
             if (operatorStatisticsGroup != null && operatorStatisticsGroup.targetRel != null) {
                 runtimeStatistics.register(operatorStatisticsGroup.targetRel, targetCursor);
             }
@@ -80,7 +83,8 @@ public class RuntimeStatHelper {
         }
     }
 
-    public static void processResultSetStatForLv(RuntimeStatistics.OperatorStatisticsGroup lvStatGroup, Cursor inputCursor) {
+    public static void processResultSetStatForLv(RuntimeStatistics.OperatorStatisticsGroup lvStatGroup,
+                                                 Cursor inputCursor) {
         if (lvStatGroup != null) {
             RelNode targetRel = lvStatGroup.targetRel;
             if (targetRel instanceof LogicalView) {
@@ -89,7 +93,8 @@ public class RuntimeStatHelper {
         }
     }
 
-    public static void processResultSetStatForLvInChunk(RuntimeStatistics.OperatorStatisticsGroup lvStatGroup, Cursor inputCursor) {
+    public static void processResultSetStatForLvInChunk(RuntimeStatistics.OperatorStatisticsGroup lvStatGroup,
+                                                        Cursor inputCursor) {
         if (lvStatGroup != null) {
             RelNode targetRel = lvStatGroup.targetRel;
             if (targetRel instanceof LogicalView) {
@@ -100,7 +105,8 @@ public class RuntimeStatHelper {
         }
     }
 
-    public static void statWaitLockTimecost(RuntimeStatistics.OperatorStatisticsGroup targetPlanStatGroup, long statWaitNano) {
+    public static void statWaitLockTimecost(RuntimeStatistics.OperatorStatisticsGroup targetPlanStatGroup,
+                                            long statWaitNano) {
         try {
             if (targetPlanStatGroup != null) {
                 RuntimeStatistics.registerWaitLockCpuTime(targetPlanStatGroup, System.nanoTime() - statWaitNano);

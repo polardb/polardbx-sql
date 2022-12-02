@@ -57,8 +57,13 @@ public class PartitionPruneStepUtil {
             if (partInfo.getSubPartitionBy() != null) {
                 return false;
             }
-            int maxPartKexIdxOfEqualCond = stepOp.getPartPredPathInfo().getPartKeyEnd();
+
             int partColCnt = partInfo.getPartitionBy().getPartitionColumnNameList().size();
+            if (stepOp.isDynamicSubQueryInStep()) {
+                return ((PartitionPruneStepInSubQuery)stepOp).getEqPredPrefixPartColCount() == partColCnt;
+            }
+
+            int maxPartKexIdxOfEqualCond = stepOp.getPartPredPathInfo().getPartKeyEnd();
             ComparisonKind cmpKind = stepOp.getComparisonKind();
             if (cmpKind == ComparisonKind.EQUAL && maxPartKexIdxOfEqualCond + 1 == partColCnt) {
                 return true;
@@ -109,6 +114,10 @@ public class PartitionPruneStepUtil {
             // FIXME subpartition
             // Not support guess the partition count for table with subpartitions
             if (partInfo.getSubPartitionBy() != null) {
+                return upperBound;
+            }
+
+            if (stepOp.isDynamicSubQueryInStep()) {
                 return upperBound;
             }
 

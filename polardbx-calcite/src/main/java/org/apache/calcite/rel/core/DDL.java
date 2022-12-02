@@ -239,4 +239,7 @@ public class DDL extends AbstractRelNode {
         return sqlNode;
     }
 
+    public void setSqlNode(SqlNode sqlNode) {
+        this.sqlNode = sqlNode;
+    }
 }

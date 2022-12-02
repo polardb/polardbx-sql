@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.gsi.backfill;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -33,11 +34,15 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
@@ -68,7 +73,7 @@ import java.util.stream.Collectors;
 /**
  * Fill update data into index table
  */
-public class Updater {
+public class Updater extends PhyOperationBuilderCommon {
 
     private final String schemaName;
     private final List<String> tableNames; // For table with multiple clustered GSI.
@@ -319,18 +324,26 @@ public class Updater {
                             currentParams.put(paramIndex, newPC);
                         }
 
+                        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+
+                        List<String> logTables = ImmutableList.of(indexTableMeta.getTableName());
                         List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
+                        BytesSql sql = RelUtils.toNativeBytesSql(sqlUpdate, DbType.MYSQL);
 
-                        String sql = RelUtils.toNativeSql(sqlUpdate, DbType.MYSQL);
-                        PhyTableOperation operation = new PhyTableOperation(cluster, traitSet, rowType, null, null);
-                        operation.setDbIndex(targetDb);
-                        operation.setTableNames(tableNames);
-                        operation.setSqlTemplate(sql);
-                        operation.setKind(sqlUpdate.getKind());
-                        operation.setDbType(DbType.MYSQL);
-                        operation.setParam(currentParams);
-                        operation.setBatchParameters(null);
+                        buildParams.setSchemaName(schemaName);
+                        buildParams.setLogTables(logTables);
+                        buildParams.setGroupName(targetDb);
+                        buildParams.setPhyTables(tableNames);
 
+                        buildParams.setCluster(cluster);
+                        buildParams.setTraitSet(traitSet);
+                        buildParams.setRowType(rowType);
+                        buildParams.setBytesSql(sql);
+                        buildParams.setSqlKind(sqlUpdate.getKind());
+                        buildParams.setDbType(DbType.MYSQL);
+                        buildParams.setDynamicParams(currentParams);
+                        buildParams.setBatchParameters(null);
+                        PhyTableOperation operation = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
                         newPhysicalPlans.add(operation);
                     }
                 }

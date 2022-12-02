@@ -70,7 +70,8 @@ public class TruncateSyncTask extends BaseSyncTask {
                     (Long) executionContext.getConnId(),
                     executionContext.getTraceId()
                 ),
-                schemaName
+                schemaName,
+                true
             );
             FailPoint.injectException(FP_TRUNCATE_SYNC_FAILED);
 

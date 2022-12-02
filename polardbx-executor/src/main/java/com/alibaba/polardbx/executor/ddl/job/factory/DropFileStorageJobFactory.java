@@ -73,7 +73,7 @@ public class DropFileStorageJobFactory extends DdlJobFactory {
         List<DdlTask> taskList = new ArrayList<>();
 
         // validate file storage exists
-        FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
+        FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine, false);
         if (fileSystemGroup == null) {
             throw new TddlNestableRuntimeException("file storage " + engine.name() + " is not exists ");
         }

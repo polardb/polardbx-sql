@@ -126,6 +126,20 @@ test_index:
   GLOBAL INDEX `idx_k2_k1_d1`(`k2`, `k1`, `d1`) COVERING (`id`) DBPARTITION BY HASH(`k2`)
   ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)
 
+test_merge_index:
+  CREATE TABLE `test_merge_index` (
+  `id` int(11) NOT NULL,
+  `k1` int(11) NOT NULL,
+  `k2` int(11) NOT NULL,
+  `value` char(40) DEFAULT NULL,
+  `d1` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  GLOBAL INDEX `test_merge_index_idx_k1`(`k1`) COVERING (`id`) DBPARTITION BY HASH(`k1`) tbpartition by hash(`k1`) tbpartitions 4,
+  GLOBAL INDEX `test_merge_index_idx_k2_d1_k1`(`k2`, `d1`, `k1`) COVERING (`id`) DBPARTITION BY HASH(`k2`)  tbpartition by hash(`k2`) tbpartitions 4,
+  GLOBAL INDEX `test_merge_index_idx_k2_k1_d1`(`k2`, `k1`, `d1`) COVERING (`id`) DBPARTITION BY HASH(`k2`)  tbpartition by hash(`k2`) tbpartitions 4
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)  tbpartition by hash(`id`) tbpartitions 4
+
+
 test_index_join:
   CREATE TABLE `test_index_join` (
   `id` int(11) NOT NULL,

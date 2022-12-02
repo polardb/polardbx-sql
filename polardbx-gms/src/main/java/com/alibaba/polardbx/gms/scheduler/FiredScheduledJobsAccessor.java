@@ -43,8 +43,7 @@ import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SCHEDULED_JOBS;
 public class FiredScheduledJobsAccessor extends AbstractAccessor {
     private static final Logger logger = LoggerFactory.getLogger(FiredScheduledJobsAccessor.class);
 
-    private static final String ALL_COLUMNS =
-        "`schedule_id`," +
+    private static final String ALL_COLUMNS = "`schedule_id`," +
         "`table_schema`," +
         "`table_name`," +
         "`fire_time`," +
@@ -52,9 +51,10 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
         "`finish_time`," +
         "`state`," +
         "`remark`," +
-        "`result`";
+        "`result`," +
+        "`table_group_name`";
 
-    private static final String ALL_VALUES = "(?,?,?,?,?,?,?,?,?)";
+    private static final String ALL_VALUES = "(?,?,?,?,?,?,?,?,?,?)";
 
     private static final String INSERT_TABLE_SCHEDULED_JOBS =
         "insert into " + FIRED_SCHEDULED_JOBS + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
@@ -67,6 +67,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "S.`schedule_id`, " +
             "S.`table_schema`, " +
             "S.`table_name`, " +
+            "S.`table_group_name` as table_group_name, " +
             "S.`schedule_name`, " +
             "S.`schedule_comment`, " +
             "S.`executor_type`, " +
@@ -83,18 +84,46 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "F.`state`, " +
             "F.`remark`, " +
             "F.`result` " +
-        "FROM " + FIRED_SCHEDULED_JOBS + " F " +
-        "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
-        "ON F.`schedule_id`=S.`schedule_id` " +
-        "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
-        "AND F.`state` IN ('QUEUED') "
-        ;
+            "FROM " + FIRED_SCHEDULED_JOBS + " F " +
+            "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
+            "ON F.`schedule_id`=S.`schedule_id` " +
+            "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
+            "AND F.`state` IN ('QUEUED') ";
+
+    private static final String GET_RUNNING_SCHEDULED_JOBS =
+        "SELECT " +
+            "S.`schedule_id`, " +
+            "S.`table_schema`, " +
+            "S.`table_name`, " +
+            "S.`table_group_name` as table_group_name, " +
+            "S.`schedule_name`, " +
+            "S.`schedule_comment`, " +
+            "S.`executor_type`, " +
+            "S.`schedule_context`, " +
+            "S.`executor_contents`, " +
+            "S.`status`, " +
+            "S.`schedule_type`, " +
+            "S.`schedule_expr`, " +
+            "S.`time_zone`, " +
+            "S.`schedule_policy`, " +
+            "F.`fire_time`, " +
+            "F.`start_time`, " +
+            "F.`finish_time`, " +
+            "F.`state`, " +
+            "F.`remark`, " +
+            "F.`result` " +
+            "FROM " + FIRED_SCHEDULED_JOBS + " F " +
+            "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
+            "ON F.`schedule_id`=S.`schedule_id` " +
+            "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
+            "AND F.`state` IN ('RUNNING') ";
 
     private static final String QUERY_BY_SCHEDULED_ID =
         "SELECT " +
             "S.`schedule_id`, " +
             "S.`table_schema`, " +
             "S.`table_name`, " +
+            "S.`table_group_name` as table_group_name, " +
             "S.`schedule_name`, " +
             "S.`schedule_comment`, " +
             "S.`executor_type`, " +
@@ -117,8 +146,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
             "AND F.`schedule_id` = ? " +
             "ORDER BY F.`fire_time` DESC " +
-            "LIMIT 100"
-        ;
+            "LIMIT 100";
 
     public List<ExecutableScheduledJob> getQueuedJobs() {
         try {
@@ -128,7 +156,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
-    public List<ExecutableScheduledJob> queryByScheduleId(long scheduleId){
+    public List<ExecutableScheduledJob> queryByScheduleId(long scheduleId) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(1);
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, scheduleId);
@@ -138,8 +166,16 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
+    public List<ExecutableScheduledJob> getRunningJobs() {
+        try {
+            return MetaDbUtil.query(GET_RUNNING_SCHEDULED_JOBS, ExecutableScheduledJob.class, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + FIRED_SCHEDULED_JOBS, "query", e);
+        }
+    }
+
     public FiredScheduledJobsRecord queryForUpdate(long schedulerId,
-                                                   long fireTime){
+                                                   long fireTime) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(2);
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, schedulerId);
@@ -168,20 +204,20 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
 
     private static final String CAS_STATE_WITH_START_TIME =
         "UPDATE " + FIRED_SCHEDULED_JOBS + " " +
-        "SET `state` = ? " +
-        " , `start_time` = ? " +
-        "WHERE `state` = ? " +
-        "AND `schedule_id` = ? " +
-        "AND `fire_time` = ? ";
+            "SET `state` = ? " +
+            " , `start_time` = ? " +
+            "WHERE `state` = ? " +
+            "AND `schedule_id` = ? " +
+            "AND `fire_time` = ? ";
 
     private static final String CAS_STATE_WITH_FINISH_TIME =
         "UPDATE " + FIRED_SCHEDULED_JOBS + " " +
-        "SET `state` = ? " +
-        " , `finish_time` = ? " +
-        " , `remark` = ? " +
-        "WHERE `state` = ? " +
-        "AND `schedule_id` = ? " +
-        "AND `fire_time` = ? ";
+            "SET `state` = ? " +
+            " , `finish_time` = ? " +
+            " , `remark` = ? " +
+            "WHERE `state` = ? " +
+            "AND `schedule_id` = ? " +
+            "AND `fire_time` = ? ";
 
     public boolean updateState(long schedulerId,
                                long fireTime,
@@ -206,10 +242,10 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
     }
 
     public boolean compareAndSetStateWithStartTime(long schedulerId,
-                                               long fireTime,
-                                               FiredScheduledJobState currentState,
-                                               FiredScheduledJobState newState,
-                                               Long startTime) {
+                                                   long fireTime,
+                                                   FiredScheduledJobState currentState,
+                                                   FiredScheduledJobState newState,
+                                                   Long startTime) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(4);
             int index = 1;
@@ -269,7 +305,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
     public int deleteById(long scheduleId) {
         try {
             final Map<Integer, ParameterContext> params =
-                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[]{scheduleId});
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[] {scheduleId});
             return MetaDbUtil.delete(DELETE_BY_SCHEDULE_ID, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + FIRED_SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
@@ -291,18 +327,16 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
 
     private static final String CLEANUP_SQL =
         "DELETE FROM " + FIRED_SCHEDULED_JOBS + " " +
-        "WHERE `fire_time` <= ? " +
-        "AND `state` IN ('SUCCESS', 'FAILED', 'SKIPPED') "
-        ;
+            "WHERE `fire_time` <= ? " +
+            "AND `state` IN ('SUCCESS', 'FAILED', 'SKIPPED') ";
 
     private static final String SET_FIRED_JOBS_TIMEOUT_SQL =
         "UPDATE " + FIRED_SCHEDULED_JOBS + " " +
             "SET `state` = 'FAILED' " +
             "WHERE `fire_time` <= ? and `gmt_modified` <= TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL ? HOUR)) " +
-            "AND `state` = 'RUNNING' "
-        ;
+            "AND `state` = 'RUNNING' ";
 
-    public int setFiredJobsTimeout(long hours){
+    public int setFiredJobsTimeout(long hours) {
         try {
             int finishedCount = 0;
 
@@ -322,7 +356,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
-    public int cleanup(long hours){
+    public int cleanup(long hours) {
         try {
             int finishedCount = 0;
 
@@ -340,7 +374,6 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             throw logAndThrow("Failed to delete from " + FIRED_SCHEDULED_JOBS, "delete from", e);
         }
     }
-
 
     /**
      * Failed to {0} the system table {1}. Caused by: {2}.

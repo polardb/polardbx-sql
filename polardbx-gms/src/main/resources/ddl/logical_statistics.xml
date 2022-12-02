@@ -13,15 +13,13 @@
               `histogram` longtext not null,
               `null_count` bigint not null,
               `sample_rate` float not null,
+              `TOPN` LONGTEXT,
               `extend_field` longtext comment 'Json string extend field',
               primary key (`id`),
               unique key (`schema_name`, `table_name`, `column_name`),
               key (`table_name`)
-            ) charset=utf8
+            ) charset=UTF8MB4
         ]]></Create>
-        <Change><![CDATA[
-            alter table `column_statistics` add key (`table_name`)
-        ]]></Change>
     </SystemTable>
     <SystemTable name="table_statistics">
         <Create><![CDATA[
@@ -35,10 +33,28 @@
               primary key (`id`),
               unique key (`schema_name`, `table_name`),
               key (`table_name`)
-            ) charset=utf8
+            ) charset=UTF8MB4
         ]]></Create>
         <Change><![CDATA[
             alter table `table_statistics` add key (`table_name`)
         ]]></Change>
+    </SystemTable>
+    <SystemTable name="ndv_sketch_statistics">
+        <Create><![CDATA[
+            create table if not exists `ndv_sketch_statistics` (
+                `schema_name` varchar(64) not null default '',
+                `table_name` varchar(64) not null,
+                `column_names` varchar(128) not null,
+                `shard_part` varchar(255) not null,
+                `dn_cardinality` bigint(20) not null,
+                `composite_cardinality` bigint(20) not null,
+                `sketch_bytes` varbinary(12288) not null,
+                `sketch_type` varchar(16) not null,
+                `compress_type` varchar(16) not null default 'NA',
+                `gmt_created` timestamp default current_timestamp,
+                `gmt_modified` timestamp default current_timestamp on update current_timestamp,
+                PRIMARY KEY `logical_table_column` (`schema_name`, `table_name`, `column_names`, `shard_part`)
+            ) engine=innodb default charset=UTF8
+        ]]></Create>
     </SystemTable>
 </SystemTables>

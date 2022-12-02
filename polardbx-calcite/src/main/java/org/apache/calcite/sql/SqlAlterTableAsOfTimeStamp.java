@@ -21,7 +21,7 @@ public class SqlAlterTableAsOfTimeStamp extends SqlAlterTable {
                                      String sql,
                                      SqlNode timestamp) {
 
-        super(tableName, null, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
+        super(null, tableName, null, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
         this.name = tableName;
         this.originTableName = tableName;
         if (!(timestamp instanceof SqlCharStringLiteral)) {

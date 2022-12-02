@@ -7,7 +7,7 @@
 
   plan: |
 
-    PhyQuery(node="optest_0000", sql="UPDATE `test_table_a` AS `a` INNER JOIN (SELECT MAX(`bigint_test`) AS `m`, `pk` AS `pk` FROM `test_table_b` AS `b` GROUP BY `pk`) AS `b` ON (`a`.`pk` = `b`.`pk`) SET `a`.`bigint_test` = `b`.`m` WHERE (`a`.`bigint_test` > `b`.`m`)")
+    phyquery(node="optest_0000", sql="update `test_table_a` as `a` inner join (select max(`bigint_test`) as `m`, `pk` as `pk` from `test_table_b` as `b` group by `pk`) as `b` on (`a`.`pk` = `b`.`pk`) set `a`.`bigint_test` = `b`.`m` where (`a`.`bigint_test` > `b`.`m`)")
 
 - sql: |
     /*+TDDL: node(0)*/
@@ -15,4 +15,4 @@
 
   plan: |
 
-    PhyQuery(node="optest_0000", sql="DELETE `a` FROM `test_table_a` AS `a` INNER JOIN (SELECT MAX(`bigint_test`) AS `m`, `pk` AS `pk` FROM `test_table_b` AS `b` GROUP BY `pk`) AS `b` ON (`a`.`pk` = `b`.`pk`) WHERE (`a`.`bigint_test` > `b`.`m`)")
+    phyquery(node="optest_0000", sql="delete `a` from `test_table_a` as `a` inner join (select max(`bigint_test`) as `m`, `pk` as `pk` from `test_table_b` as `b` group by `pk`) as `b` on (`a`.`pk` = `b`.`pk`) where (`a`.`bigint_test` > `b`.`m`)")

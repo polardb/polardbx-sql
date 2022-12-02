@@ -29,15 +29,19 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
-import com.google.common.collect.Maps;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 /**
  * Created by ziyang.lb
@@ -92,7 +96,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 physicalPlanData.getCreateTablePhysicalSql(), ddlContext.getDdlType(), ddlContext.getJobId(),
                 getTaskId(),
-                DdlVisibility.Public, executionContext.getExtraCmds());
+                DdlVisibility.Public, buildExtendParameter(executionContext));
     }
 
     private void mark4DropTable(ExecutionContext executionContext) {
@@ -102,7 +106,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Public,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 
     private void mark4RenameTable(ExecutionContext executionContext) {
@@ -111,10 +115,9 @@ public class CdcDdlMarkTask extends BaseDdlTask {
         // 如果物理表名未进行变更，那么tablePattern不会发生改变，Rename是一个轻量级的操作，打标的位置放到元数据变更之前或之后，都可以
         String newTbNamePattern = TableMetaChanger.buildNewTbNamePattern(executionContext, schemaName,
             physicalPlanData.getLogicalTableName(), physicalPlanData.getNewLogicalTableName());
-        Map<String, Object> params = Maps.newHashMap();
+        Map<String, Object> params = buildExtendParameter(executionContext);
         params.put(ICdcManager.TABLE_NEW_NAME, physicalPlanData.getNewLogicalTableName());
         params.put(ICdcManager.TABLE_NEW_PATTERN, newTbNamePattern);
-        params.putAll(executionContext.getExtraCmds());
 
         DdlContext ddlContext = executionContext.getDdlContext();
         CdcManagerHelper.getInstance()
@@ -125,15 +128,29 @@ public class CdcDdlMarkTask extends BaseDdlTask {
 
     private void mark4RenamePartitionModeTable(ExecutionContext executionContext) {
         //分区表没有tablePattern，也不会改物理表的名字，所以和非分区表区分开，单独打标
-        Map<String, Object> params = Maps.newHashMap();
+        Map<String, Object> params = buildExtendParameter(executionContext);
         params.put(ICdcManager.TABLE_NEW_NAME, physicalPlanData.getNewLogicalTableName());
-        params.putAll(executionContext.getExtraCmds());
 
-        DdlContext ddlContext = executionContext.getDdlContext();
-        CdcManagerHelper.getInstance()
-            .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
-                ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
-                DdlVisibility.Public, params);
+        if (executionContext.isPhyTableRenamed()) {
+            Map<String, Set<String>> newTopology = new HashMap<>();
+            Map<String, List<List<String>>> topology = physicalPlanData.getTableTopology();
+            topology.forEach((k, v) ->
+                newTopology.computeIfAbsent(k,
+                    i -> v.stream().map(l -> l.get(1)).collect(Collectors.toSet()))
+            );
+
+            DdlContext ddlContext = executionContext.getDdlContext();
+            CdcManagerHelper.getInstance()
+                .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
+                    ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
+                    DdlVisibility.Public, params, true, newTopology);
+        } else {
+            DdlContext ddlContext = executionContext.getDdlContext();
+            CdcManagerHelper.getInstance()
+                .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
+                    ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
+                    DdlVisibility.Public, params);
+        }
     }
 
     private void mark4AlterTable(ExecutionContext executionContext) {
@@ -155,7 +172,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Public,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 
     private void mark4CreateIndex(ExecutionContext executionContext) {
@@ -164,7 +181,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Public,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 
     private void mark4DropIndex(ExecutionContext executionContext) {
@@ -173,7 +190,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Public,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 
     private void mark4TruncateTable(ExecutionContext executionContext) {
@@ -182,7 +199,7 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Public,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 
     private void mark4TruncatePartition(ExecutionContext executionContext) {
@@ -191,6 +208,6 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Private,
-                executionContext.getExtraCmds());
+                buildExtendParameter(executionContext));
     }
 }

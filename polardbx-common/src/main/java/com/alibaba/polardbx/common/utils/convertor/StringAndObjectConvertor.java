@@ -19,6 +19,7 @@ package com.alibaba.polardbx.common.utils.convertor;
 import com.alibaba.polardbx.common.charset.CharsetName;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 
 
 public class StringAndObjectConvertor {

@@ -51,9 +51,9 @@ public class ClearSeqCacheTest extends BaseSequenceTestCase {
     public void testClearGroup() throws Exception {
         String seqName = schemaPrefix + "groupSeq";
 
-        dropSeqence(seqName);
+        dropSequence(seqName);
 
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "create sequence " + seqName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "create group sequence " + seqName);
 
         simpleCheckSequence(seqName, "group");
 
@@ -77,7 +77,7 @@ public class ClearSeqCacheTest extends BaseSequenceTestCase {
     public void testClearSimple() throws Exception {
         String seqName = schemaPrefix + "simpleSeq";
 
-        dropSeqence(seqName);
+        dropSequence(seqName);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create simple sequence " + seqName);
 
@@ -105,10 +105,10 @@ public class ClearSeqCacheTest extends BaseSequenceTestCase {
         String seqName1 = schemaPrefix + "groupSeq";
         String seqName2 = schemaPrefix + "simpleSeq";
 
-        dropSeqence(seqName1);
-        dropSeqence(seqName2);
+        dropSequence(seqName1);
+        dropSequence(seqName2);
 
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "create sequence " + seqName1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "create group sequence " + seqName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create simple sequence " + seqName2);
 
         simpleCheckSequence(seqName1, "group");

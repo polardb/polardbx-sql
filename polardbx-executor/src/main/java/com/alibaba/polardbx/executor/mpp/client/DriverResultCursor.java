@@ -148,7 +148,7 @@ public class DriverResultCursor extends AbstractCursor {
                             }
                         }
                     } catch (Throwable e) {
-                        if (!driverExec.isFinished()) {
+                        if (driverExec == null || !driverExec.isFinished()) {
                             forceCloseDriver();
                             throw e;
                         } else {

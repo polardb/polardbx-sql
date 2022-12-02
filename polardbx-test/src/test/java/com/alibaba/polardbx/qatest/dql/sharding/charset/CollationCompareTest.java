@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dql.sharding.charset;
 
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableMultimap;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
@@ -58,6 +59,10 @@ public class CollationCompareTest extends CharsetTestBase {
 
     @Test
     public void testCase() {
+        if (PropertiesUtil.usePrepare()) {
+            // current prepare mode does not support collation
+            return;
+        }
         MAP.forEach(
             (charset, collation) -> {
                 for (String op : COMPARE_OPERATORS) {

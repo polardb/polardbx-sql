@@ -36,25 +36,26 @@ import java.util.List;
 public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
 
     protected SQLExpr expr;
-    protected String  alias;
+    protected String alias;
+    private boolean forceQuotaAlias = false;
 
     protected boolean connectByRoot = false;
     protected transient long aliasHashCode64;
     protected List<String> aliasList;
 
-    public SQLSelectItem(){
+    public SQLSelectItem() {
 
     }
 
-    public SQLSelectItem(SQLExpr expr){
+    public SQLSelectItem(SQLExpr expr) {
         this(expr, null);
     }
 
-    public SQLSelectItem(int value){
+    public SQLSelectItem(int value) {
         this(new SQLIntegerExpr(value), null);
     }
 
-    public SQLSelectItem(SQLExpr expr, String alias){
+    public SQLSelectItem(SQLExpr expr, String alias) {
         this.expr = expr;
         this.alias = alias;
 
@@ -62,8 +63,8 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
             expr.setParent(this);
         }
     }
-    
-    public SQLSelectItem(SQLExpr expr, String alias, boolean connectByRoot){
+
+    public SQLSelectItem(SQLExpr expr, String alias, boolean connectByRoot) {
         this.connectByRoot = connectByRoot;
         this.expr = expr;
         this.alias = alias;
@@ -73,7 +74,7 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
         }
     }
 
-    public SQLSelectItem(SQLExpr expr, List<String> aliasList, boolean connectByRoot){
+    public SQLSelectItem(SQLExpr expr, List<String> aliasList, boolean connectByRoot) {
         this.connectByRoot = connectByRoot;
         this.expr = expr;
         this.aliasList = aliasList;
@@ -172,7 +173,9 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
+        if (this == o) {
+            return true;
+        }
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
@@ -190,8 +193,8 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
         }
 
         return aliasList != null
-                ? aliasList.equals(that.aliasList)
-                : that.aliasList == null;
+            ? aliasList.equals(that.aliasList)
+            : that.aliasList == null;
     }
 
     @Override
@@ -215,6 +218,7 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
     public SQLSelectItem clone() {
         SQLSelectItem x = new SQLSelectItem();
         x.alias = alias;
+        x.forceQuotaAlias = forceQuotaAlias;
         if (expr != null) {
             x.setExpr(expr.clone());
         }
@@ -261,7 +265,7 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
         if (expr instanceof SQLAllColumnExpr) {
             SQLTableSource resolvedTableSource = ((SQLAllColumnExpr) expr).getResolvedTableSource();
             if (resolvedTableSource != null
-                    && resolvedTableSource.findColumn(alias_hash) != null) {
+                && resolvedTableSource.findColumn(alias_hash) != null) {
                 return true;
             }
             return false;
@@ -276,7 +280,7 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
             if ("*".equals(ident)) {
                 SQLTableSource resolvedTableSource = ((SQLPropertyExpr) expr).getResolvedTableSource();
                 if (resolvedTableSource != null
-                        && resolvedTableSource.findColumn(alias_hash) != null) {
+                    && resolvedTableSource.findColumn(alias_hash) != null) {
                     return true;
                 }
                 return false;
@@ -299,5 +303,13 @@ public class SQLSelectItem extends SQLObjectImpl implements SQLReplaceable {
 
     public boolean isUDTFSelectItem() {
         return aliasList != null && aliasList.size() > 0;
+    }
+
+    public boolean isForceQuotaAlias() {
+        return forceQuotaAlias;
+    }
+
+    public void setForceQuotaAlias(boolean forceQuotaAlias) {
+        this.forceQuotaAlias = forceQuotaAlias;
     }
 }

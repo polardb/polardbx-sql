@@ -33,8 +33,7 @@ import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 
 import javax.inject.Inject;
 
-public class SplitJacksonModule
-    extends AbstractTypedJacksonModule<ConnectorSplit> {
+public class SplitJacksonModule extends AbstractTypedJacksonModule<ConnectorSplit> {
     @Inject
     public SplitJacksonModule(HandleResolver handleResolver) {
         super(ConnectorSplit.class,

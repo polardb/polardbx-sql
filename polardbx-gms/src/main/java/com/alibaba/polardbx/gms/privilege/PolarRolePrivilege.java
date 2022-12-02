@@ -562,11 +562,9 @@ public class PolarRolePrivilege {
         Collection<Long> activeRoleIds;
         switch (activeRoles.getActiveRoleSpec()) {
         case NONE:
-            activeRoleIds = Collections.emptyList();
-            break;
+            return Collections.emptyList();
         case ALL:
-            activeRoleIds = CollectionUtils.union(mapping.keySet(), mandatoryRoles);
-            break;
+            return mapping.keySet();
         case ALL_EXCEPT:
             activeRoleIds = CollectionUtils.subtract(CollectionUtils.union(mapping.keySet(), mandatoryRoles),
                 activeRoles.getRoles());
@@ -575,15 +573,37 @@ public class PolarRolePrivilege {
             activeRoleIds = activeRoles.getRoles();
             break;
         case DEFAULT:
-            activeRoleIds = getDefaultRoles(mandatoryRoles);
-            break;
+            return getDefaultActiveRoles();
         default:
             throw new IllegalArgumentException("Unrecognized active role spec: " + activeRoles.getActiveRoleSpec());
         }
 
-        return activeRoleIds.stream()
-            .filter(this.mapping::containsKey)
-            .collect(Collectors.toList());
+        List<Long> resultRoleIds = new ArrayList<>(activeRoleIds.size());
+        for (long id : activeRoleIds) {
+            if (this.mapping.containsKey(id)) {
+                resultRoleIds.add(id);
+            }
+        }
+        return resultRoleIds;
+    }
+
+    public Collection<Long> getDefaultActiveRoles() {
+        switch (defaultRoleState) {
+        case NONE:
+            return Collections.emptyList();
+        case ALL:
+            return mapping.keySet();
+        case ROLES:
+            List<Long> activeDefaultRoles = new ArrayList<>();
+            for (Map.Entry<Long, GrantedRoleInfo> entry : mapping.entrySet()) {
+                if (entry.getValue().defaultRole) {
+                    activeDefaultRoles.add(entry.getKey());
+                }
+            }
+            return activeDefaultRoles;
+        default:
+            throw new IllegalArgumentException("Unrecognized default role state: " + defaultRoleState);
+        }
     }
 
     /**

@@ -52,7 +52,6 @@ public class MyPhyTableScanCursor extends MyPhysicalCursor {
     protected BaseTableOperation plan;
     protected CursorMeta meta;
     protected MyRepository repo;
-    protected ExecutionContext ec;
     protected String originSql;
     protected boolean fetchRsByMultiGet = false;
     protected boolean firstQueryDone = false;
@@ -60,7 +59,6 @@ public class MyPhyTableScanCursor extends MyPhysicalCursor {
     public MyPhyTableScanCursor(ExecutionContext ec, BaseTableOperation logicalPlan, MyRepository repo) {
         this.plan = logicalPlan;
         this.repo = repo;
-        this.ec = ec;
         this.handler = repo.createQueryHandler(ec);
         this.statistics = new OperatorStatisticsExt();
         this.handler.setOperatorStatistics(this.statistics);
@@ -154,6 +152,7 @@ public class MyPhyTableScanCursor extends MyPhysicalCursor {
 
         switch (queryConcurrencyPolicy) {
         case GROUP_CONCURRENT_BLOCK:
+        case RELAXED_GROUP_CONCURRENT:
         case CONCURRENT:
         case FIRST_THEN_CONCURRENT:
             return false;

@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemove
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateTableRemoveTsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
@@ -87,8 +86,6 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
         }
 
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
-        StoreTableLocalityTask dropLocality =
-            StoreTableLocalityTask.buildDropLocalityTask(schemaName, logicalTableName);
 
         ExecutableDdlJob4DropPartitionTable executableDdlJob = new ExecutableDdlJob4DropPartitionTable();
         /**
@@ -97,7 +94,6 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
          * 考虑将DropTableHideTableMetaTask、DropPartitionTableRemoveMetaTask也合并一下？
          */
         tasks.add(validateTask);
-        tasks.add(dropLocality);
         tasks.add(dropTableHideTableMetaTask);
         Engine engine = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
         if (Engine.isFileStore(engine)) {
@@ -126,7 +122,6 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
         executableDdlJob.labelAsTail(tableSyncTask);
 
         executableDdlJob.setValidateTask(validateTask);
-        executableDdlJob.setStoreTableLocalityTask(dropLocality);
         executableDdlJob.setDropTableHideTableMetaTask(dropTableHideTableMetaTask);
         executableDdlJob.setPhyDdlTask(phyDdlTask);
         if (!Engine.isFileStore(engine)) {

@@ -24,12 +24,16 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.metadb.record.CountRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
 
 public class SequenceOptAccessor extends AbstractAccessor {
 
@@ -37,33 +41,46 @@ public class SequenceOptAccessor extends AbstractAccessor {
 
     public static final String SEQ_OPT_TABLE = wrap(GmsSystemTables.SEQUENCE_OPT);
 
-    private static final String INSERT_SEQ_OPT_TABLE = "insert into " + SEQ_OPT_TABLE
+    protected static final String INSERT_SEQ_OPT_TABLE = "insert into " + SEQ_OPT_TABLE
         + "(`schema_name`, `name`, `new_name`, `value`, `increment_by`, `start_with`, `max_value`, `cycle`, `status`) "
         + "values(?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    private static final String WHERE_SCHEMA = " where `schema_name` = ?";
+    protected static final String WHERE_SCHEMA = " where `schema_name` = ?";
 
-    private static final String WHERE_SCHEMA_SEQ = WHERE_SCHEMA + " and `name` = ?";
+    protected static final String WHERE_SCHEMA_SEQ = WHERE_SCHEMA + " and `name` = ?";
 
-    private static final String SELECT_SEQ_OPT_TABLE =
+    protected static final String WHERE_SCHEMA_TYPE = WHERE_SCHEMA + " and `cycle` = %s";
+
+    protected static final String WHERE_STANDALONE_SEQUENCES =
+        WHERE_SCHEMA + " and `name` not like '" + AUTO_SEQ_PREFIX + "%'";
+
+    protected static final String SELECT_SEQ_OPT_TABLE =
         "select `schema_name`, `name`, `new_name`, `value`, `increment_by`, `start_with`, `max_value`, `cycle`, `status` from"
             + SEQ_OPT_TABLE;
 
-    private static final String SELECT_SEQ_OPT_TABLE_ALL = SELECT_SEQ_OPT_TABLE + WHERE_SCHEMA;
+    protected static final String SELECT_SEQ_OPT_TABLE_ALL = SELECT_SEQ_OPT_TABLE + WHERE_SCHEMA;
 
-    private static final String SELECT_SEQ_OPT_TABLE_ONE = SELECT_SEQ_OPT_TABLE + WHERE_SCHEMA_SEQ;
+    protected static final String SELECT_SEQ_OPT_TABLE_ONE = SELECT_SEQ_OPT_TABLE + WHERE_SCHEMA_SEQ;
 
-    private static final String UPDATE_SEQ_OPT_TABLE = "update " + SEQ_OPT_TABLE + " set ";
+    protected static final String SELECT_SEQ_OPT_TABLE_TYPE = SELECT_SEQ_OPT_TABLE + WHERE_SCHEMA_TYPE + " for update";
 
-    private static final String UPDATE_SEQ_OPT_TABLE_NAME = UPDATE_SEQ_OPT_TABLE + "`name` = ?" + WHERE_SCHEMA_SEQ;
+    private static final String SEQUENCE_OPT_COUNT =
+        "select count(*) from " + SEQ_OPT_TABLE + WHERE_STANDALONE_SEQUENCES;
 
-    private static final String UPDATE_SEQ_OPT_TABLE_VALUE = UPDATE_SEQ_OPT_TABLE + "`value` = ?" + WHERE_SCHEMA_SEQ;
+    protected static final String UPDATE_SEQ_OPT_TABLE = "update " + SEQ_OPT_TABLE + " set ";
 
-    private static final String UPDATE_SEQ_OPT_TABLE_STATUS = UPDATE_SEQ_OPT_TABLE + "`status` = ?" + WHERE_SCHEMA_SEQ;
+    protected static final String UPDATE_SEQ_OPT_TABLE_NAME = UPDATE_SEQ_OPT_TABLE + "`name` = ?" + WHERE_SCHEMA_SEQ;
 
-    private static final String DELETE_SEQ_OPT_TABLE = "delete from " + SEQ_OPT_TABLE + WHERE_SCHEMA_SEQ;
+    protected static final String UPDATE_SEQ_OPT_TABLE_STATUS =
+        UPDATE_SEQ_OPT_TABLE + "`status` = ?" + WHERE_SCHEMA_SEQ;
 
-    private static final String DELETE_SEQ_OPT_TABLE_ALL = "delete from " + SEQ_OPT_TABLE + WHERE_SCHEMA;
+    protected static final String DELETE_SEQ_OPT_TABLE = "delete from " + SEQ_OPT_TABLE;
+
+    protected static final String DELETE_SEQ_OPT_TABLE_ALL = DELETE_SEQ_OPT_TABLE + WHERE_SCHEMA;
+
+    protected static final String DELETE_SEQ_OPT_TABLE_ONE = DELETE_SEQ_OPT_TABLE + WHERE_SCHEMA_SEQ;
+
+    protected static final String DELETE_SEQ_OPT_TABLE_TYPE = DELETE_SEQ_OPT_TABLE + WHERE_SCHEMA_TYPE;
 
     public int insert(SequenceOptRecord record) {
         try {
@@ -87,6 +104,22 @@ public class SequenceOptAccessor extends AbstractAccessor {
         }
     }
 
+    public void insert(String schemaName, List<SequenceOptRecord> records) {
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        for (SequenceOptRecord record : records) {
+            paramsBatch.add(record.buildInsertParams());
+        }
+        try {
+            DdlMetaLogUtil.logSql(INSERT_SEQ_OPT_TABLE, paramsBatch);
+            MetaDbUtil.insert(INSERT_SEQ_OPT_TABLE, paramsBatch, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of sequences for schema '" + schemaName + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "insert batch of sequence into",
+                SEQ_OPT_TABLE,
+                e.getMessage());
+        }
+    }
+
     private boolean compare(SequenceOptRecord newRecord, SequenceOptRecord existingRecord) {
         if (newRecord != null && existingRecord != null) {
             return newRecord.incrementBy == existingRecord.incrementBy &&
@@ -101,6 +134,11 @@ public class SequenceOptAccessor extends AbstractAccessor {
         return query(SELECT_SEQ_OPT_TABLE_ALL, SEQ_OPT_TABLE, SequenceOptRecord.class, schemaName);
     }
 
+    public List<SequenceOptRecord> query(String schemaName, int type) {
+        return query(String.format(SELECT_SEQ_OPT_TABLE_TYPE, type), SEQ_OPT_TABLE, SequenceOptRecord.class,
+            schemaName);
+    }
+
     public SequenceOptRecord query(String schemaName, String name) {
         List<SequenceOptRecord> records =
             query(SELECT_SEQ_OPT_TABLE_ONE, SEQ_OPT_TABLE, SequenceOptRecord.class, schemaName, name);
@@ -108,6 +146,14 @@ public class SequenceOptAccessor extends AbstractAccessor {
             return records.get(0);
         }
         return null;
+    }
+
+    public int count(String schemaName) {
+        List<CountRecord> seqOptRecords = query(SEQUENCE_OPT_COUNT, SEQ_OPT_TABLE, CountRecord.class, schemaName);
+        if (seqOptRecords != null && seqOptRecords.size() > 0) {
+            return seqOptRecords.get(0).count;
+        }
+        return 0;
     }
 
     public int update(SequenceOptRecord record) {
@@ -145,17 +191,20 @@ public class SequenceOptAccessor extends AbstractAccessor {
     }
 
     public int delete(SequenceOptRecord record) {
-        return delete(DELETE_SEQ_OPT_TABLE, SEQ_OPT_TABLE, record.schemaName, record.name);
+        return delete(DELETE_SEQ_OPT_TABLE_ONE, SEQ_OPT_TABLE, record.schemaName, record.name);
     }
 
     public int deleteAll(String schemaName) {
         return delete(DELETE_SEQ_OPT_TABLE_ALL, SEQ_OPT_TABLE, schemaName);
     }
 
-    private String buildUpdateSql(SequenceOptRecord record) {
+    public int delete(String schemaName, int type) {
+        return delete(String.format(DELETE_SEQ_OPT_TABLE_TYPE, type), SEQ_OPT_TABLE, schemaName);
+    }
+
+    protected String buildUpdateSql(SequenceOptRecord record) {
         StringBuilder sql = new StringBuilder();
-        sql.append("UPDATE ").append(SEQ_OPT_TABLE).append(" SET ");
-        sql.append("`start_with` = ");
+        sql.append(UPDATE_SEQ_OPT_TABLE).append("`start_with` = ");
         if (record.startWith > 0) {
             sql.append(record.startWith).append(", `value` = ").append(record.startWith);
         } else {
@@ -178,11 +227,11 @@ public class SequenceOptAccessor extends AbstractAccessor {
         if (record.cycle == SequenceAttribute.CYCLE) {
             sql.append(" | ").append(record.cycle);
         } else if (record.cycle == SequenceAttribute.NOCYCLE) {
-            sql.append(" & ").append(record.cycle | SequenceAttribute.CACHE_ENABLED);
+            sql.append(" & ").append(record.cycle);
         } else {
             sql.append(" | `cycle`");
         }
-        sql.append(")  & ").append(SequenceAttribute.CACHE_DISABLED | SequenceAttribute.CYCLE);
+        sql.append(")  & ").append(SequenceAttribute.CYCLE);
         sql.append(WHERE_SCHEMA_SEQ);
         return sql.toString();
     }

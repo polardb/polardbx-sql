@@ -39,9 +39,9 @@ create clustered unique index `agsi_4` on `t_order_2`(`order_id`) partition by k
 
 create clustered index `agsi_0b` using btree on `t_order_0`(`order_id`);
 create unique clustered index `agsi_1b` using btree on `t_order_0`(`order_id`,`seller_id`);
-create clustered index `agsi_2b` using hash on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
+create clustered index `agsi_2b` using btree on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
 create unique clustered index `agsi_3b` using btree on `t_order_1`(`order_id`) partition by key(`order_id`) partitions 2;
-create clustered unique index `agsi_4b` using hash on `t_order_2`(`order_id`) partition by key(`order_id`) partitions 2;
+create clustered unique index `agsi_4b` using btree on `t_order_2`(`order_id`) partition by key(`order_id`) partitions 2;
 
 alter table `t_order_0` add clustered index `agsi_5` (`order_id`);
 alter table `t_order_0` add unique clustered index `agsi_6` (`order_id`,`seller_id`);
@@ -49,10 +49,10 @@ alter table `t_order_1` add clustered index `agsi_7` (`order_id`) partition by k
 alter table `t_order_1` add unique clustered index `agsi_8` (`order_id`) partition by key(`order_id`) partitions 2;
 alter table `t_order_2` add clustered unique index `agsi_9` (`order_id`) partition by key(`order_id`) partitions 2;
 
-alter table `t_order_0` add clustered index `agsi_5b` using hash (`order_id`);
-alter table `t_order_0` add unique clustered index `agsi_6b` using hash (`order_id`,`seller_id`);
+alter table `t_order_0` add clustered index `agsi_5b` using btree (`order_id`);
+alter table `t_order_0` add unique clustered index `agsi_6b` using btree (`order_id`,`seller_id`);
 alter table `t_order_1` add clustered index `agsi_7b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
-alter table `t_order_1` add unique clustered index `agsi_8b` using hash (`order_id`) partition by key(`order_id`) partitions 2;
+alter table `t_order_1` add unique clustered index `agsi_8b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
 alter table `t_order_2` add clustered unique index `agsi_9b` using btree (`order_id`) partition by key(`order_id`) partitions 2;
 
 show full create table agsi_0;

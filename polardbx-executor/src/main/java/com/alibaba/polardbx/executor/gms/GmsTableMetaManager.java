@@ -18,6 +18,20 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.druid.pool.GetConnectionTimeoutException;
 import com.alibaba.druid.proxy.jdbc.ResultSetMetaDataProxy;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
+import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import com.mysql.cj.polarx.protobuf.PolarxResultset;
+import com.alibaba.polardbx.rpc.client.XSession;
+import com.alibaba.polardbx.rpc.compatible.XResultSet;
+import com.alibaba.polardbx.rpc.compatible.XResultSetMetaData;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
@@ -26,6 +40,9 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -88,6 +105,7 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import lombok.val;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
@@ -233,7 +251,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     indexesRecords =
                         tableInfoManager.queryVisibleIndexes(schemaName, origTableName);
                 }
-                meta = buildTableMeta(tableRecord, columnsRecords, indexesRecords, logicalTableName);
+                meta = buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, logicalTableName);
 
                 if (meta != null && !fetchPrimaryTableMetaOnly) {
 
@@ -241,6 +259,9 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
                     final GsiMetaManager gsiMetaManager =
                         new GsiMetaManager(dataSource, schemaName);
+                    meta.setTableColumnMeta(new TableColumnMeta(schemaName, origTableName,
+                        meta.getColumnMultiWriteSourceColumnMeta(),
+                        meta.getColumnMultiWriteTargetColumnMeta()));
                     meta.setGsiTableMetaBean(
                         gsiMetaManager.getTableMeta(origTableName, IndexStatus.ALL));
                     meta.setComplexTaskTableMetaBean(
@@ -250,8 +271,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         loadNewestPartitionInfo(metaDbConn,
                             schemaName, logicalTableName, origTableName, rule,
                             tableInfoManager, meta);
+                        if (meta.getPartitionInfo() != null) {
+                            meta.setTableGroupDigestList(TableGroupVersionManager.getTableGroupDigestList(
+                                meta.getPartitionInfo().getTableGroupId()));
+                        }
+                    } else {
+                        meta.setSchemaDigestList(SchemaVersionManager.getSchemaDigestList(schemaName));
                     }
-                    // Get auto partition mark.jjjjj
+                    // Get auto partition mark.
                     final TablesExtRecord extRecord =
                         tableInfoManager.queryTableExt(schemaName, origTableName, false);
                     if (extRecord != null) {
@@ -319,9 +346,9 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             true,
             "");
 
-        TableMeta dual = new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
-            TableStatus.PUBLIC, 0, 0);
-        dual.setSchemaName(schemaName);
+        TableMeta dual =
+            new TableMeta(schemaName, DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
+                TableStatus.PUBLIC, 0, 0);
         return dual;
     }
 
@@ -356,7 +383,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      */
     @Override
     public void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
-        toNewVersionInTrx(tableNameList, true, 15, 15, TimeUnit.SECONDS, allowTwoVersion);
+        ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
+        boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
+        Long initWait = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
+        Long interval = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+
+        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.SECONDS,
+            allowTwoVersion);
     }
 
     /**
@@ -392,7 +425,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
     }
 
-    public static TableMeta buildTableMeta(TablesRecord tableRecord, List<ColumnsRecord> columnsRecords,
+    public static TableMeta buildTableMeta(String schemaName, TablesRecord tableRecord,
+                                           List<ColumnsRecord> columnsRecords,
                                            List<IndexesRecord> indexesRecords,
                                            String tableName) {
         if (columnsRecords == null || tableRecord == null) {
@@ -471,7 +505,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         autoIncrement, false);
 
                 ColumnMeta columnMeta =
-                    new ColumnMeta(tableName, columnName, null, field, TableStatus.convert(status), flag);
+                    new ColumnMeta(tableName, columnName, null, field, ColumnStatus.convert(status), flag);
 
                 allColumnsOrderByDefined.add(columnMeta);
 
@@ -548,7 +582,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             primaryKeys,
             primaryValues);
 
-        TableMeta res = new TableMeta(tableName,
+        TableMeta res = new TableMeta(schemaName, tableName,
             allColumnsOrderByDefined,
             primaryKeyMeta,
             secondaryIndexMetas,
@@ -717,9 +751,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     indexesRecords = Collections.emptyList();
                 }
 
-                TableMeta meta = buildTableMeta(tableRecord, columnsRecords, indexesRecords, tableRecord.tableName);
+                TableMeta meta =
+                    buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, tableRecord.tableName);
                 boolean locked = false;
                 if (meta != null) {
+                    meta.setTableColumnMeta(new TableColumnMeta(schemaName, origTableName,
+                        meta.getColumnMultiWriteSourceColumnMeta(),
+                        meta.getColumnMultiWriteTargetColumnMeta()));
+
                     meta.setGsiTableMetaBean(
                         gsiMetaManager.initTableMeta(origTableName, indexRecordsTableMap.get(origTableName),
                             indexRecordsIndexMap.get(origTableName)));
@@ -739,7 +778,16 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             Map<String, Map<String, List<FileMeta>>> fileMetaSet =
                                 FileManager.INSTANCE.getFiles(meta);
                             meta.setFileMetaSet(fileMetaSet);
+                            meta.setTableGroupDigestList(
+                                TableGroupVersionManager.getTableGroupDigestList(
+                                    meta.getPartitionInfo().getTableGroupId()));
                         }
+                        if (meta.getPartitionInfo() != null) {
+                            meta.setTableGroupDigestList(TableGroupVersionManager.getTableGroupDigestList(
+                                meta.getPartitionInfo().getTableGroupId()));
+                        }
+                    } else {
+                        meta.setSchemaDigestList(SchemaVersionManager.getSchemaDigestList(schemaName));
                     }
                     // Get auto partition mark.
                     final TablesExtRecord extRecord =
@@ -819,10 +867,12 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 PartitionInfo newPartitionInfo =
                     ruleMgr.getPartitionInfoManager().getPartitionInfoFromDeltaTable(conn, origTableName);
                 logTblMeta.initPartitionInfo(conn, schemaName, logicalTableName, ruleMgr);
-                PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(conn, newPartitionInfo);
+                PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(conn,
+                    curPartitionInfo.getTableGroupId(), newPartitionInfo);
                 if (logTblMeta.getComplexTaskTableMetaBean().isNeedSwitchDatasource()) {
                     curPartitionInfo = PartitionInfoUtil
-                        .updatePartitionInfoByOutDatePartitionRecords(conn, curPartitionInfo, tblInfoMgr);
+                        .updatePartitionInfoByOutDatePartitionRecords(conn, curPartitionInfo.getTableGroupId(),
+                            curPartitionInfo, tblInfoMgr);
                     newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
@@ -869,12 +919,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     tablePartitionRecordsFromDelta);
                 if (logTblMeta.getComplexTaskTableMetaBean().isNeedSwitchDatasource()) {
                     curPartitionInfo = PartitionInfoUtil
-                        .updatePartitionInfoByOutDatePartitionRecords(metaDbConnect, curPartitionInfo, tblInfoMgr);
+                        .updatePartitionInfoByOutDatePartitionRecords(metaDbConnect, curPartitionInfo.getTableGroupId(),
+                            curPartitionInfo, tblInfoMgr);
                     newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
                 } else {
-                    PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(metaDbConnect, newPartitionInfo);
+                    PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(metaDbConnect,
+                        curPartitionInfo.getTableGroupId(), newPartitionInfo);
                     logTblMeta.setNewPartitionInfo(newPartitionInfo);
                     logTblMeta.setPartitionInfo(curPartitionInfo);
                 }
@@ -1000,6 +1052,17 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 long oldVersion = currentMeta == null ? 0 : currentMeta.getVersion();
                 long newVersion = firstTable.getValue();
 
+                if (allowTwoVersion && staleTables.size() > 1) {
+                    // for tables sync
+                    if (isNewPartitionDb) {
+                        PartitionInfo partitionInfo = oldSchemaManager.getTddlRuleManager().getPartitionInfoManager()
+                            .getPartitionInfo(tableName);
+                        TableGroupVersionManager.increaseTableGroupVersion(partitionInfo.getTableGroupId());
+                    } else {
+                        SchemaVersionManager.increaseSchemaVersion(schemaName);
+                    }
+                }
+
                 // TODO(moyi) unify these two code path
                 if (tableNameList.size() > 1) {
                     newSchemaManager = new GmsTableMetaManager(oldSchemaManager, tableNameList, rule);
@@ -1023,7 +1086,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             // Insert mdl barrier
             {
                 mdlCriticalSection(preemptive, initWait, interval, timeUnit, oldSchemaManager, staleTables.keySet(),
-                    (x) -> {
+                    isNewPartitionDb, (x) -> {
                         oldSchemaManager.expire();
                         if (!allowTwoVersion) {
                             OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
@@ -1042,7 +1105,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      */
     private void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
                                     GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
-                                    Function<Void, Void> duringBarrier) {
+                                    boolean isNewPartDb, Function<Void, Void> duringBarrier) {
         final MdlContext context;
         if (preemptive) {
             context = MdlManager.addContext(schemaName, initWait, interval, timeUnit);
@@ -1069,14 +1132,32 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 "[{0} {1}] Mdl write lock try to acquired table[{2}]",
                 Thread.currentThread().getName(), this.hashCode(), lockedTables));
 
-            for (String tableName : lockedTables) {
+            String tableNameFirst = tableNameList.stream().findFirst().get();
+            if (lockedTables.size() == 1) {
+                // table sync (all database support)
                 MdlTicket ticket = context.acquireLock(
                     new MdlRequest(1L,
-                        MdlKey.getTableKeyWithLowerTableName(schemaName, tableName),
+                        MdlKey.getTableKeyWithLowerTableName(schemaName, lockedTables.get(0)),
                         MdlType.MDL_EXCLUSIVE,
                         MdlDuration.MDL_TRANSACTION));
 
                 tickets.add(ticket);
+            } else if (oldSchemaManager.getTableWithNull(tableNameFirst) != null) {
+                // tables sync only (for table group)
+                // oldDigest will not be null, then tables sync can use tablegroup mdl to clear old transactio
+                List<String> oldDigestList = isNewPartDb ?
+                    oldSchemaManager.getTable(tableNameFirst).getTableGroupDigestList() :
+                    oldSchemaManager.getTable(tableNameFirst).getSchemaDigestList();
+                assert oldDigestList != null;
+                for (String oldDigest : oldDigestList) {
+                    assert oldDigest != null;
+                    MdlTicket ticket = context.acquireLock(
+                        new MdlRequest(1L,
+                            MdlKey.getTableKeyWithLowerTableName(schemaName, oldDigest),
+                            MdlType.MDL_EXCLUSIVE,
+                            MdlDuration.MDL_TRANSACTION));
+                    tickets.add(ticket);
+                }
             }
             long elapsedMillis = System.currentTimeMillis() - startMillis;
             SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
@@ -1090,15 +1171,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             // invalid plan cache when old table meta is not in using
             // Note: Invalidate plan cache is still necessary,
             // because non-multi-write plan for simple table may be cached.
-            for (String schemaName : OptimizerContext.getActiveSchemaNames()) {
-                final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
-                if (optimizerContext != null) {
-                    final PlanManager planManager = optimizerContext.getPlanManager();
-                    if (planManager != null) {
-                        planManager.invalidateCache();
-                    }
-                }
-            }
+            PlanManager.getInstance().invalidateCache();
 
             for (MdlTicket ticket : tickets) {
                 context.releaseLock(1L, ticket);
@@ -1182,13 +1255,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     }
 
     @Override
-    public TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
+    public TableMeta getTableMetaFromConnection(String schemaName, String tableName, Connection conn) {
         try {
             Map<String, String> collationTypes = fetchCollationType(conn, tableName);
             Map<String, String> specialTypes = fetchColumnType(conn, tableName);
             Map<String, String> defaultInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, String> extraInfo = fetchColumnExtraAndDefault(conn, tableName, defaultInfo);
-            return fetchTableMeta(conn, tableName, tableName, collationTypes, specialTypes, extraInfo, defaultInfo);
+            return fetchTableMeta(schemaName, conn, tableName, tableName, collationTypes, specialTypes, extraInfo,
+                defaultInfo);
         } catch (Exception e) {
             return null;
         } finally {
@@ -1307,7 +1381,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         return specialType;
     }
 
-    private static TableMeta fetchTableMeta(Connection conn, String actualTableName, String logicalTableName,
+    private static TableMeta fetchTableMeta(String schemaName, Connection conn, String actualTableName,
+                                            String logicalTableName,
                                             Map<String, String> collationType, Map<String, String> specialType,
                                             Map<String, String> extraInfo, Map<String, String> defaultInfo) {
         Statement stmt = null;
@@ -1326,6 +1401,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     collationType,
                     extraInfo,
                     defaultInfo,
+                    schemaName,
                     logicalTableName,
                     actualTableName);
             } catch (Exception e) {
@@ -1342,6 +1418,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                                 collationType,
                                 extraInfo,
                                 defaultInfo,
+                                schemaName,
                                 logicalTableName,
                                 actualTableName);
                         } catch (SQLException e1) {
@@ -1373,14 +1450,15 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     public static TableMeta resultSetMetaToSchema(ResultSetMetaData rsmd, DatabaseMetaData dbmd,
                                                   Map<String, String> specialType, Map<String, String> collationType,
                                                   Map<String, String> extraInfo, Map<String, String> defaultInfo,
+                                                  String schemaName,
                                                   String logicalTableName, String actualTableName) {
-
         return resultSetMetaToTableMeta(rsmd,
             dbmd,
             specialType,
             collationType,
             extraInfo,
             defaultInfo,
+            schemaName,
             logicalTableName,
             actualTableName);
     }
@@ -1401,6 +1479,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                                                       Map<String, String> collationType,
                                                       Map<String, String> extraInfo,
                                                       Map<String, String> defaultInfo,
+                                                      String schemaName,
                                                       String tableName, String actualTableName) {
 
         List<ColumnMeta> allColumnsOrderByDefined = new ArrayList<>();
@@ -1528,7 +1607,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             true,
             primaryKeys,
             primaryValues);
-        return new TableMeta(tableName,
+        return new TableMeta(schemaName, tableName,
             allColumnsOrderByDefined,
             primaryKeyMeta,
             secondaryIndexMetas,

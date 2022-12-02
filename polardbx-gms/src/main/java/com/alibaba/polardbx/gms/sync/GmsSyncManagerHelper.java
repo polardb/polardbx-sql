@@ -28,19 +28,39 @@ public class GmsSyncManagerHelper {
     }
 
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName) {
-        return SYNC_MANAGER.sync(action, schemaName);
+        return sync(action, schemaName, false);
+    }
+
+    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName,
+                                                       boolean throwExceptions) {
+        return SYNC_MANAGER.sync(action, schemaName, throwExceptions);
     }
 
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope) {
-        return SYNC_MANAGER.sync(action, schemaName, scope);
+        return sync(action, schemaName, scope, false);
+    }
+
+    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
+                                                       boolean throwExceptions) {
+        return SYNC_MANAGER.sync(action, schemaName, scope, throwExceptions);
     }
 
     public static void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler) {
-        SYNC_MANAGER.sync(action, schemaName, handler);
+        sync(action, schemaName, handler, false);
+    }
+
+    public static void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler,
+                            boolean throwExceptions) {
+        SYNC_MANAGER.sync(action, schemaName, handler, throwExceptions);
     }
 
     public static void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler) {
-        SYNC_MANAGER.sync(action, schemaName, scope, handler);
+        sync(action, schemaName, scope, handler, false);
+    }
+
+    public static void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler,
+                            boolean throwExceptions) {
+        SYNC_MANAGER.sync(action, schemaName, scope, handler, throwExceptions);
     }
 
     public static List<Map<String, Object>> sync(IGmsSyncAction action, String schemaName, String serverKey) {

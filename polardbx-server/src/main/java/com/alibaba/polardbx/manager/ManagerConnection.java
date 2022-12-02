@@ -18,6 +18,7 @@ package com.alibaba.polardbx.manager;
 
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.net.util.TimeUtil;
@@ -44,6 +45,11 @@ public final class ManagerConnection extends FrontendConnection {
         super(channel);
 
         instanceId = CobarServer.getInstance().getConfig().getSystem().getInstanceId();
+    }
+
+    @Override
+    protected long genConnId() {
+        return ClusterAcceptIdGenerator.getInstance().nextManageId();
     }
 
     @Override

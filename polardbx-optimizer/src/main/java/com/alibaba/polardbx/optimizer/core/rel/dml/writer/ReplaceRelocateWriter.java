@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -58,8 +59,10 @@ public class ReplaceRelocateWriter extends RelocateWriter {
                                  Mapping skTargetMapping,
                                  Mapping skSourceMapping,
                                  List<ColumnMeta> skMetas,
-                                 boolean containsAllUk) {
-        super(targetTable, deleteWriter, insertWriter, modifyWriter, skTargetMapping, skSourceMapping, skMetas, false);
+                                 boolean containsAllUk,
+                                 boolean usePartFieldChecker) {
+        super(targetTable, deleteWriter, insertWriter, modifyWriter, skTargetMapping, skSourceMapping, skMetas, false,
+            usePartFieldChecker);
         this.parent = parent;
         this.containsAllUk = containsAllUk;
     }
@@ -82,10 +85,12 @@ public class ReplaceRelocateWriter extends RelocateWriter {
 
             final boolean canWriteForScaleout = ComplexTaskPlanUtils.canWrite(tableMeta);
             final boolean isReadyToPublishForScaleout = ComplexTaskPlanUtils.isReadyToPublish(tableMeta);
+            // Use delete + insert to avoid dup key error while adding column
+            final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
             // If this table contains all local/global uk and sk does not modified, do REPLACE
             final boolean pushReplace =
                 row.duplicated && row.doReplace && canPushReplace(ec) && identicalSk.test(this, Pair.of(before, after))
-                    && (!canWriteForScaleout || isReadyToPublishForScaleout);
+                    && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isOnlineModifyColumn;
             addResult(before, after, row.duplicated, pushReplace, row.doInsert, ec, result);
         });
 

@@ -19,7 +19,9 @@ package com.alibaba.polardbx.server.handler;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseResize;
+import com.alibaba.polardbx.server.response.ResizeStoredFunctionCache;
 import com.alibaba.polardbx.server.response.ResizePlanCache;
+import com.alibaba.polardbx.server.response.ResizeProcedureCache;
 import com.alibaba.polardbx.server.util.LogUtils;
 
 public final class ResizeHandler {
@@ -31,6 +33,12 @@ public final class ResizeHandler {
             switch (rs & 0xff) {
             case ServerParseResize.PLANCACHE:
                 ResizePlanCache.response(stmt, c, rs >>> 8, hasMore);
+                break;
+            case ServerParseResize.PROCEDURE_CACHE:
+                ResizeProcedureCache.response(stmt, c, rs >>> 8, hasMore);
+                break;
+            case ServerParseResize.FUNCTION_CACHE:
+                ResizeStoredFunctionCache.response(stmt, c, rs >>> 8, hasMore);
                 break;
             default:
                 c.execute(stmt, hasMore);

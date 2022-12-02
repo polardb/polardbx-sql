@@ -32,6 +32,8 @@ public interface DdlJob {
      */
     DdlJob addTask(DdlTask task);
 
+    DdlTask getTaskById(long taskId);
+
     /**
      * Add a relationship between a source DDL task and a target DDL task into this job.
      * For example, task1 -> task2.
@@ -43,6 +45,8 @@ public interface DdlJob {
     DdlJob addTaskRelationship(DdlTask source, DdlTask target);
 
     DdlJob removeTaskRelationship(DdlTask source, DdlTask target);
+
+    DdlJob removeRedundancyRelations();
 
     /**
      * getMaxParallelism. default 1
@@ -59,6 +63,8 @@ public interface DdlJob {
      * For example, task1 -> task2.
      */
     List<DdlTask> getTasksByType(Class<DdlTask> sourceTaskType);
+
+    List<DdlTask> getAllTasks();
 
     /**
      * Append a series of sequential tasks to a predecessor task

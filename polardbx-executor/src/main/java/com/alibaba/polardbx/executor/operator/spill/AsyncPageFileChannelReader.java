@@ -150,6 +150,16 @@ public class AsyncPageFileChannelReader {
         return request.getIterator();
     }
 
+    /**
+     * 最多读取maxChunkNum个Chunk
+     */
+    public Iterator<Chunk> readPagesIterator(long maxChunkNum)
+        throws IOException {
+        PagesIteratorReadRequest request = new PagesIteratorReadRequest(maxChunkNum);
+        addRequest(request);
+        return request.getIterator();
+    }
+
     public ListenableFuture<List<Chunk>> readPagesList()
         throws IOException {
         checkState(pagesListReadRequest == null, "pagesListReadRequest not null");
@@ -255,12 +265,28 @@ public class AsyncPageFileChannelReader {
         private Chunk page;
         private boolean closed;
 
+        //最多读取maxChunkNum个Chunk；0代表没有限制
+        private long maxChunkNum = 0;
+        //已从input中读取的数目
+        private long readChunks = 0;
+
+        public PagesIteratorReadRequest() {
+
+        }
+
+        public PagesIteratorReadRequest(long maxChunkNum) {
+            this.maxChunkNum = maxChunkNum;
+        }
+
         @Override
         public void requestDone(IOException e) {
             boolean nextRound = false;
             if (e == null) {
                 try {
-                    nextRound = pageIterator.hasNext();
+                    //已读取的readChunks超过maxChunkNum时，nextRound=false，不再读取下一个
+                    if (maxChunkNum <= 0 || readChunks < maxChunkNum){
+                        nextRound = pageIterator.hasNext();
+                    }
                 } catch (Exception ioe) {
                     e = new IOException(ioe);
                 }
@@ -273,11 +299,12 @@ public class AsyncPageFileChannelReader {
         public long read()
             throws IOException {
             if (pageIterator == null) {
-                pageIterator = PagesSerdeUtil.readPages(serde, new InputStreamSliceInput(input));
+                pageIterator = PagesSerdeUtil.readPages(serde, input);
             }
             page = null;
             if (pageIterator.hasNext()) {
                 page = pageIterator.next();
+                readChunks++;
                 return page.getSizeInBytes();
             }
             return 0;

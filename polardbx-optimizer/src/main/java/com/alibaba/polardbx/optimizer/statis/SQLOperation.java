@@ -43,4 +43,8 @@ public interface SQLOperation {
     long getPhysicalCloseCost();
 
     long getTotalTimeCost();
+
+    Long getGrpConnId();
+
+    String getTraceId();
 }

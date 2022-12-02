@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -42,6 +43,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 
 class VarcharColumnProvider implements ColumnProvider<String> {
@@ -120,10 +122,10 @@ class VarcharColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -133,19 +135,21 @@ class VarcharColumnProvider implements ColumnProvider<String> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((BytesColumnVector) columnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((BytesColumnVector) columnVector).setVal(rowNumber, bytes);
+                accumulator.ifPresent(a -> a.appendBytes(bytes, 0, bytes.length));
             }
         }
     }
 
     @Override
     public void putRow(ColumnVector columnVector, ColumnVector redundantColumnVector, int rowNumber, Row row,
-                       int columnId, DataType dataType, ZoneId timezone) {
+                       int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
                 ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
-                    dataType.length(), redundantColumnVector, this.collationHandlerFunction);
+                    dataType.length(), redundantColumnVector, this.collationHandlerFunction, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -156,9 +160,11 @@ class VarcharColumnProvider implements ColumnProvider<String> {
                 columnVector.noNulls = false;
                 ((BytesColumnVector) columnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
                 ((BytesColumnVector) redundantColumnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((BytesColumnVector) columnVector).setVal(rowNumber, bytes);
                 ((BytesColumnVector) redundantColumnVector).setVal(rowNumber, this.collationHandlerFunction.apply(bytes, dataType.length()));
+                accumulator.ifPresent(a -> a.appendBytes(bytes, 0, bytes.length));
             }
         }
     }

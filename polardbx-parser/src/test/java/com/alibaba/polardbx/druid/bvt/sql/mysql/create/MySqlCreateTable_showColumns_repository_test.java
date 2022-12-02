@@ -131,7 +131,7 @@ public class MySqlCreateTable_showColumns_repository_test extends MysqlTest {
                 "| c_decimal    | decimal(10,3) | YES  |     | NULL                |                             |\n" +
                 "+--------------+---------------+------+-----+---------------------+-----------------------------+\n", repository.console("show columns from test1"));
 
-        repository.console("ALTER TABLE test1 CHANGE COLUMN c_decimal c_decimal_1 INT(11) NOT NULL DEFAULT NULL FIRST id;");
+        repository.console("ALTER TABLE test1 CHANGE COLUMN c_decimal c_decimal_1 INT(11) NOT NULL DEFAULT NULL FIRST;");
         assertEquals(21, createTableStmt.getTableElementList().size());
         //String sql = "ALTER TABLE `test`.`tb1` CHANGE COLUMN `fid` `fid` INT(11) NOT NULL DEFAULT NULL, ADD PRIMARY KEY (`fid`) ;";
 

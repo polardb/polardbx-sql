@@ -18,28 +18,22 @@ package com.alibaba.polardbx.gms.metadb.seq;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
-import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.Map;
 
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INNER_STEP;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_COUNT;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_INDEX;
 
-public class SequenceRecord implements SystemTableRecord {
+public class SequenceRecord extends SequenceBaseRecord {
 
     public SequenceRecord() {
         fillDefault();
     }
 
-    public String schemaName;
-    public String name;
-    public String newName;
-    public long value;
     public int unitCount;
     public int unitIndex;
     public int innerStep;
@@ -47,10 +41,7 @@ public class SequenceRecord implements SystemTableRecord {
 
     @Override
     public SequenceRecord fill(ResultSet rs) throws SQLException {
-        this.schemaName = rs.getString("schema_name");
-        this.name = rs.getString("name");
-        this.newName = rs.getString("new_name");
-        this.value = rs.getLong("value");
+        super.fill(rs);
         this.unitCount = rs.getInt("unit_count");
         this.unitIndex = rs.getInt("unit_index");
         this.innerStep = rs.getInt("inner_step");
@@ -65,13 +56,10 @@ public class SequenceRecord implements SystemTableRecord {
         this.innerStep = DEFAULT_INNER_STEP;
     }
 
+    @Override
     public Map<Integer, ParameterContext> buildInsertParams() {
-        Map<Integer, ParameterContext> params = new HashMap<>(8);
-        int index = 0;
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.schemaName);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.name);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.newName);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.value);
+        Map<Integer, ParameterContext> params = super.buildInsertParams();
+        int index = params.size();
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt, this.unitCount);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt, this.unitIndex);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt, this.innerStep);

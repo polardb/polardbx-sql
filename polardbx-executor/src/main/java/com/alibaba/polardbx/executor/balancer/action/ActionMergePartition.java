@@ -82,7 +82,7 @@ public class ActionMergePartition implements BalanceAction {
     @Override
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         String sql = genSQL();
-        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
+        return ActionUtils.convertToDelegatorJob(schema, sql);
     }
 
     private String genSQL() {

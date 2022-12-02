@@ -19,26 +19,33 @@ package com.alibaba.polardbx.sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 
 /**
- * 序列接口
- *
  * @author nianbing
  */
 public interface Sequence {
 
     /**
-     * 取得序列下一个值
-     *
-     * @return 返回序列下一个值
+     * Get next sequence value.
      */
     long nextValue() throws SequenceException;
 
     /**
-     * 返回size大小后的值，比如针对batch拿到size大小的值，自己内存中顺序分配
+     * Return the maximum value in a batch of sequence values.
      */
     long nextValue(int size) throws SequenceException;
 
     /**
-     * 消耗掉当前内存中已分片的sequence
+     * Get current sequence value, i.e. last assigned sequence value in current session
      */
-    public boolean exhaustValue() throws SequenceException;
+    long currValue() throws SequenceException;
+
+    /**
+     * Exhaust values in currently cached range for Group Sequence.
+     */
+    boolean exhaustValue() throws SequenceException;
+
+    /**
+     * Update explicit value.
+     */
+    void updateValue(long value) throws SequenceException;
+
 }

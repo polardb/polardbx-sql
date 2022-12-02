@@ -51,15 +51,14 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
     @Override
     protected String getPlan(String testSql) {
         String planStr;
-
+        ExecutionContext executionContext = new ExecutionContext();
         OptimizerContext oc = getContextByAppName(getAppName());
-        SqlNodeList astList = new FastsqlParser().parse(testSql);
+
+        SqlNodeList astList = new FastsqlParser().parse(testSql, executionContext);
 
         SqlNode ast = astList.get(0);
 
-        ExecutionContext executionContext = new ExecutionContext();
-        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
-            false);
+
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
         executionContext.setUsingPhySqlCache(true);

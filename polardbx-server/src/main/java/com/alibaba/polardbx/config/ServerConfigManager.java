@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -30,9 +31,9 @@ import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
 
 import java.util.List;
+import java.util.Map;
 
 public class ServerConfigManager implements IServerConfigManager {
 
@@ -64,8 +65,8 @@ public class ServerConfigManager implements IServerConfigManager {
                 Throwable dsInitEx = TDataSourceInitUtils.initDataSource(ds);
                 if (dsInitEx != null) {
                     logger.warn(String.format(
-                        "Failed to load new TDataSource for the schema[%s], so ignore the schema",
-                        dbName),
+                            "Failed to load new TDataSource for the schema[%s], so ignore the schema",
+                            dbName),
                         dsInitEx);
                     return null;
                 }
@@ -102,21 +103,36 @@ public class ServerConfigManager implements IServerConfigManager {
     }
 
     @Override
+    public void remoteExecuteDdlTask(String schemaName, Long jobId, Long taskId) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
+        matrixConfigHolder.remoteExecuteDdlTask(schemaName, jobId, taskId);
+    }
+
+    @Override
     public long submitRebalanceDDL(String schemaName, String sql) {
         MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
         return matrixConfigHolder.submitRebalanceDDL(schemaName, sql);
     }
 
     @Override
-    public long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback, String sql) {
+    public long submitSubDDL(String schemaName, DdlContext parentDdlContext, long parentJobId, long parentTaskId,
+                             boolean forRollback,
+                             String sql, ParamManager paramManager) {
         MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
-        return matrixConfigHolder.submitSubDDL(schemaName, parentJobId, parentTaskId, forRollback, sql);
+        return matrixConfigHolder.submitSubDDL(schemaName, parentDdlContext, parentJobId, parentTaskId, forRollback,
+            sql);
     }
 
     @Override
     public void executeBackgroundSql(String sql, String schema, InternalTimeZone timeZone) {
         MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schema);
         matrixConfigHolder.executeBackgroundSql(sql, schema, timeZone);
+    }
+
+    @Override
+    public List<Map<String, Object>> executeQuerySql(String sql, String schema, InternalTimeZone timeZone) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schema);
+        return matrixConfigHolder.executeQuerySql(sql, schema, timeZone);
     }
 
     private MatrixConfigHolder getMatrixConfigHolder(String schemaName) {

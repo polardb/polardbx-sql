@@ -26,7 +26,7 @@ import java.util.List;
 public class mysql_block_0  extends MysqlTest {
 
     public void test_0() throws Exception {
-        String sql = "BEGIN;\n" +
+        String sql = "BEGIN\n" +
 				"DELETE t0 FROM ktv_ind_columns t0 WHERE t0.dbid=?;\n" +
 				"    INSERT INTO ktv_ind_columns(index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,collection_time)\n" +
 				"    SELECT DISTINCT index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,now()\n" +

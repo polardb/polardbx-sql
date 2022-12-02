@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.function.SqlNumericConvFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericCrc32Function;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericOneFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlPadFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlPartHashFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlPartRouteFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlRepeatFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlReplaceFunction;
@@ -170,7 +171,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction BIN = new SqlFunction("BIN",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_BINARY,
+        ReturnTypes.VARCHAR_2000,
         InferTypes.FIRST_KNOWN,
         OperandTypes.ANY,
         SqlFunctionCategory.STRING);
@@ -272,6 +273,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     public static SqlFunction CONCAT_WS = new SqlConcatFunction("CONCAT_WS");
 
     public static SqlFunction PART_ROUTE = new SqlPartRouteFunction("PART_ROUTE");
+    public static SqlFunction PART_HASH = new SqlPartHashFunction("PART_HASH");
 
     // Todo:CONNECTION_ID
     public static SqlFunction CONV = new SqlNumericConvFunction("CONV");
@@ -996,6 +998,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     public static SqlFunction MID = new SqlSubStrFunction("MID");
 
     public static SqlFunction NEXTVAL = new SqlSequenceFunction("NEXTVAL");
+    public static SqlFunction CURRVAL = new SqlSequenceFunction("CURRVAL");
 
     // VALUES after ON DUPLICATE KEY UPDATE
     public static SqlFunction VALUES = new SqlValuesFunction("VALUES");
@@ -2376,10 +2379,13 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     @Override
     public void lookupOperatorOverloads(SqlIdentifier opName, SqlFunctionCategory category, SqlSyntax syntax,
                                         List<SqlOperator> operatorList) {
-        // check nextval
+        // check nextval and currval
         if ((opName.names.size() == 2 && opName.names.get(1).equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME))
             || (opName.names.size() == 3 && opName.names.get(2).equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME))) {
             operatorList.add(NEXTVAL);
+        } else if ((opName.names.size() == 2 && opName.names.get(1).equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME))
+            || (opName.names.size() == 3 && opName.names.get(2).equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME))) {
+            operatorList.add(CURRVAL);
         } else {
             super.lookupOperatorOverloads(opName, category, syntax, operatorList);
         }

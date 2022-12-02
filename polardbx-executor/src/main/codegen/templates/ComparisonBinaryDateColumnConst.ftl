@@ -44,7 +44,7 @@ public class ${className} extends AbstractVectorizedExpression {
             right = 0;
         } else {
             OriginalDate date = (OriginalDate) DataTypes.DateType.convertFrom(rightValue);
-            right = TimeStorage.writeDate(date.getMysqlDateTime());
+            right = date == null ? 0 : TimeStorage.writeDate(date.getMysqlDateTime());
         }
     }
 
@@ -111,14 +111,14 @@ public class ${className} extends AbstractVectorizedExpression {
                         int j = sel[i];
 
                         OriginalDate date = (OriginalDate) leftInputVectorSlot.elementAt(j);
-                        long left = TimeStorage.writeDate(date.getMysqlDateTime());
+                        long left = date == null ? 0 : TimeStorage.writeDate(date.getMysqlDateTime());
 
                         res[j] = (left ${operator.op} right) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                     }
                 } else {
                     for (int i = 0; i < batchSize; i++) {
                         OriginalDate date = (OriginalDate) leftInputVectorSlot.elementAt(i);
-                        long left = TimeStorage.writeDate(date.getMysqlDateTime());
+                        long left = date == null ? 0 : TimeStorage.writeDate(date.getMysqlDateTime());
 
                         res[i] = (left ${operator.op} right) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                     }

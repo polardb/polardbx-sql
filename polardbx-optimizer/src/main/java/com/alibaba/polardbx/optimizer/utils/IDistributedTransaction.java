@@ -31,6 +31,10 @@ public interface IDistributedTransaction extends ITransaction {
         return false;
     }
 
+    default boolean allowMultipleWriteConns() {
+        return false;
+    }
+
     /**
      * whether a transaction involves more than one group
      *

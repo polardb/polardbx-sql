@@ -66,12 +66,14 @@ public class TableSyncTask extends BaseSyncTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
+        boolean throwExceptions = !isFromCDC();
         try {
             if (!preemptive) {
-                SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, tableName));
+                SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, tableName), throwExceptions);
             } else {
-                SyncManagerHelper
-                    .sync(new TableMetaChangePreemptiveSyncAction(schemaName, tableName, initWait, interval, timeUnit));
+                SyncManagerHelper.sync(
+                    new TableMetaChangePreemptiveSyncAction(schemaName, tableName, initWait, interval, timeUnit),
+                    throwExceptions);
             }
             FailPoint.injectSuspendFromHint("FP_TABLE_SYNC_TASK_SUSPEND", executionContext);
             // Sleep 1s when debug mode. Keep this status for a while.

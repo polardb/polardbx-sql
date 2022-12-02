@@ -24,23 +24,25 @@ import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.util.Date;
 
-
 public class Comparative implements Comparable, Cloneable {
 
-    public static final int GreaterThan        = 1;
+    public static final int GreaterThan = 1;
     public static final int GreaterThanOrEqual = 2;
-    public static final int Equivalent         = 3;
-    public static final int NotEquivalent      = 4;
-    public static final int LessThan           = 5;
-    public static final int LessThanOrEqual    = 6;
+    public static final int Equivalent = 3;
+    public static final int NotEquivalent = 4;
+    public static final int LessThan = 5;
+    public static final int LessThanOrEqual = 6;
 
     private Object value;
     private int comparison;
+    // raw index != -1 meaning this comparative is refered to one IN expr.
+    private int rawIndex = -1;
+    private int skIndex = -1;
 
-    protected Comparative(){
+    protected Comparative() {
     }
 
-    public Comparative(int function, Object value){
+    public Comparative(int function, Object value) {
         this.comparison = function;
         this.value = value;
     }
@@ -155,7 +157,9 @@ public class Comparative implements Comparable, Cloneable {
     }
 
     public Comparative clone() {
-        return new Comparative(this.comparison, this.value);
+        Comparative c = new Comparative(this.comparison, this.value);
+        c.setRawIndex(rawIndex, skIndex);
+        return c;
     }
 
     @Override
@@ -203,7 +207,7 @@ public class Comparative implements Comparable, Cloneable {
                 final Long aLong = Long.valueOf(value);
                 if (aLong.equals(getValue())) {
                     return 0;
-                } else if (aLong > (Long)getValue()) {
+                } else if (aLong > (Long) getValue()) {
                     return 1;
                 } else {
                     return -1;
@@ -228,7 +232,7 @@ public class Comparative implements Comparable, Cloneable {
                 } else if (value.length() == 7) {
                     formatString = "yyyy-MM";
                 }
-                String format = DateFormatUtils.format((Date)getValue(),formatString);
+                String format = DateFormatUtils.format((Date) getValue(), formatString);
                 return value.compareTo(format);
             } else if (aClass == String.class) {
                 if (value.equals(getValue())) {
@@ -245,4 +249,16 @@ public class Comparative implements Comparable, Cloneable {
 
     }
 
+    public int getRawIndex() {
+        return rawIndex;
+    }
+
+    public void setRawIndex(int rawIndex, int skIndex) {
+        this.rawIndex = rawIndex;
+        this.skIndex = skIndex;
+    }
+
+    public int getSkIndex() {
+        return skIndex;
+    }
 }

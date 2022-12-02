@@ -16,15 +16,15 @@
 
 package com.alibaba.polardbx.sequence.impl;
 
-import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
+import com.alibaba.polardbx.sequence.exception.SequenceException;
 
 /**
  * This type of sequence doesn't rely on database and has the following format:
  * timestamp base + worker id + sequence within the period of the timestamp.
  *
- * @author chensr 2016年10月17日 下午1:58:00
+ * @author chensr 2016/10/17 13:58:00
  * @since 5.0.0
  */
 public class TimeBasedSequence extends BaseSequence {
@@ -39,12 +39,16 @@ public class TimeBasedSequence extends BaseSequence {
 
     @Override
     public long nextValue() throws SequenceException {
-        return idGenerator.nextId();
+        long value = idGenerator.nextId();
+        currentValue = value;
+        return value;
     }
 
     @Override
     public long nextValue(int size) throws SequenceException {
-        return idGenerator.nextId(size);
+        long value = idGenerator.nextId(size);
+        currentValue = value;
+        return value;
     }
 
     @Override

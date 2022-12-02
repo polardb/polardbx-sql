@@ -78,6 +78,8 @@ public class FilesRecord implements SystemTableRecord {
     public String logicalTableName;
     public Long commitTs;
     public Long removeTs;
+    public Long fileHash;
+    public String localPartitionName;
 
     @Override
     public FilesRecord fill(ResultSet rs) throws SQLException {
@@ -133,6 +135,8 @@ public class FilesRecord implements SystemTableRecord {
         if (rs.wasNull()) {
             this.removeTs = null;
         }
+        this.fileHash = rs.getLong("file_hash");
+        this.localPartitionName = rs.getString("local_partition_name");
         return this;
     }
 
@@ -180,6 +184,8 @@ public class FilesRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.localPath);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.logicalSchemaName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.logicalTableName);
+
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.localPartitionName);
         return params;
     }
 }

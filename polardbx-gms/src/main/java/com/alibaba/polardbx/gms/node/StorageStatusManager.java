@@ -151,8 +151,17 @@ public class StorageStatusManager extends AbstractLifecycle {
                                     ResultSet result = stmt.getResultSet();
                                     if (result.next()) {
                                         Object ret = result.getObject("Seconds_Behind_Master");
-                                        if (ret != null) {
-                                            delaySecond = Long.valueOf(String.valueOf(ret));
+                                        boolean running = result.getBoolean("Slave_SQL_Running");
+                                        if (running) {
+                                            if (ret != null) {
+                                                delaySecond = Long.valueOf(String.valueOf(ret));
+                                            } else {
+                                                delaySecond = Integer.MAX_VALUE;
+                                                //logger.debug("Slave_SQL_Running maybe shutdown!");
+                                            }
+                                        } else {
+                                            delaySecond = Integer.MAX_VALUE;
+                                            //logger.debug("Slave_SQL_Running shutdown!");
                                         }
                                     }
                                 } finally {

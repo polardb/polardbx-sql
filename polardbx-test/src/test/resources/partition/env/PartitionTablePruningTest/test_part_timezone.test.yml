@@ -8,7 +8,7 @@ partitions 8;
 
 ## set tz -> +00:00
 set time_zone="+00:00";
-show variables like '%time_zone%';
+show variables like 'time_zone';
 
 insert into tbl_hsh_ts values ('1999-12-31 20:00:00');
 set time_zone="+00:00";
@@ -17,7 +17,7 @@ explain select * from tbl_hsh_ts where a='1999-12-31 20:00:00';
 
 ## set tz -> +08:00
 set time_zone="+08:00";
-show variables like '%time_zone%';
+show variables like 'time_zone';
 select * from tbl_hsh_ts where a='2000-01-01 04:00:00';
 explain select * from tbl_hsh_ts where a='1999-12-31 20:00:00';
 
@@ -38,7 +38,6 @@ set time_zone="+08:00";
 select * from tbl_key_ts where a='2000-01-01 04:00:00';
 explain select * from tbl_key_ts where a='1999-12-31 20:00:00';
 
-
 ## create tbl range unix_timestamp with timestamp, bnd value tz of ddl is +00:00
 drop table if exists tbl_rng_ts;
 create table if not exists tbl_rng_ts (a timestamp not null)
@@ -57,7 +56,6 @@ explain select * from tbl_rng_ts where a='1999-12-31 20:00:00';
 set time_zone="+08:00";
 select * from tbl_rng_ts where a='2000-01-01 04:00:00';
 explain select * from tbl_rng_ts where a='1999-12-31 20:00:00';
-
 
 ## create tbl range unix_timestamp with timestamp, bnd value tz of ddl is +08:00
 drop table if exists tbl_rng_ts;

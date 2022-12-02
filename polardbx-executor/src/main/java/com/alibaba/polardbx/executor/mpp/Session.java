@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -46,8 +47,10 @@ public final class Session {
     private HashMap<String, String> groups = new HashMap<>();
     private long tsoTime = -1;
     private boolean omitTso;
+    private boolean lizard1PC;
     private HashMap<String, Long> lsns = new HashMap<>();
     private boolean cacheOutput;
+    private boolean ignoreSplitInfo = false;
 
     public Session(String queryId, ExecutionContext clientContext) {
         this.queryId = queryId;
@@ -90,7 +93,7 @@ public final class Session {
     }
 
     public String getUser() {
-        return clientContext.getConnection().getUser();
+        return clientContext.getConnection() != null ? clientContext.getConnection().getUser() : "";
     }
 
     public String getEncoding() {
@@ -121,8 +124,10 @@ public final class Session {
             ITransaction iTransaction = clientContext.getTransaction();
             if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
                 if (iTransaction.getTransactionClass() == AUTO_COMMIT_SINGLE_SHARD) {
-                    this.omitTso = ExecutorContext.getContext(
-                        getSchema()).getStorageInfoManager().supportCtsTransaction();
+                    final StorageInfoManager storageInfoManager =
+                        ExecutorContext.getContext(getSchema()).getStorageInfoManager();
+                    this.lizard1PC = storageInfoManager.supportLizard1PCTransaction();
+                    this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
                 }
                 if (!omitTso) {
                     this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp();
@@ -208,6 +213,7 @@ public final class Session {
             tsoTime,
             lsns,
             omitTso,
+            lizard1PC,
             clientContext.getWorkloadType());
     }
 
@@ -234,5 +240,13 @@ public final class Session {
 
     public void setCacheOutput(boolean cacheOutput) {
         this.cacheOutput = cacheOutput;
+    }
+
+    public boolean isIgnoreSplitInfo() {
+        return ignoreSplitInfo;
+    }
+
+    public void setIgnoreSplitInfo(boolean ignoreSplitInfo) {
+        this.ignoreSplitInfo = ignoreSplitInfo;
     }
 }

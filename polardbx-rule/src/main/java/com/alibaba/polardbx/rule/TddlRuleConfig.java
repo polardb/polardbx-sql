@@ -48,7 +48,7 @@ public abstract class TddlRuleConfig extends AbstractLifecycle implements Lifecy
     protected volatile Map<String, String> ruleStrs = Maps.newHashMap();
     protected volatile Map<Integer, String> versionIndex = Maps.newHashMap();
 
-    private volatile Map<String, Map<String, Set<String>>> versionedTableNames = Maps.newHashMap();
+    private volatile Map<String, Map<String, Set<String>>> versionedTableNames = Maps.newConcurrentMap();
 
     protected boolean allowEmptyRule = false;
     // 默认物理的dbIndex，针对allowEmptyRule=true时有效

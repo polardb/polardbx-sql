@@ -146,7 +146,7 @@ public class CharField extends AbstractStorageField {
             // bytes in UTF-8 character set.
             if (value instanceof Slice) {
                 Slice slice = (Slice) value;
-                byte[] utf8Bytes = slice.getBase() instanceof byte[] ? (byte[]) slice.getBase() : slice.getBytes();
+                byte[] utf8Bytes = slice.getBytes();
                 return storeUTF8(utf8Bytes, sessionProperties);
             }
 
@@ -159,9 +159,9 @@ public class CharField extends AbstractStorageField {
             if (value instanceof org.apache.calcite.avatica.util.ByteString) {
                 org.apache.calcite.avatica.util.ByteString byteString =
                     (org.apache.calcite.avatica.util.ByteString) value;
-                return storeBytes(byteString.getBytes(), sessionProperties);
+                return storeBytes(byteString.getBytes());
             } else if (value instanceof byte[]) {
-                return storeBytes((byte[]) value, sessionProperties);
+                return storeBytes((byte[]) value);
             }
 
             // for null value.
@@ -402,8 +402,13 @@ public class CharField extends AbstractStorageField {
         return false;
     }
 
-    protected TypeConversionStatus storeBytes(byte[] fromNonUTF8Bytes,
-                                              SessionProperties sessionProperties) {
+    /**
+     * Store binary hex string to the field.
+     *
+     * @param fromNonUTF8Bytes from-bytes with from-charset binary.
+     * @return Type Conversion Status
+     */
+    protected TypeConversionStatus storeBytes(byte[] fromNonUTF8Bytes) {
         TypeConversionStatus typeConversionStatus;
 
         int lengthOfCopy = 0;
@@ -413,10 +418,6 @@ public class CharField extends AbstractStorageField {
         boolean isTruncatedImportant = false;
 
         CharsetHandler charsetHandler = getCharsetHandler();
-        CollationHandler collationHandler = getCollationHandler();
-
-        CharsetHandler fromCharsetHandler =
-            CharsetFactory.INSTANCE.createCharsetHandler(sessionProperties.getSessionCharacterSet());
 
         int fieldLen = fieldType.length();
         int charNumbers = (fieldLen) / charsetHandler.maxLenOfMultiBytes();
@@ -424,7 +425,7 @@ public class CharField extends AbstractStorageField {
 
         try {
             // from utf8 bytes to unicode chars
-            String unicodeChars = fromCharsetHandler.decode(fromNonUTF8Bytes);
+            String unicodeChars = charsetHandler.decode(fromNonUTF8Bytes);
             // cut to char numbers.
             String originalChars = unicodeChars;
             if (originalChars.length() > charNumbers) {
@@ -442,7 +443,7 @@ public class CharField extends AbstractStorageField {
                     }
                 }
             }
-            // from unicode character to specific bytes
+            // well-formed check
             Slice nonUTF8Bytes = null;
             try {
                 nonUTF8Bytes = charsetHandler.encode(unicodeChars);
@@ -454,6 +455,8 @@ public class CharField extends AbstractStorageField {
             }
 
             lengthOfCopy = nonUTF8Bytes.length();
+
+            // copy the bytes to ptr with specific length
             nonUTF8Bytes.getBytes(0, packedBinary, startPos(), lengthOfCopy);
         } catch (Throwable throwable) {
             if (throwable instanceof CharField.WellFormException) {

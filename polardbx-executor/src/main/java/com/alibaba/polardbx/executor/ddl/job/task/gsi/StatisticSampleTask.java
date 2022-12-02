@@ -21,8 +21,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sampleTable;
 
 @TaskName(name = "StatisticSampleTask")
 @Getter
@@ -38,7 +42,7 @@ public class StatisticSampleTask extends BaseDdlTask {
 
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
-        OptimizerContext.getContext(schemaName).getStatisticManager().sampleTable(logicalTableName);
+        sampleTable(schemaName, logicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 

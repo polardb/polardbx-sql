@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A range representation
  *
@@ -42,6 +45,17 @@ public class StepIntervalInfo {
      * ( such  minVal <= x <= maVal && minVal == maxVal )
      */
     protected boolean isSinglePointInterval = false;
+
+    /**
+     * Label if current interval cannot be merged further
+     * and the finalStep is the pruneStep that is generated after interval merging
+     */
+    protected boolean forbidMerging = false;
+    protected PartitionPruneStep finalStep;
+
+    protected boolean isStepIntervalInfoCombine= false;
+    protected PartPruneStepType stepCombineType;
+    protected List<StepIntervalInfo> subStepIntervalInfos = new ArrayList<>();
 
     public StepIntervalInfo() {
     }
@@ -124,4 +138,47 @@ public class StepIntervalInfo {
     public void setSinglePointInterval(boolean singlePointInterval) {
         this.isSinglePointInterval = singlePointInterval;
     }
+
+    public boolean isForbidMerging() {
+        return forbidMerging;
+    }
+
+    public void setForbidMerging(boolean stopMerging) {
+        this.forbidMerging = stopMerging;
+    }
+
+    public PartitionPruneStep getFinalStep() {
+        return finalStep;
+    }
+
+    public void setFinalStep(PartitionPruneStep finalStep) {
+        this.finalStep = finalStep;
+    }
+
+    public boolean isStepIntervalInfoCombine() {
+        return isStepIntervalInfoCombine;
+    }
+
+    public void setStepIntervalInfoCombine(boolean stepIntervalInfoCombine) {
+        isStepIntervalInfoCombine = stepIntervalInfoCombine;
+    }
+
+    public List<StepIntervalInfo> getSubStepIntervalInfos() {
+        return subStepIntervalInfos;
+    }
+
+    public void setSubStepIntervalInfos(
+        List<StepIntervalInfo> subStepIntervalInfos) {
+        this.subStepIntervalInfos = subStepIntervalInfos;
+    }
+
+
+    public PartPruneStepType getStepCombineType() {
+        return stepCombineType;
+    }
+
+    public void setStepCombineType(PartPruneStepType stepCombineType) {
+        this.stepCombineType = stepCombineType;
+    }
+
 }

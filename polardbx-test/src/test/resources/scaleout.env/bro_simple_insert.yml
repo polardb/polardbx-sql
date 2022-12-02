@@ -1,0 +1,4 @@
+1:
+  insert ignore into test_tb_bro1(pk, integer_test, varchar_test) values (200000, rand()*1000000, 'abc'),(null, rand()*1000000, 'abc'),(null, rand()*1000000, null);
+  insert ignore into test_tb_bro2(pk, integer_test, varchar_test) values (199999+1, 123456, 'abc'),(null, 1+123455, 'abc'),(199998+1, 123456, 'abc');
+  insert ignore into test_tb_bro3(pk, integer_test, varchar_test, timestamp_test) values (199999+1, 123456, 'abc', now()),(null, 1+123455, 'abc',now(3)),(199998+1, 123456, 'abc',now(6));

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
@@ -35,6 +36,7 @@ import java.util.List;
  * @author chenmo.cm
  */
 
+@Ignore("REMOVE DDL NOT SUPPORTED")
 public class DropTableWithGsiRecoverableTest extends BaseFailPointTestCase {
 
     private static final String HINT = "/*+TDDL:cmd_extra(STORAGE_CHECK_ON_GSI=false)*/ ";

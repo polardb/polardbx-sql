@@ -125,7 +125,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
     private void initTsoServicesX(XDataSource dataSource) {
         try (Connection conn = dataSource.getConnection()) {
             if (conn.unwrap(XConnection.class).getSession().getClient().getBaseVersion()
-                == XClient.DnBaseVersion.DN_RDS_80_X_CLUSTER || XConfig.GALAXY_X_PROTOCOL) {
+                == XClient.DnBaseVersion.DN_RDS_80_X_CLUSTER || XConfig.GALAXY_X_PROTOCOL || XConfig.OPEN_XRPC_PROTOCOL) {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.executeUpdate("create sequence mysql.gts_base cache 2 TIMESTAMP");
                 }
@@ -351,7 +351,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
                             metaDbAvailableAddr = AddressUtils.getIpPortPairByAddrStr(this.metaDbVipAddrStr);
                             if (XConfig.VIP_WITH_X_PROTOCOL) {
                                 metaDbXport = metaDbAvailableAddr.getValue();
-                            } else if (XConfig.GALAXY_X_PROTOCOL &&
+                            } else if ((XConfig.GALAXY_X_PROTOCOL || XConfig.OPEN_XRPC_PROTOCOL) &&
                                 StorageInfoRecord.STORAGE_TYPE_GALAXY_SINGLE == this.metaDbStorageType) {
                                 // Read from storage info if single galaxy engine.
                                 final StorageInfoRecord storageInfo = storageInfoRecords.get(0);
@@ -361,7 +361,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
                             }
                             MetaDbLogUtil.META_DB_LOG.info(
                                 "Single node with type: " + this.metaDbStorageType + " addr: " + this.metaDbVipAddrStr
-                                    + (XConfig.GALAXY_X_PROTOCOL ? " with galaxy" : "") + " xport: " + metaDbXport);
+                                    + (XConfig.GALAXY_X_PROTOCOL ? " with galaxy" : "") + (XConfig.OPEN_XRPC_PROTOCOL ?
+                                    " with xrpc" : "") + " xport: " + metaDbXport);
                         }
                         return;
                     }
@@ -424,7 +425,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
         if (leaderAddrStr.equals(this.metaDbVipAddrStr)) {
             if (XConfig.VIP_WITH_X_PROTOCOL) {
                 this.metaDbXport = this.metaDbAvailableAddr.getValue();
-            } else if (XConfig.GALAXY_X_PROTOCOL) {
+            } else if (XConfig.GALAXY_X_PROTOCOL || XConfig.OPEN_XRPC_PROTOCOL) {
                 this.metaDbXport = dynamicXPort;
             } else {
                 this.metaDbXport = -1;
@@ -476,6 +477,9 @@ public class MetaDbDataSource extends AbstractLifecycle {
     }
 
     public static MetaDbDataSource getInstance() {
+        if (instance == null) {
+            return null;
+        }
         if (!instance.isInited()) {
             synchronized (instance) {
                 if (!instance.isInited()) {
@@ -604,4 +608,5 @@ public class MetaDbDataSource extends AbstractLifecycle {
     public String getMetaDbName() {
         return metaDbName;
     }
+
 }

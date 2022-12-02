@@ -18,6 +18,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -155,13 +156,13 @@ public class LogicalDescHandler extends HandlerCommon {
         } else if (RelUtils.mysqlSchema(desc.getTableName())) {
             descTableName = "mysql." + descTableName;
         }
-        phyShow.setSqlTemplate("DESC " + descTableName);
+        phyShow.setBytesSql(BytesSql.getBytesSql("DESC " + descTableName));
 
         Cursor cursor = repo.getCursorFactory().repoCursor(executionContext, phyShow);
-        return reorgLogicalColumnOrder(schemaName, tableName, cursor);
+        return reorgLogicalColumnOrder(schemaName, tableName, cursor, executionContext);
     }
 
-    private Cursor reorgLogicalColumnOrder(String schemaName, String tableName, Cursor cursor) {
+    private Cursor reorgLogicalColumnOrder(String schemaName, String tableName, Cursor cursor, ExecutionContext ec) {
         ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
 
         resultCursor.addColumn("Field", DataTypes.StringType);
@@ -192,6 +193,7 @@ public class LogicalDescHandler extends HandlerCommon {
             }
         }
 
+        rows = ResultSetHelper.filterOutHiddenColumns(schemaName, tableName, rows, ec);
         ResultSetHelper.reorgLogicalColumnOrder(schemaName, tableName, rows, resultCursor);
 
         return resultCursor;

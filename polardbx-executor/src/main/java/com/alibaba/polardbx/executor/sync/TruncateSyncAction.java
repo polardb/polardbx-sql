@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
@@ -82,7 +83,7 @@ public class TruncateSyncAction implements ISyncAction {
             TableMeta currentMeta = oldSchemaManager.getTableWithNull(primaryTableName);
 
             // Lock and unlock MDL on primary table to clear cross status transaction.
-            final MdlContext context = MdlManager.addContext(schemaName,false);
+            final MdlContext context = MdlManager.addContext(schemaName, false);
             SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
                 "{0}  {1}.addContext({2})", Thread.currentThread().getName(),
                 this.hashCode(), schemaName));
@@ -120,13 +121,10 @@ public class TruncateSyncAction implements ISyncAction {
     private void clearShadowTablePlanCache() {
         OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
         if (optimizerContext != null) {
-            PlanManager planManager = optimizerContext.getPlanManager();
-            if (planManager != null) {
-                planManager.getPlanCache().invalidate(primaryTableName);
-                if (indexTableNames != null) {
-                    for (String indexTableName : indexTableNames) {
-                        planManager.getPlanCache().invalidate(indexTableName);
-                    }
+            PlanCache.getInstance().invalidate(primaryTableName);
+            if (indexTableNames != null) {
+                for (String indexTableName : indexTableNames) {
+                    PlanCache.getInstance().invalidate(indexTableName);
                 }
             }
         }
@@ -160,7 +158,7 @@ public class TruncateSyncAction implements ISyncAction {
 
         // Note: Invalidate plan cache is still necessary,
         // because non-multi-write plan for simple table may be cached.
-        OptimizerContext.getContext(schemaName).getPlanManager().invalidateCache();
+        PlanManager.getInstance().invalidateCache();
     }
 
     public String getTraceId() {

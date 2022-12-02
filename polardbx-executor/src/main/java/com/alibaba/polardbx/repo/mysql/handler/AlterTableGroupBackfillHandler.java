@@ -37,8 +37,10 @@ import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.AlterTableG
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.lang3.StringUtils;
@@ -81,13 +83,15 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
 
         upgradeEncoding(executionContext, schemaName, logicalTable);
 
+        PhyTableOperationUtil.disableIntraGroupParallelism(schemaName, executionContext);
+
         Map<String, Set<String>> sourcePhyTables = backfill.getSourcePhyTables();
         Map<String, Set<String>> targetPhyTables = backfill.getTargetPhyTables();
 
         int affectRows = 0;
         if (!sourcePhyTables.isEmpty()) {
             affectRows = backfillExecutor
-                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables);
+                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables, targetPhyTables, backfill.getMovePartitions());
         }
 
         // Check target table immediately after backfill by default.
@@ -112,22 +116,39 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
     protected boolean fastCheckWithCatchEx(AlterTableGroupBackfill backfill, ExecutionContext executionContext) {
         boolean fastCheckSucc = false;
         try {
-            fastCheckSucc = fastCheck(backfill, executionContext);
+            if(!backfill.getBroadcast()) {
+                //if is not broadcast table, we execute fastcheck normally.
+                fastCheckSucc = fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(), backfill.getSourcePhyTables(), backfill.getTargetPhyTables());
+            } else {
+                /**
+                 * FastChecker only allows checking one logic table each time.
+                 * In broadcast case, the argument "targetPhyTables" in backfill contains many logical broadcast table, so we need to iterate each target logic table.
+                 * */
+                Map<String, Set<String>> srcPhyDbAndTables = backfill.getSourcePhyTables();
+                int succeedCnt = 0;
+                for(Map.Entry<String, Set<String>> entry : backfill.getTargetPhyTables().entrySet()) {
+                    Map<String, Set<String>> targetPhyTables = ImmutableMap.of(entry.getKey(), entry.getValue());
+                    if(!fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(), srcPhyDbAndTables, targetPhyTables)) {
+                        break;
+                    } else {
+                        succeedCnt++;
+                    }
+                }
+                fastCheckSucc = (succeedCnt == backfill.getTargetPhyTables().size());
+            }
         } catch (Throwable ex) {
             fastCheckSucc = false;
             String msg = String.format(
-                "Failed to use fastChecker to check alter tablegroup backFill because of throwing exceptions,  so use old checker instead");
+                    "Failed to use fastChecker to check alter tablegroup backFill because of throwing exceptions,  so use old checker instead");
             SQLRecorderLogger.ddlLogger.warn(msg, ex);
         }
         return fastCheckSucc;
     }
 
-    boolean fastCheck(AlterTableGroupBackfill backfill,
-                      ExecutionContext executionContext) {
+    boolean fastCheck(ExecutionContext executionContext,
+                      String schemaName, String logicalTable, Map<String, Set<String>> srcPhyDbAndTables,
+                      Map<String, Set<String>> dstPhyDbAndTables) {
         long startTime = System.currentTimeMillis();
-
-        String schemaName = backfill.getSchemaName();
-        String logicalTable = backfill.getLogicalTableName();
 
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
             "FastChecker for alter tablegroup, schema [{0}] logical table [{1}] start",
@@ -136,9 +157,8 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
             executionContext.getParamManager().getInt(ConnectionParams.TABLEGROUP_REORG_FASTCHECKER_PARALLELISM);
 
         FastChecker fastChecker = AlterTableGroupFastChecker
-            .create(schemaName, backfill.getLogicalTableName(),
-                backfill.getSourcePhyTables(),
-                backfill.getTargetPhyTables(), fastCheckerParallelism, executionContext);
+            .create(schemaName, logicalTable, srcPhyDbAndTables,
+                dstPhyDbAndTables, fastCheckerParallelism, executionContext);
         boolean fastCheckResult = false;
         final int maxRetryTimes =
             executionContext.getParamManager().getInt(ConnectionParams.FASTCHECKER_RETRY_TIMES);

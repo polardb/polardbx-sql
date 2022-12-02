@@ -16,8 +16,10 @@
  */
 package org.apache.calcite.sql.fun;
 
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlOperatorBinding;
 import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.SqlWriter;
 import org.apache.calcite.sql.type.InferTypes;
@@ -33,25 +35,40 @@ import org.apache.calcite.sql.type.SqlTypeName;
  * has chance to resolve arguments.
  */
 public class SqlDefaultOperator extends SqlSpecialOperator {
-  public SqlDefaultOperator() {
-    super("DEFAULT", SqlKind.DEFAULT, 100, true,
-        ReturnTypes.explicit(SqlTypeName.ANY), InferTypes.RETURN_TYPE,
-        OperandTypes.NILADIC);
-  }
+    public SqlDefaultOperator() {
+        super("DEFAULT", SqlKind.DEFAULT, 100, true,
+            ReturnTypes.explicit(SqlTypeName.ANY), InferTypes.RETURN_TYPE,
+            OperandTypes.ZERO_OR_ONE);
+    }
 
-  /**
-   * given a explicit type for default function
-   */
-  public SqlDefaultOperator(SqlTypeName sqlTypeName) {
-    super("DEFAULT", SqlKind.DEFAULT, 100, true,
+    /**
+     * given a explicit type for default function
+     */
+    public SqlDefaultOperator(SqlTypeName sqlTypeName) {
+        super("DEFAULT", SqlKind.DEFAULT, 100, true,
             ReturnTypes.explicit(sqlTypeName), InferTypes.RETURN_TYPE,
-            OperandTypes.NILADIC);
-  }
+            OperandTypes.ZERO_OR_ONE);
+    }
 
-  @Override public void unparse(SqlWriter writer, SqlCall call, int leftPrec,
-      int rightPrec) {
-    writer.keyword(getName());
-  }
+    @Override
+    public void unparse(SqlWriter writer, SqlCall call, int leftPrec,
+                        int rightPrec) {
+        writer.keyword(getName());
+        if (!call.getOperandList().isEmpty()) {
+            final SqlWriter.Frame frame = writer.startList("(", ")");
+            call.operand(0).unparse(writer, leftPrec, rightPrec);
+            writer.endList(frame);
+        }
+    }
+
+    @Override
+    public RelDataType inferReturnType(SqlOperatorBinding opBinding) {
+        if (opBinding.getOperandCount() == 1) {
+            //有一个参数，返回参数的类型
+            return opBinding.getOperandType(0);
+        }
+        return super.inferReturnType(opBinding);
+    }
 }
 
 // End SqlDefaultOperator.java

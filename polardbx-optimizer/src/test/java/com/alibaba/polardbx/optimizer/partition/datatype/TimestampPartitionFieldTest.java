@@ -23,14 +23,18 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.DateType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.TimeZone;
 
 public class TimestampPartitionFieldTest {
@@ -159,5 +163,99 @@ public class TimestampPartitionFieldTest {
 
         Assert.assertEquals(s1, "2021-11-11 11:11:11.33333");
         Assert.assertEquals(s2, "2021-11-10 16:11:11.33333");
+    }
+
+    @Test
+    public void testJdbcTimestamp() {
+        TimestampType timestampType = new TimestampType(2);
+        partitionField = PartitionFieldBuilder.createField(timestampType);
+
+        // get UTC timezone
+        ExecutionContext ctx = new ExecutionContext();
+        ctx.setSqlMode(
+            "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION");
+        ctx.setEncoding("UTF-8");
+
+        // 2022-05-17 16:24:59.038 GMT+08:00
+        long fastTime = 1652775899038L;
+
+        // store on +08:00 timezone.
+        TypeConversionStatus status
+            = partitionField.store(new Timestamp(fastTime), new TimestampType(),
+            SessionProperties.fromExecutionContext(executionContext));
+
+        // get timestamp on GMT+08:00 timezone.
+        String res =
+            partitionField.stringValue(SessionProperties.fromExecutionContext(executionContext)).toStringUtf8();
+        Assert.assertEquals("2022-05-17 16:24:59.04", res);
+
+        // get timestamp on GMT+03:00 timezone.
+        ctx.setTimeZone(InternalTimeZone.createTimeZone("+03:00", TimeZone.getTimeZone("GMT+03:00")));
+        res = partitionField.stringValue(SessionProperties.fromExecutionContext(ctx)).toStringUtf8();
+        Assert.assertEquals("2022-05-17 11:24:59.04", res);
+
+        // get timestamp on UTC timezone.
+        ctx.setTimeZone(InternalTimeZone.createTimeZone("UTC", TimeZone.getTimeZone("UTC")));
+        res = partitionField.stringValue(SessionProperties.fromExecutionContext(ctx)).toStringUtf8();
+        Assert.assertEquals("2022-05-17 08:24:59.04", res);
+    }
+
+    @Test
+    public void testJdbcDate() {
+        TimestampType timestampType = new TimestampType(2);
+        partitionField = PartitionFieldBuilder.createField(timestampType);
+
+        // get UTC timezone
+        ExecutionContext ctx = new ExecutionContext();
+        ctx.setSqlMode(
+            "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION");
+        ctx.setEncoding("UTF-8");
+
+        // 2022-05-17 16:24:59.038 GMT+08:00
+        String dateStr = "2022-05-17";
+
+        // store on +08:00 timezone.
+        TypeConversionStatus status
+            = partitionField.store(Date.valueOf(dateStr), new DateType(),
+            SessionProperties.fromExecutionContext(executionContext));
+
+        // get timestamp on GMT+08:00 timezone.
+        String res =
+            partitionField.stringValue(SessionProperties.fromExecutionContext(executionContext)).toStringUtf8();
+        Assert.assertEquals("2022-05-17 00:00:00.00", res);
+
+        // get timestamp on GMT+03:00 timezone.
+        ctx.setTimeZone(InternalTimeZone.createTimeZone("+03:00", TimeZone.getTimeZone("GMT+03:00")));
+        res = partitionField.stringValue(SessionProperties.fromExecutionContext(ctx)).toStringUtf8();
+        Assert.assertEquals("2022-05-16 19:00:00.00", res);
+
+        // get timestamp on UTC timezone.
+        ctx.setTimeZone(InternalTimeZone.createTimeZone("UTC", TimeZone.getTimeZone("UTC")));
+        res = partitionField.stringValue(SessionProperties.fromExecutionContext(ctx)).toStringUtf8();
+        Assert.assertEquals("2022-05-16 16:00:00.00", res);
+    }
+
+    @Test
+    public void tesTimestampNano() {
+        int range = 1;
+        String dateStr = "2022-05-17 16:00:00.";
+        ExecutionContext ec = new ExecutionContext();
+        ec.setSqlMode(
+            "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION");
+        ec.setTimeZone(InternalTimeZone.createTimeZone("GMT+08:00", TimeZone.getTimeZone("GMT+08:00")));
+        ec.setEncoding("UTF-8");
+        DataType resultType = new VarcharType(CollationName.UTF8MB4_GENERAL_CI);
+        SessionProperties sessionProperties = SessionProperties.fromExecutionContext(ec);
+
+        for (int i = 1; i <= 6; i++) {
+            TimestampType timestampType = new TimestampType(i);
+            PartitionField partField = PartitionFieldBuilder.createField(timestampType);
+            range *= 10;
+            for (int j = 0; j < range; j++) {
+                String timestampStr = dateStr + StringUtils.leftPad(String.valueOf(j), i, '0');
+                partField.store(timestampStr, resultType, sessionProperties);
+                Assert.assertEquals(timestampStr, partField.stringValue(sessionProperties).toStringUtf8());
+            }
+        }
     }
 }

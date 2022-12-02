@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
@@ -42,7 +43,7 @@ public class RefreshDbTopologySubTaskJobFactory extends AlterTableGroupSubTaskJo
                                               boolean skipBackfill,
                                               ExecutionContext executionContext) {
         super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, executionContext);
+            orderedTargetTableLocations, targetPartition, skipBackfill, ComplexTaskMetaManager.ComplexTaskType.REFRESH_TOPOLOGY, executionContext);
     }
 
     @Override
@@ -64,5 +65,8 @@ public class RefreshDbTopologySubTaskJobFactory extends AlterTableGroupSubTaskJo
         //checkPartitionCount(newPartInfo);
         return newPartInfo;
     }
+
+    @Override
+    public boolean isBroadcast() { return true; }
 
 }

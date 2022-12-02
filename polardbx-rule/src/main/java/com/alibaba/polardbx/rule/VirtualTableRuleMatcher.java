@@ -16,14 +16,10 @@
 
 package com.alibaba.polardbx.rule;
 
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.rule.enumerator.EnumerationFailedException;
 import com.alibaba.polardbx.rule.enums.RuleType;
-import com.alibaba.polardbx.rule.model.ShardExtContext;
-import com.alibaba.polardbx.rule.model.ShardMatchedRuleType;
-import com.alibaba.polardbx.rule.model.ShardPrepareResult;
 import com.alibaba.polardbx.rule.model.TargetDB;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
@@ -35,11 +31,9 @@ import com.alibaba.polardbx.rule.impl.VirtualNodeGroovyRule;
 import com.alibaba.polardbx.rule.model.AdvancedParameter;
 import com.alibaba.polardbx.rule.model.Field;
 import com.alibaba.polardbx.rule.model.MatcherResult;
-import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
 import com.alibaba.polardbx.rule.utils.RuleUtils;
 import com.alibaba.polardbx.rule.utils.sample.Samples;
 import com.alibaba.polardbx.rule.utils.sample.SamplesCtx;
-import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,6 +41,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static com.alibaba.polardbx.common.properties.ConnectionParams.IS_CROSS_RULE;
 
 /**
  * <pre>
@@ -115,7 +111,7 @@ public class VirtualTableRuleMatcher {
     public MatcherResult match(String vtab, ComparativeMapChoicer choicer, List<Object> args,
                                VirtualTableRule<String, String> rule, boolean needSourceKey,
                                boolean forceAllowFullTableScan, Map<String, Object> calcParams) {
-        ShardPrepareResult shardPrepareResult = null;
+//        ShardPrepareResult shardPrepareResult = null;
         try {
             // 所有库表规则中用到的列和对应的比较树,作为一个规则链匹配时绑定参数的缓存。
             // 一开始就把所有的取出来不够优化。可能有些是不需要取的。也就省了些绑定参数的操作
@@ -141,61 +137,6 @@ public class VirtualTableRuleMatcher {
                 rule,
                 forceAllowFullTableScan);
 
-            final String comDbTb = CalcParamsAttribute.COM_DB_TB;
-            Map<String, Map<String, Comparative>> o = null;
-            if (calcParams != null) {
-                o = (Map<String, Map<String, Comparative>>) calcParams.get(comDbTb);
-            }
-            Map<String, Comparative> allRuleColumnArgs1 = Maps.newHashMap();
-            List objs1 = Lists.newArrayList();
-            if (o != null) {
-                for (int i = 0; i < rule.getShardColumns().size(); i++) {
-                    Comparative comparative = getComparative(rule.getShardColumns().get(i),
-                        allRuleColumnArgs1,
-                        (ComparativeMapChoicer) calcParams.get(CalcParamsAttribute.SHARD_CHOISER),
-                        objs1);
-                    if (!o.containsKey(vtab)) {
-                        o.put(vtab, new HashMap<>());
-                    }
-                    o.get(vtab).put(rule.getShardColumns().get(i), comparative);
-                }
-                String dbRuleColumn = null;
-                String tbRuleColumn = null;
-                if (dbRule != null) {
-                    dbRuleColumn = dbRule.getRuleColumns().keySet().iterator().next();
-                }
-                if (tbRule != null) {
-                    tbRuleColumn = tbRule.getRuleColumns().keySet().iterator().next();
-                }
-
-                if (rule instanceof TableRule) {
-                    Map<RuleType, String> ruleTypeColumnMap = new HashMap<>();
-                    ruleTypeColumnMap.put(RuleType.DB_RULE_TYPE, dbRuleColumn);
-                    ruleTypeColumnMap.put(RuleType.TB_RULE_TYPE, tbRuleColumn);
-                    final Comparative next;
-                    final Map<String, Comparative> stringComparativeMap = o.get(vtab);
-                    if (stringComparativeMap != null && o.get(vtab).values().iterator().hasNext()) {
-                        next = o.get(vtab).values().iterator().next();
-                    } else {
-                        next = null;
-                    }
-                    // TB 此处需要提前准备比较的条件，不能放到 compare 的内部，
-                    // 因为：
-                    // 1. 只有提前计算才能进行后面的 o1 操作，否则只能遍历；
-                    // 2. 提前计算好，避免扩展 compare 的实现
-                    final ShardExtContext shardExtContext = new ShardExtContext(ruleTypeColumnMap,
-                        null,
-                        next,
-                        (TableRule) rule);
-                    shardPrepareResult = RuleUtils.prepareMatchedRule(shardExtContext);
-                }
-            } else {
-                shardPrepareResult = RuleUtils.prepareMatchedRule(new ShardExtContext(Maps.newHashMap(),
-                    null,
-                    null,
-                    null));
-            }
-
             if (needSourceKey && (isComparativeNeedSourceKey(dbRuleArgs) || isComparativeNeedSourceKey(tbRuleArgs))) {
                 // 暂时不支持虚拟节点
                 return matchWithSourceKey(dbRule,
@@ -204,8 +145,7 @@ public class VirtualTableRuleMatcher {
                     tbRuleArgs,
                     rule,
                     forceAllowFullTableScan,
-                    calcParams,
-                    shardPrepareResult);
+                    calcParams);
             } else {
                 return matchNoSourceKey(dbRule,
                     tbRule,
@@ -213,8 +153,7 @@ public class VirtualTableRuleMatcher {
                     tbRuleArgs,
                     rule,
                     forceAllowFullTableScan,
-                    calcParams,
-                    shardPrepareResult);
+                    calcParams);
             }
         } catch (EnumerationFailedException e) {
             // 尝试去掉参数做一次全表查询
@@ -229,8 +168,7 @@ public class VirtualTableRuleMatcher {
                 new HashMap(),
                 rule,
                 forceAllowFullTableScan,
-                calcParams,
-                shardPrepareResult);
+                calcParams);
             // }
         }
     }
@@ -259,7 +197,7 @@ public class VirtualTableRuleMatcher {
     private MatcherResult matchNoSourceKey(Rule<String> dbRule, Rule<String> tbRule,
                                            Map<String, Comparative> dbRuleArgs, Map<String, Comparative> tbRuleArgs,
                                            VirtualTableRule<String, String> rule, boolean forceAllowFullTableScan,
-                                           Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult) {
+                                           Map<String, Object> calcParams) {
         // 所有库表规则中用到的列和对应的比较树,作为一个规则链匹配时绑定参数的缓存。
         // 一开始就把所有的取出来不够优化。可能有些是不需要取的。也就省了些绑定参数的操作
         Object outerCtx = rule.getOuterContext();
@@ -281,7 +219,6 @@ public class VirtualTableRuleMatcher {
                 outerCtx,
                 calcParams,
                 null,
-                shardPrepareResult,
                 RuleType.TB_RULE_TYPE);
             // 1.无库规则 2.有但是没匹配到 ；这时表规则一定不为空，且和库规则全无关联，自己算自己的
             // topology = new HashMap<String,
@@ -311,50 +248,11 @@ public class VirtualTableRuleMatcher {
                     outerCtx,
                     calcParams,
                     null,
-                    shardPrepareResult,
                     RuleType.DB_RULE_TYPE);
                 topology = new HashMap<String, Set<String>>(dbValues.size());
                 for (String dbValue : dbValues) {
                     Set<String> tables = topologyOfRule.get(dbValue);
                     if (tables != null && !tables.isEmpty()) {
-                        // 分几种情况处理，分库分表热点映射，分库不分表热点映射，分库分表非热点映射，分库部分表非热点映射
-                        if (shardPrepareResult != null && shardPrepareResult.getMatchedMappingRule() != null) {
-                            if (shardPrepareResult.getMatchedDBType() == ShardMatchedRuleType.HOT_DB
-                                && shardPrepareResult.getMatchedTBType() == ShardMatchedRuleType.HOT_TB
-                                && StringUtils.isNotEmpty(shardPrepareResult.getMatchedMappingRule().getTb())) {
-                                final MappingRule matchedMappingRule = shardPrepareResult.getMatchedMappingRule();
-                                tables = new HashSet<>();
-                                tables.add(matchedMappingRule.getTb());
-                            } else if (shardPrepareResult.getMatchedDBType() == ShardMatchedRuleType.HOT_DB
-                                && shardPrepareResult.getMatchedTBType() == ShardMatchedRuleType.TB) {
-                                if (rule.getTbRulesStrs() == null || rule.getTbRulesStrs().length == 0) {
-                                    if ((rule instanceof TableRule)
-                                        && ((TableRule) rule).getVirtualTbName()
-                                        .equalsIgnoreCase(rule.getTbNamePattern())) {
-                                        String tableName = rule.getTbNamePattern();
-                                        tables = new HashSet<>();
-                                        tables.add(tableName);
-                                    }
-                                }
-
-                            } else if (shardPrepareResult.getMatchedDBType() == ShardMatchedRuleType.DB
-                                && shardPrepareResult.getMatchedTBType() == ShardMatchedRuleType.TB) {
-                                if (rule.getTbRulesStrs() == null || rule.getTbRulesStrs().length == 0) {
-                                    if ((rule instanceof TableRule)
-                                        && ((TableRule) rule).getVirtualTbName()
-                                        .equalsIgnoreCase(rule.getTbNamePattern())) {
-                                        String tableName = rule.getTbNamePattern();
-                                        tables = new HashSet<>();
-                                        tables.add(tableName);
-                                    }
-                                }
-
-                            }
-                            topology.put(dbValue, tables);
-                        } else {
-                            topology.put(dbValue, tables);
-                        }
-
                         topology.put(dbValue, tables);
                     } else {
                         String tableName = rule.getTbNamePattern();
@@ -376,7 +274,6 @@ public class VirtualTableRuleMatcher {
                     outerCtx,
                     calcParams,
                     null,
-                    shardPrepareResult,
                     RuleType.TB_RULE_TYPE);
                 Set<String> dbValues = null;
                 if (dbRule instanceof VirtualNodeGroovyRule) {// add by xiaoying
@@ -399,7 +296,6 @@ public class VirtualTableRuleMatcher {
                         outerCtx,
                         calcParams,
                         null,
-                        shardPrepareResult,
                         RuleType.DB_RULE_TYPE);
                     dbValues = calculate;
                     final Map<String, Set<String>> actualTopology = rule.getActualTopology();
@@ -424,12 +320,11 @@ public class VirtualTableRuleMatcher {
                     tbRuleArgs,
                     commonColumn,
                     outerCtx,
-                    calcParams,
-                    shardPrepareResult);
+                    calcParams);
             }
         }
 
-       return new MatcherResult(buildTargetDbList(topology, topologyOfRule), dbRuleArgs, tbRuleArgs);
+        return new MatcherResult(buildTargetDbList(topology, topologyOfRule), dbRuleArgs, tbRuleArgs);
     }
 
     /**
@@ -441,7 +336,7 @@ public class VirtualTableRuleMatcher {
     private MatcherResult matchWithSourceKey(Rule<String> dbRule, Rule<String> tbRule,
                                              Map<String, Comparative> dbRuleArgs, Map<String, Comparative> tbRuleArgs,
                                              VirtualTableRule<String, String> rule, boolean forceAllowFullTableScan,
-                                             Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult) {
+                                             Map<String, Object> calcParams) {
 
         Object outerCtx = rule.getOuterContext();
 
@@ -462,7 +357,6 @@ public class VirtualTableRuleMatcher {
                 outerCtx,
                 calcParams,
                 null,
-                shardPrepareResult,
                 RuleType.TB_RULE_TYPE));
             topology = new HashMap<String, Map<String, Field>>(topologyOfRule.size());
             for (String dbValue : topologyOfRule.keySet()) {
@@ -483,7 +377,6 @@ public class VirtualTableRuleMatcher {
                     outerCtx,
                     calcParams,
                     null,
-                    shardPrepareResult,
                     RuleType.DB_RULE_TYPE));
                 topology = new HashMap<String, Map<String, Field>>(dbValues.size());
                 for (String dbValue : dbValues.keySet()) {
@@ -541,14 +434,12 @@ public class VirtualTableRuleMatcher {
                         outerCtx,
                         calcParams,
                         null,
-                        shardPrepareResult,
                         RuleType.DB_RULE_TYPE);
                     Map<String, Samples> tbValues = RuleUtils.cast(calculate(tbRule,
                         tbRuleArgs,
                         outerCtx,
                         calcParams,
                         null,
-                        shardPrepareResult,
                         RuleType.TB_RULE_TYPE));
                     topology = new HashMap<String, Map<String, Field>>(dbValues.size());
                     final Map<String, Set<String>> actualTopology = rule.getActualTopology();
@@ -573,8 +464,7 @@ public class VirtualTableRuleMatcher {
                     tbRuleArgs,
                     commonColumn,
                     outerCtx,
-                    calcParams,
-                    shardPrepareResult);
+                    calcParams);
             }
         }
 
@@ -586,8 +476,7 @@ public class VirtualTableRuleMatcher {
                                                        Rule<String> matchedTbRule,
                                                        Map<String, Comparative> matchedTbRuleArgs,
                                                        String[] commonColumn, Object outerCtx,
-                                                       Map<String, Object> calcParams,
-                                                       ShardPrepareResult shardPrepareResult) {
+                                                       Map<String, Object> calcParams) {
         SamplesCtx dbRuleCtx = null;
         // 对于表规则中与库规则列名相同而自增类型不同的列，将其表枚举结果加入库规则的枚举集
         Set<AdvancedParameter> mergeInCommon = diffTypeOrOptionalInCommon(matchedDbRule,
@@ -607,7 +496,6 @@ public class VirtualTableRuleMatcher {
             outerCtx,
             calcParams,
             dbRuleCtx,
-            shardPrepareResult,
             dbRuleType);
         Map<String, Samples> dbValues = RuleUtils.cast(calculate);
         Map<String, Set<String>> topology = new HashMap<String, Set<String>>(dbValues.size());
@@ -619,7 +507,6 @@ public class VirtualTableRuleMatcher {
                 matchedTbRuleArgs,
                 outerCtx,
                 tbRuleCtx,
-                shardPrepareResult,
                 tbRuleType);
             topology.put(e.getKey(), tbValues);
         }
@@ -629,14 +516,13 @@ public class VirtualTableRuleMatcher {
     // TODO xiaoying
     private Set<String> calculateNoTrace(Rule<String> matchedDbRule, Map<String, Comparative> matchedDbRuleArgs,
                                          Object outerCtx, Map<String, Object> calcParams, SamplesCtx dbRuleCtx,
-                                         ShardPrepareResult shardPrepareResult, RuleType dbRuleType) {
+                                         RuleType dbRuleType) {
         Set<String> calculate;
         if (matchedDbRule instanceof ExtRule) {
             calculate = ((ExtRule) matchedDbRule).calculateNoTrace(matchedDbRuleArgs,
                 dbRuleCtx,
                 outerCtx,
                 calcParams,
-                shardPrepareResult,
                 dbRuleType);
         } else {
             calculate = matchedDbRule.calculateNoTrace(matchedDbRuleArgs, dbRuleCtx, outerCtx, calcParams);
@@ -645,14 +531,13 @@ public class VirtualTableRuleMatcher {
     }
 
     private Set<String> calculateNoTrace(Rule<String> matchedTbRule, Map<String, Comparative> matchedTbRuleArgs,
-                                         Object outerCtx, SamplesCtx tbRuleCtx, ShardPrepareResult shardPrepareResult,
+                                         Object outerCtx, SamplesCtx tbRuleCtx,
                                          RuleType tbRuleType) {
         Set<String> tbValues;
         if (matchedTbRule instanceof ExtRule) {
             tbValues = ((ExtRule) matchedTbRule).calculateNoTrace(matchedTbRuleArgs,
                 tbRuleCtx,
                 outerCtx,
-                shardPrepareResult,
                 tbRuleType);
         } else {
             tbValues = matchedTbRule.calculateNoTrace(matchedTbRuleArgs, tbRuleCtx, outerCtx);
@@ -662,14 +547,13 @@ public class VirtualTableRuleMatcher {
 
     private Map<String, ?> calculate(Rule<String> matchedDbRule, Map<String, Comparative> matchedDbRuleArgs,
                                      Object outerCtx, Map<String, Object> calcParams, SamplesCtx dbRuleCtx,
-                                     ShardPrepareResult shardPrepareResult, RuleType dbRuleType) {
+                                     RuleType dbRuleType) {
         Map<String, ?> calculate;
         if (matchedDbRule instanceof ExtRule) {
             calculate = ((ExtRule) matchedDbRule).calculate(matchedDbRuleArgs,
                 dbRuleCtx,
                 outerCtx,
                 calcParams,
-                shardPrepareResult,
                 dbRuleType);
         } else {
             calculate = matchedDbRule.calculate(matchedDbRuleArgs, dbRuleCtx, outerCtx, calcParams);
@@ -683,23 +567,6 @@ public class VirtualTableRuleMatcher {
                                                                 Map<String, Comparative> matchedTbRuleArgs,
                                                                 String[] commonColumn, Object outerCtx,
                                                                 Map<String, Object> calcParams) {
-        return crossWithSourceKey1(matchedDbRule,
-            matchedDbRuleArgs,
-            matchedTbRule,
-            matchedTbRuleArgs,
-            commonColumn,
-            outerCtx,
-            calcParams,
-            null);
-    }
-
-    private Map<String, Map<String, Field>> crossWithSourceKey1(Rule<String> matchedDbRule,
-                                                                Map<String, Comparative> matchedDbRuleArgs,
-                                                                Rule<String> matchedTbRule,
-                                                                Map<String, Comparative> matchedTbRuleArgs,
-                                                                String[] commonColumn, Object outerCtx,
-                                                                Map<String, Object> calcParams,
-                                                                ShardPrepareResult shardPrepareResult) {
         SamplesCtx dbRuleCtx = null; // 对于表规则中与库规则列名相同而自增类型不同的列，将其表枚举结果加入库规则的枚举集
         Set<AdvancedParameter> mergeInCommon = diffTypeOrOptionalInCommon(matchedDbRule,
             matchedTbRule,
@@ -721,7 +588,6 @@ public class VirtualTableRuleMatcher {
             outerCtx,
             calcParams,
             dbRuleCtx,
-            shardPrepareResult,
             dbRuleType);
         Map<String, Samples> dbValues = RuleUtils.cast(calculate);
         Map<String, Map<String, Field>> topology = new HashMap<String, Map<String, Field>>(dbValues.size());
@@ -735,7 +601,6 @@ public class VirtualTableRuleMatcher {
                 outerCtx,
                 calcParams,
                 tbRuleCtx,
-                shardPrepareResult,
                 tbRuleType);
             tbValues = RuleUtils.cast(calculateTb);
             topology.put(e.getKey(), toMapField(tbValues));
@@ -749,23 +614,6 @@ public class VirtualTableRuleMatcher {
                                                        Map<String, Comparative> matchedTbRuleArgs,
                                                        Set<String> commonSet, Object outerCtx,
                                                        Map<String, Object> calcParams) {
-        return crossNoSourceKey2(matchedDbRule,
-            matchedDbRuleArgs,
-            matchedTbRule,
-            matchedTbRuleArgs,
-            commonSet,
-            outerCtx,
-            null,
-            null);
-    }
-
-    private Map<String, Set<String>> crossNoSourceKey2(Rule<String> matchedDbRule,
-                                                       Map<String, Comparative> matchedDbRuleArgs,
-                                                       Rule<String> matchedTbRule,
-                                                       Map<String, Comparative> matchedTbRuleArgs,
-                                                       Set<String> commonSet, Object outerCtx,
-                                                       Map<String, Object> calcParams,
-                                                       ShardPrepareResult shardPrepareResult) {
         // 有交集
         String[] commonColumn = commonSet == null ? null : commonSet.toArray(new String[commonSet.size()]);
         Set<AdvancedParameter> dbParams = RuleUtils.cast(matchedDbRule.getRuleColumnSet());
@@ -822,8 +670,7 @@ public class VirtualTableRuleMatcher {
                                                                 Rule<String> matchedTbRule,
                                                                 Map<String, Comparative> matchedTbRuleArgs,
                                                                 Set<String> commonSet, Object outerCtx,
-                                                                Map<String, Object> calcParams,
-                                                                ShardPrepareResult shardPrepareResult) {
+                                                                Map<String, Object> calcParams) {
         // 有交集
         String[] commonColumn = commonSet == null ? null : commonSet.toArray(new String[commonSet.size()]);
         Set<AdvancedParameter> dbParams = RuleUtils.cast(matchedDbRule.getRuleColumnSet());
@@ -1122,7 +969,6 @@ public class VirtualTableRuleMatcher {
                 return r;
             }
         }
-
         return null;
     }
 

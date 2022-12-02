@@ -17,26 +17,33 @@
 package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.EmptyShardProcessor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.rel.ShardProcessor;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableInsert;
 import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,7 +88,7 @@ public class InsertWriter extends AbstractSingleWriter {
         }
 
         final SqlNode sqlNode = insert.getSqlTemplate();
-        final String sqlTemplate = RelUtils.toNativeSql(sqlNode, insert.getDbType());
+        final BytesSql sqlTemplate = RelUtils.toNativeBytesSql(sqlNode, insert.getDbType());
         final List<Integer> paramIndex = PlannerUtils.getDynamicParamIndex(sqlNode);
         final ShardProcessor processor = ShardProcessor.buildSimpleShard(insert);
         return Optional.of(processor).filter(p -> !(p instanceof EmptyShardProcessor)).map(p -> {
@@ -114,14 +121,48 @@ public class InsertWriter extends AbstractSingleWriter {
         final List<RelNode> result = new ArrayList<>();
         if (!withoutSingleTableOptimize && null != this.singleTableOperation && input.getTuples().size() == 1
             && !paramRows.isBatch()) {
-            SingleTableInsert physicalPlan = new SingleTableInsert(this.singleTableOperation);
+
+            // generate GalaxyPrepare digest once
+            if (singleTableOperation.isSupportGalaxyPrepare()
+                && null == singleTableOperation.getGalaxyPrepareDigest()) {
+                Planner.setGalaxyPrepareDigest(
+                    singleTableOperation, ImmutableList.of(tableName), executionContext, insert);
+            }
+
             Map<Integer, ParameterContext> params =
                 executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+            List<List<String>> phyTableNamesOutput = new ArrayList<>();
             Pair<String, Map<Integer, ParameterContext>> dbIndexAndParam =
-                this.singleTableOperation.calcDbIndexAndParam(params, executionContext);
+                this.singleTableOperation.getDbIndexAndParam(params, phyTableNamesOutput, executionContext);
             String dbIndex = dbIndexAndParam.getKey();
-            physicalPlan.setDbIndex(dbIndex);
-            physicalPlan.setParam(params);
+            Map<Integer, ParameterContext> paramsWithPhyTbl = dbIndexAndParam.getValue();
+
+            PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+            buildParams.setSchemaName(this.singleTableOperation.getSchemaName());
+            buildParams.setLogTables(this.singleTableOperation.getLogicalTableNames());
+            buildParams.setGroupName(dbIndex);
+            buildParams.setPhyTables(phyTableNamesOutput);
+            buildParams.setSqlKind(this.singleTableOperation.getKind());
+            buildParams.setLockMode(SqlSelect.LockMode.UNDEF);
+
+            buildParams.setLogicalPlan(this.singleTableOperation.getParent());
+            buildParams.setCluster(this.singleTableOperation.getCluster());
+            buildParams.setTraitSet(this.singleTableOperation.getTraitSet());
+            buildParams.setRowType(this.singleTableOperation.getRowType());
+            buildParams.setCursorMeta(null);
+
+            buildParams.setBytesSql(this.singleTableOperation.getBytesSql());
+            buildParams.setDbType(DbType.MYSQL);
+            buildParams.setDynamicParams(paramsWithPhyTbl);
+            buildParams.setBatchParameters(null);
+
+            buildParams.setSupportGalaxyPrepare(this.singleTableOperation.isSupportGalaxyPrepare());
+            buildParams.setGalaxyPrepareDigest(this.singleTableOperation.getGalaxyPrepareDigest());
+
+//            SingleTableInsert physicalPlan = new SingleTableInsert(this.singleTableOperation);
+//            physicalPlan.setDbIndex(dbIndex);
+//            physicalPlan.setParam(params);
+            PhyTableOperation physicalPlan = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
             result.add(physicalPlan);
         } else {
 

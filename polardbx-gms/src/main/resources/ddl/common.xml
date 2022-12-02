@@ -69,4 +69,67 @@
             ) charset=utf8
         ]]></Create>
     </SystemTable>
+    <SystemTable name="routines">
+        <Create><![CDATA[
+            create table if not exists `routines` (
+                `SPECIFIC_NAME` varchar(64) NOT NULL DEFAULT '',
+                `ROUTINE_CATALOG` varchar(512) NOT NULL DEFAULT '',
+                `ROUTINE_SCHEMA` varchar(64) NOT NULL DEFAULT '',
+                `ROUTINE_NAME` varchar(64) NOT NULL DEFAULT '',
+                `ROUTINE_TYPE` varchar(9) NOT NULL DEFAULT '',
+                `DATA_TYPE` varchar(64) NOT NULL DEFAULT '',
+                `CHARACTER_MAXIMUM_LENGTH` int(21) DEFAULT NULL,
+                `CHARACTER_OCTET_LENGTH` int(21) DEFAULT NULL,
+                `NUMERIC_PRECISION` bigint(21) unsigned DEFAULT NULL,
+                `NUMERIC_SCALE` int(21) DEFAULT NULL,
+                `DATETIME_PRECISION` bigint(21) unsigned DEFAULT NULL,
+                `CHARACTER_SET_NAME` varchar(64) DEFAULT NULL,
+                `COLLATION_NAME` varchar(64) DEFAULT NULL,
+                `DTD_IDENTIFIER` longtext,
+                `ROUTINE_BODY` varchar(8) NOT NULL DEFAULT '',
+                `ROUTINE_DEFINITION` longtext,
+                `EXTERNAL_NAME` varchar(64) DEFAULT NULL,
+                `EXTERNAL_LANGUAGE` varchar(64) DEFAULT NULL,
+                `PARAMETER_STYLE` varchar(8) NOT NULL DEFAULT '',
+                `IS_DETERMINISTIC` varchar(3) NOT NULL DEFAULT '',
+                `SQL_DATA_ACCESS` varchar(64) NOT NULL DEFAULT '',
+                `SQL_PATH` varchar(64) DEFAULT NULL,
+                `SECURITY_TYPE` varchar(7) NOT NULL DEFAULT '',
+                `CREATED` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+                `LAST_ALTERED` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+                `SQL_MODE` varchar(8192) NOT NULL DEFAULT '',
+                `ROUTINE_COMMENT` longtext NOT NULL,
+                `DEFINER` varchar(93) NOT NULL DEFAULT '',
+                `CHARACTER_SET_CLIENT` varchar(32) NOT NULL DEFAULT '',
+                `COLLATION_CONNECTION` varchar(32) NOT NULL DEFAULT '',
+                `DATABASE_COLLATION` varchar(32) NOT NULL DEFAULT '',
+                `ROUTINE_META` longtext NOT NULL,
+                unique key u_schema_name(ROUTINE_SCHEMA, ROUTINE_NAME),
+                index i_name(ROUTINE_NAME)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="parameters">
+        <Create><![CDATA[
+            create table if not exists `parameters` (
+                  `SPECIFIC_CATALOG` varchar(512) NOT NULL DEFAULT '',
+                  `SPECIFIC_SCHEMA` varchar(64) NOT NULL DEFAULT '',
+                  `SPECIFIC_NAME` varchar(64) NOT NULL DEFAULT '',
+                  `ORDINAL_POSITION` int(21) NOT NULL DEFAULT '0',
+                  `PARAMETER_MODE` varchar(5) DEFAULT NULL,
+                  `PARAMETER_NAME` varchar(64) DEFAULT NULL,
+                  `DATA_TYPE` varchar(64) NOT NULL DEFAULT '',
+                  `CHARACTER_MAXIMUM_LENGTH` int(21) DEFAULT NULL,
+                  `CHARACTER_OCTET_LENGTH` int(21) DEFAULT NULL,
+                  `NUMERIC_PRECISION` bigint(21) unsigned DEFAULT NULL,
+                  `NUMERIC_SCALE` int(21) DEFAULT NULL,
+                  `DATETIME_PRECISION` bigint(21) unsigned DEFAULT NULL,
+                  `CHARACTER_SET_NAME` varchar(64) DEFAULT NULL,
+                  `COLLATION_NAME` varchar(64) DEFAULT NULL,
+                  `DTD_IDENTIFIER` longtext NOT NULL,
+                  `ROUTINE_TYPE` varchar(9) NOT NULL DEFAULT '',
+                  unique key u_schema_name(SPECIFIC_SCHEMA, SPECIFIC_NAME, PARAMETER_NAME)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

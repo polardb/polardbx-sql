@@ -20,24 +20,18 @@ package com.alibaba.polardbx.optimizer.view;
  * @author dylan
  */
 public enum VirtualViewType {
-
-    // DRDS virtual table
-    VIRTUAL_STATISTIC,
-
     // information_schema
     INFORMATION_SCHEMA_TABLES,
 
     INFORMATION_SCHEMA_COLUMNS,
 
-    STATISTICS,
+    SCHEDULE_JOBS,
 
     SCHEMATA,
 
     TABLES,
 
     COLUMNS,
-
-    COLUMN_STATISTICS,
 
     ENGINES,
 
@@ -80,6 +74,8 @@ public enum VirtualViewType {
     LOCAL_PARTITIONS,
 
     LOCAL_PARTITIONS_SCHEDULE,
+
+    AUTO_SPLIT_SCHEDULE,
 
     PLUGINS,
 
@@ -159,6 +155,8 @@ public enum VirtualViewType {
 
     INNODB_SYS_TABLESTATS,
 
+    SEQUENCES,
+
     DRDS_PHYSICAL_PROCESS_IN_TRX,
 
     WORKLOAD,
@@ -181,23 +179,66 @@ public enum VirtualViewType {
 
     PHYSICAL_PROCESSLIST,
 
+    /**
+     * spm views
+     */
     PLAN_CACHE,
-
     PLAN_CACHE_CAPACITY,
-
     SPM,
 
+    /**
+     * statistic views
+     */
+    // deprecated
     STATISTIC_TASK,
+    // DRDS virtual table
+    VIRTUAL_STATISTIC,
+    STATISTICS,
+    COLUMN_STATISTICS,
+
+    /**
+     * module view
+     */
+    MODULE,
+    MODULE_EVENT,
 
     CCL_RULE,
 
     CCL_TRIGGER,
 
     REACTOR_PERF,
+
     DN_PERF,
+
     TCP_PERF,
+
     SESSION_PERF,
+
     DDL_PLAN,
+
+    REBALANCE_BACKFILL,
+
     FILE_STORAGE,
-    FILE_STORAGE_FILES_META
+
+    FILE_STORAGE_FILES_META,
+
+    STATEMENTS_SUMMARY,
+
+    STATEMENTS_SUMMARY_HISTORY,
+
+    AFFINITY_TABLES,
+
+    JOIN_GROUP,
+
+    ARCHIVE,
+
+    PROCEDURE_CACHE,
+
+    PROCEDURE_CACHE_CAPACITY,
+
+    FUNCTION_CACHE,
+
+    FUNCTION_CACHE_CAPACITY,
+
+    PUSHED_FUNCTION
 }

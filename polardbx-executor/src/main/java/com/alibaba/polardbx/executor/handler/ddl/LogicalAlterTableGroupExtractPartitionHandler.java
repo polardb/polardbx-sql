@@ -44,7 +44,8 @@ public class LogicalAlterTableGroupExtractPartitionHandler extends LogicalCommon
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
-            (SqlAlterTableGroup) (((LogicalAlterTableGroupExtractPartition) logicalDdlPlan).relDdl.getSqlNode()),
+            (SqlAlterTableGroup) ((logicalDdlPlan).relDdl.getSqlNode()),
+            logicalDdlPlan.getSchemaName(),
             executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

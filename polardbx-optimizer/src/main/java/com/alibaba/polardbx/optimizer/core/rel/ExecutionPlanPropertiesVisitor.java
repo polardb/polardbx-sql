@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
-import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDelete;
@@ -49,6 +49,10 @@ public class ExecutionPlanPropertiesVisitor extends SqlBasicVisitor<SqlNode> {
     private List<String> modifiedTableNames = new LinkedList<>();
     private List<String> tableNames = new LinkedList<>();
     private SqlKind sqlKind;
+    private SqlSelect.LockMode lockMode = SqlSelect.LockMode.UNDEF;
+
+    public ExecutionPlanPropertiesVisitor() {
+    }
 
     @Override
     public SqlNode visit(SqlCall call) {
@@ -56,6 +60,7 @@ public class ExecutionPlanPropertiesVisitor extends SqlBasicVisitor<SqlNode> {
         switch (kind) {
         case SELECT:
             updateSqlKind(kind);
+            lockMode = ((SqlSelect) call).getLockMode();
             break;
         case DELETE:
             updateSqlKind(kind);
@@ -167,6 +172,10 @@ public class ExecutionPlanPropertiesVisitor extends SqlBasicVisitor<SqlNode> {
         }
     }
 
+    public List<String> getTableNames() {
+        return tableNames;
+    }
+
     public List<String> getModifiedTableNames() {
         return modifiedTableNames;
     }
@@ -227,5 +236,14 @@ public class ExecutionPlanPropertiesVisitor extends SqlBasicVisitor<SqlNode> {
             }
         }
         return aliasTableMap;
+    }
+
+
+    public SqlKind getSqlKind() {
+        return sqlKind;
+    }
+
+    public SqlSelect.LockMode getLockMode() {
+        return lockMode;
     }
 }

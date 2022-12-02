@@ -1,0 +1,42 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x),
+index `agsi_0`(`order_id`),
+unique index `agsi_1`(`order_id`,`seller_id`)
+);
+
+show create table `t_order`;
+show full create table `t_order`;
+
+insert into `t_order` values 
+(1, 'order_id1', 'seller_id1'),
+(2, 'order_id2', 'seller_id2'),
+(3, 'order_id3', 'seller_id3'),
+(4, 'order_id4', 'seller_id4'),
+(5, 'order_id5', 'seller_id5')
+;
+
+select * from `t_order` order by x;
+
+alter table `t_order` partitions 6;
+show create table `t_order`;
+show full create table `t_order`;
+select * from `t_order` order by x;
+
+alter table `t_order` partitions 2;
+show create table `t_order`;
+show full create table `t_order`;
+select * from `t_order` order by x;
+
+## error_msg: $# ERR_PARTITION_INVALID_PARAMS #$
+alter table `t_order` partitions 0;
+  
+## error_msg: $# Too many partitions #$
+alter table `t_order` partitions 10240;
+

@@ -31,6 +31,10 @@ public interface DdlTask {
 
     void setTaskId(Long taskId);
 
+    Long getRootJobId();
+
+    void setRootJobId(Long rootJobId);
+
     /**
      * Get the task name.
      * used for Serialize/DeSerialize.

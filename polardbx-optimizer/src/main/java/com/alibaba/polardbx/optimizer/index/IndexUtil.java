@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMdSelectivity;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticService;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
@@ -237,8 +238,7 @@ public class IndexUtil {
             }
         }
 
-        StatisticService statisticManager =
-            OptimizerContext.getContext(PlannerContext.getPlannerContext(join).getSchemaName()).getStatisticManager();
+        String schema = PlannerContext.getPlannerContext(join).getSchemaName();
 
         PriorityQueue<Index> priorityQueue = new PriorityQueue<>(new Comparator<Index>() {
             @Override
@@ -279,7 +279,8 @@ public class IndexUtil {
                     || lookupScanColumnCouldUseIndex.contains(columnIndex)) {
                     prefixLen++;
                     StatisticResult statisticResult =
-                        statisticManager.getCardinality(tableMeta.getTableName(), columnMeta.getName());
+                        StatisticManager.getInstance()
+                            .getCardinality(schema, tableMeta.getTableName(), columnMeta.getName(), true);
                     long cardinality = statisticResult.getLongValue();
                     if (cardinality <= 0) {
                         cardinality = (long) (tableMeta.getRowCount() / CostModelWeight.INSTANCE.getAvgTupleMatch());

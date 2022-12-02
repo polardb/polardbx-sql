@@ -1,0 +1,25 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists db_with_charset;
+CREATE DATABASE IF NOT EXISTS db_with_charset
+DEFAULT CHARACTER SET = `utf8mb4`
+DEFAULT COLLATE = `utf8mb4_general_ci`
+mode='auto';
+show create database db_with_charset;
+Database,Create Database
+db_with_charset,CREATE DATABASE `db_with_charset` /* MODE = 'auto' */
+CREATE TABLE `db_with_charset`.`hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+show create table `db_with_charset`.`hash_tbl_bigint`;
+Table,Create Table
+hash_tbl_bigint,CREATE TABLE `hash_tbl_bigint` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32
+drop database if exists db_with_charset;

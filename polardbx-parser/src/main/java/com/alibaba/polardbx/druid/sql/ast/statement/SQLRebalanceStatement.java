@@ -30,6 +30,7 @@ public class SQLRebalanceStatement extends SQLStatementImpl {
 
     public enum RebalanceTarget {
         TABLE,
+        TABLEGROUP,
         DATABASE,
         CLUSTER
     }
@@ -45,6 +46,10 @@ public class SQLRebalanceStatement extends SQLStatementImpl {
 
     public void setRebalanceTable() {
         this.target = RebalanceTarget.TABLE;
+    }
+
+    public void setRebalanceTableGroup(){
+        this.target = RebalanceTarget.TABLEGROUP;
     }
     
     public void setRebalanceDatabase() {

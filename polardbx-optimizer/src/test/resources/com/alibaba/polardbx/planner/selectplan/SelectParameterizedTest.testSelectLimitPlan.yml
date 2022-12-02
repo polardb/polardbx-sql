@@ -24,8 +24,7 @@
     where a.name='xx' limit 5;
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_broadcast_tb", sql="SELECT `a`.`id` AS `id` FROM `test_broadcast_tb` AS `a` WHERE (`a`.`name` = ?) LIMIT ? OFFSET 0", params="xx,5")
+    logicalview(tables="optest_0000.test_broadcast_tb", sql="select `a`.`id` as `id` from `test_broadcast_tb` as `a` where (`a`.`name` = ?) limit ? offset 0", params="xx,5")
 
 - sql: |
     select id

@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupModifyPartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRemoveTempPartitionTask;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupVali
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -44,17 +46,20 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * @author luoyanxin
  */
 public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBaseJobFactory {
+
+    private static String MODIFY_PARTITION_LOCK = "MODIFY_PARTITION_LOCK";
 
     public AlterTableGroupModifyPartitionJobFactory(DDL ddl, AlterTableGroupModifyPartitionPreparedData preparedData,
                                                     Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
@@ -110,6 +115,10 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
                 .get(i % targetDbCnt).phyDbName);
             newPartitions.add(alterTableGroupModifyPartitionPreparedData.getNewPartitionNames().get(i));
         }
+        List<LocalityDesc> oldPartitionLocalities = tableGroupConfig.getPartitionGroupRecords().stream()
+            .filter(o -> outdatedPartitionNames.contains(o.partition_name)).
+            map(o -> LocalityDesc.parse(o.getLocality())).collect(Collectors.toList());
+        List<String> localties = Collections.nCopies(newPartitions.size(), oldPartitionLocalities.get(0).toString());
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
             tableGroupConfig.getTableGroupRecord().getId(),
@@ -118,7 +127,8 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
             taskType.getValue(),
             outdatedPartitionGroupId,
             targetDbList,
-            newPartitions);
+            newPartitions,
+            localties);
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
@@ -163,23 +173,6 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
     public static ExecutableDdlJob create(@Deprecated DDL ddl,
                                           AlterTableGroupModifyPartitionPreparedData preparedData,
                                           ExecutionContext executionContext) {
-
-        String schemaName = preparedData.getSchemaName();
-        String tableGroupName = preparedData.getTableGroupName();
-
-        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-            .getTableGroupConfigByName(tableGroupName);
-
-        Set<Long> outdatedPartitionGroupId = new HashSet<>();
-        for (String dropPartitionName : preparedData.getOldPartitionNames()) {
-            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-                if (record.partition_name.equalsIgnoreCase(dropPartitionName)) {
-                    outdatedPartitionGroupId.add(record.id);
-                    break;
-                }
-            }
-        }
-
         AlterTableGroupModifyPartitionBuilder alterTableGroupModifyPartitionBuilder =
             new AlterTableGroupModifyPartitionBuilder(ddl, preparedData, executionContext);
         Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
@@ -220,6 +213,7 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
                     executableDdlJob.addTask(emptyTask);
                     emptyTaskAdded = true;
                 }
+                tryRewriteCdcTopology(subTaskJobFactory);
                 executableDdlJob.addTask(subTaskJobFactory.getCdcTableGroupDdlMarkTask());
                 executableDdlJob.addTaskRelationship(subTask.getTail(), emptyTask);
                 executableDdlJob.addTaskRelationship(emptyTask, subTaskJobFactory.getCdcTableGroupDdlMarkTask());
@@ -273,6 +267,19 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
     @Override
     protected void excludeResources(Set<String> resources) {
         super.excludeResources(resources);
+        //because AlterTableGroupRemoveTempPartitionTask will call deleteTablePartitionByGidAndPartNameFromDelta
+        //while group_id is always 0 for new partition in delta, so modify partition sure be executed serially
+        resources.add(concatWithDot(preparedData.getSchemaName(), MODIFY_PARTITION_LOCK));
+    }
+
+    private void tryRewriteCdcTopology(AlterTableGroupModifyPartitionSubTaskJobFactory subTaskJobFactory) {
+        if (preparedData.isDropVal()) {
+            CdcTableGroupDdlMarkTask cdcTableGroupDdlMarkTask =
+                (CdcTableGroupDdlMarkTask) subTaskJobFactory.getCdcTableGroupDdlMarkTask();
+            PartitionSpec tempPartitionInfo = subTaskJobFactory.getTempPartitionInfo();
+            Map<String, Set<String>> topology = cdcTableGroupDdlMarkTask.getTargetTableTopology();
+            topology.forEach((k, v) -> v.remove(tempPartitionInfo.getLocation().getPhyTableName()));
+        }
     }
 
 }

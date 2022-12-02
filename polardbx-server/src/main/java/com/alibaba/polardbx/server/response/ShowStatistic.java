@@ -34,6 +34,7 @@ import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
+import java.util.Locale;
 import java.util.Map;
 
 public class ShowStatistic {
@@ -103,7 +104,11 @@ public class ShowStatistic {
         }
 
         Map<String, StatisticManager.CacheLine> statisticCache =
-            ds.getConfigHolder().getStatisticManager().getStatisticCache();
+            StatisticManager.getInstance().getStatisticCache().get(schema.getName().toLowerCase(Locale.ROOT));
+        if (statisticCache == null) {
+            c.writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "no statistic '" + c.getSchema() + "'");
+            return;
+        }
         for (Map.Entry<String, StatisticManager.CacheLine> entry : statisticCache.entrySet()) {
             Map<String, Long> cardinalityMap = entry.getValue().getCardinalityMap();
             if (cardinalityMap == null || cardinalityMap.isEmpty()) {

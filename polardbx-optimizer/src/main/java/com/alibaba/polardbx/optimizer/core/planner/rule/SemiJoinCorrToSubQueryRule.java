@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -38,8 +40,11 @@ import static com.alibaba.polardbx.optimizer.utils.RelUtils.removeHepRelVertex;
  */
 public abstract class SemiJoinCorrToSubQueryRule extends RelOptRule {
 
-    public SemiJoinCorrToSubQueryRule(RelOptRuleOperand operand, String description) {
+    private boolean filterReorder;
+
+    public SemiJoinCorrToSubQueryRule(RelOptRuleOperand operand, String description, Boolean filterReorder) {
         super(operand, "SemiJoinToSubQueryRule:" + description);
+        this.filterReorder = filterReorder;
     }
 
     /**
@@ -48,7 +53,17 @@ public abstract class SemiJoinCorrToSubQueryRule extends RelOptRule {
     public static final SemiJoinCorrToSubQueryRule SEMI_JOIN = new SemiJoinCorrToSubQueryRule(
         operand(LogicalSemiJoin.class, operand(RelNode.class, any()),
             operand(RelNode.class, any())),
-        "SEMI_JOIN") {
+        "SEMI_JOIN", false) {
+        @Override
+        public void onMatch(RelOptRuleCall call) {
+            handleSemi(call);
+        }
+    };
+
+    public static final SemiJoinCorrToSubQueryRule SEMI_JOIN_REORDER = new SemiJoinCorrToSubQueryRule(
+        operand(LogicalSemiJoin.class, operand(RelNode.class, any()),
+            operand(RelNode.class, any())),
+        "SEMI_JOIN_WITH_FILER_REORDER", true) {
         @Override
         public void onMatch(RelOptRuleCall call) {
             handleSemi(call);
@@ -57,7 +72,6 @@ public abstract class SemiJoinCorrToSubQueryRule extends RelOptRule {
 
     protected void handleSemi(RelOptRuleCall call) {
         LogicalSemiJoin join = call.rel(0);
-        RelNode left = call.rel(1);
         RelNode right = call.rel(2);
 
         List<RexNode> leftFilters = new ArrayList<>();
@@ -77,7 +91,9 @@ public abstract class SemiJoinCorrToSubQueryRule extends RelOptRule {
             call.builder().getRexBuilder(),
             leftFilters,
             rightFilters,
-            true);
+            true,
+            filterReorder && PlannerContext.getPlannerContext(join).getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_FILTER_REORDER));
 
         if (newNode == null) {
             return;
@@ -92,7 +108,7 @@ public abstract class SemiJoinCorrToSubQueryRule extends RelOptRule {
     public static final SemiJoinCorrToSubQueryRule CORRELATE = new SemiJoinCorrToSubQueryRule(
         operand(LogicalSemiJoin.class, operand(RelNode.class, any()),
             operand(RelNode.class, any())),
-        "CORRELATE") {
+        "CORRELATE", false) {
         @Override
         public void onMatch(RelOptRuleCall call) {
             handleCorr(call);

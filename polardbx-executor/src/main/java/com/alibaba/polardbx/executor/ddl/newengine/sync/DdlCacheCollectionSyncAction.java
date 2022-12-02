@@ -22,7 +22,7 @@ import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineResourceManager;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.PersistentReadWriteLock;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;

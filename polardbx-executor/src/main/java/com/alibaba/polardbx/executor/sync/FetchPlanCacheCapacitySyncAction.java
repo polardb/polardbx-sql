@@ -23,44 +23,34 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 
-public class FetchPlanCacheCapacitySyncAction implements ISyncAction {
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
-    private String schemaName = null;
+public class FetchPlanCacheCapacitySyncAction implements ISyncAction {
 
     public FetchPlanCacheCapacitySyncAction() {
     }
 
-    public FetchPlanCacheCapacitySyncAction(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
-    public FetchPlanCacheCapacitySyncAction(String schemaName, boolean withPlan) {
-        this.schemaName = schemaName;
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
     @Override
     public ResultCursor sync() {
-        PlanCache.CapacityInfo capacityInfo =
-            OptimizerContext.getContext(schemaName).getPlanManager().getPlanCache().getCurrentCapacityInfo();
+        PlanCache.CapacityInfo capacityInfo = PlanCache.getInstance().getCurrentCapacityInfo();
+
+        Map<String, AtomicInteger> m = PlanCache.getInstance().getCacheKeyCountGroupBySchema();
 
         ArrayResultCursor result = new ArrayResultCursor("PLAN_CACHE");
         result.addColumn("COMPUTE_NODE", DataTypes.StringType);
+        result.addColumn("SCHEMA", DataTypes.StringType);
         result.addColumn("CACHE_KEY_CNT", DataTypes.LongType);
         result.addColumn("CAPACITY", DataTypes.LongType);
 
-        result.addRow(new Object[] {
-            TddlNode.getHost() + ":" + TddlNode.getPort(),
-            capacityInfo.getKeyCount(),
-            capacityInfo.getCapacity()
-        });
+        for (Map.Entry<String, AtomicInteger> e : m.entrySet()) {
+            result.addRow(new Object[] {
+                TddlNode.getHost() + ":" + TddlNode.getPort(),
+                e.getKey(),
+                e.getValue().get(),
+                capacityInfo.getCapacity()
+            });
+        }
 
         return result;
     }

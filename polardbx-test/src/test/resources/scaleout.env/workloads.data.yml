@@ -1,0 +1,48 @@
+test_table_a:
+  insert into `test_table_a` ( pk, varchar_test_p255 ) values (null,'1'), (null,'2'),(null,'3');
+
+test_table_b:
+  insert into `test_table_b` ( pk, varchar_test_p255, timestamp_test ) values (null,'1', '2020-12-12 11:11:01'), (null,'2', '2020-12-12 11:11:02'),(null,'3', '2020-12-12 11:11:03');
+
+test_table_c:
+  insert into `test_table_c` ( pk, varchar_test_p255, timestamp_test ) values (null,'1', '2020-12-12 11:11:01'), (null,'2', '2020-12-12 11:11:02'),(null,'3', '2020-12-12 11:11:03');
+
+test_tb_bro1:
+  insert into `test_tb_bro1` ( pk, integer_test ) values (1,1);
+
+test_tb_bro2:
+  insert into `test_tb_bro2` ( pk, integer_test ) values (1,1);
+
+test_tb_bro3:
+  insert into `test_tb_bro3` ( pk, integer_test ) values (1,1);
+
+mdb_mtb1:
+  insert into `mdb_mtb1` ( pk, integer_test ) values (null,100),(300000, 100);
+
+mdb_mtb2:
+  insert into `mdb_mtb2` ( pk, integer_test ) values (null,100),(300000, 100);
+
+mdb_mtb3:
+  insert ignore into `mdb_mtb3` ( pk, integer_test ) values ( 300000, 10 ), ( 300001, 10 ), ( 300002, 10 );
+
+mdb_mtb4:
+  insert ignore into `mdb_mtb4` ( pk, integer_test ) values ( 300000, 10 ), ( 300001, 10 ), ( 300002, 10 );
+
+mdb_mtb_mk1:
+  insert into `mdb_mtb_mk1` ( pk, integer_test ) values (null,100);
+
+mdb_mtb_mk2:
+  insert into `mdb_mtb_mk2` ( pk, integer_test ) values (null,100);
+
+mdb_mtb_mk_msk1:
+  insert into `mdb_mtb_mk_msk1` ( pk, integer_test ) values (null,100);
+
+mdb_mtb_mk_msk2:
+  insert into `mdb_mtb_mk_msk2` ( pk, integer_test ) values (null,100);
+
+mdb_mtb_og1:
+  insert into `mdb_mtb_og1` ( pk, integer_test ) values (null,100);
+
+mdb_mtb_og2:
+  insert into `mdb_mtb_og2` ( pk, integer_test ) values (null,100);
+

@@ -18,11 +18,13 @@ package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
 import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
+import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import com.alibaba.polardbx.statistics.ExplainStatisticsHandler;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -43,6 +45,7 @@ import com.alibaba.polardbx.executor.PlanExecutor;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.planner.PlanUtils;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
@@ -61,11 +64,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
+import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelXPlanOptimizer;
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
-import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -98,6 +100,7 @@ import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -112,9 +115,9 @@ import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
-import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -125,7 +128,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -154,6 +156,11 @@ public class ExplainExecutorUtil {
 
     public static ResultCursor explain(ExecutionPlan executionPlan, ExecutionContext executionContext,
                                        ExplainResult explain) {
+        if (executionContext.getMemoryPool() == null) {
+            executionContext.setMemoryPool(MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
+                "ExplainCommandMemoryPool" + executionContext.getTraceId(), MemorySetting.UNLIMITED_SIZE,
+                MemoryType.QUERY));
+        }
         if (isExplainOptimizer(explain)) {
             return ExplainExecutorUtil.handleExplainWithStage(executionContext, executionPlan);
         } else if (isExplainSharding(explain)) {
@@ -383,17 +390,18 @@ public class ExplainExecutorUtil {
     }
 
     private static ResultCursor handleExplainWithStage(ExecutionContext executionContext, ExecutionPlan executionPlan) {
+        Preconditions.checkArgument(executionContext.getCalcitePlanOptimizerTrace().isPresent());
         final Function<RexNode, Object> evalFunc = RexUtils.getEvalFunc(executionContext);
-        CalcitePlanOptimizerTrace.getOptimizerTracer().get()
-            .addSnapshot("End", executionPlan.getPlan(), PlannerContext.getPlannerContext(executionContext, evalFunc));
+        executionContext.getCalcitePlanOptimizerTrace().ifPresent(x -> x.addSnapshot("End", executionPlan.getPlan(),
+            PlannerContext.getPlannerContext(executionContext, evalFunc))
+        );
         if (executionPlan.getAst() != null) {
             if (SqlKind.SUPPORT_DDL.contains(executionPlan.getAst().getKind())) {
                 return handleExplainDdl(executionContext, executionPlan);
             }
         }
-        List<Map.Entry<String, String>> optimizerSnapshots = CalcitePlanOptimizerTrace.getOptimizerTracer()
-            .get()
-            .getPlanSnapshots();
+        List<Map.Entry<String, String>> optimizerSnapshots = executionContext.getCalcitePlanOptimizerTrace()
+            .get().getOptimizerTracer().getPlanSnapshots();
         ArrayResultCursor result = new ArrayResultCursor("ExecutionPlan");
         result.addColumn("Stage", DataTypes.StringType);
         result.addColumn("Logical ExecutionPlan", DataTypes.StringType);
@@ -407,8 +415,8 @@ public class ExplainExecutorUtil {
             result.addRow(new Object[] {"", ""});
 
         }
-        CalcitePlanOptimizerTrace.setOpen(false);
-        CalcitePlanOptimizerTrace.getOptimizerTracer().get().clean();
+        executionContext.getCalcitePlanOptimizerTrace().ifPresent(x -> x.setOpen(false));
+        executionContext.getCalcitePlanOptimizerTrace().ifPresent(x -> x.getOptimizerTracer().clean());
         return result;
     }
 
@@ -450,11 +458,13 @@ public class ExplainExecutorUtil {
         calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
         calcParams.put(CalcParamsAttribute.COM_DB_TB, allFullComps);
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
 
         for (Pair<String, String> qn : logicalTables) {
             final OptimizerContext context = OptimizerContext.getContext(qn.left);
             final PartitionInfoManager partitionInfoManager = context.getPartitionInfoManager();
             final TddlRuleManager or = context.getRuleManager();
+            final Partitioner partitioner = context.getPartitioner();
             final String tableName = qn.getValue();
             final Map<String, Comparative> comps = allComps.get(tableName);
             final Map<String, Set<String>> tableMap = new LinkedHashMap<>();
@@ -502,7 +512,7 @@ public class ExplainExecutorUtil {
 
                 for (Map.Entry<String, Comparative> entry : comps.entrySet()) {
                     final String column = entry.getKey();
-                    final Comparative comparative = or.getComparative(
+                    final Comparative comparative = partitioner.getComparativeByFetcher(
                         tableRule,
                         comps,
                         column,
@@ -615,7 +625,7 @@ public class ExplainExecutorUtil {
     private static ResultCursor handleExplainVec(ExecutionContext executionContext, ExecutionPlan executionPlan,
                                                  ExplainResult.ExplainMode mode) {
         SqlExplainLevel explainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES;
-        CalcitePlanOptimizerTrace.setSqlExplainLevel(explainLevel);
+        executionContext.getCalcitePlanOptimizerTrace().ifPresent(x -> x.setSqlExplainLevel(explainLevel));
 
         Map<Integer, ParameterContext> parameters = executionContext.getParams().getCurrentParameter();
         Function<RexNode, Object> evalFunc = RexUtils.getEvalFunc(executionContext);
@@ -775,7 +785,8 @@ public class ExplainExecutorUtil {
             PlannerContext.getPlannerContext(executionPlan.getPlan()).setParams(executionContext.getParams());
             explainLevel = SqlExplainLevel.ALL_ATTRIBUTES;
         }
-        CalcitePlanOptimizerTrace.setSqlExplainLevel(explainLevel);
+        SqlExplainLevel finalExplainLevel = explainLevel;
+        executionContext.getCalcitePlanOptimizerTrace().ifPresent(x -> x.setSqlExplainLevel(finalExplainLevel));
 
         RuntimeStatistics statistics = (RuntimeStatistics) executionContext.getRuntimeStatistics();
         if (mode.isAnalyze()) {
@@ -800,7 +811,8 @@ public class ExplainExecutorUtil {
                 executePlanForExplainAnalyze(executionPlan, executionContext);
                 runtimeStatistic = statistics.toSketch();
             }
-            CalcitePlanOptimizerTrace.getOptimizerTracer().get().setRuntimeStatistics(runtimeStatistic);
+            executionContext.getCalcitePlanOptimizerTrace().ifPresent(
+                x -> x.getOptimizerTracer().setRuntimeStatistics(runtimeStatistic));
         }
 
         PropUtil.ExplainOutputFormat outputFormat = (PropUtil.ExplainOutputFormat) executionContext.getParamManager()
@@ -933,14 +945,11 @@ public class ExplainExecutorUtil {
                                                              ExecutionPlan executionPlan) {
         ArrayResultCursor result = null;
         try {
-            //TODO 校验MPP
-            executionContext.setMemoryPool(MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
-                "mpp_explain_physical" + executionContext.getTraceId(), MemorySetting.UNLIMITED_SIZE,
-                MemoryType.QUERY));
             result = new ArrayResultCursor("PhysicalPlan");
             result.addColumn("Plan", DataTypes.StringType);
             result.initMeta();
-            String mppPlanString = PlanUtils.textPlan(executionContext, executionPlan.getPlan());
+            Session session = new Session(executionContext.getTraceId(), executionContext);
+            String mppPlanString = PlanUtils.textPlan(executionContext, session, executionPlan.getPlan());
             for (String row : StringUtils.split(mppPlanString, "\r\n")) {
                 result.addRow(new Object[] {row});
             }
@@ -982,34 +991,50 @@ public class ExplainExecutorUtil {
 
         executionPlan.getPlan().accept(logicalViewGetter);
 
+        boolean cursorMode = ExecutorMode.CURSOR.equals(
+            ExecutorHelper.getExecutorMode(executionPlan.getPlan(), executionContext, false));
         // build meta info for physical plan
         boolean metaInit = false;
         ArrayResultCursor result = new ArrayResultCursor("PhysicalPlan");
-        if (executionPlan.getPlan() instanceof DirectTableOperation
-            || executionPlan.getPlan() instanceof SingleTableOperation
-            || executionPlan.getPlan() instanceof DirectShardingKeyTableOperation
-            || executionPlan.getPlan() instanceof PhyTableOperation
-            || executionPlan.getPlan() instanceof PhyQueryOperation) {
-            ResultCursor rc = PlanExecutor.execByExecPlanNodeByOne(executionPlan, executionContext);
-            rc.setCursorMeta(result.getMeta());
-            try {
-                Row row = rc.next();
-                if (!metaInit) {
-                    initOriginMeta(rc, row, result);
+        if (executionPlan.getPlan() instanceof BaseTableOperation) {
+            BaseTableOperation operation = (BaseTableOperation) executionPlan.getPlan();
+            if (cursorMode && operation.getLockMode() == SqlSelect.LockMode.UNDEF &&
+                operation.getXTemplate() != null && executionContext.getUnOptimizedPlan() != null) {
+                // handle x_plan
+                boolean success = explainExecuteXPlan(executionContext.getUnOptimizedPlan(), metaInit,
+                    result, executionContext);
+                if (success) {
                     metaInit = true;
                 }
-                while (row != null) {
-                    result.addRow(row.getValues().toArray());
-                    row = rc.next();
+            }
+            if (!metaInit) {
+                ResultCursor rc = PlanExecutor.execByExecPlanNodeByOne(executionPlan, executionContext);
+                rc.setCursorMeta(result.getMeta());
+                try {
+                    Row row = rc.next();
+                    initOriginMeta(rc, row, result);
+                    metaInit = true;
+                    while (row != null) {
+                        result.addRow(row.getValues().toArray());
+                        row = rc.next();
+                    }
+                } catch (Exception e) {
+                    throw GeneralUtil.nestedException(e);
+                } finally {
+                    rc.close(Lists.newArrayList());
                 }
-            } catch (Exception e) {
-                throw GeneralUtil.nestedException(e);
-            } finally {
-                rc.close(Lists.newArrayList());
             }
         }
 
         for (LogicalView lv : views) {
+            if (cursorMode && lv.getXPlan() != null) {
+                boolean success = explainExecuteXPlan(lv.getPushedRelNode(), metaInit,
+                    result, executionContext);
+                if (success) {
+                    metaInit = true;
+                    continue;
+                }
+            }
             ExecutionPlan lp = new ExecutionPlan(executionPlan.getAst(), lv, null);
             ResultCursor rc = PlanExecutor.execByExecPlanNodeByOne(lp, executionContext);
             rc.setCursorMeta(result.getMeta());
@@ -1030,6 +1055,82 @@ public class ExplainExecutorUtil {
             }
         }
         return result;
+    }
+
+    /**
+     * mock the result of explain of mysql
+     *
+     * @param plan the plan to be optimized
+     * @param metaInit whether the meta is initied
+     * @param result the result cursor
+     */
+    private static boolean explainExecuteXPlan(RelNode plan, boolean metaInit,
+                                               ArrayResultCursor result, ExecutionContext executionContext) {
+        if (!executionContext.getParamManager().getBoolean(ConnectionParams.CONN_POOL_XPROTO_XPLAN)) {
+            return false;
+        }
+        RelXPlanOptimizer.IndexFinder indexFinder = new RelXPlanOptimizer.IndexFinder();
+        double finalRowCount;
+        synchronized (plan.getCluster().getMetadataQuery()) {
+            indexFinder.go(RelXPlanOptimizer.optimize(plan));
+            finalRowCount = plan.getCluster().getMetadataQuery().getRowCount(plan);
+        }
+        if (!indexFinder.found()) {
+            return false;
+        }
+        // build meta
+        if (!metaInit) {
+            String tableName = "explain";
+            String[] columns = new String[] {
+                "id",
+                "select_type",
+                "table",
+                "partitions",
+                "type",
+                "possible_keys",
+                "key",
+                "key_len",
+                "ref",
+                "rows",
+                "filtered",
+                "Extra"};
+            TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+            for (String columnName : columns) {
+                RelDataType dataType = factory.createSqlType(SqlTypeName.VARCHAR);
+                Field col = new Field(tableName, columnName, dataType);
+                ColumnMeta iColumnMeta = new ColumnMeta(tableName, columnName, null, col);
+                result.addColumn(iColumnMeta);
+            }
+            result.initMeta();
+        }
+        // add result
+        int cnt = 0;
+        String index = indexFinder.getIndex();
+        if (StringUtils.isEmpty(index)) {
+            index = "Primary";
+        }
+        String type = "Primary".equalsIgnoreCase(index) ? "const" : "ref";
+
+        double filtered = finalRowCount / indexFinder.getRowCount() * 100;
+        if (filtered > 100D) {
+            filtered = 100D;
+        }
+        result.addRow(new Object[] {
+            ++cnt,
+            "SIMPLE",
+            indexFinder.getTableName(),
+            null,
+            type,
+            index,
+            index,
+            8,
+            null,
+            indexFinder.getRowCount(),
+            String.format("%.2f", filtered),
+            "Using XPlan" + (indexFinder.isUsingWhere() ? ", Using where" : ""),
+        });
+        plan.getCluster().invalidateMetadataQuery();
+        return true;
     }
 
     private static void initOriginMeta(ResultCursor rc, Row row, ArrayResultCursor result)

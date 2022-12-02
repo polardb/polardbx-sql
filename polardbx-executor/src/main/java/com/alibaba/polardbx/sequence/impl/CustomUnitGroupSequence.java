@@ -41,16 +41,11 @@ public class CustomUnitGroupSequence extends GroupSequence {
     public void init() throws SequenceException, SQLException {
         this.type = GROUP;
 
-        if (!(sequenceDao instanceof CustomUnitGroupSequenceDao)) {
-            throw new SequenceException("please use CustomUnitGroupSequenceDao for CustomUnitGroupSequence!");
-        }
-
-        CustomUnitGroupSequenceDao groupSequenceDao = (CustomUnitGroupSequenceDao) sequenceDao;
+        CustomUnitGroupSequenceDao groupSequenceDao = (CustomUnitGroupSequenceDao) this.groupSequenceDao;
 
         Exception ex = null;
-        synchronized (this) // 为了保证安全，
-        {
-            for (int i = 0; i < sequenceDao.getRetryTimes(); i++) {
+        synchronized (this) {
+            for (int i = 0; i < this.groupSequenceDao.getRetryTimes(); i++) {
                 try {
                     int[] unitArgs = groupSequenceDao.adjustPlus(name);
 
@@ -75,33 +70,29 @@ public class CustomUnitGroupSequence extends GroupSequence {
 
         if (ex != null) {
             logger.error("Failed to initialize sequence '" + name + "' after retrying all "
-                + sequenceDao.getRetryTimes() + " times.");
+                + this.groupSequenceDao.getRetryTimes() + " times.");
             throw new SequenceException(ex, ex.getMessage());
         }
     }
 
     @Override
     protected void setSequenceRange() {
-        CustomUnitGroupSequenceDao groupSequenceDao = (CustomUnitGroupSequenceDao) sequenceDao;
+        CustomUnitGroupSequenceDao groupSequenceDao = (CustomUnitGroupSequenceDao) this.groupSequenceDao;
 
         long rangeStart = groupSequenceDao.nextRangeStart(name);
 
         this.currentRange = new SequenceRange(rangeStart + 1, rangeStart + innerStep);
 
-        String rangeInfo = this.currentRange.toString();
-        String infoMsg = "Got a new range for custom unit group sequence '" + name + "'. Range Info: " + rangeInfo;
+        String infoMsg =
+            String.format("Got a new range for custom unit group sequence %s. Range Info: %s", name, currentRange);
         LoggerInit.TDDL_SEQUENCE_LOG.info(infoMsg);
-        if (logger.isDebugEnabled()) {
-            logger.debug(infoMsg);
-        }
-
     }
 
     @Override
     protected void checkBatchSize(int size) {
         if (size > innerStep) {
             throw new SequenceException(
-                "Batch size " + size + " > sequence step " + innerStep + ". Please change batch size");
+                String.format("Batch size %s > sequence step %s. Please change batch size", size, innerStep));
         }
     }
 

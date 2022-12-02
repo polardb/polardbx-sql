@@ -26,13 +26,16 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlAddColumn;
@@ -57,6 +60,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapLocalIndexName;
+
 /**
  * @author mengshi
  */
@@ -77,12 +82,13 @@ public class AlterTableValidateTask extends BaseValidateTask {
     private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public AlterTableValidateTask(String schemaName, String tableName, String stmt, Long tableVersion, TableGroupConfig tableGroupConfig) {
+    public AlterTableValidateTask(String schemaName, String tableName, String stmt, Long tableVersion,
+                                  TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.tableName = tableName;
         this.stmt = stmt;
         this.tableVersion = tableVersion;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override
@@ -132,12 +138,20 @@ public class AlterTableValidateTask extends BaseValidateTask {
         Set<String> columnsBeforeDdl = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         columns.addAll(tableMeta.getAllColumns().stream().map(c -> c.getName()).collect(Collectors.toList()));
         columnsBeforeDdl.addAll(tableMeta.getAllColumns().stream().map(c -> c.getName()).collect(Collectors.toList()));
+        // We need manually add this column since it is not in getAllColumns
+        if (tableMeta.getColumnMultiWriteTargetColumnMeta() != null) {
+            columns.add(tableMeta.getColumnMultiWriteTargetColumnMeta().getName());
+        }
 
         Set<String> indexes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> indexesBeforeDdl = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        indexes.addAll(tableMeta.getIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
+        indexes
+            .addAll(tableMeta.getAllIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
         indexesBeforeDdl
-            .addAll(tableMeta.getIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
+            .addAll(tableMeta.getAllIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
+
+        GsiMetaManager.GsiMetaBean gsiMetaBean =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
 
         boolean existsPrimary = tableMeta.getPrimaryIndex() != null;
 
@@ -261,7 +275,9 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case DROP_INDEX:
-                checkIndexExists(indexesBeforeDdl, ((SqlAlterTableDropIndex) alterItem).getIndexName().getLastName());
+                String indexName = ((SqlAlterTableDropIndex) alterItem).getIndexName().getLastName();
+                checkDropLocalIndex(indexName, gsiMetaBean);
+                checkIndexExists(indexesBeforeDdl,indexName);
                 indexes.remove(((SqlAlterTableDropIndex) alterItem).getIndexName().getLastName());
                 break;
             }
@@ -271,8 +287,25 @@ public class AlterTableValidateTask extends BaseValidateTask {
             .contains(TddlConstants.IMPLICIT_COL_NAME)) { // no columns without implicit primary key
             throw new TddlRuntimeException(ErrorCode.ERR_DROP_ALL_COLUMNS);
         }
-        if (tableGroupConfig!=null) {
+        if (tableGroupConfig != null) {
             TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+        }
+    }
+
+    private void checkDropLocalIndex(String indexName, GsiMetaManager.GsiMetaBean gsiMetaBean) {
+        // 默认主键拆分的表，不允许删除默认生成的 local index
+        if (tableMeta.isAutoPartition() && !gsiMetaBean.isGsi(indexName)
+            && tableMeta.getGsiTableMetaBean() != null) {
+
+            String logicalGsiName = unwrapLocalIndexName(indexName);
+            final String wrapped = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
+                .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(logicalGsiName))
+                .findFirst().orElse(null);
+
+            if (wrapped != null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_AUTO_PARTITION_TABLE,
+                    "it is not allowed to drop the default local index generated by gsi");
+            }
         }
     }
 

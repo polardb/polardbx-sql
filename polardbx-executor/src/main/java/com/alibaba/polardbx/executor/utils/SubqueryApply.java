@@ -51,6 +51,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
@@ -154,7 +155,16 @@ public class SubqueryApply {
             }
             subQueryEc.setStartTime(System.nanoTime());
             Map<String, Object> extraCmd = new HashMap<>();
-            extraCmd.putAll(subQueryEc.getExtraCmds());
+            Map<String, Object> oldCmd = subQueryEc.getExtraCmds();
+
+            // copy execution context
+            Iterator<Map.Entry<String, Object>> it = oldCmd.entrySet().iterator();
+            // avoid ConcurrentModificationException
+            while (it.hasNext()) {
+                Map.Entry<String, Object> entry = it.next();
+                extraCmd.put(entry.getKey(), entry.getValue());
+            }
+
             extraCmd.put(ConnectionProperties.PARALLELISM, 1);
             subQueryEc.setExtraCmds(extraCmd);
 

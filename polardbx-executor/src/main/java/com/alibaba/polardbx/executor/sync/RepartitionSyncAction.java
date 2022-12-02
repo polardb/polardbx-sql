@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
 import java.text.MessageFormat;
@@ -39,13 +40,13 @@ public class RepartitionSyncAction implements ISyncAction {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RepartitionSyncAction.class);
 
-    private String schemaName;
-    private String primaryTableName;
+    protected String schemaName;
+    protected String primaryTableName;
     private String gsiTableName;
-    private String traceId;
+    protected String traceId;
 
     // This will not conflict, because it is unique in clusters(ClusterAcceptIdGenerator).
-    private long connId;
+    protected long connId;
 
     public RepartitionSyncAction() {
 
@@ -74,7 +75,7 @@ public class RepartitionSyncAction implements ISyncAction {
         return null;
     }
 
-    private void syncForPolarDbX() {
+    protected void syncForPolarDbX() {
         synchronized (OptimizerContext.getContext(schemaName)) {
             GmsTableMetaManager oldSchemaManager =
                 (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
@@ -137,7 +138,7 @@ public class RepartitionSyncAction implements ISyncAction {
 
         // Note: Invalidate plan cache is still necessary,
         // because non-multi-write plan for simple table may be cached.
-        OptimizerContext.getContext(schemaName).getPlanManager().invalidateCache();
+        PlanManager.getInstance().invalidateCache();
     }
 
     public String getTraceId() {

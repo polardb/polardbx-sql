@@ -17,8 +17,11 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.calcite.rel.type.RelDataType;
 
 import java.util.Arrays;
 import java.util.Comparator;

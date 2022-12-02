@@ -51,11 +51,41 @@ public class ListPartRouter extends PartitionRouter {
      */
     protected int allListValuesCount = 0;
 
+    /**
+     * whether have default partition
+     * */
+    protected boolean hasDefaultPartition = false;
+
+    protected int defaultPartitionPosition;
+
     public ListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo, Comparator comparator) {
         this.boundComparator = comparator;
         this.allListValuesCount = boundValPartPosiInfo.size();
+        this.hasDefaultPartition = false;
         initListPartRouter(boundValPartPosiInfo);
+    }
 
+    public ListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo, Comparator comparator, boolean hasDefaultPartition) {
+        this.boundComparator = comparator;
+        this.allListValuesCount = boundValPartPosiInfo.size();
+        this.hasDefaultPartition = hasDefaultPartition;
+        initListPartRouter(boundValPartPosiInfo);
+    }
+
+    public void setHasDefaultPartition(boolean hasDefaultPartition) {
+        this.hasDefaultPartition = hasDefaultPartition;
+    }
+
+    public boolean getHasDefaultPartition() {
+        return this.hasDefaultPartition;
+    }
+
+    public void setDefaultPartitionPosition(int position) {
+        this.defaultPartitionPosition = position;
+    }
+
+    public int getDefaultPartitionPosition() {
+        return this.defaultPartitionPosition;
     }
 
     protected void initListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo) {
@@ -332,14 +362,28 @@ public class ListPartRouter extends PartitionRouter {
             // Ignore to scan the pid set of all list values
         } else {
             for (int i = pidArrIdxStart; i <= pidArrIdxEnd; i++) {
-                if (i == notEqualIdx) {
-                    continue;
-                }
+                /**
+                 * For list/list col, all not-eq compare should go to full scan instead
+                 */
+//                if (i == notEqualIdx) {
+//                    continue;
+//                }
                 Integer p = boundValuePartPosiArr[i];
                 if (pSet.contains(p)) {
                     continue;
                 }
                 pSet.add(p);
+            }
+        }
+
+        /**
+         * if we have default partition:
+         * only in ComparisonKind.EQUAL case, and we find target partition, can we prune default partition.
+         * in other case, we should always carry default partition.
+         * */
+        if(hasDefaultPartition && (comp != ComparisonKind.EQUAL || comp == ComparisonKind.EQUAL && pidArrIdxStart == -1 && pidArrIdxEnd == -1)) {
+            if(!pSet.contains(defaultPartitionPosition)) {
+                pSet.add(defaultPartitionPosition);
             }
         }
 
@@ -350,5 +394,5 @@ public class ListPartRouter extends PartitionRouter {
         return routerResult;
 
     }
-    
+
 }

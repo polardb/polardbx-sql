@@ -36,6 +36,7 @@ import java.sql.Connection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -111,7 +112,7 @@ public class InspectRuleVersionSyncAction implements ISyncAction {
             // Tables in Meta DB, but not in memory.
             Set<String> tablesInMetaDBOnly = new HashSet<>();
             for (String tableInMetaDB : tableRulesInMetaDB.keySet()) {
-                if (!tableRulesInMemory.keySet().contains(tableInMetaDB)) {
+                if (!tableRulesInMemory.containsKey(tableInMetaDB.toLowerCase())) {
                     tablesInMetaDBOnly.add(tableInMetaDB);
                     continue;
                 }

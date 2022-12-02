@@ -86,13 +86,12 @@ public class SortNode extends AbstractSingleNode<Sort> {
     if (rel.getCollation().getFieldCollations().size() == 1) {
       return comparator(rel.getCollation().getFieldCollations().get(0));
     }
-
-    // Comparator of lexicographic order.
-    Iterable<Comparator<Row>> comparators = Iterables.transform(
-            rel.getCollation().getFieldCollations(),
-            this::comparator
-    );
-    return Ordering.compound(comparators);
+  // Comparator of lexicographic order.
+      Iterable<Comparator<Row>> comparators = Iterables.transform(
+          rel.getCollation().getFieldCollations(),
+          this::comparator
+      );
+      return Ordering.compound(comparators);
   }
 
   private Comparator<Row> comparator(RelFieldCollation fieldCollation) {

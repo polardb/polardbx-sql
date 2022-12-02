@@ -34,7 +34,7 @@ import org.junit.Test;
 @Ignore
 public class SqlNodeCloneVisitorTest {
 
-    @Test
+    @Ignore
     public void cloneSelectTest() throws SqlParseException {
         String sql = "Select * from t where id = 2";
         SqlSelect select = (SqlSelect) parse(sql);

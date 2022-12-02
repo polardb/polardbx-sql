@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.scheduler.SchedulePolicy;
-import com.alibaba.polardbx.common.scheduler.ScheduledJobExecutorType;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -46,7 +46,7 @@ public class AddLocalPartitionTask extends BaseGmsTask {
         TableMetaChanger.addLocalPartitionMeta(metaDbConnection, localPartitionDefinitionInfo.convertToRecord());
 
         boolean disableSchedule = localPartitionDefinitionInfo.isDisableSchedule();
-        if(disableSchedule){
+        if (disableSchedule) {
             return;
         }
 
@@ -54,6 +54,7 @@ public class AddLocalPartitionTask extends BaseGmsTask {
             executionContext.getParamManager().getString(ConnectionParams.DEFAULT_LOCAL_PARTITION_SCHEDULE_CRON_EXPR);
         ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
             schemaName,
+            null,
             logicalTableName,
             ScheduledJobExecutorType.LOCAL_PARTITION,
             defaultCronExpr,

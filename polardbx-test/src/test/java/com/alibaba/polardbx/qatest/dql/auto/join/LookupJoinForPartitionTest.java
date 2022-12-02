@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dql.auto.join;
 
 import com.alibaba.polardbx.common.utils.time.old.DateUtils;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableMap;
@@ -44,6 +45,7 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXAutoDBName
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
 @NotThreadSafe
+@FileStoreIgnore
 public class LookupJoinForPartitionTest extends AutoReadBaseTestCase {
 
     enum JoinEquiPred {

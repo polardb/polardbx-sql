@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenamePartitionTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablePhyDdlTask;
@@ -72,18 +71,16 @@ public class RecycleOssTableJobFactory extends DdlJobFactory {
             phyDdlTask = new RenameTablePhyDdlTask(schemaName, physicalPlanData).onExceptionTryRecoveryThenRollback();
         }
         DdlTask updateMetaTask = new RenameTableUpdateMetaTask(schemaName, logicalTableName, newLogicalTableName);
-        DdlTask hideTableMetaTask = new DropTableHideTableMetaTask(schemaName, newLogicalTableName);
         DdlTask syncTask = new RenameTableSyncTask(schemaName, logicalTableName, newLogicalTableName);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                unBindingTask,
-                addMetaTask,
-                phyDdlTask,
-                updateMetaTask,
-                hideTableMetaTask,
-                syncTask
+            validateTask,
+            unBindingTask,
+            addMetaTask,
+            phyDdlTask,
+            updateMetaTask,
+            syncTask
         ));
         executableDdlJob.labelAsHead(validateTask);
         return executableDdlJob;

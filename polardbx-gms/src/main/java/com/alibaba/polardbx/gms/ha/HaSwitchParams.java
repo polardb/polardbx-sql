@@ -20,6 +20,7 @@ import com.alibaba.polardbx.gms.ha.impl.StorageNodeHaInfo;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfig;
 
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @author chenghui.lch
@@ -36,6 +37,12 @@ public class HaSwitchParams {
     public int storageKind;
     public String storageInstId;
     public String instId;
+
+    /**
+     * When haLock != null, that mean need unlock manually
+     */
+    public boolean autoUnlock = true;
+    public ReentrantReadWriteLock haLock;
 
     public HaSwitchParams() {
     }

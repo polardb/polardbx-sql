@@ -124,6 +124,7 @@ public final class TddlLauncher {
 
             logger.info("## start the tddl server.");
             final CobarServer server = CobarServer.getInstance();
+            ModuleWarmUp.warmUp();
             server.init();
             EventLogger.log(EventType.ONLINE, "CN is online");
             logger.info("## the tddl server is running now ......");
@@ -141,11 +142,10 @@ public final class TddlLauncher {
                         logger.info("## tddl server is down.  ");
                     }
                 }
-
             });
         } catch (Throwable e) {
-            logger.error("## Something goes wrong when starting up the tddl server:\n{}",
-                ExceptionUtils.getFullStackTrace(e));
+            logger.error(String.format("## Something goes wrong when starting up the tddl server:\n %s",
+                ExceptionUtils.getFullStackTrace(e)));
             System.exit(0);
         }
     }

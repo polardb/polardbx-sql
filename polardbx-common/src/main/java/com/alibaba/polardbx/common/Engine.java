@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 
 public enum Engine {
@@ -35,7 +36,11 @@ public enum Engine {
         if (TStringUtil.isEmpty(engineName)) {
             return INNODB;
         }
-        return Engine.valueOf(engineName.toUpperCase());
+        try {
+            return Engine.valueOf(engineName.toUpperCase());
+        } catch (Throwable t) {
+            throw GeneralUtil.nestedException("Unknown engine name:" + engineName);
+        }
     }
 
     public static boolean isFileStore(Engine engine) {

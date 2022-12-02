@@ -1,3 +1,4 @@
+# range
 drop table if exists tbl;
 create table if not exists tbl (a int not null,primary key (`a`))
 partition by range(a)
@@ -7,5 +8,77 @@ partition by range(a)
 );
 insert into tbl values (101),(102),(103),(201),(202),(203);
 select * from tbl order by a;
+show full create table tbl;
 truncate table tbl;
 select * from tbl order by a;
+show full create table tbl;
+# hash
+drop table if exists tbl;
+create table if not exists tbl (a int not null)
+partition by hash(a)
+partitions 4;
+show full create table tbl;
+insert into tbl values (10),(99),(100),(101);
+select * from tbl order by a;
+show full create table tbl;
+truncate table tbl;
+select * from tbl order by a;
+show full create table tbl;
+# merge key
+drop table if exists tbl;
+create table if not exists tbl (c int not null,b int not null,a int not null)
+partition by key(a,c)
+partitions 8;
+create tablegroup tbl_tg;
+alter table tbl set tablegroup=tbl_tg;
+alter tablegroup tbl_tg merge partitions p6,p7,p8 to p9;
+insert into tbl(a,b,c) values (10,100,100),(20,200,200);
+select * from tbl order by a,b,c;
+show full create table tbl;
+truncate table tbl;
+select * from tbl order by a,b,c;
+show full create table tbl;
+# merge list
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,101),
+partition p2 values in (99,100,98),
+partition p3 values in (200,201)
+);
+create tablegroup tbl_tg1;
+alter table tbl set tablegroup=tbl_tg1;
+alter tablegroup tbl_tg1 split partition p2 into
+(partition p4 values in (98,99),
+partition p5 values in (100));
+insert into tbl values (99),(100);
+select * from tbl order by a;
+show full create table tbl;
+truncate table tbl;
+select * from tbl order by a;
+show full create table tbl;
+alter tablegroup tbl_tg1 merge partitions p1,p4 to p2;
+insert into tbl values (99),(100);
+select * from tbl order by a;
+show full create table tbl;
+truncate table tbl;
+select * from tbl order by a;
+show full create table tbl;
+# with index
+drop table if exists tbl;
+create table if not exists tbl (a int,
+clustered index tbl_index_1(a) partition by hash(a) partitions 8,
+clustered unique index tbl_index_2(a) partition by hash(a) partitions 8,
+global unique index tbl_index_3(a) partition by hash(a) partitions 8,
+global index tbl_index_4(a) partition by hash(a) partitions 8,
+index tbl_index_5(a),
+unique index tbl_index_6(a)
+)
+partition by hash(a)
+partitions 8;
+insert into tbl values (101),(102),(103),(201),(202),(203);
+select * from tbl order by a;
+show full create table tbl;
+truncate table tbl;
+select * from tbl order by a;
+show full create table tbl;

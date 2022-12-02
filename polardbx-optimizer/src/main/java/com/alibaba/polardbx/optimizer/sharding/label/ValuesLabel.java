@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.sharding.LabelShuttle;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Values;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.mapping.Mapping;
@@ -56,6 +57,10 @@ public class ValuesLabel extends AbstractLabel {
     }
 
     public static ValuesLabel create(@Nonnull LogicalDynamicValues values) {
+        return new ValuesLabel(values, ImmutableList.of());
+    }
+
+    public static ValuesLabel create(@Nonnull DynamicValues values) {
         return new ValuesLabel(values, ImmutableList.of());
     }
 

@@ -104,7 +104,6 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
 
         DdlTask validateTask = dropPrimaryTableJob.getValidateTask();
         DdlTask dropPrimaryTableSyncTask = dropPrimaryTableJob.getTableSyncTask();
-        DdlTask storeTableLocalityTask = dropPrimaryTableJob.getStoreTableLocalityTask();
         result.combineTasks(dropPrimaryTableJob);
 
         result.addExcludeResources(dropPrimaryTableJob.getExcludeResources());
@@ -117,7 +116,6 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
                 DropPartitionGsiJobFactory.create(gsiPreparedData, executionContext, true, false);
 
             result.addTaskRelationship(validateTask, dropGsiJob.getValidateTask());
-            result.addTaskRelationship(dropGsiJob.getValidateTask(), storeTableLocalityTask);
             result.addTaskRelationship(dropPrimaryTableSyncTask, dropGsiJob.getDropGsiTableHideTableMetaTask());
             result.addTaskRelationship(
                 dropGsiJob.getDropGsiTableHideTableMetaTask(), dropGsiJob.getDropGsiPhyDdlTask());

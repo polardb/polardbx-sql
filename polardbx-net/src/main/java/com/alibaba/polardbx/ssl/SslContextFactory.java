@@ -64,7 +64,6 @@ public final class SslContextFactory {
             if (INIT) {
                 return SERVER_CONTEXT;
             }
-
             Provider sunjceProvider = Security.getProvider("SUNJCE");
             if (sunjceProvider != null) {
                 Security.addProvider(sunjceProvider);

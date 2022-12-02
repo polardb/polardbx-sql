@@ -232,7 +232,7 @@ public class CclTriggerService implements ICclTriggerService {
                     posParamValueMap.put(pair.getKey(), pair.getValue().getValue());
                 }
             } else {
-                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(cclRuleRecord.query);
+                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(cclRuleRecord.query, false);
                 posParamValueMap = CclUtils.getPosParamValueMap(sqlParameterized);
             }
 
@@ -319,11 +319,11 @@ public class CclTriggerService implements ICclTriggerService {
                     && StringUtils
                     .isEmpty(e.keywords))
             .collect(Collectors.toList()).forEach((e) -> {
-            String[] templateIds = StringUtils.split(e.templateId);
-            for (String templateId : templateIds) {
-                templateIdCclRuleSet.add(templateId + "-" + e.dbName);
-            }
-        });
+                String[] templateIds = StringUtils.split(e.templateId);
+                for (String templateId : templateIds) {
+                    templateIdCclRuleSet.add(templateId + "-" + e.dbName);
+                }
+            });
 
         //查找相同查询模版的SQL，对其合并
         Map<String, List<CclRuleRecord>> sameQueryTemplateIdQueryRuleMap =

@@ -34,6 +34,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.corrector.Corrector;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiReporter;
@@ -44,6 +45,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CheckGsiPrepareData;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableMap;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.lang3.StringUtils;
@@ -51,6 +53,8 @@ import org.apache.commons.lang3.StringUtils;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
@@ -74,6 +78,8 @@ public class CheckGsiTask extends BaseBackfillTask {
     private final GsiChecker.Params checkParams;
     private final boolean correct;
     private final String extraCmd;
+    private final boolean primaryBroadCast;
+    private final boolean gsiBroadCast;
 
     public static CheckGsiTask create(CheckGsiPrepareData prepareData) {
         return new CheckGsiTask(
@@ -90,7 +96,9 @@ public class CheckGsiTask extends BaseBackfillTask {
                 prepareData.getEarlyFailNumber()
             ),
             prepareData.isCorrect(),
-            prepareData.getExtraCmd()
+            prepareData.getExtraCmd(),
+            false,
+            false
         );
     }
 
@@ -102,7 +110,9 @@ public class CheckGsiTask extends BaseBackfillTask {
                         String indexTableLockMode,
                         GsiChecker.Params checkParams,
                         boolean correct,
-                        String extraCmd) {
+                        String extraCmd,
+                        boolean primaryBroadCast,
+                        boolean gsiBroadCast) {
         super(schemaName);
         this.tableName = tableName;
         this.indexName = indexName;
@@ -111,6 +121,8 @@ public class CheckGsiTask extends BaseBackfillTask {
         this.checkParams = checkParams;
         this.correct = correct;
         this.extraCmd = extraCmd;
+        this.primaryBroadCast = primaryBroadCast;
+        this.gsiBroadCast = gsiBroadCast;
     }
 
     @Override
@@ -146,14 +158,43 @@ public class CheckGsiTask extends BaseBackfillTask {
             SqlSelect.LockMode.valueOf(indexTableLockMode),
             ec);
     }
-    
+
     protected boolean fastCheckWithCatchEx(ExecutionContext ec) {
         boolean fastCheckSucc = false;
         try {
-            fastCheckSucc = fastCheck(ec);
+            if (gsiBroadCast && !primaryBroadCast) {
+                int succeedCnt = 0;
+                Map<String, Set<String>> dstPhyDbAndTables = GsiUtils.getPhyTables(schemaName, indexName);
+
+                for (Map.Entry<String, Set<String>> entry : dstPhyDbAndTables.entrySet()) {
+                    Map<String, Set<String>> targetPhyTables = ImmutableMap.of(entry.getKey(), entry.getValue());
+                    if (!fastCheck(ec, null, targetPhyTables)) {
+                        break;
+                    } else {
+                        succeedCnt++;
+                    }
+                }
+                fastCheckSucc = (succeedCnt == dstPhyDbAndTables.size());
+            } else if (primaryBroadCast && !gsiBroadCast) {
+                int succeedCnt = 0;
+                Map<String, Set<String>> srcPhyDbAndTables = GsiUtils.getPhyTables(schemaName, tableName);
+
+                for (Map.Entry<String, Set<String>> entry : srcPhyDbAndTables.entrySet()) {
+                    Map<String, Set<String>> sourcePhyTables = ImmutableMap.of(entry.getKey(), entry.getValue());
+                    if (!fastCheck(ec, sourcePhyTables, null)) {
+                        break;
+                    } else {
+                        succeedCnt++;
+                    }
+                }
+                fastCheckSucc = (succeedCnt == srcPhyDbAndTables.size());
+            } else {
+                fastCheckSucc = fastCheck(ec);
+            }
         } catch (Throwable ex) {
-            fastCheckSucc =false;
-            String msg = String.format("Failed to use fastChecker to check gsi backFill because of throwing exceptions,  so use old checker instead");
+            fastCheckSucc = false;
+            String msg = String.format(
+                "Failed to use fastChecker to check gsi backFill because of throwing exceptions,  so use old checker instead");
             SQLRecorderLogger.ddlLogger.warn(msg, ex);
             LOG.warn(msg, ex);
         }
@@ -200,6 +241,11 @@ public class CheckGsiTask extends BaseBackfillTask {
     }
 
     private boolean fastCheck(ExecutionContext ec) {
+        return fastCheck(ec, null, null);
+    }
+
+    private boolean fastCheck(ExecutionContext ec, Map<String, Set<String>> srcPhyDbAndTables,
+                              Map<String, Set<String>> dstPhyDbAndTables) {
         long startTime = System.currentTimeMillis();
         SQLRecorderLogger.ddlLogger.warn(MessageFormat
             .format("FastChecker for GSI, schema [{0}] logical src table [{1}] logic dst table [{2}] start",
@@ -209,6 +255,14 @@ public class CheckGsiTask extends BaseBackfillTask {
         final int maxRetryTimes = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_RETRY_TIMES);
 
         FastChecker fastChecker = GsiFastChecker.create(schemaName, tableName, indexName, parallelism, ec);
+        if (dstPhyDbAndTables != null) {
+            fastChecker.setDstPhyDbAndTables(dstPhyDbAndTables);
+        }
+
+        if (srcPhyDbAndTables != null) {
+            fastChecker.setSrcPhyDbAndTables(srcPhyDbAndTables);
+        }
+
         boolean fastCheckResult = false;
 
         int tryTimes = 0;

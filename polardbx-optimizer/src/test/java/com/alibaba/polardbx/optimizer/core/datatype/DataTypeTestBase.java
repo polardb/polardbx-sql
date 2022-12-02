@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -210,6 +211,8 @@ public class DataTypeTestBase {
             (MySqlCreateTableStatement) FastsqlUtils.parseSql(COLLATION_TEST_DDL).get(0);
         final TableMeta tm1 = new TableMetaParser().parse(stat1, new ExecutionContext());
         final TableMeta tm2 = new TableMetaParser().parse(stat2, new ExecutionContext());
+        tm1.setSchemaName(SCHEMA_NAME);
+        tm2.setSchemaName(SCHEMA_NAME);
         schemaManager = new MySchemaManager();
         schemaManager.putTable("test", tm1);
         schemaManager.putTable("collation_test", tm2);
@@ -222,12 +225,10 @@ public class DataTypeTestBase {
             String.valueOf(parserConfig.caseSensitive()));
         CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
 
-        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME, new MockStatisticDatasource());
         // prepare optimizer context
         OptimizerContext context = new OptimizerContext(SCHEMA_NAME);
         OptimizerContext.loadContext(context);
         context.setSchemaManager(schemaManager);
-        context.setStatisticManager(statisticManager);
 
         String schemaName = OptimizerContext.getContext(SCHEMA_NAME).getSchemaName();
         CalciteSchema calciteSchema = RootSchemaFactory.createRootSchema(schemaName, new ExecutionContext());
@@ -270,6 +271,8 @@ public class DataTypeTestBase {
             StandardConvertletTable.INSTANCE,
             converterConfig,
             PlannerContext.getPlannerContext(cluster));
+        StatisticManager.sds = MockStatisticDatasource.getInstance();
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
     }
 
     protected TypeCoercionTester sql(String sql) {
@@ -447,7 +450,7 @@ public class DataTypeTestBase {
             this.sql = sql;
             if (parameterized) {
                 Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter);
+                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter, false);
                 this.validatedAst = validate(sqlParameterized.getSql(), sqlParameterized.getParameters());
             } else {
                 this.validatedAst = validate(sql, null);

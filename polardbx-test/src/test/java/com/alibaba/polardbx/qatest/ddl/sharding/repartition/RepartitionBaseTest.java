@@ -73,7 +73,7 @@ import static org.hamcrest.Matchers.is;
 public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
 
     /**
-     * 主要使用的2个主表
+     * 主要使用的3个主表
      */
     protected static final String DEFAULT_PRIMARY_TABLE_NAME = "alter_partition_ddl_primary_table";
     protected static final String MULTI_PK_PRIMARY_TABLE_NAME = "alter_partition_ddl_primary_table_multi_pk";
@@ -110,7 +110,9 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
     protected final String dmlHintStr =
         " /*+TDDL:cmd_extra(PLAN_CACHE=false,DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE,DML_USE_RETURNING=FALSE)*/ ";
 
-    protected final String failPointHint = "";
+    protected final String repartitionHint =
+        "/*+TDDL:CMD_EXTRA(PHYSICAL_TABLE_START_SPLIT_SIZE = 100, PHYSICAL_TABLE_BACKFILL_PARALLELISM = 2, "
+            + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000)*/";
 
     protected boolean printExecutedSqlLog = false;
 
@@ -303,6 +305,7 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         try {
             TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException e) {
+            // do nothing
         }
         allStop1.set(true);
         allStop2.set(true);
@@ -428,7 +431,7 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
                 .format(PARTITIONING_TEMPLATE, p.dbOperator, p.dbOperand, p.tbOperator, p.tbOperand, p.tbCount);
         }
         return MessageFormat
-            .format(failPointHint + "ALTER TABLE {0}.{1} {2}", repartitonBaseDb, primaryTableName,
+            .format(repartitionHint + "ALTER TABLE {0}.{1} {2}", repartitonBaseDb, primaryTableName,
                 partitionRule);
     }
 
@@ -712,7 +715,7 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         throw GeneralUtil.nestedException(e);
     };
 
-    protected static class InsertRunner implements Runnable {
+    public static class InsertRunner implements Runnable {
 
         protected final AtomicBoolean stop;
         protected final Function<Connection, Integer> call;

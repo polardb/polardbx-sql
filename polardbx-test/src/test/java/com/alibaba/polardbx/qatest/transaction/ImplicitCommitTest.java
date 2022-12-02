@@ -37,8 +37,6 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 
 public class ImplicitCommitTest extends CrudBasedLockTestCase {
 
-    private boolean useBedTrans;
-
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepareData() {
         return Arrays.asList(ExecuteTableName.allBaseTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));
@@ -56,18 +54,12 @@ public class ImplicitCommitTest extends CrudBasedLockTestCase {
             PK_COLUMN_NAME,
             mysqlConnection,
             tddlConnection, columnDataGenerator);
-
-        useBedTrans = !JdbcUtil.supportXA(tddlConnection);
     }
 
     @Test
     public void testImplicitCommitCausedByDDL() throws Exception {
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
-
-        if (useBedTrans) {
-            //JdbcUtil.setTxPolicy(ITransactionPolicy.BEST_EFFORT, tddlConnection);
-        }
 
         String sql1 = "UPDATE " + baseOneTableName + " SET integer_test = 1 WHERE 1=1";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql1, null);

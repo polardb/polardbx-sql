@@ -37,7 +37,7 @@ import com.alibaba.polardbx.util.MoreObjects;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 @Immutable
 public class QueryError {

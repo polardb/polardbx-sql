@@ -18,6 +18,11 @@ package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineRequester;
+import com.alibaba.polardbx.executor.pl.RuntimeFunction;
+import com.alibaba.polardbx.executor.pl.RuntimeFunctionManager;
+import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
+import com.alibaba.polardbx.executor.pl.ProcedureStatus;
+import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.server.ServerConnection;
@@ -34,7 +39,11 @@ import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.server.handler.pl.RuntimeProcedure;
+import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 import com.alibaba.polardbx.server.ServerConnection;
+
+import java.util.List;
 
 /**
  * @author mengshi.sunmengshi 2015年5月12日 下午1:28:16
@@ -105,12 +114,21 @@ public class KillSyncAction implements ISyncAction {
         this.killQuery = killQuery;
     }
 
+    public void setSkipValidation(boolean skipValidation) {
+        this.skipValidation = skipValidation;
+    }
+
+    public boolean isSkipValidation() {
+        return skipValidation;
+    }
+
     @Override
     public ResultCursor sync() {
 
         int count = 0;
         NIOProcessor[] processors = CobarServer.getInstance().getProcessors();
         FrontendConnection fc;
+        String traceId = null;
         for (NIOProcessor p : processors) {
             if ((fc = p.getFrontends().get(id)) != null) {
                 if (fc instanceof ServerConnection && hasAccess(fc)) {
@@ -118,10 +136,11 @@ public class KillSyncAction implements ISyncAction {
                     if (tc != null) {
                         pauseDdlJobIfNecessary(tc);
                         ExecutionContext executionContext = tc.getExecutionContext();
+                        traceId = executionContext.getTraceId();
                         if (ServiceProvider.getInstance().getServer() != null
-                            && executionContext.getTraceId() != null) {
+                            && traceId != null) {
                             ServiceProvider.getInstance().getServer().getQueryManager()
-                                .cancelQuery(executionContext.getTraceId());
+                                .cancelQuery(traceId);
                         }
                     }
                     if (killQuery) {
@@ -131,6 +150,8 @@ public class KillSyncAction implements ISyncAction {
                     }
                     count++;
                 }
+                killProcedure(fc.getId());
+                killFunction(traceId);
                 break;
             }
         }
@@ -144,22 +165,37 @@ public class KillSyncAction implements ISyncAction {
         return result;
     }
 
-    private boolean hasAccess(FrontendConnection fc){
-        if(skipValidation){
-            return true;
+    private void killProcedure(long connId) {
+        RuntimeProcedure runtimeProcedure = RuntimeProcedureManager.getInstance().search(connId);
+        if (runtimeProcedure != null) {
+            runtimeProcedure.getPlContext().setStatus(ProcedureStatus.KILLED);
         }
-        return TStringUtil.equals(user, fc.getUser()) || ((ServerConnection) fc).isAdministrator(user);
     }
 
-    private void pauseDdlJobIfNecessary(TConnection conn){
-        if(conn == null || conn.getExecutionContext() == null){
+    private void killFunction(String traceId) {
+        List<RuntimeFunction> runtimeFunctions = RuntimeFunctionManager.getInstance().searchAllRelatedFunction(traceId);
+        for (RuntimeFunction function : runtimeFunctions) {
+            function.getPlContext().setStatus(ProcedureStatus.KILLED);
+        }
+    }
+
+    private boolean hasAccess(FrontendConnection fc) {
+        if (skipValidation) {
+            return true;
+        }
+        return TStringUtil.equals(user, fc.getUser()) || ((ServerConnection) fc).isAdministrator(user)
+            || TStringUtil.equals(PolarPrivUtil.POLAR_ROOT, user);
+    }
+
+    private void pauseDdlJobIfNecessary(TConnection conn) {
+        if (conn == null || conn.getExecutionContext() == null) {
             return;
         }
-        if(!conn.isDdlStatement()){
+        if (!conn.isDdlStatement()) {
             return;
         }
         Long jobId = conn.getExecutionContext().getDdlJobId();
-        if(jobId == null){
+        if (jobId == null) {
             return;
         }
         DdlEngineRequester.pauseJob(jobId);

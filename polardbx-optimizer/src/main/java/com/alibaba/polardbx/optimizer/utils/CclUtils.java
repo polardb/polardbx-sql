@@ -159,7 +159,7 @@ public class CclUtils {
         sqlParameterized.getStmt().accept(paramReplaceVisitor);
         String replacedSql = sb.toString();
         Map<Integer, Object> resultMap = Maps.newHashMap();
-        SqlParameterized replacedSqlParameterized = SqlParameterizeUtils.parameterize(replacedSql);
+        SqlParameterized replacedSqlParameterized = SqlParameterizeUtils.parameterize(replacedSql, false);
         List<Object> replacedParameters = replacedSqlParameterized.getParameters();
         if (CollectionUtils.isNotEmpty(replacedParameters)) {
             for (int i = 0; i < replacedParameters.size(); ++i) {

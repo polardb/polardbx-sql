@@ -235,13 +235,13 @@ abstract class CalciteVisitor extends MySqlASTVisitorAdapter {
         private UnsupportMethod() {
             //stringObjectHashMap.put("JSON_ARRAYAGG",null);
             //stringObjectHashMap.put("JSON_OBJECTAGG",null);
-            stringObjectHashMap.put("STD", null);
-            stringObjectHashMap.put("STDDEV", null);
-            stringObjectHashMap.put("STDDEV_POP", null);
-            stringObjectHashMap.put("STDDEV_SAMP", null);
-            stringObjectHashMap.put("VAR_POP", null);
-            stringObjectHashMap.put("VAR_SAMP", null);
-            stringObjectHashMap.put("VARIANCE", null);
+//            stringObjectHashMap.put("STD", null);
+//            stringObjectHashMap.put("STDDEV", null);
+//            stringObjectHashMap.put("STDDEV_POP", null);
+//            stringObjectHashMap.put("STDDEV_SAMP", null);
+//            stringObjectHashMap.put("VAR_POP", null);
+//            stringObjectHashMap.put("VAR_SAMP", null);
+//            stringObjectHashMap.put("VARIANCE", null);
 
 //            stringObjectHashMap.put("BIT_AND", null);
 //            stringObjectHashMap.put("BIT_XOR",null);

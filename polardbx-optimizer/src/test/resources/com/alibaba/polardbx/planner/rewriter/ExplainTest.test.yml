@@ -165,10 +165,7 @@
     select * from tddl_users where id in (1,2,3);
 
   plan: |
-
-    logicalsemijoin(condition="id = expr$0", type="semi")
-      logicalview(tables="[0000-0003].tddl_users_[00-11]", shardcount=12, sql="select `id`, `name` from `tddl_users` as `tddl_users`")
-      dynamicvalues(tuples=[{ 1 }, { 2 }, { 3 }])
+    logicalview(tables="[0000,0001].tddl_users_[01-03]", shardcount=3, sql="select `id`, `name` from `tddl_users` as `tddl_users` where (`id` in(1, 2, 3))")
 
 - sql: |
     select avg(id) ,name from tddl_users u group by name

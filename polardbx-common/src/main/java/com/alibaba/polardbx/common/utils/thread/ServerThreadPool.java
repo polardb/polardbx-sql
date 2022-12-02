@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.utils.thread;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -78,11 +79,9 @@ public class ServerThreadPool extends AbstractExecutorService {
             @Override
             public TraceStats load(String key) throws Exception {
                 TraceStats stat = new TraceStats();
-                stat.closed = new AtomicBoolean(
-                    false);
+                stat.closed = new AtomicBoolean(false);
                 stat.count = new AtomicLong(0);
-                stat.mutex = new BooleanMutex(
-                    true);
+                stat.mutex = new BooleanMutex(true);
                 return stat;
             }
         });
@@ -207,9 +206,12 @@ public class ServerThreadPool extends AbstractExecutorService {
         } else {
             bucketIndex = bucketIndex % numBuckets;
         }
-        AppStats stat = appStats.getUnchecked(schemaName);
-        stat.taskCount.incrementAndGet();
-        AppStats.nodeTaskCount.incrementAndGet();
+        AppStats stat = null;
+        if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+            stat = appStats.getUnchecked(schemaName);
+            stat.taskCount.incrementAndGet();
+            AppStats.nodeTaskCount.incrementAndGet();
+        }
         try {
             if (executorBuckets != null) {
                 return MoreExecutors.listeningDecorator(executorBuckets[bucketIndex])
@@ -220,8 +222,7 @@ public class ServerThreadPool extends AbstractExecutorService {
             }
         } catch (Throwable e) {
 
-            stat.taskCount.decrementAndGet();
-            AppStats.nodeTaskCount.decrementAndGet();
+            decreTaskCount(stat);
             throw e;
         }
     }
@@ -245,9 +246,13 @@ public class ServerThreadPool extends AbstractExecutorService {
     }
 
     private void execute(int bucketIndex, NamedFutureTask command) {
-        AppStats stat = appStats.getUnchecked(command.getSchemaName());
-        stat.taskCount.incrementAndGet();
-        AppStats.nodeTaskCount.incrementAndGet();
+        AppStats stat = null;
+        if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+            stat = appStats.getUnchecked(command.getSchemaName());
+            stat.taskCount.incrementAndGet();
+            AppStats.nodeTaskCount.incrementAndGet();
+        }
+
         try {
             if (executorBuckets != null) {
                 executorBuckets[bucketIndex].execute(command);
@@ -256,16 +261,19 @@ public class ServerThreadPool extends AbstractExecutorService {
             }
         } catch (Throwable e) {
 
-            stat.taskCount.decrementAndGet();
-            AppStats.nodeTaskCount.decrementAndGet();
+            decreTaskCount(stat);
             throw e;
         }
     }
 
     @Override
     public void execute(Runnable command) {
-        AppStats stat = appStats.getUnchecked(DEFAULT_SCHEMA_NAME);
-        stat.taskCount.incrementAndGet();
+        AppStats stat = null;
+        if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+            stat = appStats.getUnchecked(DEFAULT_SCHEMA_NAME);
+            stat.taskCount.incrementAndGet();
+        }
+
         try {
             if (executorBuckets != null) {
                 int bucketIndex = (int) (roundrobinIndex.getAndIncrement() % numBuckets);
@@ -275,7 +283,9 @@ public class ServerThreadPool extends AbstractExecutorService {
             }
         } catch (Throwable e) {
 
-            stat.taskCount.decrementAndGet();
+            if (!DynamicConfig.getInstance().enableExtremePerformance() && stat != null) {
+                stat.taskCount.decrementAndGet();
+            }
             throw e;
         }
     }
@@ -424,8 +434,13 @@ public class ServerThreadPool extends AbstractExecutorService {
 
     public long getTaskCountBySchemaName(String schemaName) {
         try {
-            AppStats stat = appStats.get(schemaName);
-            return stat.taskCount.get();
+            if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+                AppStats stat = appStats.get(schemaName);
+                return stat.taskCount.get();
+            } else {
+                return 0;
+            }
+
         } catch (ExecutionException e) {
             return 0;
         }
@@ -648,9 +663,8 @@ public class ServerThreadPool extends AbstractExecutorService {
                 completionQueue.add(this);
             }
 
-            AppStats stat = appStats.getUnchecked(schemaName);
-            stat.taskCount.decrementAndGet();
-            AppStats.nodeTaskCount.decrementAndGet();
+            // permit count
+            afterTaskDone(schemaName);
 
             if (traceId != null) {
                 TraceStats traceStat = traceStats.getUnchecked(traceId);
@@ -711,10 +725,7 @@ public class ServerThreadPool extends AbstractExecutorService {
             try {
                 return task.call();
             } finally {
-
-                AppStats stat = appStats.getUnchecked(schemaName);
-                stat.taskCount.decrementAndGet();
-                AppStats.nodeTaskCount.decrementAndGet();
+                afterTaskDone(schemaName);
             }
         }
     }
@@ -742,6 +753,20 @@ public class ServerThreadPool extends AbstractExecutorService {
             }
 
             task.run();
+        }
+    }
+
+    private void afterTaskDone(String schemaName) {
+        if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+            AppStats stat = appStats.getUnchecked(schemaName);
+            decreTaskCount(stat);
+        }
+    }
+
+    private void decreTaskCount(AppStats stat) {
+        if (!DynamicConfig.getInstance().enableExtremePerformance() && stat != null) {
+            stat.taskCount.decrementAndGet();
+            AppStats.nodeTaskCount.decrementAndGet();
         }
     }
 }

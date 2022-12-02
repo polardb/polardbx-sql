@@ -28,8 +28,6 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
-
 public abstract class TimeTestBase extends ReadBaseTestCase {
     protected static final boolean ALLOW_TIME_TYPE = false;
     protected static final int DEFAULT_CHUNK_SIZE = 1 << 6;

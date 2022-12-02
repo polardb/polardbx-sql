@@ -47,8 +47,8 @@ public interface BalancePolicy {
                                                BalanceOptions options,
                                                List<String> schemaNameList) {
         return schemaNameList.stream()
-            .flatMap(schema -> applyToDb(ec, stats.get(schema), options, schema).stream())
-            .collect(Collectors.toList());
+                .flatMap(schema -> applyToDb(ec, stats.get(schema), options, schema).stream())
+                .collect(Collectors.toList());
     }
 
     default List<BalanceAction> applyToDb(ExecutionContext ec,
@@ -56,8 +56,17 @@ public interface BalancePolicy {
                                           BalanceOptions options,
                                           String schema) {
         return DbInfoManager.getInstance().isNewPartitionDb(schema) ?
-            applyToPartitionDb(ec, options, stats, schema) :
-            applyToShardingDb(ec, options, stats, schema);
+                applyToPartitionDb(ec, options, stats, schema) :
+                applyToShardingDb(ec, options, stats, schema);
+    }
+
+
+    default List<BalanceAction> applyToTableGroup(ExecutionContext ec,
+                                                  BalanceOptions options,
+                                                  BalanceStats stats,
+                                                  String schema,
+                                                  String tableGroupName ) {
+        return null;
     }
 
     /**
@@ -79,4 +88,5 @@ public interface BalancePolicy {
                                                   String schemaName) {
         throw new UnsupportedOperationException("TODO");
     }
+
 }

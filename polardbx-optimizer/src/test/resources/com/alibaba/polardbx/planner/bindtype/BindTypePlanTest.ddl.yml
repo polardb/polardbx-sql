@@ -1,0 +1,48 @@
+t1:
+  CREATE TABLE `t1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 1;
+
+t2:
+  CREATE TABLE `t2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=gbk dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 2;
+
+t3:
+  CREATE TABLE `t3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 3;
+
+t4:
+  CREATE TABLE `t4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) character set utf8mb4 DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 4;
+
+t5:
+  CREATE TABLE `t5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL character set gbk,
+  `create_time` datetime DEFAULT NULL,
+  `blobfield` blob,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 5;
+
+t6:
+  CREATE TABLE `t6` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL character set utf16le,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 6;

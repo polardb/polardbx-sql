@@ -21,8 +21,8 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLOver;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLInListExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntervalExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntervalUnit;
@@ -43,6 +43,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.LastInsertId;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime.Now;
+import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.util.NlsString;
 import org.apache.commons.lang.StringUtils;
@@ -51,8 +52,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -60,6 +59,12 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
     private static final BigInteger MAX_UNSIGNED_INT64 = new BigInteger(Long.toUnsignedString(0xffffffffffffffffL));
 
     private static final BigInteger MIN_SIGNED_INT64 = new BigInteger(Long.toString(-0x7fffffffffffffffL - 1));
+
+    private boolean hasIn = false;
+
+    public boolean isHasIn() {
+        return hasIn;
+    }
 
     private static final BigInteger MAX_SIGNED_INT64 = BigInteger.valueOf(Long.MAX_VALUE);
 
@@ -127,6 +132,12 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
     public DrdsParameterizeSqlVisitor(Appendable appender, boolean parameterized, ExecutionContext executionContext) {
         super(appender, parameterized);
         this.executionContext = executionContext;
+    }
+
+    @Override
+    public boolean visit(SQLInListExpr x) {
+        hasIn = true;
+        return super.visit(x);
     }
 
     @Override
@@ -212,16 +223,18 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
                 }
             }
         } else if (StringUtils.equals(name, "?")) {
-            if (this.tmpParameters != null) {
-                print('?');
-                passTmpParameter(x.getIndex());
-            } else {
-                super.visit(x);
-            }
+            visitPreparedParam(x);
         } else {
             super.visit(x);
         }
         return false;
+    }
+
+    private void visitPreparedParam(SQLVariantRefExpr x) {
+        if (parameters != null) {
+            parameters.add(new PreparedParamRef(x.getIndex()));
+        }
+        print('?');
     }
 
     @Override

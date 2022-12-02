@@ -294,6 +294,10 @@ public enum ErrorCode {
     ERR_DROP_PRIMARY_KEY(ErrorType.Executor, 4668),
     ERR_ALTER_SHARDING_KEY(ErrorType.Executor, 4669),
     ERR_DROP_ALL_COLUMNS(ErrorType.Executor, 4670),
+    /**
+     * the dynamic value of scalar subquery is not ready
+     */
+    ERR_SUBQUERY_VALUE_NOT_READY(ErrorType.Executor, 4671),
 
     ERR_TABLE_ALREADY_EXISTS(ErrorType.Executor, 4643),
 
@@ -341,6 +345,8 @@ public enum ErrorCode {
     ERR_PAUSED_DDL_JOB_EXISTS(ErrorType.Executor, 4662),
 
     ERR_TABLE_META_TOO_OLD(ErrorType.Executor, 4663),
+
+    ERR_SET_AUTO_SAVEPOINT(ErrorType.Executor, 4664),
 
     // ============= server 从4700下标开始================
     ERR_SERVER(ErrorType.Server, 4700),
@@ -404,8 +410,13 @@ public enum ErrorCode {
 
     ERR_TRANS_PREEMPTED_BY_DDL(ErrorType.Transaction, 5012),
 
-    ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX(ErrorType.Transaction, 5012),
+    ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX(ErrorType.Transaction, 5013),
 
+    // 回滚单个语句失败
+    ERR_TRANS_ROLLBACK_STATEMENT_FAIL(ErrorType.Transaction, 5014),
+
+    // 事务中获取分库内并行写连接失败
+    ERR_TRANS_FETCH_INTRA_GROUP_CONN_ID_FAIL(ErrorType.Transaction, 5015),
     // ================权限相关异常从5101开始==================
     /**
      * 暂时不支持的权限点
@@ -462,6 +473,9 @@ public enum ErrorCode {
 
     ERR_INVALID_USERNAME(ErrorType.Account, 5202),
 
+    /**
+     * 密码不符合默认规则
+     */
     ERR_INVALID_PASSWORD(ErrorType.Account, 5203),
 
     ERR_USER_ALREADY_EXISTS(ErrorType.Account, 5204),
@@ -469,6 +483,13 @@ public enum ErrorCode {
     ERR_ACCOUNT_LIMIT_EXCEEDED(ErrorType.Account, 5205),
 
     ERR_USER_NOT_EXISTS(ErrorType.Account, 5206),
+
+    /**
+     * 密码不符合自定义规则
+     */
+    ERR_INVALID_PASSWORD_CUSTOMIZED(ErrorType.Account, 5207),
+
+    // ================全局二级索引相关异常从5300开始==================
 
     ERR_GLOBAL_SECONDARY_INDEX_EXECUTE(ErrorType.Executor, 5301),
 
@@ -516,11 +537,83 @@ public enum ErrorCode {
     ERR_GLOBAL_SECONDARY_INDEX_CHECKER(ErrorType.Executor, 5322),
 
     ERR_CLUSTERED_INDEX_ADD_COLUMNS(ErrorType.Executor, 5323),
-
     /**
      * FastChecker 校验失败
      */
     ERR_FAST_CHECKER(ErrorType.Executor, 5324),
+
+    /**
+     * error for auto partition table
+     */
+    ERR_AUTO_PARTITION_TABLE(ErrorType.Executor, 5326),
+
+    /**
+     * Modifying a broadcast table is not allowed
+     */
+    ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED(ErrorType.Executor, 5325),
+
+    ERR_BACKFILL_GET_TABLE_ROWS(ErrorType.Executor, 5327),
+
+    // ================拆分键推荐相关异常==================
+
+    ERR_KEY_NEGATIVE(ErrorType.Other, 5401),
+
+    ERR_EDGE_REVERSED(ErrorType.Other, 5402),
+
+    ERR_CANDIDATE_NOT_CLEAR(ErrorType.Other, 5403),
+
+    ERR_RESULT_WEIGHT_FAULT(ErrorType.Other, 5404),
+
+    ERR_CUT_WRONG(ErrorType.Other, 5405),
+
+    ERR_GRAPH_TOO_BIG(ErrorType.Other, 5406),
+
+    ERR_REMOVE_USELESS_SHARD(ErrorType.Other, 5407),
+
+    ERR_SINGLE_SHARD_PLAN(ErrorType.Other, 5408),
+
+    ERR_CANT_GET_CACHE(ErrorType.Other, 5409),
+
+    ERR_UNEXPECTED_SQL(ErrorType.Other, 5410),
+
+    ERR_CANT_FIND_COLUMN(ErrorType.Other, 5411),
+
+    // ================存储过程相关异常================
+    ERR_UNEXPECTED_STATEMENT_TYPE(ErrorType.Procedure, 5500),
+
+    ERR_NO_MATCHED_EXCEPTION_HANDLER(ErrorType.Procedure, 5501),
+
+    ERR_UNEXPECTED_HANDLER_TYPE(ErrorType.Procedure, 5502),
+
+    ERR_NOT_SUPPORT_STATEMENT_TYPE(ErrorType.Procedure, 5503),
+
+    ERR_UDF_CANNOT_SET_NON_PL_VARIABLE(ErrorType.Procedure, 5504),
+
+    ERR_PROCEDURE_EXECUTE(ErrorType.Procedure, 5505),
+
+    ERR_PROCEDURE_NOT_FOUND(ErrorType.Procedure, 5506),
+
+    ERR_PROCEDURE_PARAMS_NOT_MATCH(ErrorType.Procedure, 5507),
+
+    ERR_PROCEDURE_LOAD_FAILED(ErrorType.Procedure, 5509),
+
+    ERR_UDF_RECURSIVE_CALLED(ErrorType.Function, 5510),
+
+    ERR_UDF_NOT_FOUND(ErrorType.Function, 5511),
+
+    ERR_PROCEDURE_ALREADY_EXISTS(ErrorType.Procedure, 5512),
+
+    ERR_UDF_ALREADY_EXISTS(ErrorType.Function, 5513),
+
+    ERR_UDF_EXECUTE(ErrorType.Function, 5514),
+
+    ERR_UDF_NOT_SUPPORT(ErrorType.Function, 5515),
+
+    ERR_EXCEPTION_TYPE_NOT_SUPPORT(ErrorType.Procedure, 5515),
+
+    ERR_DATA_NOT_FOUND(ErrorType.Procedure, 5516),
+
+    // ================鉴权相关异常==================
 
     ERR_AUTH_AKSK_FAIL(ErrorType.Auth, 6001),
 
@@ -588,6 +681,10 @@ public enum ErrorCode {
 
     ERR_GMS_MAINTAIN_TABLE_META(ErrorType.GMS, 9009),
 
+    ERR_GMS_NEW_SEQUENCE(ErrorType.GMS, 9010),
+
+    // ================= ScaleOut Related Exceptions ===================
+
     ERR_SCALEOUT_EXECUTE(ErrorType.Executor, 9101),
     ERR_SCALEOUT_CHECKER(ErrorType.Executor, 9102),
 
@@ -619,6 +716,16 @@ public enum ErrorCode {
     ERR_TABLE_GROUP_CHANGED(ErrorType.Executor, 9314),
     ERR_PHYSICAL_TOPOLOGY_CHANGING(ErrorType.Executor, 9315),
     ERR_DN_IS_NOT_READY(ErrorType.Executor, 9316),
+    ERR_JOIN_GROUP_ALREADY_EXISTS(ErrorType.Executor, 9317),
+    ERR_JOIN_GROUP_NOT_EXISTS(ErrorType.Executor, 9318),
+    ERR_JOIN_GROUP_NOT_EMPTY(ErrorType.Executor, 9319),
+    ERR_JOIN_GROUP_NOT_MATCH(ErrorType.Executor, 9320),
+    ERR_TABLE_GROUP_IS_EMPTY(ErrorType.Executor, 9321),
+    ERR_TABLE_NAME_TOO_MANY_HIERARCHY(ErrorType.Executor, 9322),
+ERR_TABLE_GROUP_IS_AUTO_CREATED(ErrorType.Executor, 9323),
+    ERR_RENAME_BROADCAST_OR_SINGLE_TABLE(ErrorType.Executor, 9324),
+    ERR_CHANGE_TABLEGROUP_FOR_BROADCAST_TABLE(ErrorType.Executor, 9325),
+    ERR_PARTITION_COLUMN_IS_NOT_MATCH(ErrorType.Executor, 9326),
 
     // ============= 私有协议 从10000下标开始================
     ERR_X_PROTOCOL_BAD_PACKET(ErrorType.Xprotocol, 10000),
@@ -643,8 +750,8 @@ public enum ErrorCode {
     ERR_EXECUTE_ON_OSS(ErrorType.Executor, 11011),
     ERR_FILE_STORAGE_READ_ONLY(ErrorType.OSS, 11012),
     ERR_OSS_CONNECT(ErrorType.OSS, 11013),
-    ERR_FILE_STORAGE_EXISTS(ErrorType.OSS, 11014);
-
+    ERR_FILE_STORAGE_EXISTS(ErrorType.OSS, 11014),
+    ERR_BACK_FILL_TIMEOUT(ErrorType.OSS, 11015);
 
     private int code;
     private ErrorType type;

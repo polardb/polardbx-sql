@@ -42,7 +42,10 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -80,15 +83,15 @@ import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
 
-public class FastChecker {
+public class FastChecker extends PhyOperationBuilderCommon {
     private static final Logger logger = LoggerFactory.getLogger(FastChecker.class);
 
     private final String schemaName;
     private final String srcLogicalTableName;
     private final String dstLogicalTableName;
     private final Map<String, String> sourceTargetGroup;
-    private final Map<String, Set<String>> srcPhyDbAndTables;
-    private final Map<String, Set<String>> dstPhyDbAndTables;
+    private Map<String, Set<String>> srcPhyDbAndTables;
+    private Map<String, Set<String>> dstPhyDbAndTables;
     private final List<String> srcColumns;
     private final List<String> dstColumns;
 
@@ -191,13 +194,22 @@ public class FastChecker {
             phyDbName,
             phyTable,
             isSrcTableTask ? "src" : "dst"));
-        PhyTableOperation plan =
-            new PhyTableOperation(isSrcTableTask ? this.planSelectHashCheckSrc : this.planSelectHashCheckDst);
-        plan.setDbIndex(phyDbName);
-        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
         final Map<Integer, ParameterContext> params = new HashMap<>(1);
         params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-        plan.setParam(params);
+
+//        PhyTableOperation plan =
+//            new PhyTableOperation(isSrcTableTask ? this.planSelectHashCheckSrc : this.planSelectHashCheckDst);
+//        plan.setDbIndex(phyDbName);
+//        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//        plan.setParam(params);
+
+        PhyTableOperation targetPhyOp = isSrcTableTask ? this.planSelectHashCheckSrc : this.planSelectHashCheckDst;
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setGroupName(phyDbName);
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(params);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         Long checkResult = GsiUtils.retryOnException(
             () -> {
@@ -416,13 +428,22 @@ public class FastChecker {
         });
 
         phyDbAndTableGather.forEach((phyDb, phyTables) -> phyTables.forEach(phyTable -> {
-            PhyTableOperation plan =
-                new PhyTableOperation(phyDb.getValue() ? this.planIdleSelectSrc : this.planIdleSelectDst);
-            plan.setDbIndex(phyDb.getKey());
-            plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
             final Map<Integer, ParameterContext> params = new HashMap<>(1);
             params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-            plan.setParam(params);
+            PhyTableOperation targetPhyOp = phyDb.getValue() ? this.planIdleSelectSrc : this.planIdleSelectDst;
+
+//            PhyTableOperation plan =
+//                new PhyTableOperation(phyDb.getValue() ? this.planIdleSelectSrc : this.planIdleSelectDst);
+//            plan.setDbIndex(phyDb.getKey());
+//            plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//            plan.setParam(params);
+
+            PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+            buildParams.setGroupName(phyDb.getKey());
+            buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+            buildParams.setDynamicParams(params);
+            PhyTableOperation plan =
+                PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
             GsiUtils.retryOnException(
                 () -> {
@@ -849,6 +870,11 @@ public class FastChecker {
         }
     }
 
-    ;
+    public void setDstPhyDbAndTables(Map<String, Set<String>> dstPhyDbAndTables) {
+        this.dstPhyDbAndTables = dstPhyDbAndTables;
+    }
 
+    public void setSrcPhyDbAndTables(Map<String, Set<String>> srcPhyDbAndTables) {
+        this.srcPhyDbAndTables = srcPhyDbAndTables;
+    }
 }

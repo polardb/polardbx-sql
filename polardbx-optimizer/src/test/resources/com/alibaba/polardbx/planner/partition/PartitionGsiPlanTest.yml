@@ -635,7 +635,6 @@
     t_order10.buyer_id where t_buyer10.buyer_id = '1'
 
   plan: |
-
     project(id="id", order_detail="order_detail", name="name")
       bkajoin(condition="id = id and order_id <=> order_id", type="inner")
         gather(concurrent=true)
@@ -832,7 +831,7 @@
 
   plan: |
     LogicalModify(TYPE="UPDATE", SET="orders.o_comment='xxx'")
-      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment", EXPR$0="'xxx'")
+      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment", gen$0="'xxx'")
         bkajoin(condition="o_orderkey = o_orderkey", type="inner")
           IndexScan(tables="orders_idx_custkey[p4]", sql="SELECT `o_orderkey`, `o_custkey` FROM `orders_idx_custkey` AS `orders_idx_custkey` WHERE (`o_custkey` = 1) FOR UPDATE")
           Gather(concurrent=true)
@@ -844,7 +843,7 @@
 
   plan: |
     LogicalModify(TYPE="UPDATE", SET="orders.o_comment='xxx'")
-      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment", EXPR$0="'xxx'")
+      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment", gen$0="'xxx'")
         bkajoin(condition="o_orderkey = o_orderkey", type="inner")
           Gather(concurrent=true)
             IndexScan(tables="orders_idx_custkey[p1,p4]", shardcount=2, sql="SELECT `o_orderkey`, `o_custkey` FROM `orders_idx_custkey` AS `orders_idx_custkey` WHERE (`o_custkey` IN(1, 2, 3)) FOR UPDATE")
@@ -873,6 +872,6 @@
       project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment", c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_mktsegment="c_mktsegment", c_comment="c_comment")
         bkajoin(condition="o_orderkey = o_orderkey", type="inner")
           gather(concurrent=true)
-            indexscan(tables="customer[p4],orders_idx_custkey[p4]", sql="select `customer`.`c_custkey`, `customer`.`c_name`, `customer`.`c_address`, `customer`.`c_nationkey`, `customer`.`c_phone`, `customer`.`c_acctbal`, `customer`.`c_mktsegment`, `customer`.`c_comment`, `orders_idx_custkey`.`o_orderkey`, `orders_idx_custkey`.`o_custkey` from `customer` as `customer` inner join `orders_idx_custkey` as `orders_idx_custkey` on (`customer`.`c_custkey` = `orders_idx_custkey`.`o_custkey`) where ((`orders_idx_custkey`.`o_custkey` = 1) and (`customer`.`c_custkey` = 1)) for update")
+            indexscan(tables="customer[p4],orders_idx_custkey[p4]", sql="select `customer`.`c_custkey`, `customer`.`c_name`, `customer`.`c_address`, `customer`.`c_nationkey`, `customer`.`c_phone`, `customer`.`c_acctbal`, `customer`.`c_mktsegment`, `customer`.`c_comment`, `orders_idx_custkey`.`o_orderkey`, `orders_idx_custkey`.`o_custkey` from `customer` as `customer` inner join `orders_idx_custkey` as `orders_idx_custkey` on (`customer`.`c_custkey` = `orders_idx_custkey`.`o_custkey`) where ((`customer`.`c_custkey` = 1) and (`orders_idx_custkey`.`o_custkey` = 1)) for update")
           gather(concurrent=true)
             logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders` as `orders` where ((`o_custkey` = 1) and (`o_orderkey` in (...))) for update")

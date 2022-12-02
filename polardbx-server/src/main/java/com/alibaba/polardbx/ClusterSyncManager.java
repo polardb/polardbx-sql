@@ -57,18 +57,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     private static final Logger logger = LoggerFactory.getLogger(ClusterSyncManager.class);
 
     @Override
-    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName) {
-        return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null, false);
-    }
-
-    @Override
     public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions) {
         return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null, throwExceptions);
-    }
-
-    @Override
-    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope) {
-        return doSync(action, schemaName, scope, null, false);
     }
 
     @Override
@@ -78,18 +68,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     }
 
     @Override
-    public void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler) {
-        doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler, false);
-    }
-
-    @Override
     public void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions) {
         doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler, throwExceptions);
-    }
-
-    @Override
-    public void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler) {
-        doSync(action, schemaName, scope, handler, false);
     }
 
     @Override
@@ -165,7 +145,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
         Map<String, String> nodeExceptions = new HashMap<>();
 
         for (final NodeInfo remoteNode : remoteNodes) {
-            if (remoteNode == null || (remoteNode.equals(localNode))) {
+            if (remoteNode == null || remoteNode.equals(localNode)) {
                 // The node info is null (for defence) or already do sync action for local node.
                 continue;
             }
@@ -173,10 +153,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
             final String sql = buildRequestSql(action, schemaName);
 
             template.submit(() -> {
-                Connection conn = null;
                 boolean checked = false;
-                try {
-                    conn = remoteNode.getManagerDataSource().getConnection();
+                try (Connection conn = remoteNode.getManagerDataSource().getConnection()) {
 
                     // 先验证链接可用性
                     conn.createStatement().execute("show @@config");
@@ -187,24 +165,10 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
                     resultsForHandler.add(new Pair<>(remoteNode, ExecUtils.resultSetToList(stmt.getResultSet())));
                 } catch (Throwable e) {
-                    // 如果manager端口不存在,可能节点未启动,忽略之
-                    if (checked) {
-                        String error = String.format("Failed to SYNC to '" + remoteNode.getManagerKey()
-                            + "'. Caused by: %s", e.getMessage());
-                        logger.error(error, e);
-                        nodeExceptions.put(remoteNode.getManagerKey(), e.getMessage());
-                        throw GeneralUtil.nestedException(error, e);
-                    } else {
-                        logger.error(e);
-                    }
-                } finally {
-                    if (conn != null) {
-                        try {
-                            conn.close();
-                        } catch (SQLException e) {
-                            logger.error(e);
-                        }
-                    }
+                    nodeExceptions.put(remoteNode.getManagerKey(), e.getMessage());
+                    logger.error(String.format("Failed to SYNC to '%s' %s check for %s. Caused by: %s",
+                        remoteNode.getManagerKey(), checked ? "after" : "before", action.getClass().getSimpleName(),
+                        e.getMessage()), e);
                 }
             });
         }
@@ -214,7 +178,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
         if (throwExceptions && GeneralUtil.isNotEmpty(nodeExceptions)) {
             StringBuilder buf = new StringBuilder();
-            buf.append("Failed to SYNC the following nodes:").append("\n");
+            buf.append("Failed to SYNC to the following nodes:").append("\n");
             nodeExceptions.forEach((key, value) -> buf.append(key).append(" - ").append(value).append(";\n"));
             throw GeneralUtil.nestedException(buf.toString());
         }

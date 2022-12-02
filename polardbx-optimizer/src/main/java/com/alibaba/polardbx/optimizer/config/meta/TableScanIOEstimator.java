@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -251,11 +252,8 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
         IndexContext indexContext = null;
         List<Object> toRemovePredicateList = new ArrayList<>();
 
-        DataType dataType = OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-            .getDataType(tableMeta.getTableName(), indexColumnMeta.getName());
-//        if (histogram == null) {
-//            return null;
-//        }
+        DataType dataType = StatisticManager.getInstance()
+            .getDataType(tableMeta.getSchemaName(), tableMeta.getTableName(), indexColumnMeta.getName());
         boolean lowerInclusive = false;
         boolean upperInclusive = false;
         Object lower = null;
@@ -471,10 +469,10 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
         if (lower == null && upper == null) {
             return null;
         } else {
-            StatisticResult statisticResult =
-                OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                    .getRangeCount(tableMeta.getTableName(), indexColumnMeta.getName(), lower, lowerInclusive, upper,
-                        upperInclusive);
+            StatisticResult statisticResult = StatisticManager.getInstance()
+                .getRangeCount(tableMeta.getSchemaName(), tableMeta.getTableName(), indexColumnMeta.getName(), lower,
+                    lowerInclusive, upper,
+                    upperInclusive);
             long count = statisticResult.getLongValue();
             if (count >= 0) {
                 // pass
@@ -509,9 +507,9 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
                         int fanOut = ((RexCall) rightRexNode).operands.size();
 
                         Row.RowValue rowValue = (Row.RowValue) DrdsRexFolder.fold(rightRexNode, plannerContext);
-                        StatisticResult statisticResult =
-                            OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                                .getFrequency(tableMeta.getTableName(), columnMeta.getName(), rowValue);
+                        StatisticResult statisticResult = StatisticManager.getInstance()
+                            .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(),
+                                rowValue);
                         long frequency = statisticResult.getLongValue();
 
                         // if statistic result is empty, assign one default value
@@ -557,9 +555,8 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
             ColumnMeta columnMeta = findColumnMeta(tableMeta, inputRef.getIndex());
 
             if (columnMeta != null && value != null && indexColumnMeta.equals(columnMeta)) {
-                StatisticResult statisticResult =
-                    OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager().getFrequency(
-                        tableMeta.getTableName(), columnMeta.getName(), value.toString());
+                StatisticResult statisticResult = StatisticManager.getInstance().getFrequency(tableMeta.getSchemaName(),
+                    tableMeta.getTableName(), columnMeta.getName(), value.toString());
                 long count = statisticResult.getLongValue();
                 if (count >= 0) {
 
@@ -593,9 +590,8 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
             ColumnMeta columnMeta = findColumnMeta(tableMeta, inputRef.getIndex());
 
             if (columnMeta != null && indexColumnMeta.equals(columnMeta)) {
-                StatisticResult statisticResult =
-                    OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                        .getNullCount(tableMeta.getTableName(), columnMeta.getName());
+                StatisticResult statisticResult = StatisticManager.getInstance()
+                    .getNullCount(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName());
                 long count = statisticResult.getLongValue();
                 if (count >= 0) {
                     IndexContext indexContext =
@@ -748,8 +744,8 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
                 Collectors.toSet());
 
             String columnsName = StatisticUtils.buildColumnsName(cols);
-            StatisticResult result = OptimizerContext.getContext(schemaName).getStatisticManager()
-                .getCardinality(logicalTableName, columnsName);
+            StatisticResult result =
+                StatisticManager.getInstance().getCardinality(schemaName, logicalTableName, columnsName, true);
             // empty meaning the multi column statistic info is not exists, give up
             if (result == StatisticResult.EMPTY) {
                 return;

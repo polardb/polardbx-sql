@@ -107,4 +107,27 @@ public class TablesInfoSchemaRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableComment);
     }
 
+    @Override
+    public String toString() {
+        return "TablesInfoSchemaRecord{" +
+            "id=" + id +
+            ", tableSchema='" + tableSchema + '\'' +
+            ", tableName='" + tableName + '\'' +
+            ", tableType='" + tableType + '\'' +
+            ", engine='" + engine + '\'' +
+            ", version=" + version +
+            ", rowFormat='" + rowFormat + '\'' +
+            ", tableRows=" + tableRows +
+            ", avgRowLength=" + avgRowLength +
+            ", dataLength=" + dataLength +
+            ", maxDataLength=" + maxDataLength +
+            ", indexLength=" + indexLength +
+            ", dataFree=" + dataFree +
+            ", autoIncrement=" + autoIncrement +
+            ", tableCollation='" + tableCollation + '\'' +
+            ", checkSum=" + checkSum +
+            ", createOptions='" + createOptions + '\'' +
+            ", tableComment='" + tableComment + '\'' +
+            '}';
+    }
 }

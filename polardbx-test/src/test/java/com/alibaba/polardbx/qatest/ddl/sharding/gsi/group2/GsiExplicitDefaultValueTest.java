@@ -74,6 +74,12 @@ public class GsiExplicitDefaultValueTest extends DDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT)",
             "Column 'c1' has no default value");
+
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(c1)",
+            "Column 'c1' has no default value");
+
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT(c1))",
+            "Column 'c1' has no default value");
     }
 
     /**
@@ -90,6 +96,12 @@ public class GsiExplicitDefaultValueTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlCreateTable, createTable, null, true);
 
         JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT)",
+            "Column 'c1' has no default value");
+
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(c1)",
+            "Column 'c1' has no default value");
+
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT(c1))",
             "Column 'c1' has no default value");
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(0)",
@@ -119,6 +131,12 @@ public class GsiExplicitDefaultValueTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(0, DEFAULT)",
             "Column 'c4' has no default value");
 
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(0, c4)",
+            "Column 'c4' has no default value");
+
+        JdbcUtil.executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(0, DEFAULT(c4))",
+            "Column 'c4' has no default value");
+
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
             "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(0, 'a')",
             null);
@@ -131,16 +149,21 @@ public class GsiExplicitDefaultValueTest extends DDLBaseNewDBTestCase {
      * Statement like DEFAULT(c4)
      */
     @Test
-    public void testErrorForDefaultWithParam() {
+    public void testForDefaultWithParam() {
         final String createTable = MessageFormat
             .format(CREATE_TMPL, "`c4` varchar(128) not null default 'a'", "key `" + GSI_NAME + "`(c4)",
                 "dbpartition by hash(c2)");
 
-        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+        final String mysqlCreateTable = MessageFormat
+            .format(CREATE_TMPL, "`c4` varchar(128) not null default 'a'", "key `" + GSI_NAME + "`(c4)", "");
 
-        JdbcUtil
-            .executeUpdateFailed(tddlConnection, "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(DEFAULT(c1), 'a')",
-                "Do not support DEFAULT with parameter");
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlCreateTable, createTable, null, true);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
+            "INSERT INTO " + PRIMARY_NAME + "(c1, c4) VALUES(1, DEFAULT(c4)),(2, c4)", null);
+
+        selectContentSameAssert("SELECT C1, C2, C3, C4, PAD FROM " + PRIMARY_NAME, null,
+            mysqlConnection, tddlConnection);
     }
 
     /**
@@ -189,7 +212,7 @@ public class GsiExplicitDefaultValueTest extends DDLBaseNewDBTestCase {
                 true);
 
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
-                "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT)", null);
+                "INSERT INTO " + PRIMARY_NAME + "(c1) VALUES(DEFAULT),(c1)", null);
 
             selectContentSameAssert("SELECT C1, C2, C3, C4, PAD FROM " + PRIMARY_NAME, null, mysqlConnection,
                 tddlConnection);

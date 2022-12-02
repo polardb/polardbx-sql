@@ -1,0 +1,367 @@
+dbName: test_list_default_db
+testCases:
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+    syntaxWrongDDLs: null
+    checkActions:
+      - prepares:
+          - create table tb(`a` int not null, `b` int, primary key(a), global index `g_i_b`(`b`) partition by list(b) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default))) partition by list(b) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default));
+        insertData: insert into tb values (0,0),(2,2),(4,4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+          - query: replace into tb values(0,1000), (4,0);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 4
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 0
+          - query: select a from tb where b > 1;
+            answer: 0,2
+          - query: select a from tb where b >= 0;
+            answer: 0,2,4
+          - query: select a from tb where b < 1000;
+            answer: 2,4
+          - query: select a from tb where b <= 1000;
+            answer: 0,2,4
+          - query: select a from tb where b != 1000;
+            answer: 2,4
+          - query: select a from tb where b = 1000;
+            answer: 0
+          - query: select a from tb where b = 0;
+            answer: 4
+          - query: select a from tb where b != 0;
+            answer: 0,2
+          - query: update tb set b = 0 where a = 0;
+            answer: null
+          - query: update tb set b = 4 where a = 4;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: insert into tb values(1111,0), (1111,4);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0,1111
+          - query: select a from tb partition(pd);
+            answer: 4,1111
+          - query: delete from tb where b = 0 and a = 1111;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: delete from tb where b = 4 and a = 1111;
+            answer: null
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker: null
+        clean: drop table if exists tb;
+      - prepares:
+          - create table tb(`a` int not null, `b` int, primary key(a), global index `g_i_b`(`b`) partition by list columns(b) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default))) partition by list columns(b) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default));
+        insertData: insert into tb values (0,0),(2,2),(4,4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+          - query: replace into tb values(0,1000), (4,0);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 4
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 0
+          - query: select a from tb where b > 1;
+            answer: 0,2
+          - query: select a from tb where b >= 0;
+            answer: 0,2,4
+          - query: select a from tb where b < 1000;
+            answer: 2,4
+          - query: select a from tb where b <= 1000;
+            answer: 0,2,4
+          - query: select a from tb where b != 1000;
+            answer: 2,4
+          - query: select a from tb where b = 1000;
+            answer: 0
+          - query: select a from tb where b = 0;
+            answer: 4
+          - query: select a from tb where b != 0;
+            answer: 0,2
+          - query: update tb set b = 0 where a = 0;
+            answer: null
+          - query: update tb set b = 4 where a = 4;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: insert into tb values(1111,0), (1111,4);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0,1111
+          - query: select a from tb partition(pd);
+            answer: 4,1111
+          - query: delete from tb where b = 0 and a = 1111;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: delete from tb where b = 4 and a = 1111;
+            answer: null
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker: null
+        clean: drop table if exists tb;
+      - prepares:
+          - create table tb(`a` int not null, `b` int, `c` int, primary key(a)) partition by list columns(b,c) (partition p0 values in((0,0)), partition p2 values in((2,2)), partition pd values in(default));
+          - create global index `g_i_ac` on tb(`c`) covering(`b`) partition by list columns(a,c) (partition p0 values in((0,0)), partition p1 values in((2,2)), partition pd values in(default));
+        insertData: insert into tb values (0,0,0),(2,2,2),(4,4,4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where b > 0 and c > 0;
+            answer: 2,4
+          - query: select a from tb where b >= 2 and c > 0;
+            answer: 2,4
+          - query: select a from tb where b > 2 and c > 0;
+            answer: 4
+          - query: select a from tb where b < 4 and c < 4;
+            answer: 0,2
+          - query: select a from tb where b < 2 and c < 4;
+            answer: 0
+          - query: select a from tb where b <= 2 and c < 4;
+            answer: 0,2
+          - query: select a from tb where b <= 4 and c <= 4;
+            answer: 0,2,4
+          - query: select a from tb where b = 4 and c = 4;
+            answer: 4
+          - query: select a from tb where b != 4;
+            answer: 0,2
+          - query: replace into tb values(0,1000,1000), (4, 0, 0);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 4
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 0
+          - query: select a from tb where b < 1000 and c < 1000;
+            answer: 2,4
+          - query: select a from tb where b > 2 and c > 2;
+            answer: 0
+          - query: select a from tb where b != 1000;
+            answer: 2,4
+          - query: select a from tb where b = 1000;
+            answer: 0
+          - query: update tb set b = 0, c = 0 where a = 0;
+            answer: null
+          - query: update tb set b = 4, c = 4 where a = 4;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: insert into tb values(1111, 0, 0), (1112, 4, 4);
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0,1111
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4,1112
+          - query: delete from tb where a = 1111;
+            answer: null
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: delete from tb where a = 1112;
+            answer: null
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where b > 0 and c > 0;
+            answer: 2,4
+          - query: select a from tb where b >= 2 and c > 0;
+            answer: 2,4
+          - query: select a from tb where b > 2 and c > 0;
+            answer: 4
+          - query: select a from tb where b < 4 and c < 4;
+            answer: 0,2
+          - query: select a from tb where b < 2 and c < 4;
+            answer: 0
+          - query: select a from tb where b <= 2 and c < 4;
+            answer: 0,2
+          - query: select a from tb where b <= 4 and c <= 4;
+            answer: 0,2,4
+          - query: select a from tb where b = 4 and c = 4;
+            answer: 4
+          - query: select a from tb where b != 4;
+            answer: 0,2
+        metaCreateTableContainsBeforeChecker:
+        - query: show full create table tb;
+          answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,0)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (((2,2)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker: null
+        clean: drop table if exists tb;
+    cleanDDL: drop database if exists test_list_default_db;
+

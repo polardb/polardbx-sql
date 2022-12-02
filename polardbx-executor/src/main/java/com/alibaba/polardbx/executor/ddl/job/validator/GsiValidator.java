@@ -125,10 +125,18 @@ public class GsiValidator {
                                                     String tableName,
                                                     ExecutionContext executionContext) {
         boolean isGsi = TableValidator.checkTableIsGsi(schemaName, tableName);
+        boolean hasGsi = TableValidator.checkTableWithGsi(schemaName, tableName);
+        ParamManager paramManager = executionContext.getParamManager();
 
-        if (isGsi && !executionContext.getParamManager().getBoolean(ConnectionParams.DDL_ON_GSI)) {
+        if (isGsi && !paramManager.getBoolean(ConnectionParams.DDL_ON_GSI)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_WITH_DDL,
                 tableName);
+        }
+
+        if (hasGsi && !executionContext.getSchemaName().equalsIgnoreCase(schemaName)
+            && !paramManager.getBoolean(ConnectionParams.GSI_IGNORE_RESTRICTION)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED,
+                "Truncating table with GSI on other schema is forbidden, so please login with corresponding schema.");
         }
     }
 

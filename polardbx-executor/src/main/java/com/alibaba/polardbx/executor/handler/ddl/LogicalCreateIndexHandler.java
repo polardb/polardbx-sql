@@ -109,6 +109,9 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         ExecutableDdlJob gsiJob = CreatePartitionGsiJobFactory.create(
             logicalCreateIndex.relDdl, globalIndexPreparedData, executionContext);
 
+        if (globalIndexPreparedData.isNeedToGetTableGroupLock()) {
+            return gsiJob;
+        }
         Map<String, Long> tableVersions = new HashMap<>();
         tableVersions.put(globalIndexPreparedData.getPrimaryTableName(),
             globalIndexPreparedData.getTableVersion());

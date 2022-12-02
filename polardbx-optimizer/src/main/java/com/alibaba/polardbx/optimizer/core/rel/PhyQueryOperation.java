@@ -27,6 +27,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 
 import java.util.HashMap;
 import java.util.List;
@@ -37,15 +38,18 @@ import java.util.Map;
  */
 public class PhyQueryOperation extends BaseQueryOperation {
     private Map<Integer, ParameterContext> param;
+    private List<String> logicalTables;
+    private List<List<String>> physicalTables;
+    private SqlSelect.LockMode lockMode = SqlSelect.LockMode.UNDEF;
+    private boolean usingConnKey = false;
 
-    public PhyQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, SqlNode nativeSqlNode, String dbIndex,
-                             Map<Integer, ParameterContext> param) {
-        this(cluster, traitSet, nativeSqlNode, dbIndex, param, PlannerUtils.getDynamicParamIndex(nativeSqlNode));
-    }
-
-    public PhyQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, SqlNode nativeSqlNode, String dbIndex,
-                             Map<Integer, ParameterContext> param, List<Integer> dynamicParamIndex) {
-        super(cluster, traitSet, RelUtils.toNativeSqlLine(nativeSqlNode), nativeSqlNode, DbType.MYSQL);
+    protected PhyQueryOperation(RelOptCluster cluster,
+                                RelTraitSet traitSet,
+                                SqlNode nativeSqlNode,
+                                String dbIndex,
+                                Map<Integer, ParameterContext> param,
+                                List<Integer> dynamicParamIndex) {
+        super(cluster, traitSet, RelUtils.toNativeBytesSql(nativeSqlNode, DbType.MYSQL), nativeSqlNode, DbType.MYSQL);
         this.dbIndex = dbIndex;
         this.param = new HashMap<>();
 
@@ -69,7 +73,7 @@ public class PhyQueryOperation extends BaseQueryOperation {
     public RelWriter explainTermsForDisplay(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
         pw.item("node", dbIndex);
-        pw.item("sql", this.sqlTemplate);
+        pw.item("sql", this.bytesSql.display());
         return pw;
     }
 
@@ -80,4 +84,37 @@ public class PhyQueryOperation extends BaseQueryOperation {
     public void setParam(Map<Integer, ParameterContext> param) {
         this.param = param;
     }
+
+    public List<String> getLogicalTables() {
+        return logicalTables;
+    }
+
+    public void setLogicalTables(List<String> logicalTables) {
+        this.logicalTables = logicalTables;
+    }
+
+    public List<List<String>> getPhysicalTables() {
+        return physicalTables;
+    }
+
+    public void setPhysicalTables(List<List<String>> physicalTables) {
+        this.physicalTables = physicalTables;
+    }
+
+    public SqlSelect.LockMode getLockMode() {
+        return lockMode;
+    }
+
+    public void setLockMode(SqlSelect.LockMode lockMode) {
+        this.lockMode = lockMode;
+    }
+
+    public boolean isUsingConnKey() {
+        return usingConnKey;
+    }
+
+    public void setUsingConnKey(boolean usingConnKey) {
+        this.usingConnKey = usingConnKey;
+    }
+
 }

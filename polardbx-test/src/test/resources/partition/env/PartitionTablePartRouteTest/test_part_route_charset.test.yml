@@ -22,12 +22,21 @@ partition p1 values less than (x'CAC0BDE7C8CBC3F1'),
 partition p2 values less than (maxvalue)
 );
 
+create table if not exists rc_tbl_gbk_idx (a bigint unsigned not null, b datetime not null, c varchar(128) CHARACTER SET gbk not null, key i_c(c) )
+partition by range columns(c)
+(
+partition p0 values less than (x'CAC0BDE7'),
+partition p1 values less than (x'CAC0BDE7C8CBC3F1'),
+partition p2 values less than (maxvalue)
+);
+
   #set names utf8;
   #gbk(actual:utf8)->utf8：cast_to_utf8_invalid(actual:gbk)[->utf8(terminal)：decoding invalid]
   #gbk(actual:gbk)->utf8：cast_to_utf8_valid(actual:gbk)[->utf8(terminal):decoding invalid]
 set names utf8;
 show create table rc_tbl_utf8;
 show create table rc_tbl_gbk;
+show create table rc_tbl_gbk_idx;
 
   #set names gbk:
   #gbk(actual:utf8)->gbk:no_cast(actual:utf8)[->utf8(terminal)：decoding valid]
@@ -35,6 +44,7 @@ show create table rc_tbl_gbk;
 set names gbk;
 show create table rc_tbl_utf8;
 show create table rc_tbl_gbk;
+show create table rc_tbl_gbk_idx;
 
 set names utf8;
 insert into rc_tbl_utf8(a,b,c) values (1,'2012-12-11 23:00:00', '世界'),(2,'2012-12-12 01:00:00','世界人民');
@@ -47,7 +57,14 @@ select a,b,c from rc_tbl_utf8 where c=x'E4B896E7958C';
 
 set names gbk;
 insert into rc_tbl_gbk(a,b,c) values (5,'2012-12-11 23:00:00', x'CAC0BDE7'),(6,'2012-12-12 01:00:00', x'CAC0BDE7C8CBC3F1');
+insert into rc_tbl_gbk_idx(a,b,c) values (5,'2012-12-11 23:00:00', x'CAC0BDE7'),(6,'2012-12-12 01:00:00', x'CAC0BDE7C8CBC3F1');
 select a,b,c from rc_tbl_gbk where c=x'CAC0BDE7';
+select a,b,c from rc_tbl_gbk_idx where c=x'CAC0BDE7';
+  
+  # TODO: following may error when go with xplan if no hex()
+set names utf8;
+select a,b,hex(c) from rc_tbl_gbk where c='世界';
+select a,b,hex(c) from rc_tbl_gbk_idx where c='世界';
 
   # test the part_route for charset utf8
 set names utf8;

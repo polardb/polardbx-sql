@@ -16,25 +16,24 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupRenamePartition;
 
-public class LogicalAlterTableGroupRenamePartition extends BaseDdlOperation {
-
-    private AlterTableGroupRenamePartitionPreparedData preparedData;
+public class LogicalAlterTableGroupRenamePartition extends LogicalAlterTableRenamePartition {
 
     public LogicalAlterTableGroupRenamePartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
     public static LogicalAlterTableGroupRenamePartition create(DDL ddl) {
         return new LogicalAlterTableGroupRenamePartition(ddl);
     }
 
-    public void prepareData() {
+    public void prepareData(ExecutionContext ec) {
         preparedData = new AlterTableGroupRenamePartitionPreparedData();
         AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
         String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
@@ -45,9 +44,5 @@ public class LogicalAlterTableGroupRenamePartition extends BaseDdlOperation {
         preparedData.setSchemaName(schemaName);
         preparedData.setChangePartitionsPair(sqlAlterTableGroupRenamePartition.getChangePartitionsPair());
         preparedData.setTableGroupName(tableGroupName);
-    }
-
-    public AlterTableGroupRenamePartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 }

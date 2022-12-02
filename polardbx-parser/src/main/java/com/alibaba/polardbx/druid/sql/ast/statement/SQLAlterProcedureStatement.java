@@ -15,22 +15,31 @@
  */
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
-import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLAlterProcedureStatement extends SQLStatementImpl implements SQLAlterStatement {
 
-    private SQLExpr name;
+    private SQLName name;
 
-    private boolean compile       = false;
+    private boolean compile = false;
     private boolean reuseSettings = false;
 
-    private SQLExpr comment;
-    private boolean languageSql;
-    private boolean containsSql;
-    private SQLExpr sqlSecurity;
+    private SQLCharExpr comment;
+    private boolean existsComment;
 
+    private boolean languageSql;
+    private boolean existsLanguageSql;
+
+    private SqlDataAccess sqlDataAccess;
+    private boolean existsSqlDataAccess;
+
+    private SqlSecurity sqlSecurity = SqlSecurity.DEFINER;
+    private boolean existsSqlSecurity;
+
+    @Override
     public void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, name);
@@ -38,11 +47,11 @@ public class SQLAlterProcedureStatement extends SQLStatementImpl implements SQLA
         visitor.endVisit(this);
     }
 
-    public SQLExpr getName() {
+    public SQLName getName() {
         return name;
     }
 
-    public void setName(SQLExpr name) {
+    public void setName(SQLName name) {
         this.name = name;
     }
 
@@ -68,35 +77,52 @@ public class SQLAlterProcedureStatement extends SQLStatementImpl implements SQLA
 
     public void setLanguageSql(boolean languageSql) {
         this.languageSql = languageSql;
+        this.existsLanguageSql = true;
     }
 
-    public boolean isContainsSql() {
-        return containsSql;
-    }
-
-    public void setContainsSql(boolean containsSql) {
-        this.containsSql = containsSql;
-    }
-
-    public SQLExpr getSqlSecurity() {
+    public SqlSecurity getSqlSecurity() {
         return sqlSecurity;
     }
 
-    public void setSqlSecurity(SQLExpr sqlSecurity) {
-        if (sqlSecurity != null) {
-            sqlSecurity.setParent(this);
-        }
+    public void setSqlSecurity(SqlSecurity sqlSecurity) {
         this.sqlSecurity = sqlSecurity;
+        this.existsSqlSecurity = true;
     }
 
-    public SQLExpr getComment() {
+    public SQLCharExpr getComment() {
         return comment;
     }
 
-    public void setComment(SQLExpr comment) {
+    public void setComment(SQLCharExpr comment) {
         if (comment != null) {
             comment.setParent(this);
         }
         this.comment = comment;
+        this.existsComment = true;
+    }
+
+    public boolean isExistsComment() {
+        return existsComment;
+    }
+
+    public boolean isExistsLanguageSql() {
+        return existsLanguageSql;
+    }
+
+    public boolean isExistsSqlSecurity() {
+        return existsSqlSecurity;
+    }
+
+    public boolean isExistsSqlDataAccess() {
+        return existsSqlDataAccess;
+    }
+
+    public SqlDataAccess getSqlDataAccess() {
+        return sqlDataAccess;
+    }
+
+    public void setSqlDataAccess(SqlDataAccess sqlDataAccess) {
+        this.sqlDataAccess = sqlDataAccess;
+        this.existsSqlDataAccess = true;
     }
 }

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -49,6 +50,7 @@ public class CreateOssTableFormatTask extends BaseGmsTask {
     private final PhysicalPlanData physicalPlanData;
     private final Engine tableEngine;
 
+    @JSONCreator
     public CreateOssTableFormatTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData,
                                     Engine tableEngine) {
         super(schemaName, logicalTableName);

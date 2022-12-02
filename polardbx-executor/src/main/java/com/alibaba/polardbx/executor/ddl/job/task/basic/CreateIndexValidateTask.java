@@ -33,11 +33,12 @@ public class CreateIndexValidateTask extends BaseValidateTask {
     private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public CreateIndexValidateTask(String schemaName, String logicalTableName, String indexName, TableGroupConfig tableGroupConfig) {
+    public CreateIndexValidateTask(String schemaName, String logicalTableName, String indexName,
+                                   TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.indexName = indexName;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override

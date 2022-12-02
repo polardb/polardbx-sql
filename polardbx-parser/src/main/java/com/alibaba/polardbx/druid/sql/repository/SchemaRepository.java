@@ -26,6 +26,9 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
@@ -48,6 +51,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTablesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableChangeColumn;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableOption;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRenameTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
@@ -64,6 +69,9 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -79,6 +87,7 @@ public class SchemaRepository {
     protected Map<String, Schema> schemas = new LinkedHashMap<String, Schema>();
     protected final Map<Long, Function> internalFunctions = new ConcurrentHashMap<Long, Function>(16, 0.75f, 1);
     protected SchemaLoader schemaLoader;
+    protected SchemaObjectStoreProvider schemaObjectStoreProvider = new DefaultSchemaObjectStoreProvider();
 
     public SchemaRepository() {
 
@@ -98,7 +107,9 @@ public class SchemaRepository {
 
         this.dbType = dbType;
         this.schemaDbType = schemaDbType;
-        consoleVisitor = new MySqlConsoleSchemaVisitor();
+
+            consoleVisitor = new MySqlConsoleSchemaVisitor();
+
     }
 
     public DbType getDbType() {
@@ -398,7 +409,8 @@ public class SchemaRepository {
         SchemaResolveVisitor resolveVisitor;
         switch (dbType) {
         case mysql:
-            resolveVisitor = new SchemaResolveVisitorFactory.MySqlResolveVisitor(this, optionsValue);
+
+            resolveVisitor = new SchemaResolveVisitorFactory.MySqlResolveVisitor(this,  optionsValue);
             break;
         default:
             resolveVisitor = new SchemaResolveVisitorFactory.SQLResolveVisitor(this, optionsValue);
@@ -583,7 +595,7 @@ public class SchemaRepository {
                 acceptCreateTable(createTableStmt);
             }
 
-            schema.objects.remove(nameHashCode64);
+            schema.getStore().removeObject(nameHashCode64);
         }
         return true;
     }
@@ -602,11 +614,13 @@ public class SchemaRepository {
     }
 
     public class MySqlConsoleSchemaVisitor extends MySqlASTVisitorAdapter {
+        @Override
         public boolean visit(SQLDropSequenceStatement x) {
             acceptDropSequence(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateSequenceStatement x) {
             acceptCreateSequence(x);
             return false;
@@ -617,47 +631,56 @@ public class SchemaRepository {
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateTableStatement x) {
             acceptCreateTable(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLDropTableStatement x) {
             acceptDropTable(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateViewStatement x) {
             acceptView(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLAlterViewStatement x) {
             acceptView(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateIndexStatement x) {
             acceptCreateIndex(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateFunctionStatement x) {
             acceptCreateFunction(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLAlterTableStatement x) {
             acceptAlterTable(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLUseStatement x) {
             String schema = x.getDatabase().getSimpleName();
             setDefaultSchema(schema);
             return false;
         }
 
+        @Override
         public boolean visit(SQLDropIndexStatement x) {
             acceptDropIndex(x);
             return false;
@@ -665,16 +688,19 @@ public class SchemaRepository {
     }
 
     public class DefaultConsoleSchemaVisitor extends SQLASTVisitorAdapter {
+        @Override
         public boolean visit(SQLDropSequenceStatement x) {
             acceptDropSequence(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateSequenceStatement x) {
             acceptCreateSequence(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateTableStatement x) {
             acceptCreateTable(x);
             return false;
@@ -685,31 +711,37 @@ public class SchemaRepository {
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateViewStatement x) {
             acceptView(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLAlterViewStatement x) {
             acceptView(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateIndexStatement x) {
             acceptCreateIndex(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLCreateFunctionStatement x) {
             acceptCreateFunction(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLAlterTableStatement x) {
             acceptAlterTable(x);
             return false;
         }
 
+        @Override
         public boolean visit(SQLDropIndexStatement x) {
             acceptDropIndex(x);
             return false;
@@ -830,7 +862,7 @@ public class SchemaRepository {
         }
 
         table = new SchemaObject(schema, name, SchemaObjectType.Table, x1);
-        schema.objects.put(table.nameHashCode64(), table);
+        schema.getStore().addObject(table.nameHashCode64(), table);
         return table;
     }
 
@@ -842,7 +874,7 @@ public class SchemaRepository {
                 continue;
             }
             long nameHashCode64 = FnvHash.hashCode64(table.getTableName(true));
-            schema.objects.remove(nameHashCode64);
+            schema.getStore().removeObject(nameHashCode64);
         }
         return true;
     }
@@ -859,7 +891,7 @@ public class SchemaRepository {
         }
 
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.View, x.clone());
-        schema.objects.put(object.nameHashCode64(), object);
+        schema.getStore().addObject(object.nameHashCode64(), object);
         return true;
     }
 
@@ -875,7 +907,7 @@ public class SchemaRepository {
         }
 
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.View, x.clone());
-        schema.objects.put(object.nameHashCode64(), object);
+        schema.getStore().addObject(object.nameHashCode64(), object);
         return true;
     }
 
@@ -891,7 +923,10 @@ public class SchemaRepository {
             if (stmt != null) {
                 stmt.apply(x);
                 Schema schema = findSchema(stmt.getSchema(), false);
-                schema.indexes.remove(FnvHash.hashCode64(SQLUtils.normalize(x.getIndexName().getSimpleName())));
+                // same index name on different table is allowed in mysql，so the object name should contact table name with index name
+                String name = SQLUtils.normalize(table.getSimpleName()) + "." + SQLUtils
+                    .normalize(x.getIndexName().getSimpleName());
+                schema.getStore().removeIndex(FnvHash.hashCode64(name));
                 return true;
             }
         }
@@ -901,12 +936,15 @@ public class SchemaRepository {
 
     boolean acceptCreateIndex(SQLCreateIndexStatement x) {
         String schemaName = x.getSchema();
+        String tableName = SQLUtils.normalize(x.getTableName());
+        String indexName = SQLUtils.normalize(x.getName().getSimpleName());
 
         Schema schema = findSchema(schemaName, true);
 
-        String name = SQLUtils.normalize(x.getName().getSimpleName());
+        // same index name on different table is allowed in mysql，so the object name should contact table name with index name
+        String name = tableName + "." + indexName;
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Index, x.clone());
-        schema.indexes.put(object.nameHashCode64(), object);
+        schema.getStore().addIndex(object.nameHashCode64(), object);
 
         return true;
     }
@@ -917,7 +955,7 @@ public class SchemaRepository {
 
         String name = x.getName().getSimpleName();
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Function, x.clone());
-        schema.functions.put(object.nameHashCode64(), object);
+        schema.getStore().addFunction(object.nameHashCode64(), object);
 
         return true;
     }
@@ -926,12 +964,77 @@ public class SchemaRepository {
         String schemaName = x.getSchema();
         Schema schema = findSchema(schemaName, true);
 
+        // we should do some special process, if the renaming or dropping index is created by sql syntax like 'create index ... on ...'
+        for (SQLAlterTableItem item : x.getItems()) {
+            String tableName = SQLUtils.normalize(x.getTableName());
+            if (item instanceof SQLAlterTableDropIndex) {
+                SQLAlterTableDropIndex dropIndex = (SQLAlterTableDropIndex) item;
+                String indexName = SQLUtils.normalize(dropIndex.getIndexName().getSimpleName());
+                schema.getStore().removeIndex(FnvHash.hashCode64(tableName + "." + indexName));
+            } else if (item instanceof SQLAlterTableRenameIndex) {
+                SQLAlterTableRenameIndex renameIndex = (SQLAlterTableRenameIndex) item;
+                String from = SQLUtils.normalize(renameIndex.getName().getSimpleName());
+                String to = SQLUtils.normalize(renameIndex.getTo().getSimpleName());
+                SchemaObject obj = schema.getStore().getIndex(FnvHash.hashCode64(tableName + "." + from));
+                if (obj != null) {
+                    SQLCreateIndexStatement stmt = (SQLCreateIndexStatement) obj.getStatement();
+                    stmt.setName(renameIndex.getTo());
+                    schema.getStore().removeIndex(FnvHash.hashCode64(tableName + "." + from));
+                    schema.getStore().addIndex(FnvHash.hashCode64(tableName + "." + to), obj);
+                }
+            }
+        }
+
+        // Remove algorithm table option from alter table statement, it will not apply anyway
+        x.getItems().removeIf(item -> (item instanceof MySqlAlterTableOption && ((MySqlAlterTableOption) item).getName()
+            .equalsIgnoreCase("algorithm")));
+
+        // Special process for swap column name, e.g. alter table t1 change a b int, change b a int
+        // Then new sql will be: alter table change a c int, b a int, c b int
+        if (x.getItems().size() == 2 && x.getItems().stream()
+            .allMatch(item -> item instanceof MySqlAlterTableChangeColumn)) {
+            MySqlAlterTableChangeColumn change1 = ((MySqlAlterTableChangeColumn)(x.getItems().get(0)));
+            MySqlAlterTableChangeColumn change2 = ((MySqlAlterTableChangeColumn)(x.getItems().get(1)));
+
+            String stmt1Before = change1.getColumnName().getSimpleName();
+            String stmt1After = change1.getNewColumnDefinition().getColumnName();
+            String stmt2Before = change2.getColumnName().getSimpleName();
+            String stmt2After = change2.getNewColumnDefinition().getColumnName();
+
+            if (stmt1Before.equalsIgnoreCase(stmt2After) && stmt2Before.equalsIgnoreCase(stmt1After)) {
+                // Get all column names so that our new column name will not be conflict with existing column
+                Set<String> columnNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(x.getTableName()));
+                SchemaObject object = schema.findTable(nameHashCode64);
+                if (object != null) {
+                    SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();
+                    for (SQLColumnDefinition colDef : stmt.getColumnDefinitions()) {
+                        columnNames.add(colDef.getColumnName());
+                    }
+                }
+
+                // Generate temp colName
+                String tmpColName;
+                do {
+                    tmpColName = generateRandomString(4);
+                } while (columnNames.contains(tmpColName));
+
+                SQLColumnDefinition originColDef = change1.getNewColumnDefinition().clone();
+                change1.getNewColumnDefinition().setName(tmpColName);
+                MySqlAlterTableChangeColumn change3 = new MySqlAlterTableChangeColumn();
+                change3.setColumnName(new SQLIdentifierExpr(tmpColName));
+                change3.setNewColumnDefinition(originColDef);
+                x.getItems().add(change3);
+            }
+        }
+
         long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(x.getTableName()));
         SchemaObject object = schema.findTable(nameHashCode64);
         if (object != null) {
             SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();
             if (stmt != null) {
                 stmt.apply(x);
+                schema.getStore().addObject(nameHashCode64, object);
                 return true;
             }
         }
@@ -944,8 +1047,8 @@ public class SchemaRepository {
         Schema schema = findSchema(schemaName, true);
 
         String name = x.getName().getSimpleName();
-        SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Sequence);
-        schema.sequences.put(object.nameHashCode64(), object);
+        SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Sequence, x);
+        schema.getStore().addSequence(object.nameHashCode64(), object);
         return false;
     }
 
@@ -954,7 +1057,7 @@ public class SchemaRepository {
         Schema schema = findSchema(schemaName, true);
 
         long nameHashCode64 = x.getName().nameHashCode64();
-        schema.sequences.remove(nameHashCode64);
+        schema.getStore().removeSequence(nameHashCode64);
         return false;
     }
 
@@ -1022,7 +1125,28 @@ public class SchemaRepository {
         this.schemaLoader = schemaLoader;
     }
 
+    public SchemaObjectStoreProvider getSchemaObjectStoreProvider() {
+        return schemaObjectStoreProvider;
+    }
+
+    public void setSchemaObjectStoreProvider(SchemaObjectStoreProvider schemaObjectStoreProvider) {
+        this.schemaObjectStoreProvider = schemaObjectStoreProvider;
+    }
+
     public static interface SchemaLoader {
         String loadDDL(String catalog, String schema, String objectName);
+    }
+
+    private static String generateRandomString(int len) {
+        String str = "abcdefghijklmnopqrstuvwxyz";
+        Random random = new Random();
+        StringBuilder buf = new StringBuilder();
+
+        for (int i = 0; i < len; i++) {
+            int num = random.nextInt(str.length());
+            buf.append(str.charAt(num));
+        }
+
+        return buf.toString();
     }
 }

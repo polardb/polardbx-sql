@@ -19,7 +19,10 @@ package com.alibaba.polardbx.optimizer.partition;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
+import org.apache.calcite.sql.SqlIdentifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -124,8 +127,24 @@ public class PartitionSpec {
      */
     protected SearchDatumComparator boundSpaceComparator;
 
+    /**
+     * the sort key (sorted by partition position) of curr partition in its phy db.
+     * <pre>
+     * e.g.                 testdb_p00000 have partitions: p1,p4,p8,p11,p23
+     *        the orderNum of partitions in testdb_p00000: 0,1,2,3,4,5
+     * </pre>
+     */
+    protected Long intraGroupConnKey;
+
+    /**
+     * Only for List/ List Column partition:
+     * Flag if is Default Partition
+     * */
+    protected boolean isDefaultPartition;
+
     public PartitionSpec() {
         this.subPartitions = new ArrayList<>();
+        isDefaultPartition = false;
     }
 
     public PartitionSpec copy() {
@@ -144,6 +163,9 @@ public class PartitionSpec {
         spec.setVersion(this.version);
         spec.setMaxValueRange(this.isMaxValueRange);
         spec.setBoundSpaceComparator(this.boundSpaceComparator);
+        spec.setIsDefaultPartition(this.isDefaultPartition);
+        spec.setIntraGroupConnKey(this.intraGroupConnKey);
+
         if (this.location != null) {
             spec.setLocation(this.location.copy());
         } else {
@@ -291,8 +313,15 @@ public class PartitionSpec {
     }
 
     public String getLocality() {
+        if(locality == null){
+            return "";
+        }
         return locality;
     }
+
+    public void setIsDefaultPartition(boolean isDefaultPartition) { this.isDefaultPartition = isDefaultPartition; }
+
+    public boolean getIsDefaultPartition() { return this.isDefaultPartition; }
 
     public String normalizePartSpec(boolean usePartGroupNameAsPartName,
                                     String partGrpName,
@@ -301,7 +330,8 @@ public class PartitionSpec {
         StringBuilder sb = new StringBuilder();
         sb.append("PARTITION ");
         if (!usePartGroupNameAsPartName) {
-            sb.append(this.name);
+            String partName = SqlIdentifier.surroundWithBacktick(this.name);;
+            sb.append(partName);
         } else {
             if (partGrpName != null) {
                 sb.append(partGrpName);
@@ -335,9 +365,13 @@ public class PartitionSpec {
 
     protected PartitionBoundSpec sortPartitionsAllValues() {
         PartitionSpec newSpec = copy();
-        PartitionBoundSpec newSortedValsBndSpec =
-            PartitionByDefinition.sortListPartitionsAllValues(this.boundSpaceComparator, newSpec.getBoundSpec());
-        return newSortedValsBndSpec;
+        if(this.isDefaultPartition) {
+            return newSpec.getBoundSpec();
+        } else {
+            PartitionBoundSpec newSortedValsBndSpec =
+                PartitionByDefinition.sortListPartitionsAllValues(this.boundSpaceComparator, newSpec.getBoundSpec());
+            return newSortedValsBndSpec;
+        }
     }
 
     @Override
@@ -390,7 +424,7 @@ public class PartitionSpec {
 
         if (obj != null && boundSpec != null && obj.getClass() == this.getClass()) {
             if (strategy == ((PartitionSpec) obj).getStrategy()
-                && Objects.equals(this.locality, ((PartitionSpec) obj).locality)
+                && LocalityInfoUtils.equals(this.locality, ((PartitionSpec) obj).locality)
                 && name.equalsIgnoreCase(((PartitionSpec) obj).name) ) {
                 if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT ) {
                     return boundSpec.equals(((PartitionSpec) obj).getBoundSpec());
@@ -433,5 +467,13 @@ public class PartitionSpec {
         sb.append(this.getLocation().getDigest());
         sb.append("]");
         return sb.toString();
+    }
+
+    public Long getIntraGroupConnKey() {
+        return intraGroupConnKey;
+    }
+
+    public void setIntraGroupConnKey(Long intraGroupConnKey) {
+        this.intraGroupConnKey = intraGroupConnKey;
     }
 }

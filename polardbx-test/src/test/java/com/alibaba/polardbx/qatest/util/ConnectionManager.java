@@ -24,7 +24,6 @@ import com.alibaba.polardbx.qatest.constant.ConfigConstant;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.Assert;
-import sun.security.util.DisabledAlgorithmConstraints;
 
 import javax.sql.DataSource;
 import java.security.Security;
@@ -39,6 +38,7 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.dnCount;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getMetaDB;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.useDruid;
+import static com.alibaba.polardbx.ssl.SslConstant.PROPERTY_TLS_DISABLED_ALGS;
 
 /**
  * 初始化所有连接
@@ -95,7 +95,7 @@ public class ConnectionManager {
 
     private void init() {
         //jdk 放开tls限制
-        Security.setProperty(DisabledAlgorithmConstraints.PROPERTY_TLS_DISABLED_ALGS, "");
+        Security.setProperty(PROPERTY_TLS_DISABLED_ALGS, "");
 
         this.configProp = PropertiesUtil.configProp;
 
@@ -171,6 +171,8 @@ public class ConnectionManager {
                 "set global innodb_buffer_pool_size=6442450944;");
             com.alibaba.polardbx.qatest.util.JdbcUtil.executeUpdate(mysqlConnection,
                 "set global table_open_cache=20000;");
+            com.alibaba.polardbx.qatest.util.JdbcUtil.executeUpdate(mysqlConnection,
+                "set global table_definition_cache=20000;");
             com.alibaba.polardbx.qatest.util.JdbcUtil.executeUpdate(mysqlConnection,
                 "set global sync_binlog=1000;");
             com.alibaba.polardbx.qatest.util.JdbcUtil.executeUpdate(mysqlConnection,
@@ -273,8 +275,30 @@ public class ConnectionManager {
         return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
     }
 
+    public Connection newPolarDBXConnectionWithExtraParams(String extraParams) {
+        String url =
+            String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), polardbxAddress, polardbxPort);
+        url += extraParams;
+        return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
+    }
+
+    /**
+     * get connection from a specific user
+     */
+    public Connection newPolarDBXConnection(String user, String password) {
+        String url =
+            String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), polardbxAddress, polardbxPort);
+        return JdbcUtil.createConnection(url, user, password);
+    }
+
     public Connection newMysqlConnection() {
         String url = String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), mysqlAddress, mysqlPort);
+        return JdbcUtil.createConnection(url, mysqlUser, mysqlPassword);
+    }
+
+    public Connection newMysqlConnectionWithExtraParams(String extraParams) {
+        String url = String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), mysqlAddress, mysqlPort);
+        url += extraParams;
         return JdbcUtil.createConnection(url, mysqlUser, mysqlPassword);
     }
 

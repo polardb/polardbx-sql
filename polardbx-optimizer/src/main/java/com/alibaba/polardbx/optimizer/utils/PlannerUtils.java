@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -366,6 +367,9 @@ public class PlannerUtils {
         //use the physical name to get the tableRule, then use tableRule to see whether it's a broadcast table
         try {
             String logicalTableName = null;
+            if (TStringUtil.isEmpty(schemaName)) {
+                schemaName = DefaultSchema.getSchemaName();
+            }
             if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                 String fullyQualifiedPhysicalTableName = (db.getDbIndex() + "." + tableName).toLowerCase();
                 Set<String> logicalNameSet = or.getLogicalTableNames(fullyQualifiedPhysicalTableName, schemaName);
@@ -532,7 +536,9 @@ public class PlannerUtils {
         if (node instanceof SqlDynamicParam) {
             SqlDynamicParam dynamicParam = (SqlDynamicParam) node;
             int index = dynamicParam.getIndex();
-            paramInfoList.add(new IndexedDynamicParamInfo(index));
+            IndexedDynamicParamInfo indexedDynamicParamInfo = new IndexedDynamicParamInfo(index);
+            indexedDynamicParamInfo.setDynamicKey(dynamicParam.getDynamicKey());
+            paramInfoList.add(indexedDynamicParamInfo);
             return;
         }
 

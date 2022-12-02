@@ -26,7 +26,7 @@ import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
 import org.apache.calcite.sql.SqlAlterTableGroup;
@@ -39,8 +39,8 @@ public class LogicalAlterTableGroupSplitPartitionByHotValueHandler extends Logic
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
-        LogicalAlterTableGroupSplitPartitionByHotValue alterTableGroupSplitPartitionByHotValue =
-            (LogicalAlterTableGroupSplitPartitionByHotValue) logicalDdlPlan;
+        LogicalAlterTableSplitPartitionByHotValue alterTableGroupSplitPartitionByHotValue =
+            (LogicalAlterTableSplitPartitionByHotValue) logicalDdlPlan;
         alterTableGroupSplitPartitionByHotValue.preparedData(executionContext);
         AlterTableGroupSplitPartitionByHotValuePreparedData preparedData =
             alterTableGroupSplitPartitionByHotValue.getPreparedData();
@@ -69,6 +69,7 @@ public class LogicalAlterTableGroupSplitPartitionByHotValueHandler extends Logic
         AlterTableGroupUtils.alterTableGroupPreCheck(
             (SqlAlterTableGroup) (logicalDdlPlan.relDdl
                 .getSqlNode()),
+            logicalDdlPlan.getSchemaName(),
             executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

@@ -90,8 +90,7 @@ public class LocalExchangeConsumerFactory implements ConsumeExecutorFactory {
                 localExchanger = new PartitioningExchanger(outputBufferMemoryManager, consumerExecutors,
                     this.status,
                     localExchange.isAsyncConsume(), localExchange.getTypes(),
-                    localExchange
-                        .getPartitionChannels(),
+                    localExchange.getPartitionChannels(),
                     localExchange.getKeyTypes(), context);
             }
             break;

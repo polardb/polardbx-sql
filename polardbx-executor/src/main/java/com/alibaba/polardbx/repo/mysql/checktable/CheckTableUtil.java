@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.repo.mysql.checktable;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.mysql.jdbc.Field;
 import com.mysql.jdbc.MysqlErrorNumbers;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -147,7 +149,7 @@ public class CheckTableUtil {
                 logger.error(e);
             }
 
-            if (ex != null) {
+            if (ex != null && !ConfigDataMode.isFastMock()) {
                 throw GeneralUtil.nestedException(ex);
             }
         }
@@ -237,7 +239,7 @@ public class CheckTableUtil {
         return localPartitionMap;
     }
 
-    public static TableCheckResult verifyTableAndGsiMeta(TableDescription tableDesc, TableDescription gsiDesc){
+    public static TableCheckResult verifyTableAndGsiMeta(TableDescription tableDesc, TableDescription gsiDesc) {
         TableCheckResult tableCheckResult = new TableCheckResult();
         tableCheckResult.setTableDesc(gsiDesc);
         tableCheckResult.setExist(true);
@@ -262,30 +264,31 @@ public class CheckTableUtil {
         return tableCheckResult;
     }
 
-    public static TableCheckResult verifylogicalAndPhysicalMeta(TableDescription physicalTableDesc,  List<FieldDescription> logicalMetaDescs){
+    public static TableCheckResult verifylogicalAndPhysicalMeta(TableDescription physicalTableDesc,
+                                                                List<FieldDescription> logicalMetaDescs) {
         TableCheckResult tableCheckResult = new TableCheckResult();
         tableCheckResult.setTableDesc(physicalTableDesc);
         tableCheckResult.setExist(true);
 
-        Map<String, FieldDescription> physicalDescs =  physicalTableDesc.getPhysicalOrderFields();
+        Map<String, FieldDescription> physicalDescs = physicalTableDesc.getPhysicalOrderFields();
 //        List<FieldDescription> physicalDescs = Arrays.asList(logicalTablePhysicalDesc.values().toArray(new FieldDescription[0]));
         Set<String> fieldNameSet = new HashSet<>();
-        for(FieldDescription logicalMetaDesc: logicalMetaDescs){
+        for (FieldDescription logicalMetaDesc : logicalMetaDescs) {
             String fieldName = logicalMetaDesc.fieldName;
             fieldNameSet.add(fieldName);
             FieldDescription physicalDesc = physicalDescs.get(fieldName);
-            if(physicalDesc != null){
-                if(!physicalDesc.equalsLogicalAndPhysicalMeta(logicalMetaDesc)) {
+            if (physicalDesc != null) {
+                if (!physicalDesc.equalsLogicalAndPhysicalMeta(logicalMetaDesc)) {
                     tableCheckResult.setFieldDescTheSame(false);
                     tableCheckResult.addIncorrectFieldDescMaps(physicalDesc);
                 }
-            }else{
+            } else {
                 tableCheckResult.addMissingFieldDesc(logicalMetaDesc);
             }
         }
         Set<String> unexpectedFieldNames = physicalDescs.keySet();
         unexpectedFieldNames.removeAll(fieldNameSet);
-        for(String unexpectedFieldName:unexpectedFieldNames){
+        for (String unexpectedFieldName : unexpectedFieldNames) {
             tableCheckResult.addUnexpectedFieldDesc(physicalDescs.get(unexpectedFieldName));
         }
         return tableCheckResult;

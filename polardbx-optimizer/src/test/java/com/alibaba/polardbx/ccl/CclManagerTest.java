@@ -493,7 +493,6 @@ public class CclManagerTest {
         } catch (TddlRuntimeException e) {
             long duration = (System.nanoTime() - startTime) / 1000000;
             Assert.assertTrue(duration >= 1000);
-            System.out.println(ExceptionUtils.getFullStackTrace(e));
             throw e;
         }
         Assert.assertTrue(false);
@@ -724,7 +723,7 @@ public class CclManagerTest {
     @Test
     public void test21() {
         String sql = "select ?";
-        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(sql, null, null, true, true);
+        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(dbName, sql, null, null, true, true);
         Assert.assertTrue(sql.hashCode() == cacheKey.getTemplateHash());
     }
 
@@ -742,24 +741,28 @@ public class CclManagerTest {
 
         @Override
         protected void doWait(ExecutionContext executionContext) {
+//            System.out.println("doWait " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), WAIT);
             super.doWait(executionContext);
         }
 
         @Override
         protected void doRun(ExecutionContext executionContext) {
+//            System.out.println("doRun " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), RUN);
             super.doRun(executionContext);
         }
 
         @Override
         protected void doKill(ExecutionContext executionContext) {
+//            System.out.println("doKill " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), KILL);
             super.doKill(executionContext);
         }
 
         @Override
         protected void doNone(ExecutionContext executionContext) {
+//            System.out.println("doNone " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), NONE);
         }
 
@@ -795,7 +798,7 @@ public class CclManagerTest {
 
     static PlanCache.CacheKey newCacheKey(String originSql) {
         try {
-            PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(originSql, "", Lists.newArrayList(), true, true);
+            PlanCache.CacheKey cacheKey = new PlanCache.CacheKey("", originSql, "", Lists.newArrayList(), true, true);
             return cacheKey;
         } catch (Exception e) {
             throw new RuntimeException(e);

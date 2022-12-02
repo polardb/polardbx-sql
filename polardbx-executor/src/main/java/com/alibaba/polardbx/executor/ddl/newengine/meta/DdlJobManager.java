@@ -93,13 +93,20 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
             }
 
             DdlEngineRecord jobRecord = buildJobRecord(jobId, ddlJob, ddlContext);
-            List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, ddlJob);
+            List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, task.getRootJobId(), ddlJob);
 
             jobRecord.taskGraph = ddlJob.serializeTasks();
             jobRecord.responseNode = DdlHelper.buildSubJobKey(task.getTaskId());
             DdlEngineTaskRecord parentTaskRecord = TaskHelper.toDdlEngineTaskRecord(task);
 
             long parentJobId = task.getJobId();
+            if (ddlContext.getParentDdlContext() != null) {
+                DdlContext curDdlContext = ddlContext;
+                do {
+                    curDdlContext = curDdlContext.getParentDdlContext();
+                    parentJobId = curDdlContext.getJobId();
+                } while (curDdlContext.getParentDdlContext() != null);
+            }
             long acquireResourceJobId = task.isParentAcquireResource() ? parentJobId : jobId;
             storeJobImpl(ddlContext, ddlJob, jobRecord, taskRecords, parentTaskRecord, acquireResourceJobId);
             return jobId;
@@ -108,9 +115,11 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         }
     }
 
-    public long storeSubJob(long parentJobId, long parentTaskId, DdlJob ddlJob, DdlContext ddlContext, boolean forRollback){
+    public long storeSubJob(long parentJobId, long parentTaskId, DdlJob ddlJob, DdlContext ddlContext,
+                            boolean forRollback) {
         DdlEngineTaskRecord taskRecord = fetchTaskRecord(parentJobId, parentTaskId);
-        return storeSubJob((SubJobTask) TaskHelper.fromDdlEngineTaskRecord(taskRecord), ddlJob, ddlContext, forRollback);
+        return storeSubJob((SubJobTask) TaskHelper.fromDdlEngineTaskRecord(taskRecord), ddlJob, ddlContext,
+            forRollback);
     }
 
     /**
@@ -121,10 +130,10 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         ddlContext.setJobId(jobId);
 
         DdlEngineRecord jobRecord = buildJobRecord(jobId, ddlJob, ddlContext);
-        List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, ddlJob);
+        List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, jobId, ddlJob);
         jobRecord.taskGraph = ddlJob.serializeTasks();
 
-        FailPoint.inject(FailPointKey.FP_PAUSE_DDL_JOB_ONCE_CREATED, ()->{
+        FailPoint.inject(FailPointKey.FP_PAUSE_DDL_JOB_ONCE_CREATED, () -> {
             jobRecord.state = DdlState.PAUSED.name();
         });
 
@@ -170,6 +179,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         final String schemaName = ddlContext.getSchemaName();
         Set<String> sharedResource = new HashSet<>(16);
         addDefaultSharedResourceIfNecessary(sharedResource, ddlContext);
+        sharedResource.addAll(ddlJob.getSharedResources());
 
         try {
             DdlEngineResourceManager.startAcquiringLock(schemaName, ddlContext);
@@ -181,7 +191,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                 ddlJob.getExcludeResources(),
                 storeDdlRecord
             );
-        }finally {
+        } finally {
             DdlEngineResourceManager.finishAcquiringLock(schemaName, ddlContext);
         }
         return true;
@@ -318,17 +328,17 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         return record;
     }
 
-    private List<DdlEngineTaskRecord> buildTaskRecords(Long jobId, DdlJob ddlJob) {
+    private List<DdlEngineTaskRecord> buildTaskRecords(Long jobId, Long rootJobId, DdlJob ddlJob) {
         if (jobId == null) {
             throw GeneralUtil.nestedException("unexpected error. jobId is null while initiating task record");
         }
-        TopologicalSorter taskIterator = ddlJob.createTaskIterator();
-        if (ddlJob == null || taskIterator.hasNext() == false) {
+        if (ddlJob == null || ddlJob.getTaskCount() == 0) {
             return new ArrayList<>();
         }
-        List<DdlTask> taskList = taskIterator.getAllTasks();
+        List<DdlTask> taskList = ddlJob.getAllTasks();
         List<DdlEngineTaskRecord> result = taskList.stream().map(e -> {
             e.setJobId(jobId);
+            e.setRootJobId(rootJobId);
             if (e.getTaskId() == null) {
                 e.setTaskId(ID_GENERATOR.nextId());
             }
@@ -417,8 +427,8 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         }.execute();
     }
 
-    public int cleanUpArchive(long minutes){
-        return new DdlEngineAccessorDelegate<Integer>(){
+    public int cleanUpArchive(long minutes) {
+        return new DdlEngineAccessorDelegate<Integer>() {
             @Override
             protected Integer invoke() {
                 int count = engineAccessor.cleanUpArchive(minutes);
@@ -427,21 +437,21 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         }.execute();
     }
 
-    private void validateDdlStateContains(DdlState currentState, Set<DdlState> ddlStateSet){
+    private void validateDdlStateContains(DdlState currentState, Set<DdlState> ddlStateSet) {
         Preconditions.checkNotNull(ddlStateSet);
         Preconditions.checkNotNull(currentState);
-        if(ddlStateSet.contains(currentState)){
+        if (ddlStateSet.contains(currentState)) {
             return;
         }
         throw new TddlNestableRuntimeException(String.format(
             "current ddl state:[%s] is not finished", currentState.name()));
     }
 
-    private void addDefaultSharedResourceIfNecessary(Set<String> sharedResource, DdlContext ddlContext){
-        if(ddlContext.isSubJob()){
+    private void addDefaultSharedResourceIfNecessary(Set<String> sharedResource, DdlContext ddlContext) {
+        if (ddlContext.isSubJob()) {
             return;
         }
-        if(DdlType.needDefaultDdlShareLock(ddlContext.getDdlType())){
+        if (DdlType.needDefaultDdlShareLock(ddlContext.getDdlType())) {
             sharedResource.add(ddlContext.getSchemaName());
         }
     }

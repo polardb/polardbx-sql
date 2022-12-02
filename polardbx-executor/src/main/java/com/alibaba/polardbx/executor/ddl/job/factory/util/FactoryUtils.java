@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.util;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -32,17 +33,22 @@ public class FactoryUtils {
     /**
      * for validate create table with new single/broadcast table group
      */
-    public static void checkDefaultTableGroup(String schemaName,
-                                              PartitionInfo partitionInfo,
-                                              PhysicalPlanData physicalPlanData,
-                                              boolean isCreateTableGroup,
-                                              boolean checkSingleTgNotExists,
-                                              boolean checkBroadcastTgNotExists) {
+    public static Pair<Boolean, Boolean> checkDefaultTableGroup(String schemaName,
+                                                                PartitionInfo partitionInfo,
+                                                                PhysicalPlanData physicalPlanData,
+                                                                boolean isCreateTableGroup) {
         boolean isSigleTable = false;
         boolean isBroadCastTable = false;
         boolean lockSingleGroup = false;
         boolean lockbroadcastGroup = false;
+        boolean checkSingleTgNotExists = false;
+        boolean checkBroadcastTgNotExists = false;
         if (partitionInfo != null) {
+            if ((partitionInfo.getLocality() != null && !partitionInfo.getLocality().isEmpty()
+                || partitionInfo.getBuildNoneDefaultSingleGroup())) {
+                return new Pair<>(false, false);
+            }
+
             isSigleTable = partitionInfo.isGsiSingleOrSingleTable();
             isBroadCastTable = partitionInfo.isGsiBroadcastOrBroadcast();
 
@@ -57,7 +63,8 @@ public class FactoryUtils {
                     TableGroupRecord record = tableGroupConfig.getTableGroupRecord();
                     if (record.tg_type == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
                         lockbroadcastGroup = true;
-                    } else if (record.tg_type == TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG) {
+                    } else if (record.tg_type == TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG
+                        || record.tg_type == TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG) {
                         lockSingleGroup = true;
                     }
                 }
@@ -75,8 +82,8 @@ public class FactoryUtils {
                 }
             }
         }
+        return new Pair<>(checkSingleTgNotExists, checkBroadcastTgNotExists);
     }
-
 
     public static List<TableGroupConfig> getTableGroupConfigByTableName(String schemaName, List<String> tableNames) {
         List<TableGroupConfig> results = new ArrayList<>();

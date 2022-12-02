@@ -25,7 +25,6 @@ import java.util.List;
  * @author chenghui.lch
  */
 
-@Ignore("fix by ???")
 public class PartitionTableDdlTest extends PartitionAutoLoadSqlTestBase {
 
     public PartitionTableDdlTest(AutoLoadSqlTestCaseParams parameter) {
@@ -34,6 +33,6 @@ public class PartitionTableDdlTest extends PartitionAutoLoadSqlTestBase {
 
     @Parameterized.Parameters(name = "{index}: SubTestCase {0}")
     public static List<AutoLoadSqlTestCaseParams> parameters() {
-        return getParameters(PartitionTableDdlTest.class, 0, false);
+        return getParameters(PartitionTableDdlTest.class, 3, true);
     }
 }

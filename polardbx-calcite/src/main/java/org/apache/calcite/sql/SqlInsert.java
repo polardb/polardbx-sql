@@ -155,7 +155,7 @@ public class SqlInsert extends SqlCall implements SqlHint {
     return source;
   }
 
-  public void setSource(SqlSelect source) {
+  public void setSource(SqlNode source) {
     this.source = source;
   }
 
@@ -228,12 +228,8 @@ public class SqlInsert extends SqlCall implements SqlHint {
       columnList.unparse(writer, opLeft, opRight);
     }
     writer.newlineAndIndent();
-    if (source.getKind() == SqlKind.UNION) {  // if it's a union, don't add brackets.
-      writer.getDialect().unparseCall(writer, (SqlCall) source, 0, 0);
-    } else {
-      source.unparse(writer, 0, 0);
-    }
-    
+    source.unparse(writer, 0, 0);
+
     if (updateList.size() > 0) {
         writer.sep("ON DUPLICATE KEY UPDATE");
         final SqlWriter.Frame frame = writer.startList("", "");
@@ -259,6 +255,14 @@ public class SqlInsert extends SqlCall implements SqlHint {
   public void setHints(SqlNodeList hints) {
     this.hints = hints;
   }
+
+  @Override public SqlNode clone(SqlParserPos pos) {
+      return create(this.getKind(), pos, this.keywords, this.targetTable,
+          this.source, this.columnList, this.updateList, this.batchSize,
+          this.hints);
+  }
+
+
 }
 
 // End SqlInsert.java

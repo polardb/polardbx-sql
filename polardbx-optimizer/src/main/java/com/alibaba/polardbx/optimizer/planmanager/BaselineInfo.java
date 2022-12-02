@@ -19,17 +19,25 @@ package com.alibaba.polardbx.optimizer.planmanager;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 
 public class BaselineInfo {
@@ -51,6 +59,8 @@ public class BaselineInfo {
     private boolean dirty = false;
 
     private String extend;
+
+    private Set<Point> pointSet = Sets.newHashSet();
 
     private BaselineInfo() {
     }
@@ -141,7 +151,7 @@ public class BaselineInfo {
         }
     }
 
-    public static String serializeToJson(BaselineInfo baselineInfo) {
+    public static String serializeToJson(BaselineInfo baselineInfo, boolean simpleMode) {
         JSONObject baselineInfoJson = new JSONObject();
         baselineInfoJson.put("id", baselineInfo.getId());
         baselineInfoJson.put("parameterSql", baselineInfo.getParameterSql());
@@ -151,16 +161,25 @@ public class BaselineInfo {
         for (Map.Entry<Integer, PlanInfo> entry : baselineInfo.getAcceptedPlans().entrySet()) {
             Integer planInfoId = entry.getKey();
             PlanInfo planInfo = entry.getValue();
-            acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
+            if (simpleMode) {
+                if (planInfo.getChooseCount() > InstConfUtil.getInt(SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL)) {
+                    acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
+                }
+            } else {
+                acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
+            }
         }
         baselineInfoJson.put("acceptedPlans", acceptedPlansMap);
 
         Map<String, String> unacceptedPlansMap = new HashMap<>();
-        for (Map.Entry<Integer, PlanInfo> entry : baselineInfo.getUnacceptedPlans().entrySet()) {
-            Integer planInfoId = entry.getKey();
-            PlanInfo planInfo = entry.getValue();
-            acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
+        if (!simpleMode) {
+            for (Map.Entry<Integer, PlanInfo> entry : baselineInfo.getUnacceptedPlans().entrySet()) {
+                Integer planInfoId = entry.getKey();
+                PlanInfo planInfo = entry.getValue();
+                acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
+            }
         }
+
         baselineInfoJson.put("unacceptedPlans", unacceptedPlansMap);
 
         return baselineInfoJson.toJSONString();
@@ -168,8 +187,6 @@ public class BaselineInfo {
 
     /**
      * base info , just for log
-     * @param baselineInfo
-     * @return
      */
     public static String serializeBaseInfoToJson(BaselineInfo baselineInfo) {
         JSONObject baselineInfoJson = new JSONObject();
@@ -243,5 +260,67 @@ public class BaselineInfo {
         planInfos.addAll(getAcceptedPlans().values());
         planInfos.addAll(getUnacceptedPlans().values());
         return planInfos;
+    }
+
+    public Set<Point> getPointSet() {
+        return pointSet;
+    }
+
+    public void setPointSet(Set<Point> pointSet) {
+        this.pointSet = pointSet;
+    }
+
+    public Collection<PlanInfo> getFixPlans() {
+        Collection<PlanInfo> fixPlans = Sets.newHashSet();
+        for (PlanInfo planInfo : acceptedPlans.values()) {
+            if (planInfo.isFixed()) {
+                fixPlans.add(planInfo);
+            }
+        }
+        return fixPlans;
+    }
+
+    public void merge(BaselineInfo t) {
+        if (!parameterSql.equals(t.parameterSql)) {
+            return;
+        }
+
+        // only merge acceptedPlans
+        int maxAcceptedPlans = InstConfUtil.getInt(SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE);
+        for (PlanInfo planInfo : t.getAcceptedPlans().values()) {
+            if (acceptedPlans.containsKey(planInfo.getId())) {
+                continue;
+            } else {
+                acceptedPlans.put(planInfo.getId(), planInfo);
+            }
+        }
+
+        // Remove accepted plan until the size fits SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE
+        while (acceptedPlans.size() >= maxAcceptedPlans) {
+            int minChooseCount = Integer.MAX_VALUE;
+            int toRemove = -1;
+            for (PlanInfo p : acceptedPlans.values()) {
+                if (p.getChooseCount() <= minChooseCount) {
+                    minChooseCount = p.getChooseCount();
+                    toRemove = p.getId();
+                }
+            }
+            acceptedPlans.remove(toRemove);
+        }
+
+        // merge point
+        Set<Point> newPoints = new HashSet<>();
+
+        Stream<Point> pointSetStream = pointSet.stream()
+            .filter(point -> point != null)
+            .filter(point -> acceptedPlans.containsKey(point.getPlanId()));
+
+        Stream<Point> targetPointSetStream = t.getPointSet().stream()
+            .filter(point -> point != null)
+            .filter(point -> acceptedPlans.containsKey(point.getPlanId()));
+
+        newPoints.addAll(Stream.concat(pointSetStream, targetPointSetStream).collect(Collectors.toList()));
+
+        pointSet = newPoints;
     }
 }

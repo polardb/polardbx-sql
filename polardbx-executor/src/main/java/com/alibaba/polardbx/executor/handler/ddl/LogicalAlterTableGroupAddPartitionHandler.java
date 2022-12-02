@@ -36,7 +36,7 @@ public class LogicalAlterTableGroupAddPartitionHandler extends LogicalCommonDdlH
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         LogicalAlterTableGroupAddPartition logicalAlterTableGroupAddPatition =
             (LogicalAlterTableGroupAddPartition) logicalDdlPlan;
-        logicalAlterTableGroupAddPatition.preparedData();
+        logicalAlterTableGroupAddPatition.preparedData(executionContext);
         CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupAddPatition.getPreparedData());
         return AlterTableGroupAddPartitionJobFactory
             .create(logicalAlterTableGroupAddPatition.relDdl, logicalAlterTableGroupAddPatition.getPreparedData(),
@@ -47,6 +47,7 @@ public class LogicalAlterTableGroupAddPartitionHandler extends LogicalCommonDdlH
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
             (SqlAlterTableGroup) (((LogicalAlterTableGroupAddPartition) logicalDdlPlan).relDdl.getSqlNode()),
+            logicalDdlPlan.getSchemaName(),
             executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

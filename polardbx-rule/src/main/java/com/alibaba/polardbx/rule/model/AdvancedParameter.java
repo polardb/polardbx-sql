@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.rule.model;
 
 import com.alibaba.polardbx.common.utils.time.old.DateUtils;
+import com.alibaba.polardbx.rule.utils.GroovyRuleConstant;
 import com.taobao.tddl.common.utils.TddlToStringStyle;
 import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.Rule;
@@ -50,7 +51,12 @@ public class AdvancedParameter extends Rule.RuleColumn {
     /**
      * 叠加次数，给枚举器用的
      */
-    public final Integer cumulativeTimes;
+    public Integer cumulativeTimes;
+
+    /**
+     * 分库分表规则中定义的原始的枚举次数
+     */
+    public Integer cumulativeTimesInRule;
     /**
      * 决定当前参数是否允许范围查询如>= <= ...
      */
@@ -58,7 +64,7 @@ public class AdvancedParameter extends Rule.RuleColumn {
     /**
      * 自增的类型，包括
      */
-    public final AtomIncreaseType atomicIncreateType;
+    public AtomIncreaseType atomicIncreateType;
     /**
      * 起始与结束值对象列表，通过"|"分割
      */
@@ -85,9 +91,11 @@ public class AdvancedParameter extends Rule.RuleColumn {
                              AtomIncreaseType atomicIncreateType, Range[] rangeObjectArray,
                              Rule exprRuleOfAdvancedParameter) {
         super(key, needAppear);
+
         this.atomicIncreateValue = atomicIncreateValue;
         this.atomicIncreateType = atomicIncreateType;
         this.cumulativeTimes = cumulativeTimes;
+        this.cumulativeTimesInRule = cumulativeTimes;
         this.rangeArray = rangeObjectArray;
 
         if (atomicIncreateValue != null) {
@@ -117,6 +125,20 @@ public class AdvancedParameter extends Rule.RuleColumn {
                         String groovyFunName = GroovyRuleShardFuncFinder.groovyDateMethodFunctionList.get(i);
                         if (expr.contains(groovyFunName)) {
                             hashFuncType = groovyFunName;
+                            if (groovyFunName.equals(GroovyRuleConstant.YYYY_WEEK_I_METHOD) || groovyFunName.equals(
+                                GroovyRuleConstant.YYYY_WEEK_I_OPT_METHOD)) {
+                                /**
+                                 * YYYYWEEK change to use the day as min enum unit, so total enum time use 366
+                                 */
+                                this.atomicIncreateType = AtomIncreaseType.DATE;
+                                int oldCumulativeTimes = this.cumulativeTimes;
+                                this.cumulativeTimes = Integer.valueOf((oldCumulativeTimes / 53) + 1) * 366;
+                                if (this.rangeArray != null && this.rangeArray.length > 0) {
+                                    Range rng = this.rangeArray[0];
+                                    this.rangeArray[0] = new Range(rng.start, cumulativeTimes);
+                                }
+
+                            }
                             break;
                         }
                     }
@@ -219,6 +241,9 @@ public class AdvancedParameter extends Rule.RuleColumn {
                  */
                 @SuppressWarnings("deprecation")
                 Date specialDate = new Date(1908 - 1900, 1 - 1, 1);
+                c.setTime(specialDate);
+            } else if (atomicIncreateType == AtomIncreaseType.DATE) {
+                Date specialDate = new Date(1928 - 1900, 1 - 1, 1);
                 c.setTime(specialDate);
             }
             int startYear = 0;
@@ -482,6 +507,14 @@ public class AdvancedParameter extends Rule.RuleColumn {
 
     public String toString() {
         return ToStringBuilder.reflectionToString(this, TddlToStringStyle.DEFAULT_STYLE);
+    }
+
+    public Integer getCumulativeTimesInRule() {
+        return cumulativeTimesInRule;
+    }
+
+    public void setCumulativeTimesInRule(Integer cumulativeTimesInRule) {
+        this.cumulativeTimesInRule = cumulativeTimesInRule;
     }
 
     /**

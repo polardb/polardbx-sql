@@ -253,8 +253,11 @@ public class PartitionInfoManager extends AbstractLifecycle {
             PartInfoCtx partCtx = this.partInfoCtxCache.computeIfAbsent(tableName,
                 (k) -> new PartInfoCtx(this, k, tableGroupId));
             partCtx.rebuild(tablePartitionConfig, pgMap);
-
-            rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(tableGroupId, schemaName, tableName);
+            // don't add the invisible table to tablegroup manager
+            if (partCtx.partInfo != null) {
+                rule.getTableGroupInfoManager()
+                    .reloadTableGroupByGroupIdAndTableName(tableGroupId, schemaName, tableName);
+            }
             Long oldTableGrpId = partCtx.getTableGroupId();
             if (!Objects.equals(oldTableGrpId, tableGroupId)) {
                 rule.getTableGroupInfoManager().invalidate(oldTableGrpId, tableName);
@@ -284,7 +287,10 @@ public class PartitionInfoManager extends AbstractLifecycle {
             (name) -> new PartInfoCtx(this, name, tableGrpId));
         Long oldTableGrpId = partCtx.getTableGroupId();
         partCtx.reload(conn, false);
-        rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(conn, tableGrpId, schemaName, tbName);
+        // don't add the invisible table to tablegroup manager
+        if (partCtx.partInfo != null) {
+            rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(conn, tableGrpId, schemaName, tbName);
+        }
         // remove tables in old table group
         if (!Objects.equals(oldTableGrpId, tableGrpId)) {
             rule.getTableGroupInfoManager().invalidate(oldTableGrpId, tbName);
@@ -312,7 +318,10 @@ public class PartitionInfoManager extends AbstractLifecycle {
         PartInfoCtx partCtx = this.partInfoCtxCache.computeIfAbsent(tbName,
             (name) -> new PartInfoCtx(this, name, tableGrpId));
         partCtx.reload(tableMeta, tablePartitionRecords, tablePartitionRecordsFromDelta, false);
-        rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(tableGrpId, schemaName, tbName);
+        // don't add the invisible table to tablegroup manager
+        if (partCtx.partInfo != null) {
+            rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(tableGrpId, schemaName, tbName);
+        }
     }
 
     protected void loadAllPartInfoCtx() {

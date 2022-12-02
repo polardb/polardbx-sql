@@ -30,6 +30,7 @@ import com.alibaba.polardbx.rule.model.AdvancedParameter.AtomIncreaseType;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.UnsupportedEncodingException;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,14 +54,20 @@ public class SimpleRuleProcessor {
         "^\\s*\\(?\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
     private static final String DB_NUMBER_RULE_PATTERN_FORMAT =
         "^\\s*\\(\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)\\.intdiv\\((\\d+)\\)\\s*$";
+    private static final String ONLY_DB_NUMBER_RULE_PATTERN_FORMAT =
+        "^\\s*\\(?\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
     private static final String TB_NUMBER_ABS_RULE_PATTERN_FORMAT =
         "^\\s*\\(?\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\.abs\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
     private static final String DB_NUMBER_ABS_RULE_PATTERN_FORMAT =
         "^\\s*\\(\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\.abs\\(\\)\\s*%\\s*(\\d+)\\)\\.intdiv\\((\\d+)\\)\\s*$";
+    private static final String ONLY_DB_NUMBER_ABS_RULE_PATTERN_FORMAT =
+        "^\\s*\\(\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.longValue\\(\\)\\.abs\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
     private static final String TB_STRING_RULE_PATTERN_FORMAT =
         "^\\s*\\(?\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.hashCode\\(\\)\\.abs\\(\\)\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
     private static final String DB_STRING_RULE_PATTERN_FORMAT =
         "^\\s*\\(\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.hashCode\\(\\)\\.abs\\(\\)\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)\\.intdiv\\((\\d+)\\)\\s*$";
+    private static final String ONLY_DB_STRING_RULE_PATTERN_FORMAT =
+        "^\\s*\\(?\\(?#([0-9a-zA-Z\\u4e00-\\u9fa5_-]+),1,(\\d+)#\\)?\\.hashCode\\(\\)\\.abs\\(\\)\\.longValue\\(\\)\\s*%\\s*(\\d+)\\)?\\s*$";
 
     /* 这个规则是create ddl根据mmdd_i/dd_i生成的 */
     private static final String DB_NUMBER_SPECIAL_DATE_RULE_PATTERN_FORMAT =
@@ -84,6 +91,12 @@ public class SimpleRuleProcessor {
         .compile(DB_NUMBER_SPECIAL_DATE_RULE_PATTERN_FORMAT);
     public static final Pattern TB_NUMBER_SPECIAL_DATE_RULE_PATTERN = Pattern
         .compile(TB_NUMBER_SPECIAL_DATE_RULE_PATTERN_FORMAT);
+    public static final Pattern ONLY_DB_NUMBER_ABS_RULE_PATTERN = Pattern
+        .compile(ONLY_DB_NUMBER_ABS_RULE_PATTERN_FORMAT);
+    public static final Pattern ONLY_DB_NUMBER_RULE_PATTERN = Pattern
+        .compile(ONLY_DB_NUMBER_RULE_PATTERN_FORMAT);
+    public static final Pattern ONLY_DB_STRING_RULE_PATTERN = Pattern
+        .compile(ONLY_DB_STRING_RULE_PATTERN_FORMAT);
 
     public static class SimpleRule {
 
@@ -249,6 +262,10 @@ public class SimpleRuleProcessor {
                 return;
             }
 
+            if (!Objects.equals(dbRule.column, tbRule.column)) {
+                return;
+            }
+
             if (dbRule.type != tbRule.type) {
                 return;
             }
@@ -319,6 +336,33 @@ public class SimpleRuleProcessor {
             }
 
             matcher = DB_STRING_RULE_PATTERN.matcher(expression);
+            if (matcher.matches()) {
+                SimpleRule rule = buildRule(matcher);
+                if (rule != null) {
+                    rule.type = AtomIncreaseType.STRING;
+                }
+                return rule;
+            }
+
+            matcher = ONLY_DB_NUMBER_ABS_RULE_PATTERN.matcher(expression);
+            if (matcher.matches()) {
+                SimpleRule rule = buildRule(matcher);
+                if (rule != null) {
+                    rule.type = AtomIncreaseType.NUMBER_ABS;
+                }
+                return rule;
+            }
+
+            matcher = ONLY_DB_NUMBER_RULE_PATTERN.matcher(expression);
+            if (matcher.matches()) {
+                SimpleRule rule = buildRule(matcher);
+                if (rule != null) {
+                    rule.type = AtomIncreaseType.NUMBER;
+                }
+                return rule;
+            }
+
+            matcher = ONLY_DB_STRING_RULE_PATTERN.matcher(expression);
             if (matcher.matches()) {
                 SimpleRule rule = buildRule(matcher);
                 if (rule != null) {

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
@@ -41,13 +43,15 @@ import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
-import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;
+import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelToXPlanConverter;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelXPlanOptimizer;
+import com.alibaba.polardbx.optimizer.core.planner.Xplanner.SpecialFunctionRelFinder;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SubQueryToSemiJoinRule;
@@ -83,6 +87,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.protobuf.ByteString;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.linq4j.Ord;
@@ -212,6 +217,7 @@ public class LogicalView extends TableScan {
     private boolean expandView = false;
     protected boolean newPartDbTbl = false;
     private BaseQueryOperation queryOperation;
+    private boolean fromMergeIndex = false;
 
     /**
      * For X plan.
@@ -219,11 +225,21 @@ public class LogicalView extends TableScan {
     private RelNode XPlanRel = null;
     private XPlanTemplate XPlan = null;
 
+    /**
+     * For galaxy prepare.
+     */
+    private RelNode galaxyPrepareRel = null;
+    private boolean supportGalaxyPrepare = false;
+    private BytesSql galaxyPrepareSqlTemplateCache = null;
+    private ByteString galaxyPrepareDigest = null;
+
     // Physical query cache
     private SqlNode sqlTemplateCache;
     private String sqlTemplateStringCache;
-    private String lookupSqlTemplateCache; // MPP executor use this to run lookup join
+    private BytesSql lookupSqlTemplateCache; // MPP executor use this to run lookup join
     private ExtractionResult partitionConditionCache;
+
+    private BytesSql bytesSql;
 
     private RelOptCost selfCost;
     private RelMetadataQuery mqCache;
@@ -311,6 +327,7 @@ public class LogicalView extends TableScan {
             this.traitSet = traitSet;
         }
         this.mqCache = RelMetadataQuery.instance();
+        this.fromMergeIndex = newLogicalView.fromMergeIndex;
     }
 
     /**
@@ -512,6 +529,21 @@ public class LogicalView extends TableScan {
         return phyTableScanbuilder.build(executionContext);
     }
 
+    public List<RelNode> getInputWithoutCache(ExecutionContext executionContext) {
+        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+        SqlSelect sqlTemplate = (SqlSelect) getSqlTemplate(executionContext);
+
+        PhyTableScanBuilder phyTableScanbuilder = new PhyTableScanBuilder(sqlTemplate,
+            targetTables,
+            executionContext,
+            this,
+            dbType,
+            schemaName,
+            tableNames,
+            false);
+        return phyTableScanbuilder.build(executionContext);
+    }
+
     public List<RelNode> getInnerInput(UnionOptHelper helper, ExecutionContext executionContext,
                                        boolean forceIgnoreRF) {
         SqlSelect sqlTemplate = (SqlSelect) getSqlTemplate(executionContext);
@@ -560,7 +592,7 @@ public class LogicalView extends TableScan {
         }
     }
 
-    protected Map<String, List<List<String>>> buildTargetTables(ExecutionContext executionContext) {
+    public Map<String, List<List<String>>> buildTargetTables(ExecutionContext executionContext) {
         if (!newPartDbTbl) {
             return buildTargetTablesForShardDbTb(executionContext);
         } else {
@@ -575,13 +607,14 @@ public class LogicalView extends TableScan {
         return rs;
     }
 
-    private void validateSelectedPartitions(boolean isNewPartDb, PartitionInfo partInfo) {
+    private void validateSelectedPartitions(boolean isNewPartDb, PartitionInfo partInfo, boolean isJoin) {
         if (this.partitions != null) {
             if (!isNewPartDb) {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Do not support table with mysql partition.");
             } else {
-                boolean isPartTbl = partInfo.isPartitionedTable();
-                if (!isPartTbl) {
+                boolean singleTbl = partInfo.isSingleTable();
+                boolean broadcastTbl = partInfo.isBroadcastTable();
+                if (singleTbl || (!isJoin && broadcastTbl)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                         "PARTITION () clause on non partitioned table");
                 }
@@ -590,33 +623,69 @@ public class LogicalView extends TableScan {
         }
     }
 
-    protected void filterPrunedResultBySelectedPartitions(List<PartPrunedResult> resultList) {
-        if (this.partitions != null && resultList.size() > 1) {
-            throw GeneralUtil
-                .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    "Not support to do partition selection with join pushed"));
+    private void buildPrunedResultByTargetTablesHintCache(List<PartPrunedResult> resultList) {
+        Map<String, List<List<String>>> targetTbls = this.targetTablesHintCache;
+        int logTbNum = this.tableNames.size();
+        List<PartPrunedResult> prunedResults = new ArrayList<>();
+        for (int t = 0; t < logTbNum; t++) {
+
+            String logTb = this.tableNames.get(t);
+            PartitionInfo partInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+                .getPartitionInfo(logTb);
+
+            PartPrunedResult prunedResult = new PartPrunedResult();
+            BitSet partBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSet(partInfo);
+            for (Map.Entry<String, List<List<String>>> targetTblIem : targetTbls.entrySet()) {
+                String grp = targetTblIem.getKey();
+                List<List<String>> phyTblsList = targetTblIem.getValue();
+                for (int i = 0; i < phyTblsList.size(); i++) {
+                    List<String> phyTbsInPartGrp = phyTblsList.get(i);
+                    String phyTb = phyTbsInPartGrp.get(t);
+                    PartitionSpec pSpec = partInfo.getPartSpecSearcher().getPartSpec(grp, phyTb);
+                    if (pSpec != null) {
+                        partBitSet.set(pSpec.getPosition().intValue() - 1);
+                    }
+                }
+            }
+            prunedResult.setPartInfo(partInfo);
+            prunedResult.setPartBitSet(partBitSet);
+            prunedResults.add(prunedResult);
         }
 
+        if (resultList != null) {
+            resultList.addAll(prunedResults);
+        }
+
+    }
+
+    private void filterPrunedResultBySelectedPartitions(List<PartPrunedResult> resultList) {
         if (this.partitions != null) {
-            PartitionInfo partInfo = resultList.get(0).getPartInfo();
-            if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE) {
-                SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
-                Set<Integer> selectedPartPostSet = new HashSet<>();
-                for (SqlNode partNameAst : partNamesAst.getList()) {
-                    String partName = ((SqlIdentifier) partNameAst).getLastName();
-                    PartitionSpec pSpec = partInfo.getPartitionBy().getPartitionByPartName(partName);
-                    if (pSpec == null) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                            String.format("Unknown partition '%s' in table '%s'", partName, partInfo.getTableName()));
+            for (int i = 0; i < resultList.size(); i++) {
+                PartitionInfo partInfo = resultList.get(i).getPartInfo();
+                if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
+                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE) {
+                    SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
+                    Set<Integer> selectedPartPostSet = new HashSet<>();
+                    for (SqlNode partNameAst : partNamesAst.getList()) {
+                        String partName = ((SqlIdentifier) partNameAst).getLastName();
+                        PartitionSpec pSpec = partInfo.getPartitionBy().getPartitionByPartName(partName);
+                        if (pSpec == null) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                                String.format("Unknown partition '%s' in table '%s'", partName,
+                                    partInfo.getTableName()));
+                        }
+                        selectedPartPostSet.add(pSpec.getPosition().intValue());
                     }
-                    selectedPartPostSet.add(pSpec.getPosition().intValue());
+                    BitSet
+                        partSetSelected =
+                        PartitionPrunerUtils.buildPartitionsBitSetByPartPostSet(partInfo, selectedPartPostSet);
+                    resultList.get(i).getPartBitSet().and(partSetSelected);
+                } else if (partInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
+                    continue;
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        "PARTITION () clause on non partitioned table");
                 }
-                BitSet
-                    partSetSelected =
-                    PartitionPrunerUtils.buildPartitionsBitSetByPartPostSet(partInfo, selectedPartPostSet);
-                resultList.get(0).getPartBitSet().and(partSetSelected);
-            } else {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "PARTITION () clause on non partitioned table");
             }
 
         }
@@ -675,33 +744,26 @@ public class LogicalView extends TableScan {
     }
 
     public SqlNode getSqlTemplate(ExecutionContext executionContext) {
-        return getSqlTemplate(null, executionContext.enablePhySqlCache());
+        return getSqlTemplate(null, executionContext);
     }
 
-    /**
-     * if no cache, return current SqlTemplate
-     */
-    public SqlNode getSqlTemplate() {
-        return getSqlTemplate(null, true);
-    }
-
-    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor, boolean usingCache) {
+    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor, ExecutionContext ec) {
+        boolean usingCache = true;
+        if (ec != null) {
+            usingCache = ec.enablePhySqlCache();
+        }
         if (sqlTemplateHintCache == null) {
             if (visitor == null && scalarList.isEmpty() && correlateVariableScalar.isEmpty()) {
                 if (!usingCache || sqlTemplateCache == null) {
-                    sqlTemplateCache = buildSqlTemplate(null);
+                    sqlTemplateCache = buildSqlTemplate(null, ec);
                 }
                 return sqlTemplateCache;
             } else {
-                return buildSqlTemplate(visitor);
+                return buildSqlTemplate(visitor, ec);
             }
         } else {
             return sqlTemplateHintCache;
         }
-    }
-
-    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor) {
-        return getSqlTemplate(visitor, true);
     }
 
     /**
@@ -711,23 +773,36 @@ public class LogicalView extends TableScan {
         ReplaceTableNameWithQuestionMarkVisitor visitor = new ReplaceTableNameWithQuestionMarkVisitor(schemaName,
             PlannerContext.getPlannerContext(this).getExecutionContext());
         SqlNode sqlTemplate = nativeSqlNode.accept(visitor);
-        tableNames.clear();
-        tableNames.addAll(visitor.getTableNames());
+        if (!visitor.getTableNames().isEmpty()) {
+            tableNames.clear();
+            tableNames.addAll(visitor.getTableNames());
+        }
         this.sqlTemplateHintCache = sqlTemplate;
         return sqlTemplateHintCache;
     }
 
-    public String getSqlTemplateStr() {
+    public String getSqlTemplateStr(ExecutionContext ec) {
         if (isCacheForbidden()) {
-            return RelUtils.toNativeSql(getSqlTemplate(), dbType);
+            return RelUtils.toNativeSql(getSqlTemplate(ec), dbType);
         }
         if (sqlTemplateStringCache == null) {
-            sqlTemplateStringCache = RelUtils.toNativeSql(getSqlTemplate(), dbType);
+            sqlTemplateStringCache = RelUtils.toNativeSql(getSqlTemplate(ec), dbType);
         }
         return sqlTemplateStringCache;
     }
 
-    protected SqlNode buildSqlTemplate(ReplaceCallWithLiteralVisitor replaceCallWithLiteralVisitor) {
+    public BytesSql getBytesSql(SqlNode sqlNode) {
+        if (isCacheForbidden()) {
+            return RelUtils.toNativeBytesSql(sqlNode, dbType);
+        }
+        if (bytesSql == null) {
+            bytesSql = RelUtils.toNativeBytesSql(sqlNode, dbType);
+        }
+        return bytesSql;
+    }
+
+    protected SqlNode buildSqlTemplate(ReplaceCallWithLiteralVisitor replaceCallWithLiteralVisitor,
+                                       ExecutionContext ec) {
         SqlNode sqlTemplate = getNativeSqlNode(replaceCallWithLiteralVisitor);
 
         // process optimizer hint
@@ -746,8 +821,13 @@ public class LogicalView extends TableScan {
             }
         }
 
-        ReplaceTableNameWithQuestionMarkVisitor visitor = new ReplaceTableNameWithQuestionMarkVisitor(schemaName,
-            PlannerContext.getPlannerContext(this).getExecutionContext());
+        if (ec == null) {
+            /**
+             *  If phy sql contains any scalar subquery, then ec should NOT be null
+             */
+            ec = PlannerContext.getPlannerContext(this).getExecutionContext();
+        }
+        ReplaceTableNameWithQuestionMarkVisitor visitor = new ReplaceTableNameWithQuestionMarkVisitor(schemaName, ec);
         return sqlTemplate.accept(visitor);
     }
 
@@ -789,6 +869,28 @@ public class LogicalView extends TableScan {
             XPlanRel = pushedRel;
         }
         return XPlan;
+    }
+
+    public boolean isSupportGalaxyPrepare() {
+        final RelNode pushedRel = getPushedRelNode();
+        if (galaxyPrepareRel != pushedRel) { // Compare the value to check whether the plan changed.
+            final SpecialFunctionRelFinder finder = new SpecialFunctionRelFinder();
+            finder.go(pushedRel);
+            supportGalaxyPrepare = finder.supportGalaxyPrepare();
+            galaxyPrepareRel = pushedRel;
+        }
+        return supportGalaxyPrepare;
+    }
+
+    public ByteString getGalaxyPrepareDigest(ExecutionContext executionContext, BytesSql sqlTemplate) {
+        if (!sqlTemplate.equals(galaxyPrepareSqlTemplateCache)) {
+            // Only generate once.
+            galaxyPrepareSqlTemplateCache = sqlTemplate;
+            // Generate digest with schema name, table name(with table version), sql template.
+            galaxyPrepareDigest =
+                Planner.calcGalaxyPrepareDigest(schemaName, sqlTemplate, tableNames, executionContext);
+        }
+        return galaxyPrepareDigest;
     }
 
     public boolean isXPlanValid() {
@@ -1018,7 +1120,9 @@ public class LogicalView extends TableScan {
         String phyTableString = null;
 
         if (!newPartDbTbl) {
-            List<RelNode> phyTableScans = getInput(executionContext);
+            // don't use cache when using 'explain optimizer'
+            List<RelNode> phyTableScans = executionContext.getCalcitePlanOptimizerTrace().isPresent() ?
+                getInputWithoutCache(executionContext) : getInput(executionContext);
             if (phyTableScans.isEmpty()) {
                 shardCount = 1;
             } else {
@@ -1033,8 +1137,14 @@ public class LogicalView extends TableScan {
             }
             phyTableString = ExplainUtils.getPhyTableString(getTableNames(), phyTableScans);
         } else {
-            List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
-            filterPrunedResultBySelectedPartitions(resultList);
+            List<PartPrunedResult> resultList = new ArrayList<>();
+            if (null == this.targetTablesHintCache) {
+                resultList = PartitionPruner.prunePartitions(this, executionContext);
+                filterPrunedResultBySelectedPartitions(resultList);
+            } else {
+                buildPrunedResultByTargetTablesHintCache(resultList);
+            }
+
             if (resultList.size() == 0) {
                 shardCount = 0;
                 phyTableString = "[]";
@@ -1051,7 +1161,7 @@ public class LogicalView extends TableScan {
                         continue;
                     }
                     phyTableString += "[";
-                    List<PhysicalPartitionInfo> prunedParts = rs.getPrunedParttions();
+                    List<PhysicalPartitionInfo> prunedParts = rs.getPrunedPartitions();
                     shardCount = prunedParts.size();
                     if (shardCount > 10) {
                         phyTableString += prunedParts.get(0).getPartName() + ",";
@@ -1072,7 +1182,6 @@ public class LogicalView extends TableScan {
                     phyTableString += "]";
                 }
             }
-
         }
 
         pw.itemIf("tables", phyTableString, phyTableString != null);
@@ -1080,15 +1189,11 @@ public class LogicalView extends TableScan {
             pw.item("shardCount", shardCount);
         }
 
-//        RelFieldCollation.Direction direction = collationMatchRangePartition();
-//        if (direction != null) {
-//            pw.itemIf("SeqRangeScan", direction.shortString, direction != null);
-//        }
-
         if (isMGetEnabled && join != null) {
-            List<EquiJoinKey> joinKeys = EquiJoinUtils.buildEquiJoinKeys(join, join.getOuter(), join.getInner(),
-                (RexCall) join.getCondition(), join.getJoinType(), true);
-            LookupPredicate predicate = new LookupPredicateBuilder(join).build(joinKeys);
+            List<LookupEquiJoinKey> joinKeys =
+                EquiJoinUtils.buildLookupEquiJoinKeys(join, join.getOuter(), join.getInner(),
+                    (RexCall) join.getCondition(), join.getJoinType(), true);
+            LookupPredicate predicate = new LookupPredicateBuilder(join, new ArrayList<>()).build(joinKeys);
             SqlNode lookupPredicate = predicate.explain();
 
             SqlNode filter = ((SqlSelect) nativeSql).getWhere();
@@ -1123,6 +1228,8 @@ public class LogicalView extends TableScan {
                 pw.item("XPlan", format.printToString(plan));
             }
         }
+
+        pw.itemIf("isDynamicParam", "true", pushDownOpt.couldDynamicPruning());
 
         // FIXME generate correct param for LogicalView
         // StringBuilder builder = new StringBuilder();
@@ -1241,16 +1348,23 @@ public class LogicalView extends TableScan {
         return false;
     }
 
+    public Collection<RelCollation> getCollations() {
+        RelMetadataQuery mq = this.getCluster().getMetadataQuery();
+        synchronized (mq) {
+            return mq.collations(this.getOptimizedPushedRelNodeForMetaQuery());
+        }
+    }
+
     public String getLogicalTableName() {
         return getTableNames().get(0);
     }
 
-    public RelShardInfo getRelShardInfo() {
-        return pushDownOpt.getRelShardInfo(0);
+    public RelShardInfo getRelShardInfo(ExecutionContext ec) {
+        return pushDownOpt.getRelShardInfo(0, ec);
     }
 
-    public RelShardInfo getRelShardInfo(int tableIndex) {
-        return pushDownOpt.getRelShardInfo(tableIndex);
+    public RelShardInfo getRelShardInfo(int tableIndex, ExecutionContext ec) {
+        return pushDownOpt.getRelShardInfo(tableIndex, ec);
     }
 
     public Map<String, Comparative> getComparative() {
@@ -1357,10 +1471,10 @@ public class LogicalView extends TableScan {
         boolean calActualShardCount =
             PlannerContext.getPlannerContext(this).getParamManager()
                 .getBoolean(ConnectionParams.CALCULATE_ACTUAL_SHARD_COUNT_FOR_COST);
+        ExecutionContext executionContext = PlannerContext.getPlannerContext(this).getExecutionContext();
         if (calActualShardCount) {
             try {
                 if (!partitionInfoManager.isNewPartDbTable(logTb)) {
-                    ExecutionContext executionContext = PlannerContext.getPlannerContext(this).getExecutionContext();
                     int shardingTableIndex = 0;
                     for (int i = 0; i < getTableNames().size(); i++) {
                         String tableName = getTableNames().get(i);
@@ -1369,7 +1483,7 @@ public class LogicalView extends TableScan {
                             break;
                         }
                     }
-                    RelShardInfo relShardInfo = getRelShardInfo(shardingTableIndex);
+                    RelShardInfo relShardInfo = getRelShardInfo(shardingTableIndex, executionContext);
                     Map<String, Comparative> comps = relShardInfo.getAllComps();
                     Map<String, Object> calcParams = new HashMap<>();
                     calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
@@ -1377,7 +1491,7 @@ public class LogicalView extends TableScan {
                     m.put(relShardInfo.getTableName(), relShardInfo.getAllFullComps());
                     calcParams.put(CalcParamsAttribute.COM_DB_TB, m);
                     calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
-
+                    calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
                     Map<Integer, ParameterContext> params =
                         executionContext.getParams() == null ? null :
                             executionContext.getParams().getCurrentParameter();
@@ -1389,15 +1503,15 @@ public class LogicalView extends TableScan {
                         targetDB.getTableNames().size()).reduce(0, (a, b) -> a + b).intValue();
 
                 } else {
-                    return PartitionPruner.doPruningByStepInfo(getRelShardInfo().getPartPruneStepInfo(),
-                        PlannerContext.getPlannerContext(this).getExecutionContext()).getPartBitSet().cardinality();
+                    return PartitionPruner.doPruningByStepInfo(getRelShardInfo(executionContext).getPartPruneStepInfo(),
+                        executionContext).getPartBitSet().cardinality();
                 }
             } catch (Throwable t) {
                 // params might be clear, pass
             }
         }
         totalShardCount += getTotalShardCount();
-        return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(), totalShardCount);
+        return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(executionContext), totalShardCount);
     }
 
     protected int getTotalShardCount() {
@@ -1440,11 +1554,13 @@ public class LogicalView extends TableScan {
      */
     public boolean isSingleGroup(boolean allowFalseCondition) {
 
-        TddlRuleManager tddlRuleManager =
-            PlannerContext.getPlannerContext(this).getExecutionContext().getSchemaManager(schemaName)
-                .getTddlRuleManager();
+        ExecutionContext ec = PlannerContext.getPlannerContext(this).getExecutionContext();
+        TddlRuleManager tddlRuleManager = ec.getSchemaManager(schemaName).getTddlRuleManager();
         if (PlannerUtils.allTableSingle(tableNames, schemaName, tddlRuleManager)) {
             return true;
+        }
+        if (pushDownOpt.couldDynamicPruning()) {
+            return false;
         }
         if (tableNames.size() == 1) {
             List<String> shardColumns;
@@ -1462,7 +1578,7 @@ public class LogicalView extends TableScan {
                 PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(getLogicalTableName());
                 shardColumns = partitionInfo.getPartitionColumns();
             }
-            return PlannerUtils.atSingleGroup(shardColumns, getRelShardInfo(), allowFalseCondition);
+            return PlannerUtils.atSingleGroup(shardColumns, getRelShardInfo(ec), allowFalseCondition);
         } else {
             boolean hasOne = false;
             boolean hasMul = false;
@@ -1497,7 +1613,7 @@ public class LogicalView extends TableScan {
                     shardColumns = partitionInfo.getPartitionColumns();
                 }
 
-                if (!PlannerUtils.atSingleGroup(shardColumns, getRelShardInfo(), allowFalseCondition)) {
+                if (!PlannerUtils.atSingleGroup(shardColumns, getRelShardInfo(ec), allowFalseCondition)) {
                     return false;
                 }
                 if (hasMul || hasOne) {
@@ -1679,10 +1795,21 @@ public class LogicalView extends TableScan {
         this.lockMode = lockMode;
     }
 
+    public void optimizePhySql() {
+        getPushDownOpt().optimizePhySql();
+        tableNames = collectTableNames();
+        rebuildPartRoutingPlanInfo();
+    }
+
     public void optimize() {
         getPushDownOpt().optimize();
         tableNames = collectTableNames();
         rebuildPartRoutingPlanInfo();
+    }
+
+    public List<RelNode> getInput(UnionOptHelper helper, ExecutionContext executionContext,
+                                  boolean forceIgnoreRF, SqlSelect sqlTemplate) {
+        return getInnerInput(sqlTemplate, helper, executionContext, forceIgnoreRF);
     }
 
     public List<RelNode> getInput(UnionOptHelper helper, ExecutionContext executionContext,
@@ -1858,7 +1985,7 @@ public class LogicalView extends TableScan {
         this.queryOperation = queryOperation;
     }
 
-    public String getLookupSqlTemplateCache(Supplier<String> generator) {
+    public BytesSql getLookupSqlTemplateCache(Supplier<BytesSql> generator) {
         if (isCacheForbidden()) {
             return generator.get();
         }
@@ -1873,6 +2000,10 @@ public class LogicalView extends TableScan {
             partitionConditionCache = generator.get();
         }
         return partitionConditionCache;
+    }
+
+    public boolean hasDynamicPruning() {
+        return pushDownOpt.couldDynamicPruning();
     }
 
     public static class ReplacedTableCondition {
@@ -1892,14 +2023,17 @@ public class LogicalView extends TableScan {
                 PlannerContext.getPlannerContext(this).getExecutionContext().getSchemaManager(schemaName)
                     .getTddlRuleManager()
                     .getPartitionInfoManager();
+
+            boolean isJoin = tableNames.size() > 1;
             for (int i = 0; i < tableNames.size(); i++) {
                 String tb = tableNames.get(i);
                 PartitionInfo partInfo = partInfoMgr.getPartitionInfo(tb);
-                validateSelectedPartitions(true, partInfo);
+                validateSelectedPartitions(true, partInfo, isJoin);
             }
             return true;
         } else {
-            validateSelectedPartitions(false, null);
+            boolean isJoin = tableNames.size() > 1;
+            validateSelectedPartitions(false, null, isJoin);
             return false;
         }
     }
@@ -2218,10 +2352,18 @@ public class LogicalView extends TableScan {
     public boolean useSelectPartitions() {
         if (this.partitions != null) {
             SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
-            if (partNamesAst.size()  > 0) {
+            if (partNamesAst.size() > 0) {
                 return true;
             }
         }
         return false;
+    }
+
+    public boolean isFromMergeIndex() {
+        return fromMergeIndex;
+    }
+
+    public void setFromMergeIndex(boolean fromMergeIndex) {
+        this.fromMergeIndex = fromMergeIndex;
     }
 }

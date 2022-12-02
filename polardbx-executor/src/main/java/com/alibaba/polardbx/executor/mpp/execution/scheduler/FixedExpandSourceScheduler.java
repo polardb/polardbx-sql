@@ -76,7 +76,7 @@ public class FixedExpandSourceScheduler implements StageScheduler {
                     break;
                 }
                 totalPrefetch = Math.max(
-                    totalPrefetch, ExecUtils.getMppPrefetchNumForLogicalView(info.getDbCount()));
+                    totalPrefetch, ExecUtils.getMppPrefetchNumForLogicalView(info.getSplitParallelism()));
             }
         }
         totalPrefetch = totalPrefetch > totalParallelism ? totalPrefetch : totalParallelism;

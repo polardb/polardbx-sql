@@ -3,6 +3,7 @@ package org.apache.calcite.sql;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlString;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -28,7 +29,7 @@ public class SqlAlterTableAllocateLocalPartition extends SqlAlterSpecification {
 
     @Override
     public List<SqlNode> getOperandList() {
-        return null;
+        return Collections.emptyList();
     }
 
     public List<SqlNode> getPartitions() {

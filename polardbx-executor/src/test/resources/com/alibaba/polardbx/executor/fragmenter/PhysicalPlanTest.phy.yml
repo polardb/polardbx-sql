@@ -1,0 +1,22 @@
+-
+  sql: |
+   /*+TDDL:MPP_RPC_LOCAL_ENABLED=false workload_type=AP ENABLE_MPP=true*/ select id from t_shard_id1 union distinct (select id from t_shard_id2)
+
+  plan: |
+    executortype: mpp
+    the query's maxconcurrentparallelism: 3
+    fragment 2 
+        shuffle output layout: [integer] output layout: [integer]
+        output partitioning: single [] parallelism: 1 
+        hashagg(group="id")
+      remotesource(sourcefragmentids=[0, 1], type=recordtype(integer id))
+    
+    fragment 0 
+        shuffle output layout: [integer] output layout: [integer]
+        output partitioning: fixed [0] parallelism: 1 
+        logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id` from `t_shard_id1` as `t_shard_id1`")
+    
+    fragment 1 
+        shuffle output layout: [integer] output layout: [integer]
+        output partitioning: fixed [0] parallelism: 1 
+        logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `id` from `t_shard_id2` as `t_shard_id2`")

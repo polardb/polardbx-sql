@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -26,7 +27,10 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -35,7 +39,9 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
@@ -79,6 +85,7 @@ import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
 import org.apache.calcite.sql.SqlBinaryStringLiteral;
 import org.apache.calcite.sql.SqlChangeColumn;
 import org.apache.calcite.sql.SqlColumnDeclaration;
+import org.apache.calcite.sql.SqlColumnDeclaration.SpecialIndex;
 import org.apache.calcite.sql.SqlConvertToCharacterSet;
 import org.apache.calcite.sql.SqlDropColumn;
 import org.apache.calcite.sql.SqlDropPrimaryKey;
@@ -90,12 +97,14 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlTableOptions;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.ListUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -105,8 +114,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
+import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapGsiName;
 
 public class LogicalAlterTable extends LogicalTableOperation {
 
@@ -262,7 +274,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
         // i.e. if an ALTER TABLE with a specification that is an explicit or implicit GSI operation,
         // then no any other operation is allowed in this ALTER TABLE statement.
 
-        if (sqlAlterTable.createGsi()) {
+        // Currently only one alter operation is allowed in online alter operation.
+
+        if (validateOnlineModify()) {
+            prepareAlterGsiData(); // Only to include covering gsi
+            prepareAlterTableOnlineModifyColumnData();
+        } else if (sqlAlterTable.createGsi()) {
             prepareCreateData();
         } else {
             if (sqlAlterTable.dropIndex()) {
@@ -284,8 +301,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
         if (repartitionPrepareData == null) {
             repartitionPrepareData = new RepartitionPrepareData();
         }
-        Map<String, List<String>> localIndexes = new HashMap<>();
-        repartitionPrepareData.setLocalIndexes(localIndexes);
+        Map<String, Pair<List<String>, Boolean>> gsiInfo = new HashMap<>();
+        repartitionPrepareData.setGsiInfo(gsiInfo);
 
         final GsiMetaManager.GsiMetaBean gsiMetaBean =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
@@ -308,7 +325,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 localIndex.add(SqlIdentifier.surroundWithBacktick(indexColumn.columnName));
             }
 
-            localIndexes.put(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName, localIndex);
+            gsiInfo.put(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName,
+                new Pair<>(localIndex, indexDetail.nonUnique));
         }
     }
 
@@ -395,11 +413,13 @@ public class LogicalAlterTable extends LogicalTableOperation {
         createIndexWithGsiPreparedData.setGlobalIndexPreparedData(prepareCreateGsiData(indexName, sqlAddIndex));
 
         if (isAutoPartitionTable()) {
-            CreateLocalIndexPreparedData localIndexPreparedData =  prepareCreateLocalIndexData(tableName, indexName, isCreateClusteredIndex(), true);
+            CreateLocalIndexPreparedData localIndexPreparedData =
+                prepareCreateLocalIndexData(tableName, indexName, isCreateClusteredIndex(), true);
             createIndexWithGsiPreparedData.addLocalIndexPreparedData(localIndexPreparedData);
             localIndexPreparedData.setTableVersion(tableMeta.getVersion());
+
+            addLocalIndexOnClusteredTable(createIndexWithGsiPreparedData, indexName, true);
         }
-        addLocalIndexOnClusteredTable(createIndexWithGsiPreparedData, indexName, true);
 
         alterTableWithGsiPreparedData = new AlterTableWithGsiPreparedData();
         alterTableWithGsiPreparedData.setCreateIndexWithGsiPreparedData(createIndexWithGsiPreparedData);
@@ -417,10 +437,14 @@ public class LogicalAlterTable extends LogicalTableOperation {
         boolean isBroadCast;
         Map<SqlNode, RexNode> partBoundExprInfo = null;
         PartitionInfo primaryPartitionInfo = null;
+        String locality = "";
+        String sourceSql = null;
         if (isNewPartDb) {
             primaryPartitionInfo = optimizerContext.getPartitionInfoManager().getPartitionInfo(tableName);
             isBroadCast = primaryPartitionInfo.isBroadcastTable();
             partBoundExprInfo = ((AlterTable) (this.relDdl)).getAllRexExprInfo();
+            locality = primaryPartitionInfo.getLocality().toString();
+            sourceSql = ((SqlAlterTable) ((this.relDdl)).getSqlNode()).getOriginalSql();
         } else {
             isBroadCast = primaryTableRule.isBroadcast();
         }
@@ -439,8 +463,9 @@ public class LogicalAlterTable extends LogicalTableOperation {
             prepareCreateGlobalIndexData(tableName, indexDef.getPrimaryTableDefinition(), indexTableName,
                 primaryTableMeta, false, false, false, indexDef.getDbPartitionBy(),
                 indexDef.getDbPartitions(), indexDef.getTbPartitionBy(), indexDef.getTbPartitions(),
-                indexDef.getPartitioning(), localPartitionDefinitionInfo, isUnique, isClustered, null,
-                partBoundExprInfo);
+                indexDef.getPartitioning(), localPartitionDefinitionInfo, isUnique, isClustered,
+                indexDef.getTableGroupName(),
+                locality, partBoundExprInfo, sourceSql);
         if (isNewPartDb) {
             preparedData.setPrimaryPartitionInfo(primaryPartitionInfo);
         } else {
@@ -482,6 +507,17 @@ public class LogicalAlterTable extends LogicalTableOperation {
             preparedData.setBroadcast(indexDef.isBroadcast());
         }
 
+        if (isNewPartDb) {
+            JoinGroupInfoRecord record = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, null);
+            if (record != null) {
+                SqlIdentifier joinGroup = new SqlIdentifier(record.joinGroupName, SqlParserPos.ZERO);
+                preparedData.setJoinGroupName(joinGroup);
+                if (preparedData.getIndexTablePreparedData() != null) {
+                    preparedData.getIndexTablePreparedData().setJoinGroupName(joinGroup);
+                }
+            }
+        }
+
         return preparedData;
     }
 
@@ -503,8 +539,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
             dropIndexWithGsiPreparedData.getGlobalIndexPreparedData().setTableVersion(tableMeta.getVersion());
             if (isAutoPartitionTable()) {
                 // drop implicit local index
-                dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
-                    prepareDropLocalIndexData(tableName, indexTableName, isCreateClusteredIndex(), true));
+                Set<String> indexes = tableMeta.getLocalIndexNames();
+
+                if (indexes.contains(AUTO_LOCAL_INDEX_PREFIX + unwrapGsiName(indexTableName))) {
+                    dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
+                        prepareDropLocalIndexData(tableName, indexTableName, isCreateClusteredIndex(), true));
+                }
 
                 // drop local index on clustered table
                 dropLocalIndexOnClusteredTable(dropIndexWithGsiPreparedData, gsiMetaBean, indexTableName, true);
@@ -549,7 +589,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
                                 }
                             }
                             TableMeta gsiTableMeta = sm.getTable(clusteredIndexTableName);
-                            AlterTablePreparedData alterTablePreparedData = prepareAlterTableData(clusteredIndexTableName);
+                            AlterTablePreparedData alterTablePreparedData =
+                                prepareAlterTableData(clusteredIndexTableName);
                             alterTablePreparedData.setTableVersion(gsiTableMeta.getVersion());
                             alterTableWithGsiPreparedData.addAlterGlobalIndexPreparedData(alterTablePreparedData);
                         }
@@ -590,7 +631,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexTableName)) {
                     // Add all clustered index except which is dropping.
                     final String clusteredTableName = gsiEntry.getKey();
-                    if (!dropIndexWithGsiPreparedData.hasLocalIndexOnClustered(clusteredTableName)) {
+                    Set<String> indexes =
+                        OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(clusteredTableName)
+                            .getLocalIndexNames();
+
+                    if (!dropIndexWithGsiPreparedData.hasLocalIndexOnClustered(clusteredTableName)
+                        && indexes.contains(AUTO_LOCAL_INDEX_PREFIX + unwrapGsiName(indexTableName))) {
                         DropLocalIndexPreparedData dropLocalIndexPreparedData =
                             prepareDropLocalIndexData(clusteredTableName, null, true, onGsi);
                         dropIndexWithGsiPreparedData.addLocalIndexPreparedData(dropLocalIndexPreparedData);
@@ -647,6 +693,253 @@ public class LogicalAlterTable extends LogicalTableOperation {
         return preparedData;
     }
 
+    private void prepareAlterTableOnlineModifyColumnData() {
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(this.tableName);
+
+        AlterTablePreparedData preparedData = new AlterTablePreparedData();
+        preparedData.setTableVersion(tableMeta.getVersion());
+        preparedData.setSchemaName(schemaName);
+        preparedData.setTableName(tableName);
+
+        List<String> modifiedColumns = getAlteredColumns(sqlAlterTable, SqlAlterTable.ColumnOpt.MODIFY);
+        Map<String, String> changedColumns = new HashMap<>();
+        List<String> updatedColumns = new ArrayList<>(GeneralUtil.emptyIfNull(modifiedColumns));
+
+        String columnName = null;
+
+        boolean isChange = false;
+        boolean isTextOrBlob = false;
+        boolean isUnique = false;
+        String uniqueIndexName = null;
+
+        for (SqlAlterSpecification alterItem : GeneralUtil.emptyIfNull(sqlAlterTable.getAlters())) {
+            if (alterItem instanceof SqlChangeColumn) {
+                SqlChangeColumn changeColumn = (SqlChangeColumn) alterItem;
+                columnName = changeColumn.getOldName().getLastName();
+                changedColumns
+                    .put(changeColumn.getNewName().getLastName(), changeColumn.getOldName().getLastName());
+                preparedData.setModifyColumnName(changeColumn.getOldName().getLastName());
+                isChange = true;
+                preparedData.setNewColumnNullable(changeColumn.getColDef().getNotNull() == null
+                    || changeColumn.getColDef().getNotNull() == SqlColumnDeclaration.ColumnNull.NULL);
+                isTextOrBlob =
+                    changeColumn.getColDef().getDataType().toString().contains("BLOB") || changeColumn.getColDef()
+                        .getDataType().toString().contains("TEXT");
+                isUnique = changeColumn.getColDef().getSpecialIndex() == SpecialIndex.UNIQUE;
+                if (isUnique) {
+                    uniqueIndexName = changeColumn.getNewName().getLastName();
+                }
+            } else {
+                final SqlModifyColumn modifyColumn = (SqlModifyColumn) alterItem;
+                columnName = modifyColumn.getColName().getLastName();
+                updatedColumns.add(columnName);
+                preparedData.setModifyColumnName(columnName);
+
+                String tmpColumnName = TableColumnUtils.generateTemporaryName(columnName);
+                if (tableMeta.getColumnIgnoreCase(tmpColumnName) != null) {
+                    // In case we create a duplicated tmpColumnName, just throw exception and let user retry
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "Generate temporary column name failed, please try again");
+                }
+                preparedData.setTmpColumnName(tmpColumnName);
+                preparedData.setNewColumnNullable(modifyColumn.getColDef().getNotNull() == null
+                    || modifyColumn.getColDef().getNotNull() == SqlColumnDeclaration.ColumnNull.NULL);
+                isTextOrBlob =
+                    modifyColumn.getColDef().getDataType().toString().contains("BLOB") || modifyColumn.getColDef()
+                        .getDataType().toString().contains("TEXT");
+                isUnique = modifyColumn.getColDef().getSpecialIndex() == SpecialIndex.UNIQUE;
+                if (isUnique) {
+                    uniqueIndexName = modifyColumn.getColName().getLastName();
+                }
+            }
+        }
+
+        String checkerColumnName = TableColumnUtils.generateTemporaryName(columnName + "_checker");
+        if (tableMeta.getColumnIgnoreCase(checkerColumnName) != null || checkerColumnName.equalsIgnoreCase(
+            preparedData.getTmpColumnName())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Generate temporary column name failed, please try again");
+        }
+        preparedData.setCheckerColumnName(checkerColumnName);
+
+        String finalColumnName = columnName;
+        final PlannerContext context = (PlannerContext) this.getCluster().getPlanner().getContext();
+        final ParamManager paramManager = context.getParamManager();
+        if (tableMeta.withGsi()) {
+            for (GsiIndexMetaBean indexMeta : tableMeta.getGsiTableMetaBean().indexMap.values()) {
+                if (indexMeta.clusteredIndex || indexMeta.coveringColumns.stream()
+                    .anyMatch(cm -> cm.columnName.equalsIgnoreCase(finalColumnName))) {
+                    if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
+                        && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)
+                        && !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                            "Change column name or type included in GSI is not recommended");
+                    }
+                }
+            }
+        }
+
+        preparedData.setDroppedColumns(Collections.emptyList());
+        preparedData.setAddedColumns(Collections.emptyList());
+        preparedData.setUpdatedColumns(updatedColumns);
+        preparedData.setChangedColumns(changedColumns);
+
+        preparedData.setDroppedIndexes(Collections.emptyList());
+        preparedData.setAddedIndexes(Collections.emptyList());
+        preparedData.setRenamedIndexes(Collections.emptyMap());
+        preparedData.setPrimaryKeyDropped(false);
+        preparedData.setAddedPrimaryKeyColumns(Collections.emptyList());
+
+        final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(preparedData.getModifyColumnName());
+        final RelDataType sourceDataType = columnMeta.getField().getRelType();
+        preparedData.setOldColumnNullable(sourceDataType.isNullable());
+
+        preparedData.setTableComment(null);
+        if (isChange) {
+            preparedData.setOnlineChangeColumn(true);
+        } else {
+            preparedData.setOnlineModifyColumn(true);
+        }
+
+        String modifyColumnName = preparedData.getModifyColumnName();
+
+        Map<String, Map<String, String>> localIndexNewNameMap = new HashMap<>();
+        Map<String, Map<String, String>> localIndexTmpNameMap = new HashMap<>();
+        Map<String, Map<String, IndexMeta>> localIndexMeta = new HashMap<>();
+        Map<String, String> newUniqueIndexNameMap = new HashMap<>();
+
+        // Primary local index
+        Map<String, String> newNameMap = new HashMap<>();
+        Map<String, String> tmpNameMap = new HashMap<>();
+        Map<String, IndexMeta> indexMetaMap = new HashMap<>();
+
+        Set<String> indexNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        genLocalIndexInfo(tableName, tableMeta, modifyColumnName, newNameMap, tmpNameMap, indexMetaMap, isUnique,
+            uniqueIndexName, newUniqueIndexNameMap, indexNameSet);
+
+        if (!newNameMap.isEmpty()) {
+            localIndexNewNameMap.put(tableName, newNameMap);
+            localIndexTmpNameMap.put(tableName, tmpNameMap);
+            localIndexMeta.put(tableName, indexMetaMap);
+        }
+
+        // GSI local index
+        List<String> coveringGsi = new ArrayList<>();
+
+        if (alterTableWithGsiPreparedData != null
+            && alterTableWithGsiPreparedData.getGlobalIndexPreparedData() != null) {
+            for (AlterTablePreparedData gsiTablePreparedData : alterTableWithGsiPreparedData.getGlobalIndexPreparedData()) {
+                coveringGsi.add(gsiTablePreparedData.getTableName());
+            }
+        }
+        if (alterTableWithGsiPreparedData != null
+            && alterTableWithGsiPreparedData.getClusteredIndexPrepareData() != null) {
+            for (AlterTablePreparedData gsiTablePreparedData : alterTableWithGsiPreparedData.getClusteredIndexPrepareData()) {
+                coveringGsi.add(gsiTablePreparedData.getTableName());
+            }
+        }
+
+        for (String gsiName : coveringGsi) {
+            newNameMap = new HashMap<>();
+            tmpNameMap = new HashMap<>();
+            indexMetaMap = new HashMap<>();
+            TableMeta gsiTableMeta = sm.getTable(gsiName);
+            genLocalIndexInfo(gsiName, gsiTableMeta, modifyColumnName, newNameMap, tmpNameMap, indexMetaMap, isUnique,
+                uniqueIndexName, newUniqueIndexNameMap, indexNameSet);
+
+            if (!newNameMap.isEmpty()) {
+                localIndexNewNameMap.put(gsiName, newNameMap);
+                localIndexTmpNameMap.put(gsiName, tmpNameMap);
+                localIndexMeta.put(gsiName, indexMetaMap);
+            }
+        }
+
+        preparedData.setLocalIndexNewNameMap(localIndexNewNameMap);
+        preparedData.setLocalIndexTmpNameMap(localIndexTmpNameMap);
+        preparedData.setLocalIndexMeta(localIndexMeta);
+        preparedData.setNewUniqueIndexNameMap(newUniqueIndexNameMap);
+
+        for (String indexName : indexNameSet) {
+            if (tableMeta.withGsi() && tableMeta.hasGsiIgnoreCase(indexName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Duplicated index name " + indexName);
+            }
+        }
+
+        boolean localIndexWithoutLength =
+            localIndexMeta.values().stream().anyMatch(mp -> mp.values().stream().anyMatch(
+                im -> im.getKeyColumnsExt().stream().anyMatch(
+                    icm -> icm.getColumnMeta().getName().equalsIgnoreCase(finalColumnName) && icm.getSubPart() == 0)));
+
+        if (localIndexWithoutLength && isTextOrBlob) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                String.format("BLOB/TEXT column '%s' used in key specification without a key length", columnName));
+        }
+
+        preparedData.setUseChecker(paramManager.getBoolean(ConnectionParams.OMC_CHECK_AFTER_BACK_FILL));
+        preparedData.setUseSimpleChecker(paramManager.getBoolean(ConnectionParams.OMC_USE_SIMPLE_CHECKER));
+        preparedData.setSkipBackfill(paramManager.getBoolean(ConnectionParams.OMC_SKIP_BACK_FILL));
+        alterTablePreparedData = preparedData;
+    }
+
+    private void genLocalIndexInfo(String tableName, TableMeta tableMeta, String modifyColumnName,
+                                   Map<String, String> newNameMap, Map<String, String> tmpNameMap,
+                                   Map<String, IndexMeta> indexMetaMap, boolean isUnique, String uniqueIndexName,
+                                   Map<String, String> newUniqueIndexNameMap,
+                                   Set<String> outIndexNameSet) {
+        Set<String> tmpIndexNameSet = new HashSet<>();
+        List<IndexMeta> indexMetaList = tableMeta.getSecondaryIndexes();
+        List<String> indexNames = new ArrayList<>();
+        for (IndexMeta indexMeta : indexMetaList) {
+            String indexName = indexMeta.getPhysicalIndexName();
+            indexNames.add(indexName);
+            List<String> columnNames =
+                indexMeta.getKeyColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
+            if (columnNames.stream().noneMatch(cn -> cn.equalsIgnoreCase(modifyColumnName))) {
+                continue;
+            }
+
+            String newIndexName = TableColumnUtils.generateTemporaryName(indexName);
+            if (tmpIndexNameSet.contains(newIndexName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Generate temporary index name failed, please try again");
+            }
+            tmpIndexNameSet.add(newIndexName);
+
+            String tmpIndexName = TableColumnUtils.generateTemporaryName(indexName);
+            if (tmpIndexNameSet.contains(tmpIndexName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Generate temporary index name failed, please try again");
+            }
+            tmpIndexNameSet.add(tmpIndexName);
+
+            indexMetaMap.put(indexName, indexMeta);
+            newNameMap.put(indexName, newIndexName);
+            tmpNameMap.put(indexName, tmpIndexName);
+        }
+
+        for (String newIndexName : newNameMap.values()) {
+            if (newNameMap.containsKey(newIndexName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Generate temporary index name failed, please try again");
+            }
+        }
+
+        for (String tmpIndexName : tmpNameMap.values()) {
+            if (tmpNameMap.containsKey(tmpIndexName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Generate temporary index name failed, please try again");
+            }
+        }
+
+        if (isUnique) {
+            String indexName = TableColumnUtils.generateNewUniqueIndexName(uniqueIndexName, indexNames);
+            newUniqueIndexNameMap.put(tableName, indexName);
+            outIndexNameSet.add(indexName);
+        }
+    }
+
     private void prepareAlterData() {
         // generate basic alter table actions
         alterTablePreparedData = prepareAlterTableData(tableName);
@@ -699,6 +992,15 @@ public class LogicalAlterTable extends LogicalTableOperation {
         AlterTablePreparedData preparedData = new AlterTablePreparedData();
         SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
+        SqlIdentifier algorithm =
+            sqlAlterTable.getTableOptions() == null ? null : sqlAlterTable.getTableOptions().getAlgorithm();
+        if (algorithm != null && algorithm.getSimple().equalsIgnoreCase(Attribute.ALTER_TABLE_ALGORITHM_OMC_INDEX)) {
+            preparedData.setOnlineModifyColumnIndexTask(true);
+            sqlAlterTable.setSourceSql(
+                sqlAlterTable.getSourceSql().replace(Attribute.ALTER_TABLE_ALGORITHM_OMC_INDEX, "INPLACE"));
+            sqlAlterTable.getTableOptions().setAlgorithm(new SqlIdentifier("INPLACE", SqlParserPos.ZERO));
+        }
+
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
         TableMeta tableMeta = sm.getTable(this.tableName);
@@ -706,7 +1008,6 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
         List<String> droppedColumns = getAlteredColumns(sqlAlterTable, SqlAlterTable.ColumnOpt.DROP);
         List<String> addedColumns = getAlteredColumns(sqlAlterTable, SqlAlterTable.ColumnOpt.ADD);
-        List<String> modifiedColumns = getAlteredColumns(sqlAlterTable, SqlAlterTable.ColumnOpt.MODIFY);
         Map<String, String> changedColumns = new HashMap<>();
         List<String> updatedColumns = new ArrayList<>();
         List<String> alterDefaultColumns = new ArrayList<>();
@@ -854,6 +1155,13 @@ public class LogicalAlterTable extends LogicalTableOperation {
                         columnAfterAnother.add(new Pair<>(newColumnName, afterColumnName));
                     }
                 }
+                // Primary or unique key with column added
+                SpecialIndex specialIndex = addColumn.getColDef().getSpecialIndex();
+                if (specialIndex == SpecialIndex.UNIQUE) {
+                    addedIndexesWithoutNames.add(newColumnName);
+                } else if (specialIndex == SpecialIndex.PRIMARY) {
+                    addedPrimaryKeyColumns.add(newColumnName);
+                }
                 // Check binary default values
                 if (addColumn.getColDef().getDefaultVal() instanceof SqlBinaryStringLiteral) {
                     String hexValue =
@@ -916,6 +1224,135 @@ public class LogicalAlterTable extends LogicalTableOperation {
         preparedData.setDropFiles(dropFiles);
 
         return preparedData;
+    }
+
+    private boolean validateOnlineModify() {
+        if (sqlAlterTable.getTableOptions() == null) {
+            return false;
+        }
+
+        SqlIdentifier algorithm = sqlAlterTable.getTableOptions().getAlgorithm();
+        if (!(algorithm != null && algorithm.getSimple().equalsIgnoreCase(Attribute.ALTER_TABLE_ALGORITHM_OMC))) {
+            return false;
+        }
+
+        if (sqlAlterTable.getAlters().size() != 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Online column modify only supports one column for now");
+        }
+
+        for (SqlAlterSpecification alterItem : sqlAlterTable.getAlters()) {
+            SqlKind alterType = alterItem.getKind();
+            if (alterType != SqlKind.MODIFY_COLUMN && alterType != SqlKind.CHANGE_COLUMN) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Online column modify only supports modify column or change column");
+            }
+        }
+
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        MetaUtils.TableColumns tableColumns = MetaUtils.TableColumns.build(tableMeta);
+
+        SqlAlterSpecification alterItem = sqlAlterTable.getAlters().get(0);
+        SqlKind alterType = alterItem.getKind();
+        String columnName = null;
+        SqlColumnDeclaration columnDeclaration = null;
+        boolean changeWithSameName = false;
+
+        if (alterType == SqlKind.MODIFY_COLUMN) {
+            SqlModifyColumn modifyColumn = (SqlModifyColumn) alterItem;
+            columnName = modifyColumn.getColName().getLastName();
+            columnDeclaration = modifyColumn.getColDef();
+
+            if (modifyColumn.getAfterColumn() != null) {
+                String afterColumn = modifyColumn.getAfterColumn().getLastName();
+                if (afterColumn.equalsIgnoreCase(columnName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "Do not support insert after the same column");
+                }
+            }
+        } else if (alterType == SqlKind.CHANGE_COLUMN) {
+            SqlChangeColumn changeColumn = (SqlChangeColumn) alterItem;
+            columnName = changeColumn.getOldName().getLastName();
+            columnDeclaration = changeColumn.getColDef();
+
+            if (changeColumn.getAfterColumn() != null) {
+                String afterColumn = changeColumn.getAfterColumn().getLastName();
+                if (afterColumn.equalsIgnoreCase(columnName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "Do not support insert after the same column");
+                }
+            }
+
+            String newColumnName = changeColumn.getNewName().getLastName();
+            if (newColumnName.equalsIgnoreCase(columnName)) {
+                changeWithSameName = true;
+            }
+
+            if (tableMeta.getColumnIgnoreCase(newColumnName) != null && !newColumnName.equalsIgnoreCase(columnName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    String.format("Duplicate column name `%s`", newColumnName));
+            }
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Online modify column only supports modify / change column");
+        }
+
+        if (changeWithSameName) {
+            // Rewrite to modify
+            SqlChangeColumn changeColumn = (SqlChangeColumn) alterItem;
+            SqlModifyColumn modifyColumn =
+                new SqlModifyColumn(changeColumn.getOriginTableName(), changeColumn.getOldName(), columnDeclaration,
+                    changeColumn.isFirst(), changeColumn.getAfterColumn(), changeColumn.getSourceSql(),
+                    SqlParserPos.ZERO);
+            sqlAlterTable.getAlters().set(0, modifyColumn);
+            alterItem = modifyColumn;
+        }
+
+        // TODO(qianjing) Support sequence
+        if (columnDeclaration.getAutoIncrementType() != null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Do not support target column with sequence");
+        }
+
+        if (tableColumns.isPrimaryKey(columnName) || tableColumns.isShardingKey(columnName)
+            || tableColumns.isGsiShardingKey(columnName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Do not support online modify column on primary key or sharding key");
+        }
+
+        final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+        if (columnMeta == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Modify unknown column '" + columnName + "'");
+        }
+
+        final RelDataType sourceDataType = columnMeta.getField().getRelType();
+        final RelDataType targetDataType = columnDeclaration.getDataType()
+            .deriveType(getCluster().getTypeFactory(), columnDeclaration.getDataType().getNullable());
+
+        final PlannerContext context = (PlannerContext) this.getCluster().getPlanner().getContext();
+        final ParamManager paramManager = context.getParamManager();
+        final boolean forceTypeConversion = paramManager.getBoolean(ConnectionParams.OMC_FORCE_TYPE_CONVERSION);
+
+        if (!forceTypeConversion && TableColumnUtils.isUnsupportedType(
+            columnDeclaration.getDataType().getTypeName().toString())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format("Converting to %s is not supported",
+                columnDeclaration.getDataType().getTypeName().toString()));
+        }
+
+        if (!forceTypeConversion && SqlTypeUtil.equalSansNullability(getCluster().getTypeFactory(), sourceDataType,
+            targetDataType)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "It seems that you do not alter column type, try to turn off ALGORITHM=OMC for better practice");
+        }
+
+        if (!forceTypeConversion && !TableColumnUtils.canConvertBetweenType(sourceDataType.getSqlTypeName(),
+            targetDataType.getSqlTypeName())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                String.format("Converting between type %s and %s is not supported", sourceDataType.getSqlTypeName(),
+                    targetDataType.getSqlTypeName()));
+        }
+
+        return true;
     }
 
     private void validateAlters(final TableMeta tableMeta,
@@ -981,27 +1418,28 @@ public class LogicalAlterTable extends LogicalTableOperation {
                         getAlterColumnSpecification(tableMeta, changeColumn);
                     alterColumnSpecificationSets.add(specificationSet);
 
-                    if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
-                        if ((tableColumns.isPrimaryKey(columnName) ||
-                            tableColumns.isShardingKey(columnName) ||
-                            tableColumns.isGsiShardingKey(columnName))) {
-                            if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                        if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
+                            if ((tableColumns.isPrimaryKey(columnName) ||
+                                tableColumns.isShardingKey(columnName) ||
+                                tableColumns.isGsiShardingKey(columnName))) {
+                                if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                        "Do not support change column name or type on primary key or sharding key on table with GSI");
+                                }
+                            } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
+                                if (!paramManager
+                                    .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
+                                    !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                        "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
+                                }
+                            } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
+                                && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)
+                                && !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Do not support change column name or type on primary key or sharding key on table with GSI");
+                                    "Change column name or type included in GSI is not recommended");
                             }
-                        } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
-                            if (!paramManager
-                                .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
-                                !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
-                            }
-                        } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
-                            && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                "Change column name or type included in GSI is not recommended");
-                        }
-                    } // Alter default, comment and order, so just let it go.
+                        } // Alter default, comment and order, so just let it go.
 
                     // Change alter warning.
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI) &&
@@ -1062,27 +1500,28 @@ public class LogicalAlterTable extends LogicalTableOperation {
                         getAlterColumnSpecification(tableMeta, modifyColumn);
                     alterColumnSpecificationSets.add(specificationSet);
 
-                    if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
-                        if ((tableColumns.isPrimaryKey(columnName) ||
-                            tableColumns.isShardingKey(columnName) ||
-                            tableColumns.isGsiShardingKey(columnName))) {
-                            if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                        if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
+                            if ((tableColumns.isPrimaryKey(columnName) ||
+                                tableColumns.isShardingKey(columnName) ||
+                                tableColumns.isGsiShardingKey(columnName))) {
+                                if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                        "Do not support change column name or type on primary key or sharding key on table with GSI");
+                                }
+                            } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
+                                if (!paramManager
+                                    .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
+                                    !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                        "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
+                                }
+                            } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
+                                && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY) &&
+                            !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Do not support change column name or type on primary key or sharding key on table with GSI");
+                                    "Change column name or type included in GSI is not recommended");
                             }
-                        } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
-                            if (!paramManager
-                                .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
-                                !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
-                            }
-                        } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
-                            && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                "Change column name or type included in GSI is not recommended");
-                        }
-                    } // Alter default, comment and order, so just let it go.
+                        } // Alter default, comment and order, so just let it go.
 
                     // Modify alter warning.
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI) &&
@@ -1175,7 +1614,10 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
         alterTableWithGsiPreparedData = new AlterTableWithGsiPreparedData();
 
-        if ((gsiExists || clusteredExists) && sqlAlterTable.getAlters().size() > 1) {
+        final PlannerContext context = (PlannerContext) this.getCluster().getPlanner().getContext();
+        final ParamManager paramManager = context.getParamManager();
+        if ((gsiExists || clusteredExists) && sqlAlterTable.getAlters().size() > 1 && !paramManager.getBoolean(
+            ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
             throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
                 "Do not support multi ALTER statements on table with global secondary index");
         }

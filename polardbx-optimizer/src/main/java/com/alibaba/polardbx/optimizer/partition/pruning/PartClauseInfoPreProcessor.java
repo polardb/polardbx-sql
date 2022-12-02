@@ -20,9 +20,11 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import org.apache.calcite.rel.RelNode;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
@@ -349,14 +351,21 @@ public class PartClauseInfoPreProcessor {
              * (part_col > const1 or part_col = const1) and (part_col < const2 or part_col = const2)
              * in PartPredRewriter.rewritePartPredicate
              */
+            // all BETWEEN expr should NOT come here!!
+            break;
         case IN:
             /**
              * all expr of "part_col in (const1,const2)" has been rewrote as 
              * (part_col = const1) or (part_col = const2)
-             * in PartPredRewriter.rewritePartPredicate
+             * in PartPredRewriter.rewritePartPredicate,
+             *
+             * only allow part_col in (scalarSubQuery) come here
              */
+            // only allowed IN expr with non-max-one-row scalar subquery come here!!
+            item = convertScalarQueryInExprToPartClauseItem(partInfo, relRowType, partPred, stepContext);
 
-            // all BETWEEN/IN expr should NOT come here!!
+            break;
+
         default:
             return null;
         }
@@ -374,8 +383,100 @@ public class PartClauseInfoPreProcessor {
         return item;
     }
 
+    private static PartClauseItem convertScalarQueryInExprToPartClauseItem(PartitionInfo partInfo,
+                                                                           RelDataType relRowType,
+                                                                           RexCall partPred,
+                                                                           PartPruneStepBuildingContext stepContext) {
+
+        RexNode input = partPred.getOperands().get(0);
+        RexNode subQuery = partPred.getOperands().get(1);
+        if (!SubQueryDynamicParamUtils.isNonMaxOneRowScalarSubQueryConstant(subQuery)) {
+            return null;
+        }
+
+        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
+        String predColName = null;
+        boolean findInPartNameList = false;
+        List<String> relPartNameList = partInfo.getPartitionBy().getPartitionColumnNameList();
+        List<ColumnMeta> partKeyFldList = partInfo.getPartitionBy().getPartitionFieldList();
+        int partKeyIdx = -1;
+        ColumnMeta cmFldInfo = null;
+        RexInputRef columnRef = (RexInputRef) input;
+        RelDataType relDataType = relRowType;
+
+        RelDataTypeField predColRelFld = relDataType.getFieldList().get(columnRef.getIndex());
+        predColName = predColRelFld.getName();
+
+        for (int i = 0; i < relPartNameList.size(); i++) {
+            if (predColName.equalsIgnoreCase(relPartNameList.get(i))) {
+                findInPartNameList = true;
+                partKeyIdx = i;
+                cmFldInfo = partKeyFldList.get(i);
+                break;
+            }
+        }
+        if (!findInPartNameList || partKeyIdx != 0) {
+            return null;
+        }
+
+        /**
+         * prepare eq expr of "partCol = ?n"
+         */
+        RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
+        List<RexNode> eqOpList = new ArrayList<>();
+        eqOpList.add(input);
+
+        RexDynamicParam subQueryDynamicParam = (RexDynamicParam) subQuery;
+        RexDynamicParam eqValDynamicParam =
+            new RexDynamicParam(subQueryDynamicParam.getType(), subQueryDynamicParam.getIndex(),
+                RexDynamicParam.DYNAMIC_TYPE_VALUE.SUBQUERY_TEMP_VAR, subQueryDynamicParam.getRel());
+
+        eqValDynamicParam.setMaxOnerow(true);
+        eqOpList.add(eqValDynamicParam);
+        RexNode eqExprOfInPred = rexBuilder.makeCall(TddlOperatorTable.EQUALS, eqOpList);
+        PartClauseInfo eqExprClauseInfo =
+            matchPartPredToPartKey(partInfo, relRowType, eqExprOfInPred, input, eqValDynamicParam, false,
+                TddlOperatorTable.EQUALS, stepContext);
+        if (eqExprClauseInfo == null) {
+            return null;
+        }
+        eqExprClauseInfo.setDynamicConstOnly(true);
+
+        SubQueryInPartClauseInfo sbInPartClauseInfo = new SubQueryInPartClauseInfo();
+        sbInPartClauseInfo.setSubQueryDynamicParam(subQueryDynamicParam);
+
+        sbInPartClauseInfo.setOp(TddlOperatorTable.IN);
+        sbInPartClauseInfo.setOpKind(SqlKind.IN);
+        sbInPartClauseInfo.setInput(input);
+        PredConstExprReferenceInfo exprReferenceInfo = stepContext.buildPredConstExprReferenceInfo(subQuery);
+        sbInPartClauseInfo.setConstExprId(exprReferenceInfo.getConstExprId());
+        sbInPartClauseInfo.setConstExpr(exprReferenceInfo.getConstExpr());
+        sbInPartClauseInfo.setOriginalPredicate(partPred);
+        sbInPartClauseInfo.setNull(false);
+        sbInPartClauseInfo.setPartKeyLevel(PartKeyLevel.PARTITION_KEY);
+        sbInPartClauseInfo.setStrategy(strategy);
+        sbInPartClauseInfo.setPartKeyIndex(partKeyIdx);
+        sbInPartClauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
+        sbInPartClauseInfo.setDynamicConstOnly(true);
+
+        PartClauseItem eqExprClauseInfoItem = PartClauseItem
+            .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, eqExprClauseInfo,
+                null,
+                eqExprOfInPred);
+        sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+        sbInPartClauseInfo.getPartColDynamicParams().add(eqValDynamicParam);
+
+        PartClauseItem inSubQueryItem = PartClauseItem
+            .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, sbInPartClauseInfo,
+                null,
+                partPred);
+
+        return inSubQueryItem;
+
+    }
+
     /**
-     *
+     * Convert the partition comparsion predicate to the uniform representation PartClauseItem
      */
     private static PartClauseItem convertComparisonExprToPartClauseItem(PartitionInfo partInfo,
                                                                         RelDataType relRowType,
@@ -406,7 +507,9 @@ public class PartClauseInfoPreProcessor {
                 if (strategy == PartitionStrategy.KEY && isMultiCols && (kind == LESS_THAN || kind == GREATER_THAN)) {
                     /**
                      * For multi-column partition with key strategy, if p1 < const or p1 > const and p1 is the first part col,
-                     * then should treat it as always-true predicates and generate full scan
+                     * then should treat it as always-true predicates and generate full scan.
+                     * Because key strategy is not support do range query by using first part col directly
+                     *
                      */
                     PartClauseItem item = PartClauseItem.buildAlwaysTrueItem();
                     return item;
@@ -472,12 +575,14 @@ public class PartClauseInfoPreProcessor {
         String predColName = null;
 
         if (!isNull) {
-            if (RexUtil.isReferenceOrAccess(left, false) && RexUtil.isConstant(right)) {
+            if (RexUtil.isReferenceOrAccess(left, false) && (RexUtil.isConstant(right)
+                || SubQueryDynamicParamUtils.isScalarSubQueryConstant(right))) {
                 predOp = op;
                 predOpKind = predOp.getKind();
                 input = left;
                 constExpr = right;
-            } else if (RexUtil.isConstant(left) && RexUtil.isReferenceOrAccess(left, false)) {
+            } else if ((RexUtil.isConstant(right) || SubQueryDynamicParamUtils.isScalarSubQueryConstant(right))
+                && RexUtil.isReferenceOrAccess(left, false)) {
                 predOp = PartPredRewriter.inverseOp(op);
                 predOpKind = predOp.getKind();
                 input = right;
@@ -513,9 +618,10 @@ public class PartClauseInfoPreProcessor {
              *  index = -3, it means the content of RexDynamicParam is apply subquery.
              */
             RexDynamicParam dynamicParam = (RexDynamicParam) constExpr;
-            if (dynamicParam.getIndex() == -2 || dynamicParam.getIndex() == -3) {
+            //if (dynamicParam.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX || dynamicParam.getIndex() == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX ) {
+            if (dynamicParam.getIndex() == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
                 /**
-                 * Not support to do pruning with scalar subquery or apply subquery,
+                 * Not support to do pruning with apply subquery,
                  * it will be optimized later
                  */
                 return null;
@@ -573,100 +679,6 @@ public class PartClauseInfoPreProcessor {
             clauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
             clauseInfo.setStrategy(strategy);
 
-            return clauseInfo;
-        }
-        return null;
-    }
-
-    /**
-     * Try to match part predicate to part key and check if the part predicate contains part key
-     */
-    protected static PartClauseInfo tryMatchPartPredToPartKey(PartitionInfo partInfo,
-                                                              RelNode relPlan,
-                                                              RexNode originalPred,
-                                                              RexNode left,
-                                                              RexNode right,
-                                                              boolean isNull,
-                                                              SqlOperator op,
-                                                              PartPruneStepBuildingContext stepContext) {
-
-        List<String> relPartNameList = null;
-        boolean findInPartNameList = false;
-        SqlOperator predOp = null;
-        SqlKind predOpKind = null;
-        RexNode input = null;
-        RexNode constExpr = null;
-        String predColName = null;
-
-        if (!isNull) {
-            if (RexUtil.isReferenceOrAccess(left, false) && RexUtil.isConstant(right)) {
-                predOp = op;
-                predOpKind = predOp.getKind();
-                input = left;
-                constExpr = right;
-            } else if (RexUtil.isConstant(left) && RexUtil.isReferenceOrAccess(left, false)) {
-                predOp = PartPredRewriter.inverseOp(op);
-                predOpKind = predOp.getKind();
-                input = right;
-                constExpr = left;
-
-            } else {
-                // The expr is not support to doing partition pruning
-                return null;
-            }
-        } else {
-
-            if (RexUtil.isReferenceOrAccess(left, false) && right == null) {
-                predOpKind = op.getKind();
-                input = left;
-                constExpr = right;
-            } else {
-                // The expr is not support to doing partition pruning
-                return null;
-            }
-        }
-
-        // Only support the dynamic pruning of expr with RexInputRef
-        if (!(input instanceof RexInputRef)) {
-            return null;
-        }
-
-        PartClauseInfo clauseInfo = new PartClauseInfo();
-        RexInputRef columnRef = (RexInputRef) input;
-        RelDataType relDataType = relPlan.getRowType();
-
-        RelDataTypeField predColRelFld = relDataType.getFieldList().get(columnRef.getIndex());
-        predColName = predColRelFld.getName();
-
-        relPartNameList = partInfo.getPartitionBy().getPartitionColumnNameList();
-        List<ColumnMeta> partKeyFldList = partInfo.getPartitionBy().getPartitionFieldList();
-
-        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
-
-        int partKeyIdx = -1;
-        ColumnMeta cmFldInfo = null;
-
-        for (int i = 0; i < relPartNameList.size(); i++) {
-            if (predColName.equalsIgnoreCase(relPartNameList.get(i))) {
-                findInPartNameList = true;
-                partKeyIdx = i;
-                cmFldInfo = partKeyFldList.get(i);
-                break;
-            }
-        }
-
-        if (findInPartNameList) {
-            clauseInfo.setPartKeyLevel(PartKeyLevel.PARTITION_KEY);
-            clauseInfo.setOp(op);
-            clauseInfo.setOpKind(predOpKind);
-            clauseInfo.setInput(input);
-            clauseInfo.setConstExpr(constExpr);
-            clauseInfo.setDynamicConstOnly(constExpr instanceof RexDynamicParam);
-            clauseInfo.setOriginalPredicate(originalPred);
-            clauseInfo.setNull(isNull);
-            clauseInfo.setPartKeyIndex(partKeyIdx);
-            clauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
-            clauseInfo.setStrategy(strategy);
             return clauseInfo;
         }
         return null;

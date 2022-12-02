@@ -32,6 +32,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLOrderBy;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLSetQuantifier;
 import com.alibaba.polardbx.druid.sql.ast.TDDLHint;
 import com.alibaba.polardbx.druid.sql.ast.TDDLHint.Argument;
@@ -70,7 +71,9 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlDeleteSta
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlUpdateStatement;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithSomethingVisitor;
 import com.alibaba.polardbx.optimizer.exception.SqlParserException;
 import com.alibaba.polardbx.optimizer.hint.operator.HintArgKey;
@@ -107,6 +110,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlReferenceDefinition;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSelectKeyword;
@@ -116,6 +120,7 @@ import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -524,6 +529,9 @@ public final class FastSqlConstructUtils {
         if (x.isIgnore()) {     // must be after low/delayed/high
             keywordNodes.add(SqlDmlKeyword.IGNORE.symbol(SqlParserPos.ZERO));
         }
+        if (x.isOverwrite()) {
+            keywordNodes.add(SqlDmlKeyword.OVERWRITE.symbol(SqlParserPos.ZERO));
+        }
         return new SqlNodeList(keywordNodes, SqlParserPos.ZERO);
     }
 
@@ -567,7 +575,8 @@ public final class FastSqlConstructUtils {
      * If there are multiple VALUES, and all values in VALUES CLAUSE are literal,
      * convert the value clauses to a single value clause.
      */
-    public static List<ValuesClause> convertToSingleValuesIfNeed(List<ValuesClause> valuesClauseList, int columnCount) {
+    public static List<ValuesClause> convertToSingleValuesIfNeed(List<ValuesClause> valuesClauseList, int columnCount,
+                                                                 ContextParameters context) {
         if (valuesClauseList.size() <= 1) {
             if (valuesClauseList.isEmpty() || (columnCount > 0
                 && valuesClauseList.get(0).getValues().size() != columnCount)) {
@@ -576,6 +585,10 @@ public final class FastSqlConstructUtils {
             }
             return valuesClauseList;
         }
+
+        Map<SQLVariantRefExpr, ColumnMeta> bindMapTypes = context != null ?
+            (Map<SQLVariantRefExpr, ColumnMeta>) context.getParameter(ContextParameterKey.BIND_TYPE_PARAMS) : null;
+        List<Object> params = context != null ? context.getParameter(ContextParameterKey.PARAMS) : null;
 
         // If they are all literals
         for (Ord<ValuesClause> o : Ord.zip(valuesClauseList)) {
@@ -588,7 +601,21 @@ public final class FastSqlConstructUtils {
             for (SQLExpr expr : clause.getValues()) {
                 if (expr instanceof SQLVariantRefExpr) {
                     if (((SQLVariantRefExpr) expr).getName().equals("?")) {
-                        continue;
+                        int index = ((SQLVariantRefExpr) expr).getIndex();
+                        boolean existCast = false;
+                        boolean allowInferType =
+                            bindMapTypes != null && (CollectionUtils.isNotEmpty(params) && byte[].class.isInstance(
+                                params.get(index)));
+                        if (allowInferType) {
+                            ColumnMeta columnMeta = bindMapTypes.get(expr);
+                            if (columnMeta != null) {
+                                existCast = DataTypeUtil.isStringType(columnMeta.getDataType()) ||
+                                    DataTypeUtil.isBinaryType(columnMeta.getDataType());
+                            }
+                        }
+                        if (!existCast) {
+                            continue;
+                        }
                     }
                 }
                 return valuesClauseList;
@@ -1305,5 +1332,11 @@ public final class FastSqlConstructUtils {
             }
             return result.toString();
         }
+    }
+
+    public static SqlNode convertPartitionBy(SQLPartitionBy partitionBy, ContextParameters context, ExecutionContext ec) {
+        FastSqlToCalciteNodeVisitor visitor = new FastSqlToCalciteNodeVisitor(context, ec);
+        partitionBy.accept(visitor);
+        return visitor.getSqlNode();
     }
 }

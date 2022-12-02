@@ -116,7 +116,7 @@ public class BasicSqlType extends AbstractSqlType {
      *
      * <p>This must be a character tyoe.
      */
-    BasicSqlType createWithCharsetAndCollation(
+    public BasicSqlType createWithCharsetAndCollation(
         Charset charset,
         SqlCollation collation) {
         Preconditions.checkArgument(SqlTypeUtil.inCharOrBinaryFamilies(this));

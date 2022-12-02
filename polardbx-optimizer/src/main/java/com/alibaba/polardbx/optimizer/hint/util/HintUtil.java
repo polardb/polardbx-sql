@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
@@ -289,7 +290,8 @@ public class HintUtil {
         for (Group group : allGroups) {
             DbGroupInfoRecord info = dbGroupInfoManager.queryGroupInfo(schema, group.getName());
 
-            if (GroupType.MYSQL_JDBC == group.getType() && info != null && info.isNormal()) {
+            if ((GroupType.MYSQL_JDBC == group.getType() && info != null && info.isNormal())
+                || ConfigDataMode.isFastMock()) {
                 result.add(group.getName());
             }
         }

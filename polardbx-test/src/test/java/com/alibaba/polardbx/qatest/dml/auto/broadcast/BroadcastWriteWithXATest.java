@@ -173,36 +173,6 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
     }
 
     @Test
-    public void WriteBroadcastTable_autocommit_0_best_effort() throws SQLException {
-        mysqlConnection.setAutoCommit(false);
-        tddlConnection.setAutoCommit(false);
-
-        String sql = "set drds_transaction_policy='best_effort'";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-
-        sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test, timestamp_test) VALUES"
-            + "(1, 'something in broadcast table', 666,'2019-10-16 02:00:00'), (6, 'something in broadcast table', 777, '2019-10-16 02:00:00')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
-
-        sql = "UPDATE " + baseOneTableName
-            + " SET integer_test = 1234,timestamp_test='2019-10-16 02:10:00' WHERE pk = 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
-
-        sql = "DELETE FROM " + baseOneTableName + " WHERE pk = 6";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
-
-        assertVariable("drds_transaction_policy", "BEST_EFFORT", tddlConnection, false);
-
-        sql = "COMMIT";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
-
-        assertVariable("drds_transaction_policy", "BEST_EFFORT", tddlConnection, false);
-
-        sql = "SELECT * FROM " + baseOneTableName;
-        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-    }
-
-    @Test
     public void WriteBroadcastTable_autocommit_1_multi_statement() throws SQLException {
         String sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test, timestamp_test) VALUES"
             + "(1, 'something in broadcast table', 666, '2019-10-16 02:00:00'), (6, 'something in broadcast table', 777, '2019-10-16 02:00:00'); SHOW variables LIKE 'drds_transaction_policy'";
@@ -264,15 +234,14 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
 
             } else {
 
-                sql = "/*+TDDL:node(1)*/DELETE FROM " + physicalSimpleTableName + " WHERE pk = 1";
+                sql = "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/DELETE FROM " + physicalSimpleTableName + " WHERE pk = 1";
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-                sql = "/*+TDDL:node(1)*/INSERT INTO " + physicalSimpleTableName
+                sql = "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/INSERT INTO " + physicalSimpleTableName
                     + "(pk, varchar_test, integer_test) VALUES"
                     + "(4, 'something in broadcast table', 999);";
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
             }
-
         }
 
         sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test) VALUES"

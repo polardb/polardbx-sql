@@ -69,7 +69,8 @@ public class MockSchemaManager extends AbstractLifecycle implements SchemaManage
             true,
             "");
 
-        return new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
+        return new TableMeta(getSchemaName(), DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(),
+            true,
             TableStatus.PUBLIC, 0, 0);
     }
 

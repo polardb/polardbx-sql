@@ -27,8 +27,8 @@ public class MySql_Create_Function_1 extends MysqlTest {
 
     public void test_0() throws Exception {
         String sql = "CREATE DEFINER=`root`@`%` FUNCTION `hello`(s CHAR(20)) RETURNS char(50) CHARSET big5\n" +
-                " COMMENT 'ccccc'  LANGUAGE SQL DETERMINISTIC\n" +
-                "RETURN CONCAT('Hello, ',s,'!')";
+            " COMMENT 'ccccc'  LANGUAGE SQL DETERMINISTIC\n" +
+            "RETURN CONCAT('Hello, ',s,'!')";
 
         List<SQLStatement> statementList = SQLUtils.parseStatements(sql, JdbcConstants.MYSQL);
         SQLStatement stmt = statementList.get(0);
@@ -37,33 +37,39 @@ public class MySql_Create_Function_1 extends MysqlTest {
 
         SchemaStatVisitor visitor = SQLUtils.createSchemaStatVisitor(JdbcConstants.MYSQL);
         stmt.accept(visitor);
-        
-        assertEquals("CREATE FUNCTION `hello` (\n" +
-                        "\ts CHAR(20)\n" +
-                        ")\n" +
-                        "RETURNS char(50) CHARACTER SET big5 COMMENT CCCCC DETERMINISTIC LANGUAGE SQL\n" +
-                        "RETURN CONCAT('Hello, ', s, '!')", //
-                            SQLUtils.toMySqlString(stmt));
-        
-        assertEquals("create function `hello` (\n" +
-                        "\ts CHAR(20)\n" +
-                        ")\n" +
-                        "returns char(50) character set big5 comment ccccc deterministic language sql\n" +
-                        "return CONCAT('Hello, ', s, '!')", //
-                            SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+
+        assertEquals("CREATE DEFINER = 'root'@'%' FUNCTION mysql.hello (\n" +
+                "\ts CHAR(20)\n" +
+                ")\n" +
+                "RETURNS char(50) CHARACTER SET big5 COMMENT 'ccccc' LANGUAGE SQL\n" +
+                "DETERMINISTIC\n" +
+                "CONTAINS SQL\n"
+                + "SQL SECURITY DEFINER\n" +
+                "RETURN CONCAT('Hello, ', s, '!');", //
+            SQLUtils.toMySqlString(stmt));
+
+        assertEquals("create definer = 'root'@'%' function mysql.hello (\n" +
+                "\ts CHAR(20)\n" +
+                ")\n" +
+                "returns char(50) character set big5 comment 'ccccc' language sql\n" +
+                "deterministic\n" +
+                "contains sql\n"
+                + "sql security definer\n" +
+                "return CONCAT('Hello, ', s, '!');", //
+            SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
 //        System.out.println("Tables : " + visitor.getTables());
 //        System.out.println("fields : " + visitor.getColumns());
 //        System.out.println("coditions : " + visitor.getConditions());
 //        System.out.println("orderBy : " + visitor.getOrderByColumns());
-        
+
         assertEquals(0, visitor.getTables().size());
         assertEquals(1, visitor.getColumns().size());
         assertEquals(0, visitor.getConditions().size());
 
 //        Assert.assertTrue(visitor.getTables().containsKey(new TableStat.Name("City")));
 //        Assert.assertTrue(visitor.getTables().containsKey(new TableStat.Name("t2")));
-        
+
 //        Assert.assertTrue(visitor.getColumns().contains(new Column("t2", "id")));
     }
 }

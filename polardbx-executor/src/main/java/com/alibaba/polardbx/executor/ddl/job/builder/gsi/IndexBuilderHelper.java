@@ -139,6 +139,7 @@ public class IndexBuilderHelper {
 
         List<SqlAlterSpecification> alters = ImmutableList.of(newAlter);
         SqlAlterTable result = new SqlAlterTable(
+            null,
             alterTable.getOriginTableName(),
             alterTable.getColumnOpts(),
             stmt.toString(),

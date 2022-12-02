@@ -22,8 +22,11 @@ import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.chars.CharArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
+
+import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
 
 /**
  * Enum Block Builder
@@ -116,6 +119,18 @@ public class EnumBlockBuilder extends AbstractBlockBuilder {
         int endOffset = offsets.getInt(position);
 
         return ChunkUtil.hashCode(data.elements(), beginOffset, endOffset, true);
+    }
+
+    @Override
+    public int checksum(int position) {
+        if (isNull(position)) {
+            return NULL_TAG;
+        }
+        int beginOffset = position > 0 ? offsets.getInt(position - 1) : 0;
+        int endOffset = offsets.getInt(position);
+        String strVal = new String(data.elements(), beginOffset, endOffset - beginOffset);
+        byte[] utf8Bytes = strVal.getBytes(StandardCharsets.UTF_8);
+        return ChunkUtil.hashCode(utf8Bytes, 0, utf8Bytes.length);
     }
 
     int beginOffset(int position) {

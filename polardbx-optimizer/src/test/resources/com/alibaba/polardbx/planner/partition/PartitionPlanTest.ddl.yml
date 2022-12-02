@@ -346,3 +346,16 @@ t_range_date:
   partition p1 values less than('2021-02-12'),
   partition p2 values less than('2025-02-12')
   )
+p_departmentinfo:
+  CREATE TABLE `p_departmentinfo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `deptLevel` int(11) NOT NULL,
+  `deptName` varchar(255) NOT NULL,
+  `deptSuperior` int(11) DEFAULT NULL,
+  `shr_dept` varchar(100) DEFAULT NULL,
+  `tenant_id` varchar(30) NOT NULL,
+  `createTime` datetime DEFAULT NULL,
+  `sort` int(8) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  SINGLE

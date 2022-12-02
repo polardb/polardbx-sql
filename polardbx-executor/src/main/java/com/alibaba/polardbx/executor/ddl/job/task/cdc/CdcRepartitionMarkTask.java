@@ -25,13 +25,14 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.google.common.collect.Maps;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
 import java.util.Map;
+
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 /**
  * created by ziyang.lb
@@ -60,11 +61,10 @@ public class CdcRepartitionMarkTask extends BaseDdlTask {
         // 主表和目标表之间已经完成了物理表的Switch操作，目标表以GSI的形式存在，依靠分布式事务，双边数据是强一致的
         // 需要在job结束前和Gsi被clean前，进行打标
         DdlContext ddlContext = executionContext.getDdlContext();
-        Map<String, Object> param = Maps.newHashMap();
+        Map<String, Object> param = buildExtendParameter(executionContext);
         param.put(ICdcManager.ALTER_TRIGGER_TOPOLOGY_CHANGE_FLAG, "");
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        param.putAll(executionContext.getExtraCmds());
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlContext.getDdlStmt(),
                 ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Private, param);

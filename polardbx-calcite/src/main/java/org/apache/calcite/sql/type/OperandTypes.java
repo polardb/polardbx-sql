@@ -165,6 +165,12 @@ public abstract class OperandTypes {
   public static final SqlOperandTypeChecker ONE_OR_MORE =
       variadic(SqlOperandCountRanges.from(1));
 
+  /**
+   * 0个参数或者1个参数，类型没有限制
+   */
+  public static final SqlOperandTypeChecker ZERO_OR_ONE =
+      variadic(SqlOperandCountRanges.between(0, 1));
+
   public static SqlOperandTypeChecker variadic(
       final SqlOperandCountRange range) {
     return new SqlOperandTypeChecker() {

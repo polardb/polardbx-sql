@@ -18,9 +18,13 @@ package com.alibaba.polardbx.optimizer.core.expression.calc;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.partition.exception.SubQueryDynamicValueNotReadyException;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.sql.SqlKind;
@@ -38,6 +42,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DynamicParamExpression extends AbstractExpression {
 
     private int index;
+
+    // index for IN expr
+    private int subIndex = -1;
+
+    // the col index of ROW expr
+    private int skIndex = -1;
     //private Map<Integer, ParameterContext> param;
 
     //
@@ -45,7 +55,11 @@ public class DynamicParamExpression extends AbstractExpression {
 
     // Fields for subquery
     private RelNode relNode;
-    private Object value;
+
+    // RexDynamic For scalar subqery
+    private RexDynamicParam sbExprRex;
+
+
     /**
      * label if DynamicParamExpression contain valueObj itself
      */
@@ -54,33 +68,53 @@ public class DynamicParamExpression extends AbstractExpression {
     private List<IExpression> subqueryOperands;
     private SqlOperator subqueryOp;
 
-    public DynamicParamExpression(int index, ExprContextProvider contextProvider) {
+    public DynamicParamExpression(int index, ExprContextProvider contextProvider, int subIndex,
+                                  int skIndex) {
         this.index = index;
         this.contextProvider = contextProvider;
+        this.subIndex = subIndex;
+        this.skIndex = skIndex;
     }
 
     public DynamicParamExpression(RelNode rel) {
-        this.index = -3;
+        this.index = PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX;
         this.relNode = rel;
     }
 
     public DynamicParamExpression(RelNode rel, SqlKind subqueryKind, SqlOperator subqueryOp,
                                   List<IExpression> subqueryOperands) {
-        this.index = -3;
+        this.index = PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX;
         this.relNode = rel;
         this.subqueryKind = subqueryKind;
         this.subqueryOp = subqueryOp;
         this.subqueryOperands = subqueryOperands;
     }
 
+    public DynamicParamExpression(RelNode rel, RexDynamicParam rex, SqlKind subqueryKind, SqlOperator subqueryOp) {
+        this.index = PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX;
+        this.relNode = rel;
+        this.sbExprRex = rex;
+        this.subqueryKind = subqueryKind;
+        this.subqueryOp = subqueryOp;
+
+    }
+
     @Override
     public Object eval(Row row, ExecutionContext ec) {
-        if (flag) {
-            if (value == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
-                return null;
+        if (index == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
+            Object[] valRs = new Object[1];
+            boolean fetchSucc = SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(this.sbExprRex, ec.getScalarSubqueryCtxMap(), true, valRs);
+            if (fetchSucc) {
+                Object scalarSbVal = valRs[0];
+                if (scalarSbVal == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+                    return null;
+                }
+                return convertParameterType(scalarSbVal);
+            } else {
+                throw new SubQueryDynamicValueNotReadyException();
             }
-            return value;
         }
+
         Map<Integer, ParameterContext> param = ec.getParams() == null ? new HashMap<>() :
             ec.getParams().getCurrentParameter();
         ParameterContext pc = param.get(index + 1);
@@ -88,6 +122,10 @@ public class DynamicParamExpression extends AbstractExpression {
             return null;
         }
         Object value = pc.getValue();
+        if (value instanceof RawString && subIndex != -1) {
+            RawString rawString = (RawString) value;
+            return convertParameterType(rawString.getObj(subIndex, skIndex));
+        }
         return convertParameterType(value);
     }
 
@@ -127,8 +165,9 @@ public class DynamicParamExpression extends AbstractExpression {
     private static Object convertParameterType(Object in) {
         if (in instanceof BigDecimal) {
             return Decimal.fromBigDecimal((BigDecimal) in);
+        } else if (in instanceof RawString) {
+            return ((RawString) in).getObjList();
         }
         return in;
     }
-
 }

@@ -167,6 +167,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         }
         this.isOnline = new AtomicBoolean(true);
         this.forceOffline = new AtomicBoolean(false);
+
     }
 
     @Override
@@ -442,13 +443,13 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 for (SchemaConfig schema : schemas.values()) {
                     // 逻辑sql统计
                     schema.getDataSource().getRecorder().setCount(systemConfig.getSqlRecordCount());
-                    schema.getDataSource().getRecorder().setMaxSizeThresold(systemConfig.getSlowSqlSizeThresold());
+                    schema.getDataSource().getRecorder().setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
                     schema.getDataSource().getRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                     // 物理sql统计
                     schema.getDataSource().getPhysicalRecorder().setCount(systemConfig.getSqlRecordCount());
                     schema.getDataSource()
                         .getPhysicalRecorder()
-                        .setMaxSizeThresold(systemConfig.getSlowSqlSizeThresold());
+                        .setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
                     schema.getDataSource().getPhysicalRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                 }
             }

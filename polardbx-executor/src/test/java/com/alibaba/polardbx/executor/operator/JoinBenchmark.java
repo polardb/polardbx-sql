@@ -98,7 +98,7 @@ public class JoinBenchmark {
             boolean maxOneRow = false;
             List<EquiJoinKey> joinKeys = new ArrayList<>();
             for (int i = 0; i < columnNum; i++) {
-                joinKeys.add(new EquiJoinKey(i, i, DataTypes.LongType, false, false));
+                joinKeys.add(new EquiJoinKey(i, i, DataTypes.LongType, false));
             }
             IExpression otherCondition = null;
             ParallelHashJoinExec.Synchronizer synchronizer =

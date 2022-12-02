@@ -72,6 +72,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.AND;
  */
 public class LogicalSemiJoin extends SemiJoin {
 
+    private boolean fromSetOp = false;
     private SqlOperator operator;
     private RelNode pushDownRelNode;
     private List<RexNode> operands = Lists.newArrayList();
@@ -114,6 +115,45 @@ public class LogicalSemiJoin extends SemiJoin {
             ImmutableSet.<CorrelationId>of(),
             joinType,
             hints);
+    }
+
+    /**
+     * Creates a SemiJoin.
+     *
+     * <p> unless you know what you're doing.
+     *
+     * @param cluster cluster that join belongs to
+     * @param traitSet Trait set
+     * @param left left join input
+     * @param right right join input
+     * @param condition join condition
+     * @param leftKeys left keys of the semijoin
+     * @param rightKeys right keys of the semijoin
+     * @param fromSetOp whether semiJoin from setOp
+     */
+    public LogicalSemiJoin(
+        RelOptCluster cluster,
+        RelTraitSet traitSet,
+        RelNode left,
+        RelNode right,
+        RexNode condition,
+        ImmutableIntList leftKeys,
+        ImmutableIntList rightKeys,
+        JoinRelType joinType,
+        SqlNodeList hints,
+        boolean fromSetOp) {
+        super(
+            cluster,
+            traitSet,
+            left,
+            right,
+            condition,
+            leftKeys,
+            rightKeys,
+            ImmutableSet.<CorrelationId>of(),
+            joinType,
+            hints);
+        this.fromSetOp = fromSetOp;
     }
 
     public LogicalSemiJoin(
@@ -211,6 +251,17 @@ public class LogicalSemiJoin extends SemiJoin {
      * Creates a SemiJoin.
      */
     public static LogicalSemiJoin create(RelNode left, RelNode right, RexNode condition,
+                                         ImmutableIntList leftKeys, ImmutableIntList rightKeys, JoinRelType type,
+                                         SqlNodeList hints, boolean fromSetOp) {
+        final RelOptCluster cluster = left.getCluster();
+        return new LogicalSemiJoin(cluster, cluster.traitSetOf(Convention.NONE), left,
+            right, condition, leftKeys, rightKeys, type, hints, fromSetOp);
+    }
+
+    /**
+     * Creates a SemiJoin.
+     */
+    public static LogicalSemiJoin create(RelNode left, RelNode right, RexNode condition,
                                          ImmutableIntList leftKeys, ImmutableIntList rightKeys, JoinRelType joinType,
                                          List<RexNode> linkRexNode,
                                          Set<CorrelationId> variablesSet, SqlNodeList hints) {
@@ -247,6 +298,7 @@ public class LogicalSemiJoin extends SemiJoin {
         semiJoin.setOperator(this.getOperator());
         semiJoin.pushDownRelNode = this.pushDownRelNode;
         semiJoin.subqueryPosition = this.subqueryPosition;
+        semiJoin.fromSetOp = this.fromSetOp;
         return semiJoin;
     }
 
@@ -261,6 +313,7 @@ public class LogicalSemiJoin extends SemiJoin {
         semiJoin.setOperator(this.getOperator());
         semiJoin.pushDownRelNode = this.pushDownRelNode;
         semiJoin.subqueryPosition = this.subqueryPosition;
+        semiJoin.fromSetOp = this.fromSetOp;
         return semiJoin;
     }
 
@@ -288,7 +341,8 @@ public class LogicalSemiJoin extends SemiJoin {
 
     public RelNode getPushDownRelNode(RelNode pushedRelNode, RelBuilder relBuilder, final RexBuilder rexBuilder,
                                       List<RexNode> leftFilters, final List<RexNode> rightFilters,
-                                      final boolean enable_lv_subquery_unwrap) {
+                                      final boolean enable_lv_subquery_unwrap,
+                                      final boolean enable_filter_reorder) {
 
         /**
          * trans condition to correlate rexnode
@@ -367,7 +421,7 @@ public class LogicalSemiJoin extends SemiJoin {
         if (enable_lv_subquery_unwrap) {
             //in the case like (project)<-filter<-(project), we should push filter down
             final RexSimplify simplify = new RexSimplify(rb, RelOptPredicateList.EMPTY, false, RexUtil.EXECUTOR);
-            relBuilder.push(RelOptUtil.filterProject(relBuilder.build(), relBuilder, simplify));
+            relBuilder.push(RelOptUtil.filterProject(relBuilder.build(), relBuilder, simplify, enable_filter_reorder));
         }
 
         RelNode left;
@@ -539,12 +593,17 @@ public class LogicalSemiJoin extends SemiJoin {
         semiJoin.setOperator(this.getOperator());
         semiJoin.pushDownRelNode = this.pushDownRelNode;
         semiJoin.subqueryPosition = this.subqueryPosition;
+        semiJoin.fromSetOp = this.fromSetOp;
         return semiJoin;
     }
 
     @Override
     public RelNode accept(RelShuttle shuttle) {
         return shuttle.visit(this);
+    }
+
+    public boolean isFromSetOp() {
+        return fromSetOp;
     }
 }
 

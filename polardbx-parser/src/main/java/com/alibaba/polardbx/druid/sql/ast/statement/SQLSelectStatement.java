@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -30,19 +31,19 @@ public class SQLSelectStatement extends SQLStatementImpl {
 
     protected SQLSelect select;
 
-    public SQLSelectStatement(){
+    public SQLSelectStatement() {
 
     }
 
-    public SQLSelectStatement(DbType dbType){
-        super (dbType);
+    public SQLSelectStatement(DbType dbType) {
+        super(dbType);
     }
 
-    public SQLSelectStatement(SQLSelect select){
+    public SQLSelectStatement(SQLSelect select) {
         this.setSelect(select);
     }
 
-    public SQLSelectStatement(SQLSelect select, DbType dbType){
+    public SQLSelectStatement(SQLSelect select, DbType dbType) {
         this(dbType);
         this.setSelect(select);
     }
@@ -98,8 +99,12 @@ public class SQLSelectStatement extends SQLStatementImpl {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLSelectStatement that = (SQLSelectStatement) o;
 
@@ -111,11 +116,21 @@ public class SQLSelectStatement extends SQLStatementImpl {
         return select != null ? select.hashCode() : 0;
     }
 
-    public List<String> computeSelecteListAlias() {
+    public List<String> computeSelectListAlias() {
         return select.computeSelecteListAlias();
     }
 
     public boolean addWhere(SQLExpr where) {
         return select.addWhere(where);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        if (select.getQuery() instanceof SQLSelectQueryBlock) {
+            if (((SQLSelectQueryBlock) select.getQuery()).forUpdate) {
+                return SqlType.SELECT_FOR_UPDATE;
+            }
+        }
+        return SqlType.SELECT;
     }
 }

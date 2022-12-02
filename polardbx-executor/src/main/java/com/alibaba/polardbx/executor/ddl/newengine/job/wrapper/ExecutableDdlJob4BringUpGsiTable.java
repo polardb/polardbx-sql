@@ -17,20 +17,10 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableBackFillTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesExtMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertIndexMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import lombok.Data;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @Data
 public class ExecutableDdlJob4BringUpGsiTable extends ExecutableDdlJob {
@@ -49,32 +39,4 @@ public class ExecutableDdlJob4BringUpGsiTable extends ExecutableDdlJob {
     private GsiUpdateIndexStatusTask publicTask;
     private TableSyncTask syncTaskAfterPublic;
 
-    public List<DdlTask> toList(boolean stayAtDeleteOnly, boolean stayAtWriteOnly) {
-        List<DdlTask> result = new ArrayList<>();
-        addIfNotNull(result, deleteOnlyTask);
-        addIfNotNull(result, syncTaskAfterDeleteOnly);
-        if (stayAtDeleteOnly) {
-            return result;
-        }
-        addIfNotNull(result, writeOnlyTask);
-        addIfNotNull(result, syncTaskAfterWriteOnly);
-        if (stayAtWriteOnly) {
-            return result;
-        }
-        addIfNotNull(result, logicalTableBackFillTask);
-        addIfNotNull(result, writeReorgTask);
-        addIfNotNull(result, syncTaskAfterWriteReorg);
-        addIfNotNull(result, publicTask);
-        addIfNotNull(result, syncTaskAfterPublic);
-        return result;
-    }
-
-    private void addIfNotNull(List<DdlTask> list, DdlTask task) {
-        if (list == null) {
-            return;
-        }
-        if (task != null) {
-            list.add(task);
-        }
-    }
 }

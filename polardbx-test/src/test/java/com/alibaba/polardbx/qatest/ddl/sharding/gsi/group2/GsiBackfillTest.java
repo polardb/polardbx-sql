@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.util.Pair;
@@ -75,6 +76,8 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
     private static final String PRIMARY_TABLE_NAME = "gsi_backfill_primary";
     private static final String INDEX_NAME = "g_i_backfill";
+
+    private static final String INSTANCE_ID = PropertiesUtil.configProp.getProperty("instanceId");
 
     private static final String HINT =
         "/*+TDDL:CMD_EXTRA(ALLOW_ADD_GSI=TRUE, GSI_IGNORE_RESTRICTION=TRUE, GSI_BACKFILL_BATCH_SIZE=1000, GSI_BACKFILL_SPEED_LIMITATION=-1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_SPEED_LIMITATION=-1, GSI_CHECK_PARALLELISM=4)*/";
@@ -247,7 +250,6 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void singlePkCreateDropTest() {
         final String mysqlCreateTable = MessageFormat.format(SINGLE_PK_TMPL, PRIMARY_TABLE_NAME, "");
         final String tddlCreateTable = MessageFormat.format(SINGLE_PK_TMPL, PRIMARY_TABLE_NAME, primaryShardingDef);
@@ -269,7 +271,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             () -> pkGen.getAndIncrement() % 8, () -> RandomUtils.nextInt(20)));
 
         try {
-            TimeUnit.SECONDS.sleep(1);
+            TimeUnit.SECONDS.sleep(3);
         } catch (InterruptedException e) {
             // ignore exception
         }
@@ -295,7 +297,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
         System.out.println("Drop GSI done.");
 
         try {
-            TimeUnit.SECONDS.sleep(1);
+            TimeUnit.SECONDS.sleep(3);
         } catch (InterruptedException e) {
             // ignore exception
         }
@@ -680,7 +682,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             try (Connection conn = ConnectionManager.getInstance().newPolarDBXConnection()) {
                 JdbcUtil.useDb(conn, tddlDatabase1);
                 final long startTime = System.currentTimeMillis();
-                while (System.currentTimeMillis() - startTime < 30000) {
+                while (System.currentTimeMillis() - startTime < 100000) {
                     final ResultSet rs = JdbcUtil.executeQuery("show global index", conn);
                     List<String> result = JdbcUtil.getStringResult(rs, false)
                         .stream()
@@ -773,7 +775,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
     private void enableDynamicSpeed(long speed) {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('polardbx-polardbx','GENERAL_DYNAMIC_SPEED_LIMITATION','"
+            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('" + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','"
                 + speed + "') on duplicate key update param_val='" + speed + "'");
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "/*+TDDL: node('__META_DB__')*/update config_listener set op_version=op_version+1 where data_id like \"polardbx.inst.config.%\"");
@@ -781,20 +783,19 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
     private void disableDynamicSpeed() {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('polardbx-polardbx','GENERAL_DYNAMIC_SPEED_LIMITATION','-1') on duplicate key update param_val='-1'");
+            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('" + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','-1') on duplicate key update param_val='-1'");
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "/*+TDDL: node('__META_DB__')*/update config_listener set op_version=op_version+1 where data_id like \"polardbx.inst.config.%\"");
     }
 
     @Test
-    @Ignore("fix by ???")
     public void dynamicSpeedTest() {
         final String tddlCreateTable = MessageFormat.format(SINGLE_PK_TMPL, PRIMARY_TABLE_NAME, primaryShardingDef);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, tddlCreateTable);
 
-        // Generate and insert 1000 rows.
-        for (int i = 0; i < 1000; ++i) {
+        // Generate and insert 100 rows.
+        for (int i = 0; i < 100; ++i) {
             final String insert = MessageFormat
                 .format("insert into {0}(c1, c2) values({1}, {2})", PRIMARY_TABLE_NAME, Long.toString(i),
                     Long.toString(i));
@@ -806,8 +807,8 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
             final String sqlCreateGsi = MessageFormat.format(CREATE_GSI_TMPL, INDEX_NAME, PRIMARY_TABLE_NAME);
             final String SLOW_HINT =
-                "/*+TDDL:CMD_EXTRA(GSI_BACKFILL_BATCH_SIZE=10, GSI_BACKFILL_SPEED_LIMITATION=10, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_BATCH_SIZE=10, GSI_CHECK_SPEED_LIMITATION=10, GSI_CHECK_PARALLELISM=4)*/";
-            // Hint speed set to 10qps.
+                "/*+TDDL:CMD_EXTRA(GSI_BACKFILL_BATCH_SIZE=1, GSI_BACKFILL_SPEED_LIMITATION=1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_BATCH_SIZE=1, GSI_CHECK_SPEED_LIMITATION=1, GSI_CHECK_PARALLELISM=4)*/";
+            // Hint speed set to 1qps.
 
             final long startTime = System.currentTimeMillis();
             JdbcUtil.executeUpdateSuccess(tddlConnection, SLOW_HINT + sqlCreateGsi);
@@ -916,7 +917,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                     throw GeneralUtil.nestedException(e);
                 }
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(100);
                 } catch (InterruptedException ignore) {
                 }
             }

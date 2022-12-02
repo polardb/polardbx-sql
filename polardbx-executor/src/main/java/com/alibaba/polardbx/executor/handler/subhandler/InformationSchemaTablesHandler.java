@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -26,7 +27,10 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -42,6 +46,7 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -56,7 +61,6 @@ import java.util.stream.Collectors;
  * @author shengyu
  */
 public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandler {
-
     private static final Logger logger = LoggerFactory.getLogger(InformationSchemaTablesHandler.class);
 
     public InformationSchemaTablesHandler(VirtualViewHandler virtualViewHandler) {
@@ -128,13 +132,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
         Set<String> indexTableNames = new HashSet<>();
         if (tableNameIndexValue != null && !tableNameIndexValue.isEmpty()) {
             for (Object obj : tableNameIndexValue) {
-                if (obj instanceof RexDynamicParam) {
-                    String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    indexTableNames.add(tableName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String tableName = ((RexLiteral) obj).getValueAs(String.class);
-                    indexTableNames.add(tableName.toLowerCase());
-                }
+                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
             }
         }
 
@@ -154,9 +152,6 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
         boolean once = true;
 
         for (String schemaName : schemaNames) {
-            StatisticManager statisticManager = (StatisticManager) OptimizerContext.getContext(schemaName)
-                .getStatisticManager();
-
             SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
             // groupName -> {(logicalTableName, physicalTableName)}
@@ -222,6 +217,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                         String logicalTableName;
                         String tableSchema;
                         long tableRows;
+                        String autoPartition = "NO";
                         if (rs.getString("TABLE_SCHEMA").equalsIgnoreCase("information_schema")) {
                             tableSchema = rs.getString("TABLE_SCHEMA");
                             logicalTableName = rs.getString("TABLE_NAME");
@@ -230,7 +226,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             logicalTableName =
                                 physicalTableToLogicalTable.get(rs.getString("TABLE_NAME"));
                             tableSchema = schemaName;
-                            StatisticResult statisticResult = statisticManager.getRowCount(logicalTableName);
+                            StatisticResult statisticResult =
+                                StatisticManager.getInstance().getRowCount(schemaName, logicalTableName);
                             tableRows = statisticResult.getLongValue();
                             if (!CanAccessTable.verifyPrivileges(schemaName, logicalTableName, executionContext)) {
                                 continue;
@@ -240,6 +237,9 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             if (!informationSchemaTables.includeGsi()) {
                                 try {
                                     TableMeta tableMeta = schemaManager.getTable(logicalTableName);
+                                    if (tableMeta.isAutoPartition()) {
+                                        autoPartition = "YES";
+                                    }
                                     if (tableMeta.isGsi()) {
                                         continue;
                                     }
@@ -249,10 +249,29 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             }
                         }
 
-                        long data_length = rs.getLong("DATA_LENGTH");
+                        long single_data_length = rs.getLong("DATA_LENGTH");
                         double scale = 1;
-                        if (data_length != 0 && rs.getLong("AVG_ROW_LENGTH") > 0) {
-                            scale = ((double) (tableRows * rs.getLong("AVG_ROW_LENGTH"))) / data_length;
+                        if (single_data_length != 0 && rs.getLong("AVG_ROW_LENGTH") > 0) {
+                            scale = ((double) (tableRows * rs.getLong("AVG_ROW_LENGTH"))) / single_data_length;
+                        }
+                        long dataLength = (long) (single_data_length * scale);
+                        long indexLength = (long) (rs.getLong("INDEX_LENGTH") * scale);
+                        long dataFree = (long) (rs.getLong("DATA_FREE") * scale);
+                        BigInteger avgRowLength = (BigInteger) rs.getObject("AVG_ROW_LENGTH");
+                        // build info for file storage table
+                        if (!rs.getString("TABLE_SCHEMA").equalsIgnoreCase("information_schema")) {
+                            if (StatisticUtils.isFileStore(schemaName, logicalTableName)) {
+                                Map<String, Long> statisticMap =
+                                    StatisticUtils.getFileStoreStatistic(schemaName, logicalTableName);
+                                tableRows = statisticMap.get("TABLE_ROWS");
+                                dataLength = statisticMap.get("DATA_LENGTH");
+                                indexLength = statisticMap.get("INDEX_LENGTH");
+                                dataFree = statisticMap.get("DATA_FREE");
+                                if (tableRows != 0) {
+                                    avgRowLength = BigInteger.valueOf(dataLength / tableRows);
+                                }
+                            }
+
                         }
 
                         cursor.addRow(new Object[] {
@@ -264,11 +283,11 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             rs.getObject("VERSION"),
                             rs.getObject("ROW_FORMAT"),
                             tableRows,
-                            rs.getObject("AVG_ROW_LENGTH"),
-                            rs.getLong("DATA_LENGTH") * scale,
+                            avgRowLength,
+                            dataLength,
                             rs.getObject("MAX_DATA_LENGTH"),
-                            rs.getLong("INDEX_LENGTH") * scale,
-                            rs.getLong("DATA_FREE") * scale,
+                            indexLength,
+                            dataFree,
                             rs.getObject("AUTO_INCREMENT"),
                             rs.getObject("CREATE_TIME"),
                             rs.getObject("UPDATE_TIME"),
@@ -276,7 +295,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             rs.getObject("TABLE_COLLATION"),
                             rs.getObject("CHECKSUM"),
                             rs.getObject("CREATE_OPTIONS"),
-                            rs.getObject("TABLE_COMMENT")
+                            rs.getObject("TABLE_COMMENT"),
+                            autoPartition
                         });
                     }
                 } catch (Throwable t) {

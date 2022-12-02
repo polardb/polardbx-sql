@@ -286,7 +286,7 @@
       TopN(sort="ROWS DESC", offset=1, fetch=2)
         Project((ID + 1)="ID + 1", TYPE="TYPE", ROWS="ROWS")
           Filter(condition="GROUP_NAME = 'corona_qatest_2'")
-            LogicalShow(sql="SHOW TRACE (`ID` + 1), `TYPE`")
+            LogicalShow(sql="SHOW TRACE (`id` + 1), `TYPE`")
 
 ## show ds
 -
@@ -354,15 +354,7 @@
   sql: |
     desc test_table_a
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` WHERE (`field` <> '_drds_implicit_id_')")
-
-# plan table
--
-  sql: |
-    optimize table test_table_a, test_table_b
-  plan: |
-    Gather(concurrent=true)
-      PhyQuery(table="test_table_a,test_table_b", sql="OPTIMIZE TABLE `test_table_a` , `test_table_b`")
+    phyquery(node="optest_0000", sql="show columns from `test_table_a` where (`field` <> '_drds_implicit_id_')")
 
 # analyze table
 -

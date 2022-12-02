@@ -65,3 +65,40 @@ corona_select_broadcast:
  `year_test` year(4) DEFAULT NULL,
  PRIMARY KEY (`pk`)
  ) ENGINE = InnoDB AUTO_INCREMENT = 101 DEFAULT CHARSET = utf8  broadcast
+
+tf_f_user_service:
+  CREATE TABLE `tf_f_user_service` (
+  `PARTITION_ID` int(4) NOT NULL COMMENT '用户标识后四位',
+  `USER_ID` bigint(16) NOT NULL COMMENT '用户标识',
+  `SERVICE_ID` int(8) NOT NULL COMMENT '用户订购的附属服务',
+  `MAIN_TAG` char(1) COLLATE utf8mb4_bin DEFAULT NULL COMMENT '是否主体服务：0-否，1-是',
+  `START_DATE` datetime NOT NULL COMMENT '开始时间',
+  `END_DATE` datetime DEFAULT NULL COMMENT '终止时间',
+  `SERVICE_ITEM_ID` bigint(16) DEFAULT NULL COMMENT '当存在属性时记录属性标识，否则为空',
+  `PACKAGE_ID` int(8) DEFAULT NULL COMMENT '标记服务的作用范围，传给billing
+  非强制包，记录为-1
+  强制包，记录为包id',
+  `PRODUCT_ID` int(8) DEFAULT NULL COMMENT '产品编码',
+  `UPDATE_TIME` datetime DEFAULT NULL COMMENT '修改时间',
+  `EPARCHY_CODE` varchar(8) COLLATE utf8mb4_bin DEFAULT NULL COMMENT '地市编码',
+  `PROVINCE_CODE` varchar(8) COLLATE utf8mb4_bin DEFAULT NULL COMMENT '省份编码',
+  `PRIOR_ORDER_TIME` datetime DEFAULT NULL COMMENT '优先订购时间默认空，BILLING用',
+  PRIMARY KEY (`USER_ID`, `SERVICE_ID`, `START_DATE`),
+  KEY `auto_shard_key_PARTITION_ID` (`PARTITION_ID`),
+  KEY `auto_shard_key_USER_ID` (`USER_ID`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_bin  dbpartition by hash(`USER_ID`) tbpartition by hash(`PARTITION_ID`) tbpartitions 11
+
+
+test_single_table:
+  CREATE TABLE `test_single_table` (
+  `id` int(11) NOT NULL,
+  `data` varchar(255),
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+t_user:
+  CREATE TABLE `t_user` (
+  `id` int(11) DEFAULT NULL,
+  `current_user` varchar(25) DEFAULT NULL,
+  KEY `auto_shard_key_id` USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`id`);

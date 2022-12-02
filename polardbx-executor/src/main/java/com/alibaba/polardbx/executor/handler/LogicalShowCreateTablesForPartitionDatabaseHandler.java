@@ -45,6 +45,8 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableInde
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -64,8 +66,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -75,7 +75,6 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
-import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
@@ -140,7 +139,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(tableName);
 
         final ParamManager pm = executionContext.getParamManager();
-        boolean needShowHashByRange = pm.getBoolean(ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE);
+        boolean needShowHashByRange =
+            pm.getBoolean(ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE) || show.isShowForTruncateTable();
         String partitionByStr = partInfo.showCreateTablePartitionDefInfo(needShowHashByRange);
         partitionStr.append("\n").append(partitionByStr);
 
@@ -163,7 +163,7 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             if (sqlTableElement instanceof SQLColumnDefinition) {
                 String columnName = SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
                 ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
-                if (columnMeta.isBinaryDefault()) {
+                if (columnMeta != null && columnMeta.isBinaryDefault()) {
                     SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
                     ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
                 }
@@ -174,6 +174,14 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
                 toRemove.add(sqlTableElement);
             }
+
+            if (sqlTableElement instanceof SQLColumnDefinition && TableColumnUtils
+                .isHiddenColumn(executionContext, schemaName, tableName,
+                    SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
+                && !showCreateTable.isFull()) {
+                toRemove.add(sqlTableElement);
+            }
+
             if (sqlTableElement instanceof MySqlPrimaryKey
                 && SqlValidatorImpl
                 .isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
@@ -217,10 +225,9 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         sql = createTable.toString();
 
-        LocalityManager lm = LocalityManager.getInstance();
-        LocalityInfo localityInfo = lm.getLocalityOfTable(tableMeta.getId());
-        if (localityInfo != null) {
-            LocalityDesc localityDesc = LocalityDesc.parse(localityInfo.getLocality());
+        String tableLocality = partitionInfoManager.getPartitionInfo(tableName).getLocality();
+        LocalityDesc localityDesc = LocalityDesc.parse(tableLocality);
+        if(!localityDesc.holdEmptyDnList()) {
             sql += "\n" + localityDesc.showCreate();
         }
 

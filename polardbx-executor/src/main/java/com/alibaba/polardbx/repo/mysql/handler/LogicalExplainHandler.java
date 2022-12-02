@@ -73,6 +73,9 @@ public class LogicalExplainHandler extends LogicalViewHandler {
         } else if (logicalPlan instanceof LogicalModifyView) {
             input = ((LogicalModifyView) logicalPlan).getInput(executionContext).get(0);
         } else if (logicalPlan instanceof PhyTableOperation) {
+            if (((PhyTableOperation) logicalPlan).getKind().belongsTo(SqlKind.DML)) {
+                ((PhyTableOperation) logicalPlan).setPhyOperationBuilder(null);
+            }
             ((PhyTableOperation) logicalPlan).setKind(SqlKind.SELECT);
             return repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
         } else if (logicalPlan instanceof DirectTableOperation) {

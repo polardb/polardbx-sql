@@ -34,6 +34,9 @@ public class DdlConstants {
     public static final String ENGINE_TYPE_DAG = "DAG";
     public static final String ENGINE_TYPE_LEGACY = "LEGACY";
 
+    public static final String DDL_LEADER_KEY = "DDL_LEADER";
+    public static final long DDL_LEADER_TTL_IN_MILLIS = 30_000L;
+
     public static final String EMPTY_CONTENT = "";
     public static final int MIN_NUM_OF_THREAD_NAME_PARTS = 5;
 
@@ -57,7 +60,9 @@ public class DdlConstants {
     public static final String DDL_DISPATCHER_NAME = "DDL-Engine-Dispatcher";
     public static final String DDL_SCHEDULER_NAME = "DDL-Engine-Scheduler";
     public static final String DDL_EXECUTORS_NAME = "DDL-Engine-Executor-";
+    public static final String DDL_PHY_OBJ_RECORDER_NAME = "DDL-Engine-Phy-Obj-Recorder-%s-";
     public static final String DDL_ARCHIVE_CLEANER_NAME = "DDL-Engine-Archive-Cleaner-";
+    public static final String DDL_LEADER_ELECTION_NAME = "DDL-Engine-Leader-Election-Thread-";
     public static final int DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 1;
     //默认每隔120分钟，重新调度失败的任务
     public static final int DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 120;

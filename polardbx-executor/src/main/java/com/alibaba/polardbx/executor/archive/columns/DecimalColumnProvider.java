@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.RawBytesDecimalUtils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -45,6 +47,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class DecimalColumnProvider implements ColumnProvider<Decimal> {
 
@@ -115,10 +118,10 @@ class DecimalColumnProvider implements ColumnProvider<Decimal> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, dataType.isUnsigned(), dataType.getPrecision(), dataType.getScale());
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, dataType.isUnsigned(), dataType.getPrecision(), dataType.getScale(), accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -128,13 +131,16 @@ class DecimalColumnProvider implements ColumnProvider<Decimal> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((BytesColumnVector) columnVector).setRef(rowNumber, new byte[]{}, 0, 0);
+
+                accumulator.ifPresent(CrcAccumulator::appendNull);
                 return;
             } else {
                 DecimalStructure dec = Decimal.fromBigDecimal(bigDecimal).getDecimalStructure();
                 byte[] result = new byte[DecimalConverter.binarySize(dataType.getPrecision(), dataType.getScale())];
                 DecimalConverter.decimalToBin(dec, result, dataType.getPrecision(), dataType.getScale());
-
                 ((BytesColumnVector) columnVector).setVal(rowNumber, MySQLUnicodeUtils.latin1ToUtf8(result).getBytes());
+
+                accumulator.ifPresent(a -> a.appendHash(RawBytesDecimalUtils.hashCode(dec.getDecimalMemorySegment())));
             }
         }
     }

@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 
+import java.util.Map;
+
 public abstract class AbstractSequenceManager extends AbstractLifecycle implements ISequenceManager {
 
     @Override
@@ -29,6 +31,11 @@ public abstract class AbstractSequenceManager extends AbstractLifecycle implemen
 
     @Override
     public Long nextValue(String schemaName, String seqName, int batchSize) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Long currValue(String schemaName, String seqName) {
         throw new UnsupportedOperationException();
     }
 
@@ -58,11 +65,6 @@ public abstract class AbstractSequenceManager extends AbstractLifecycle implemen
     }
 
     @Override
-    public void validateDependence(String schemaName) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public Type checkIfExists(String schemaName, String seqName) {
         throw new UnsupportedOperationException();
     }
@@ -88,17 +90,22 @@ public abstract class AbstractSequenceManager extends AbstractLifecycle implemen
     }
 
     @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public int[] getCustomUnitArgsForGroupSeq(String schemaName) {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public boolean areAllSequencesSameType(String schemaName, Type seqType) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void reloadConnProps(String schemaName, Map<String, Object> connProps) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void resetNewSeqResources(String schemaName) {
         throw new UnsupportedOperationException();
     }
 }

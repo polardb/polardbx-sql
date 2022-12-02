@@ -19,6 +19,7 @@ package com.alibaba.polardbx.config.loader;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.audit.AuditUtils;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.privilege.PasswdRuleConfig;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SystemConfig;
+import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaChecker;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.privilege.PolarLoginErrConfig;
@@ -197,6 +199,19 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             }
         }
 
+        if (p.containsKey(ConnectionProperties.BACKFILL_PARALLELISM)) {
+            int backfillParallelism = Integer.parseInt(p.getProperty(ConnectionProperties.BACKFILL_PARALLELISM));
+            if (backfillParallelism > 0) {
+                if (backfillParallelism > PriorityWorkQueue.getInstance().getMaximumPoolSize()) {
+                    PriorityWorkQueue.getInstance().setMaximumPoolSize(backfillParallelism);
+                    PriorityWorkQueue.getInstance().setCorePoolSize(backfillParallelism);
+                } else {
+                    PriorityWorkQueue.getInstance().setCorePoolSize(backfillParallelism);
+                    PriorityWorkQueue.getInstance().setMaximumPoolSize(backfillParallelism);
+                }
+            }
+        }
+
         if (p.containsKey(ConnectionProperties.GLOBAL_MEMORY_LIMIT)) {
             String memoryLimitString = p.getProperty(ConnectionProperties.GLOBAL_MEMORY_LIMIT);
             try {
@@ -257,28 +272,27 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             }
         }
         if (p.containsKey(ConnectionProperties.ENABLE_LOGIN_AUDIT_CONFIG)) {
-            System.setProperty(ConnectionProperties.ENABLE_LOGIN_AUDIT_CONFIG, "true");
+            AuditUtils
+                .setEnableLogAudit(Boolean.parseBoolean(p.getProperty(ConnectionProperties.ENABLE_LOGIN_AUDIT_CONFIG)));
         } else {
-            System.setProperty(ConnectionProperties.ENABLE_LOGIN_AUDIT_CONFIG,
-                ConnectionParams.ENABLE_LOGIN_AUDIT_CONFIG.getDefault());
+            AuditUtils.setEnableLogAudit(Boolean.parseBoolean(ConnectionParams.ENABLE_LOGIN_AUDIT_CONFIG.getDefault()));
         }
         // only set PolarDb  instance prop
-        PolarPrivManager.getInstance().getConfig().config(p);
-        if (p.containsKey(ConnectionProperties.LOGIN_ERROR_MAX_COUNT_CONFIG)) {
-            String passwordRule = p.getProperty(ConnectionProperties.LOGIN_ERROR_MAX_COUNT_CONFIG);
-            try {
-                PolarLoginErrConfig config = null;
-                final JSONObject jsonObject = JSON.parseObject(passwordRule);
-                if (jsonObject != null) {
+            PolarPrivManager.getInstance().getConfig().config(p);
+            PolarLoginErrConfig config = null;
+            if (p.containsKey(ConnectionProperties.LOGIN_ERROR_MAX_COUNT_CONFIG)) {
+                String loginErrorRule = p.getProperty(ConnectionProperties.LOGIN_ERROR_MAX_COUNT_CONFIG);
+                try {
+                    final JSONObject jsonObject = JSON.parseObject(loginErrorRule);
                     config = PolarLoginErrConfig.parse(jsonObject);
+                } catch (Exception e) {
+                    logger.warn("Loading LOGIN_ERROR_RULE_CONFIG error: " + loginErrorRule, e);
                 }
-                PolarPrivManager.getInstance().setPolarLoginErrConfig(config);
-            } catch (Exception e) {
-                logger.warn("Loading PASSWORD_RULE_CONFIG", e);
             }
-        } else {
-            PolarPrivManager.getInstance().setPolarLoginErrConfig(new PolarLoginErrConfig(0, 0));
-        }
+            if (config == null) {
+                config = new PolarLoginErrConfig();
+            }
+            PolarPrivManager.getInstance().setPolarLoginErrConfig(config);
 
         if (p.containsKey(ConnectionProperties.TRANSACTION_ISOLATION)) {
             String str = p.getProperty(ConnectionProperties.TRANSACTION_ISOLATION);
@@ -378,7 +392,8 @@ public abstract class ClusterLoader extends BaseClusterLoader {
         if (p.containsKey(ConnectionProperties.LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE)) {
             int logicalDbWarmmingUpPoolSize =
                 Integer.valueOf(p.getProperty(ConnectionProperties.LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE));
-            CobarServer.getInstance().getConfig().getSystem().setLogicalDbWarmmingUpExecutorPoolSize(logicalDbWarmmingUpPoolSize);
+            CobarServer.getInstance().getConfig().getSystem()
+                .setLogicalDbWarmmingUpExecutorPoolSize(logicalDbWarmmingUpPoolSize);
         }
 
         if (CobarServer.getInstance().isInited()) {

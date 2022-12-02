@@ -17,50 +17,16 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 public class BaselineLoadSyncAction implements ISyncAction {
 
-    private String schemaName = null;
-
-    private Integer baselineId = null;
-
     public BaselineLoadSyncAction() {
-    }
-
-    public BaselineLoadSyncAction(String schemaName, Integer baselineId) {
-        this.schemaName = schemaName;
-        this.baselineId = baselineId;
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
-    public Integer getBaselineId() {
-        return baselineId;
-    }
-
-    public void setBaselineId(Integer baselineId) {
-        this.baselineId = baselineId;
     }
 
     @Override
     public ResultCursor sync() {
-        PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-
-        if (baselineId != null) {
-            planManager.forceLoad(baselineId);
-        } else {
-            planManager.forceLoadAll();
-        }
-
+        PlanManager.getInstance().forceLoadAll();
         return null;
     }
 }
-

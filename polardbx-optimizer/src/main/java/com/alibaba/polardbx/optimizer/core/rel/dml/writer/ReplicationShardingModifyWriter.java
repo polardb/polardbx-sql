@@ -63,8 +63,9 @@ public class ReplicationShardingModifyWriter extends ShardingModifyWriter implem
                                            Mapping skMapping,
                                            Mapping updateSetMapping,
                                            Mapping groupingMapping,
-                                           TableMeta tableMeta) {
-        super(targetTable, modify, skMetas, pkMapping, skMapping, updateSetMapping, groupingMapping);
+                                           TableMeta tableMeta,
+                                           boolean withoutPk) {
+        super(targetTable, modify, skMetas, pkMapping, skMapping, updateSetMapping, groupingMapping, withoutPk);
         this.tableMeta = tableMeta;
     }
 
@@ -161,11 +162,11 @@ public class ReplicationShardingModifyWriter extends ShardingModifyWriter implem
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
         case UPDATE:
-            replicatedRelNode
-                .addAll(builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, replicatedShardResult));
+            replicatedRelNode.addAll(
+                builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, qn, replicatedShardResult, ec));
             break;
         case DELETE:
-            replicatedRelNode.addAll(builder.buildDeleteWithPk(modify, replicatedShardResult, ec));
+            replicatedRelNode.addAll(builder.buildDelete(modify, qn, replicatedShardResult, ec, withoutPk));
             break;
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());

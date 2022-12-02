@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
@@ -71,7 +73,36 @@ public class PartTupleRouteFunction extends PartRouteFunction {
         return partBitSet;
     }
 
+    /**
+     * Calculate the actual SearchDatum for a query value that is used to search the target partition
+     * if the partition policy is key or hash,
+     * the calculating result are the final hashcode values that are used to search the hash partition
+     *
+     * if the partition policy is range/rangeCol/list/listCol,
+     * the calculating result are the values after finish computing partition function
+     *
+     * @param ec
+     * @param pruningCtx
+     * @return
+     */
+    public SearchDatumInfo calcSearchDatum(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
 
+        // build the datum of the search value after calc partition expression
+        SearchDatumInfo finalVal = buildSearchDatumInfoForTupleData(ec, pruningCtx);
+
+        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
+        SearchDatumInfo hashValSearchDatumInfo = null;
+        if (strategy == PartitionStrategy.KEY) {
+            hashValSearchDatumInfo = ((KeyPartRouter)router).buildHashSearchDatumInfo(finalVal, ec);
+            return hashValSearchDatumInfo;
+        } else if (strategy == PartitionStrategy.HASH) {
+            hashValSearchDatumInfo = ((HashPartRouter)router).buildHashSearchDatumInfo(finalVal, ec);
+            return hashValSearchDatumInfo;
+        } else {
+            // return directly
+            return finalVal;
+        }
+    }
 
     public SearchDatumInfo buildTupleSearchDatumInfo(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
         return buildSearchDatumInfoForTupleData(ec, pruningCtx);

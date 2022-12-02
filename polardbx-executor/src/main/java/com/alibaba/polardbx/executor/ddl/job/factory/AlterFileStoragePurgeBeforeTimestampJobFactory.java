@@ -18,6 +18,9 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -42,6 +45,7 @@ import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterFileStoragePreparedData;
+import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -83,6 +87,19 @@ public class AlterFileStoragePurgeBeforeTimestampJobFactory extends DdlJobFactor
         long ts = timestamp.getTime() << BITS_LOGICAL_TIME;
         if (ts < 0) {
             throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
+        }
+
+        // ensure purge do not affect backup
+        int backupOssPeriodInDay = executionContext.getParamManager().getInt(ConnectionParams.BACKUP_OSS_PERIOD);
+        final ITimestampOracle timestampOracle = executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
+        if (null == timestampOracle) {
+            throw new UnsupportedOperationException("Do not support timestamp oracle");
+        }
+        long nowTs = timestampOracle.nextTimestamp();
+
+        int day = (int) (((nowTs - ts) >>> ITimestampOracle.BITS_LOGICAL_TIME) / (24 * 60 * 60 * 1000));
+        if (day < backupOssPeriodInDay) {
+            throw new IllegalArgumentException("Can't purge file storage within backup period");
         }
 
         List<FileStorageFilesMetaRecord> toDeleteFileMeta = new ArrayList<>();
@@ -192,7 +209,8 @@ public class AlterFileStoragePurgeBeforeTimestampJobFactory extends DdlJobFactor
                 if (!SystemDbHelper.isDBBuildIn(schemaName)) {
                     if (ts.compareTo(binCreateTimestamp) > 0) {
                         TablesRecord tablesRecord = tableInfoManager.queryTable(schemaName, binName, false);
-                        if (engine.name().equalsIgnoreCase(tablesRecord.engine)) {
+                        if (tablesRecord != null
+                            && engine.name().equalsIgnoreCase(tablesRecord.engine)) {
                             // purge
                             ddlTasks.addAll(buildPurgeOssRecycleBin(engine, schemaName, binName, executionContext.copy()));
                         }

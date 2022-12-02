@@ -21,25 +21,23 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.sequence.Sequence;
-import com.alibaba.polardbx.sequence.SequenceDao;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
-import com.alibaba.polardbx.sequence.impl.GroupSequence;
 import com.alibaba.polardbx.sequence.impl.SimpleSequence;
-import com.alibaba.polardbx.sequence.impl.SimpleSequenceDao;
 
 import java.util.Map;
-import java.util.TreeMap;
+
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.STR_NA;
 
 public class SequenceManager extends AbstractSequenceManager {
 
     public final static Logger logger = LoggerFactory.getLogger(SequenceManager.class);
-    private Map<String, Sequence> sequences = new TreeMap<String, Sequence>(
-        String.CASE_INSENSITIVE_ORDER);
-    private SequenceLoadFromDBManager subManager = null;
+
+    private SequenceLoadFromDBManager subManager;
 
     public SequenceManager(SequenceLoadFromDBManager subManager) {
         this.subManager = subManager;
@@ -57,15 +55,8 @@ public class SequenceManager extends AbstractSequenceManager {
     @Override
     public Long nextValue(String schemaName, String seqName, int batchSize) {
         Sequence seq = getSequence(schemaName, seqName);
-        if (seq == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-        }
         try {
-            if (batchSize > 1) {
-                return seq.nextValue(batchSize);
-            } else {
-                return seq.nextValue();
-            }
+            return seq.nextValue(batchSize);
         } catch (SequenceException e) {
             if (!e.getMessage().contains("exceeds maximum value allowed")) {
                 // We should invalidate cached sequence with the same name and
@@ -73,17 +64,12 @@ public class SequenceManager extends AbstractSequenceManager {
                 // sequence and cause exception in some rare scenario. Note
                 // that we don't differentiate specific exceptions here.
                 invalidate(schemaName, seqName);
+
                 // Try again.
                 seq = getSequence(schemaName, seqName);
-                if (seq == null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-                }
+
                 try {
-                    if (batchSize > 1) {
-                        return seq.nextValue(batchSize);
-                    } else {
-                        return seq.nextValue();
-                    }
+                    return seq.nextValue(batchSize);
                 } catch (SequenceException ex) {
                     // If still failed, then means a real failure occurred.
                     throw new TddlRuntimeException(ErrorCode.ERR_SEQUENCE_NEXT_VALUE, ex, seqName, ex.getMessage());
@@ -95,26 +81,22 @@ public class SequenceManager extends AbstractSequenceManager {
     }
 
     @Override
-    public boolean exhaustValue(String schemaName, String seqName) {
+    public Long currValue(String schemaName, String seqName) {
         Sequence seq = getSequence(schemaName, seqName);
-        if (seq == null) {
-            return false;
-        }
         try {
-            return seq.exhaustValue();
+            return seq.currValue();
         } catch (SequenceException e) {
             // We should invalidate cached sequence with the same name and
             // try again because cached group sequence may affect simple
             // sequence and cause exception in some rare scenario. Note
             // that we don't differentiate specific exceptions here.
             invalidate(schemaName, seqName);
+
             // Try again.
             seq = getSequence(schemaName, seqName);
-            if (seq == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-            }
+
             try {
-                return seq.exhaustValue();
+                return seq.currValue();
             } catch (SequenceException ex) {
                 // If still failed, then means a real failure occurred.
                 throw new SequenceException(ex, seqName);
@@ -125,32 +107,28 @@ public class SequenceManager extends AbstractSequenceManager {
     @Override
     public void updateValue(String schemaName, String seqName, long value) {
         Sequence seq = getSequence(schemaName, seqName);
-        if (seq == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-        }
         try {
-            if (seq instanceof SimpleSequence) {
-                ((SimpleSequence) seq).updateValue(value);
-            } else if (seq instanceof GroupSequence) {
-                ((GroupSequence) seq).updateValue(value);
-            }
+            seq.updateValue(value);
         } catch (SequenceException e) {
+            // Check if the exception can be ignored for New Sequence's skip operation.
+            // TODO: should remove the logic after AliSQL Sequence return a warning instead of error.
+            if (TStringUtil.equalsIgnoreCase(e.getSQLState(), "HY000") && e.getErrorCode() == 7543) {
+                // Updated explicit value is equal or less than currently allocated id,
+                // so ignore the exception for now.
+                return;
+            }
+
             // We should invalidate cached sequence with the same name and
             // try again because cached group sequence may affect simple
             // sequence and cause exception in some rare scenario. Note
             // that we don't differentiate specific exceptions here.
             invalidate(schemaName, seqName);
+
             // Try again.
             seq = getSequence(schemaName, seqName);
-            if (seq == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-            }
+
             try {
-                if (seq instanceof SimpleSequence) {
-                    ((SimpleSequence) seq).updateValue(value);
-                } else if (seq instanceof GroupSequence) {
-                    ((GroupSequence) seq).updateValue(value);
-                }
+                seq.updateValue(value);
             } catch (SequenceException ex) {
                 // If still failed, then means a real failure occurred.
                 throw new TddlRuntimeException(ErrorCode.ERR_SEQUENCE_NEXT_VALUE, ex, seqName, ex.getMessage());
@@ -159,14 +137,34 @@ public class SequenceManager extends AbstractSequenceManager {
     }
 
     @Override
+    public boolean exhaustValue(String schemaName, String seqName) {
+        Sequence seq = getSequence(schemaName, seqName);
+        try {
+            return seq.exhaustValue();
+        } catch (SequenceException e) {
+            // We should invalidate cached sequence with the same name and
+            // try again because cached group sequence may affect simple
+            // sequence and cause exception in some rare scenario. Note
+            // that we don't differentiate specific exceptions here.
+            invalidate(schemaName, seqName);
+
+            // Try again.
+            seq = getSequence(schemaName, seqName);
+
+            try {
+                return seq.exhaustValue();
+            } catch (SequenceException ex) {
+                // If still failed, then means a real failure occurred.
+                throw new SequenceException(ex, seqName);
+            }
+        }
+    }
+
+    @Override
     public Integer getIncrement(String schemaName, String seqName) {
         Sequence seq = getSequence(schemaName, seqName);
-        if (seq == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
-        }
         if (seq instanceof SimpleSequence) {
-            SequenceDao seqDao = ((SimpleSequence) seq).getSequenceDao();
-            return ((SimpleSequenceDao) seqDao).getIncrementBy(seqName);
+            return ((SimpleSequence) seq).getIncrementBy();
         } else {
             // For non-simple sequence, the increment is always 1.
             return SequenceAttribute.DEFAULT_INCREMENT_BY;
@@ -174,123 +172,87 @@ public class SequenceManager extends AbstractSequenceManager {
     }
 
     @Override
-    public void invalidate(String schemaName, String seqName) {
-        Sequence seq = this.sequences.get(seqName);
-        if (seq != null) {
-            // Exhaust cached values if the sequence comes from sequence file.
-            seq.exhaustValue();
-        } else if (this.subManager != null) {
-            // Invalidate cached sequence.
-            if (!subManager.isInited()) {
-                try {
-                    subManager.init();
-                } catch (Exception ex) {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-            subManager.invalidate(schemaName, seqName);
+    public Sequence getSequence(String schemaName, String seqName) {
+        if (!ConfigDataMode.isMasterMode()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
+                "Sequence operations are not allowed on a Read-Only Instance");
         }
+
+        checkSubManager();
+
+        Sequence seq = subManager.getSequence(schemaName, seqName);
+
+        if (seq == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE, seqName);
+        }
+
+        return seq;
+    }
+
+    @Override
+    public void invalidate(String schemaName, String seqName) {
+        checkSubManager();
+        subManager.invalidate(schemaName, seqName);
     }
 
     @Override
     public int invalidateAll(String schemaName) {
-        int size = this.sequences.size();
-
-        // Exhaust all cached sequence values
-        for (Sequence seq : sequences.values()) {
-            seq.exhaustValue();
-        }
-
-        if (subManager != null) {
-            // Invalidate all cached sequence objects
-            if (!subManager.isInited()) {
-                try {
-                    subManager.init();
-                } catch (Exception ex) {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-            size += subManager.invalidateAll(schemaName);
-        }
-
-        return size;
-    }
-
-    @Override
-    public void validateDependence(String schemaName) {
-        if (this.subManager != null) {
-            if (!subManager.isInited()) {
-                try {
-                    subManager.init();
-                } catch (Exception ex) {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-            subManager.validateDependence(schemaName);
-        }
+        checkSubManager();
+        return subManager.invalidateAll(schemaName);
     }
 
     @Override
     public Type checkIfExists(String schemaName, String seqName) {
-        // Check sequences cached from sequence file on diamond
-        Sequence seq = this.sequences.get(seqName);
-        if (seq != null) {
-            // We should not attempt to fetch sequence info from database any more if the
-            // sequence is defined in sequence file.
-            // Sequence file is a legacy use and only support Group Sequence.
-            return Type.GROUP;
-        } else {
-            // Check sequence existence and type against database
-            checkSubManager();
-            return subManager.checkIfExists(schemaName, seqName);
-        }
+        checkSubManager();
+        return subManager.checkIfExists(schemaName, seqName);
     }
 
     @Override
     public boolean isUsingSequence(String schemaName, String tableName) {
-        String seqName = SequenceAttribute.AUTO_SEQ_PREFIX + tableName;
-        Sequence seq = this.sequences.get(seqName);
-        if (seq != null) {
-            return true;
-        }
-
-        if (this.subManager != null) {
-            if (!subManager.isInited()) {
-                try {
-                    subManager.init();
-                } catch (Exception ex) {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-            return subManager.isUsingSequence(schemaName, tableName);
-        }
-
-        // This should never occur.
-        throw new SequenceException("Sequence DB Manager is not set.");
+        checkSubManager();
+        return subManager.isUsingSequence(schemaName, tableName);
     }
 
     @Override
     public String getCurrentSeqRange(String schemaName, String seqName) {
+        if (!ConfigDataMode.isMasterMode()) {
+            return STR_NA;
+        }
         checkSubManager();
         return subManager.getCurrentSeqRange(schemaName, seqName);
     }
 
     @Override
     public long getMinValueFromCurrentSeqRange(String schemaName, String seqName) {
+        if (!ConfigDataMode.isMasterMode()) {
+            return 0L;
+        }
         checkSubManager();
         return subManager.getMinValueFromCurrentSeqRange(schemaName, seqName);
-    }
-
-    @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        checkSubManager();
-        return subManager.isCustomUnitGroupSeqSupported(schemaName);
     }
 
     @Override
     public int[] getCustomUnitArgsForGroupSeq(String schemaName) {
         checkSubManager();
         return subManager.getCustomUnitArgsForGroupSeq(schemaName);
+    }
+
+    @Override
+    public void reloadConnProps(String schemaName, Map<String, Object> connProps) {
+        checkSubManager();
+        subManager.reloadConnProps(schemaName, connProps);
+    }
+
+    @Override
+    public void resetNewSeqResources(String schemaName) {
+        checkSubManager();
+        subManager.resetNewSeqResources(schemaName);
+    }
+
+    @Override
+    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
+        checkSubManager();
+        return subManager.areAllSequencesSameType(schemaName, seqType);
     }
 
     private void checkSubManager() {
@@ -304,68 +266,16 @@ public class SequenceManager extends AbstractSequenceManager {
             }
         } else {
             // This should never occur.
-            throw new SequenceException("Sequence DB Manager is not set.");
+            throw new SequenceException("Unexpected: Sequence DB Manager is not set.");
         }
     }
 
     @Override
     protected void doDestroy() {
         super.doDestroy();
-        destroySequence();
         if (subManager != null) {
             subManager.destroy();
         }
     }
 
-    private void destroySequence() {
-        for (Sequence sequence : sequences.values()) {
-            if (sequence instanceof SimpleSequence) {
-                SequenceDao sequenceDao = ((SimpleSequence) sequence).getSequenceDao();
-                sequenceDao.destroy();
-            }
-            if (sequence instanceof GroupSequence) {
-                SequenceDao sequenceDao = ((GroupSequence) sequence).getSequenceDao();
-                sequenceDao.destroy();
-            }
-        }
-        sequences.clear();
-    }
-
-    @Override
-    public Sequence getSequence(String schemaName, String seqName) {
-        if (!ConfigDataMode.isMasterMode()) {
-            throw new SequenceException("Sequence operations are not allowed in non-master node");
-        }
-
-        Sequence seq = this.sequences.get(seqName);
-        if (seq == null) {
-            if (this.subManager != null) {
-                // 如果老的sequence没有,才会走到sub sequence
-                if (!subManager.isInited()) {
-                    try {
-                        subManager.init();
-                    } catch (Exception ex) {
-                        throw GeneralUtil.nestedException(ex);
-                    }
-                }
-                seq = subManager.getSequence(schemaName, seqName);
-            }
-        }
-        return seq;
-    }
-
-    @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
-        if (this.subManager != null) {
-            if (!subManager.isInited()) {
-                try {
-                    subManager.init();
-                } catch (Exception ex) {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-            return subManager.areAllSequencesSameType(schemaName, seqType);
-        }
-        return false;
-    }
 }

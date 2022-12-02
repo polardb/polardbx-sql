@@ -38,6 +38,8 @@ import java.util.TreeMap;
 
 import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.GLOBAL_DEADLOCK;
 import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.MDL_DEADLOCK;
+import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.NO_DEADLOCKS_DETECTED;
+import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.containsMetaDb;
 
 /**
  * @author wuzhe
@@ -82,9 +84,14 @@ public class LogicalShowGlobalDeadlocksHandler extends HandlerCommon {
                     // Inject logical tables
                     final Map<String, String> physicalToLogical = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
                     log = DeadlockParser.injectLogicalTables(log, physicalToLogical);
-                    // Check privilege
-                    log = DeadlockParser.checkPrivilege(log, physicalToLogical.values(), executionContext);
-                    result.addRow(new Object[] {type, log});
+
+                    // User should not see deadlocks in meta-db.
+                    if (containsMetaDb(log)) {
+                        result.addRow(new Object[] {type, NO_DEADLOCKS_DETECTED});
+                    } else {
+                        result.addRow(new Object[] {type, log});
+                    }
+
                 }
             }
         }

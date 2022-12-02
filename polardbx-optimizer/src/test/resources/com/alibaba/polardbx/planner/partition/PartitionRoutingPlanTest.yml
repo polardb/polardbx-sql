@@ -23,7 +23,7 @@
     select * from rng_tbl a where (b, e, c) not in ((1,2,3),(4,5,6))
   plan: |
     gather(concurrent=true)
-      logicalview(tables="rng_tbl[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d`, `e` from `rng_tbl` as `rng_tbl` where ((`b`, `e`, `c`) not in((1, 2, 3),(4, 5, 6)))")
+      logicalview(tables="rng_tbl[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d`, `e` from `rng_tbl` as `rng_tbl` where (((`b`, `e`, `c`)) not in((1, 2, 3),(4, 5, 6)))")
  
 
 - sql: |
@@ -88,10 +88,3 @@
   plan: |
     gather(concurrent=true)
       logicalview(tables="rng_col_tbl[p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=9, sql="select `a`, `b`, `c`, `d`, `e` from `rng_col_tbl` as `rng_col_tbl` where ((`a`, `b`, `c`) >(100, 1000, 10000))")
-
-- sql: |
-    select * from rng_tbl a where (b, e, c) not in ((1,2,3),(4,5,6))
-  plan: |
-    gather(concurrent=true)
-      logicalview(tables="rng_tbl[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d`, `e` from `rng_tbl` as `rng_tbl` where ((`b`, `e`, `c`) not in((1, 2, 3),(4, 5, 6)))")
-    

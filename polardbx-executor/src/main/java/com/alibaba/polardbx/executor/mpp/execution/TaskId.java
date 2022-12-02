@@ -35,7 +35,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Objects;
 
 public class TaskId {
-    private final static TaskId EMPTY_TASKID = new TaskId("-1", -1, -1);
+    public final static TaskId EMPTY_TASKID = new TaskId("-1", -1, -1);
 
     public static TaskId getEmptyTask() {
         return EMPTY_TASKID;

@@ -29,15 +29,16 @@ import java.util.Map;
 
 public class FiredScheduledJobsRecord implements SystemTableRecord {
 
-    private long    scheduleId;
-    private String  tableSchema;
-    private String  tableName;
-    private long    fireTime;
-    private long    startTime;
-    private long    finishTime;
-    private String  state;
-    private String  remark;
-    private String  result;
+    private long scheduleId;
+    private String tableSchema;
+    private String tableName;
+    private long fireTime;
+    private long startTime;
+    private long finishTime;
+    private String state;
+    private String remark;
+    private String result;
+    private String tableGroupName;
 
     @Override
     public FiredScheduledJobsRecord fill(ResultSet rs) throws SQLException {
@@ -51,6 +52,7 @@ public class FiredScheduledJobsRecord implements SystemTableRecord {
         this.state = rs.getString("state");
         this.remark = rs.getString("remark");
         this.result = rs.getString("result");
+        this.tableGroupName = rs.getString("table_group_name");
 
         return this;
     }
@@ -58,15 +60,16 @@ public class FiredScheduledJobsRecord implements SystemTableRecord {
     public Map<Integer, ParameterContext> buildParams() {
         Map<Integer, ParameterContext> params = new HashMap<>(16);
         int index = 0;
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong,   this.scheduleId);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.scheduleId);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableSchema);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableName);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong,  this.fireTime);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong,  this.startTime);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong,  this.finishTime);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.fireTime);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.startTime);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.finishTime);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.state);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.remark);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.result);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableGroupName);
         return params;
     }
 
@@ -140,5 +143,13 @@ public class FiredScheduledJobsRecord implements SystemTableRecord {
 
     public void setResult(final String result) {
         this.result = result;
+    }
+
+    public String getTableGroupName() {
+        return tableGroupName;
+    }
+
+    public void setTableGroupName(String tableGroupName) {
+        this.tableGroupName = tableGroupName;
     }
 }

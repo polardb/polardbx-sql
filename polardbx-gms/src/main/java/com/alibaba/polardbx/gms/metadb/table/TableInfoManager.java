@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -30,7 +32,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.record.RecordConverter;
-import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupTableDetailAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
@@ -63,11 +66,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.gms.tablegroup.TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
 
 public class TableInfoManager extends AbstractAccessor {
 
@@ -87,6 +93,7 @@ public class TableInfoManager extends AbstractAccessor {
     private final TableLocalPartitionAccessor localPartitionAccessor;
     private final ScheduledJobsAccessor scheduledJobsAccessor;
     private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
+    private final JoinGroupTableDetailAccessor joinGroupTableDetailAccessor;
 
     public TableInfoManager() {
         schemataAccessor = new SchemataAccessor();
@@ -103,6 +110,7 @@ public class TableInfoManager extends AbstractAccessor {
         localPartitionAccessor = new TableLocalPartitionAccessor();
         scheduledJobsAccessor = new ScheduledJobsAccessor();
         firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
+        joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
     }
 
     private static final String SQL_UPDATE_TABLE_VERSION = "UPDATE "
@@ -116,7 +124,10 @@ public class TableInfoManager extends AbstractAccessor {
             pstmt.executeUpdate();
         }
 
-        DdlMetaLogUtil.logSql(SQL_UPDATE_TABLE_VERSION);
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schema);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, table);
+        DdlMetaLogUtil.logSql(SQL_UPDATE_TABLE_VERSION, params);
 
         long newVersion;
         try (PreparedStatement pstmt = conn.prepareStatement("select last_insert_id()")) {
@@ -166,6 +177,7 @@ public class TableInfoManager extends AbstractAccessor {
         localPartitionAccessor.setConnection(connection);
         scheduledJobsAccessor.setConnection(connection);
         firedScheduledJobsAccessor.setConnection(connection);
+        joinGroupTableDetailAccessor.setConnection(connection);
     }
 
     public String getDefaultDbIndex(String schemaName) {
@@ -249,12 +261,11 @@ public class TableInfoManager extends AbstractAccessor {
         return tablesAccessor.queryByEngine(engine);
     }
 
-
     public List<ColumnsRecord> queryVisibleColumns(String tableSchema, String tableName) {
         List<ColumnsRecord> visibleRecords = new ArrayList<>();
         List<ColumnsRecord> records = queryColumns(tableSchema, tableName);
         for (ColumnsRecord record : records) {
-            if (record.status != TableStatus.ABSENT.getValue()) {
+            if (record.status != ColumnStatus.ABSENT.getValue()) {
                 visibleRecords.add(record);
             }
         }
@@ -265,7 +276,7 @@ public class TableInfoManager extends AbstractAccessor {
         Map<String, List<ColumnsRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<ColumnsRecord> records = queryColumns(tableSchema);
         for (ColumnsRecord record : records) {
-            if (record.status != TableStatus.ABSENT.getValue()) {
+            if (record.status != ColumnStatus.ABSENT.getValue()) {
                 visibleRecords.computeIfAbsent(record.tableName, k -> new ArrayList<>()).add(record);
             }
         }
@@ -312,6 +323,10 @@ public class TableInfoManager extends AbstractAccessor {
 
     public List<IndexesRecord> queryIndexes(String tableSchema, String tableName) {
         return indexesAccessor.query(tableSchema, tableName);
+    }
+
+    public List<IndexesRecord> queryIndexes(String tableSchema, String tableName, String indexName) {
+        return indexesAccessor.query(tableSchema, tableName, indexName);
     }
 
     public List<TablePartitionRecord> queryTablePartitions(String tableSchema, String tableName, boolean fromDelta) {
@@ -385,9 +400,17 @@ public class TableInfoManager extends AbstractAccessor {
         return tablesExtAccessor.alterNameAndTypeAndFlag(tableSchema, originName, newName, tableType, flag);
     }
 
-    public void alterTablePartitionsCurOver(String tableSchema, String originName, String newName, int tableType) {
+    public void repartitionCutOver(String tableSchema, String originName, String newName, int tableType) {
         tablePartitionAccessor.alterNameAndType(tableSchema, originName, newName, tableType);
         indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
+    }
+
+    public void alterPartitionCountCutOver(String tableSchema, String originIndexTableName, String newIndexTableName) {
+        indexesAccessor.cutOverGlobalIndex(tableSchema, originIndexTableName, newIndexTableName);
+    }
+
+    public void changeTablePartitionsPartFlag(String tableSchema, String tableName, Long partFlag) {
+        tablePartitionAccessor.updateTablePartitionsPartFlag(tableSchema, tableName, partFlag);
     }
 
     public int alterTableExtFlag(String tableSchema, String tableName, long flag) {
@@ -441,7 +464,7 @@ public class TableInfoManager extends AbstractAccessor {
         }
 
         if (context.sequenceRecord != null) {
-            sequencesAccessor.insert(context.sequenceRecord);
+            sequencesAccessor.insert(context.sequenceRecord, 0);
         }
     }
 
@@ -455,6 +478,16 @@ public class TableInfoManager extends AbstractAccessor {
 
     public List<FilesRecord> queryTableFormatByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
         return filesAccessor.queryTableFormatByLogicalSchemaTable(logicalSchemaName, logicalTableName);
+    }
+
+    public FilesRecord queryLatestFileByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
+        List<FilesRecord> filesRecordList =
+            filesAccessor.queryLatestFileByLogicalSchemaTable(logicalSchemaName, logicalTableName);
+        if (filesRecordList.isEmpty()) {
+            return null;
+        } else {
+            return filesRecordList.get(0);
+        }
     }
 
     public List<FilesRecord> queryFilesByEngine(Engine engine) {
@@ -486,7 +519,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void changeOssFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount) {
-        filesAccessor.changeFile(primaryKey, fileMeta, fileSize, rowCount);
+        filesAccessor.vaildFile(primaryKey, fileMeta, fileSize, rowCount);
     }
 
     public void changeTableEngine(String tableSchema, String tableName, String engine) {
@@ -494,7 +527,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public List<FilesRecord> lockOssFile(Long taskId, String tableSchema, String tableName) {
-        return filesAccessor.lock(taskId, tableSchema, tableName);
+        return filesAccessor.queryByIdAndSchemaAndTable(taskId, tableSchema, tableName);
     }
 
     public void deleteOssFile(Long taskId, String tableSchema, String tableName) {
@@ -502,15 +535,15 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void validOssFile(Long taskId, String tableSchema, String tableName) {
-        filesAccessor.valid(taskId, tableSchema, tableName);
+        filesAccessor.ready(taskId, tableSchema, tableName);
     }
 
     public void addOSSColumnsMeta(String tableSchema, String tableName, ColumnMetasRecord columnMetasRecord) {
         columnMetaAccessor.insert(ImmutableList.of(columnMetasRecord));
     }
 
-    public List<ColumnMetasRecord> lockOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
-        return columnMetaAccessor.lock(taskId, tableSchema, tableName);
+    public List<ColumnMetasRecord> queryOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
+        return columnMetaAccessor.queryByIdAndSchemaAndTable(taskId, tableSchema, tableName);
     }
 
     public void deleteOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
@@ -518,10 +551,10 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void validOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
-        columnMetaAccessor.valid(taskId, tableSchema, tableName);
+        columnMetaAccessor.ready(taskId, tableSchema, tableName);
     }
 
-    public void addTable(PhyInfoSchemaContext context) {
+    public void addTable(PhyInfoSchemaContext context, long newSeqCacheSize) {
         // Table Meta
         TablesInfoSchemaRecord tablesInfoSchemaRecord =
             fetchTableMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, context.dataSource);
@@ -529,7 +562,7 @@ public class TableInfoManager extends AbstractAccessor {
         TablesRecord tablesRecord =
             RecordConverter.convertTable(tablesInfoSchemaRecord, context.tableSchema, context.tableName);
 
-        tablesAccessor.insert(tablesRecord);
+        int tableId = tablesAccessor.insert(tablesRecord);
 
         // Column Meta
         List<ColumnsInfoSchemaRecord> columnsInfoSchemaRecords =
@@ -555,18 +588,25 @@ public class TableInfoManager extends AbstractAccessor {
         }
 
         if (context.sequenceRecord != null) {
-            sequencesAccessor.insert(context.sequenceRecord);
+            sequencesAccessor.insert(context.sequenceRecord, newSeqCacheSize);
         }
     }
 
-    public void showTable(String tableSchema, String tableName, SystemTableRecord sequenceRecord) {
-        updateStatus(tableSchema, tableName, sequenceRecord, TableStatus.PUBLIC);
+    public void showTable(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord) {
+        updateStatus(tableSchema, tableName, sequenceRecord, TableStatus.PUBLIC, true);
+        tablePartitionAccessor.updateStatusForPartitionedTable(tableSchema, tableName,
+            TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC);
+    }
+
+    public void showTable(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
+                          boolean refreshColumnStatus) {
+        updateStatus(tableSchema, tableName, sequenceRecord, TableStatus.PUBLIC, refreshColumnStatus);
         tablePartitionAccessor.updateStatusForPartitionedTable(tableSchema, tableName,
             TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC);
     }
 
     public void hideTable(String tableSchema, String tableName) {
-        updateStatus(tableSchema, tableName, null, TableStatus.ABSENT);
+        updateStatus(tableSchema, tableName, null, TableStatus.ABSENT, true);
         tablePartitionAccessor.updateStatusForPartitionedTable(tableSchema, tableName,
             TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_ABSENT);
     }
@@ -576,12 +616,15 @@ public class TableInfoManager extends AbstractAccessor {
 
     }
 
-    private void updateStatus(String tableSchema, String tableName, SystemTableRecord sequenceRecord,
-                              TableStatus newTableStatus) {
+    private void updateStatus(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
+                              TableStatus newTableStatus, boolean refreshColumnStatus) {
         int newStatus = newTableStatus.getValue();
         tablesAccessor.updateStatus(tableSchema, tableName, newStatus);
         tablesExtAccessor.updateStatus(tableSchema, tableName, newStatus);
-        columnsAccessor.updateStatus(tableSchema, tableName, newStatus);
+
+        if (refreshColumnStatus) {
+            columnsAccessor.updateStatus(tableSchema, tableName, newStatus);
+        }
 
         int newUpdateStatus = IndexStatus.ABSENT.getValue();
         if (newTableStatus == TableStatus.PUBLIC) {
@@ -594,7 +637,7 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
-    public void removeTable(String tableSchema, String tableName, SystemTableRecord sequenceRecord,
+    public void removeTable(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
                             boolean withTablesExtOrPartition) {
         tablesAccessor.delete(tableSchema, tableName);
         columnsAccessor.delete(tableSchema, tableName);
@@ -608,49 +651,8 @@ public class TableInfoManager extends AbstractAccessor {
             this.deletePartitionInfo(tableSchema, tableName);
             this.removeLocalPartitionRecord(tableSchema, tableName);
             this.removeScheduledJobRecord(tableSchema, tableName);
+            this.joinGroupTableDetailAccessor.deleteJoinGroupTableDetailBySchemaTable(tableSchema, tableName);
         }
-    }
-
-    /**
-     * when drop/add partition, we will:
-     * 1、create a new table group the this new table schema
-     * 2、create new partition groups, for drop partition,
-     * the location of each partition group ,is inherit from table_partitions table
-     * for add partition, the location of a those partition groups which could map to
-     * the existing partitions is inherit from table_partitions table, for the location
-     * of a those partition groups which map to the new partitions is decided by the allocation algorithm
-     * 3、renew the table group id and partition group id of the related record in table_partitions
-     */
-    public Long rebuildPartitionMetaWhenDropPartition(String tableSchema, String tableName, String partitionName,
-                                                      TableGroupRecord tableGroupRecord,
-                                                      Map<Long, PartitionGroupRecord> partitionGroupRecordMap) {
-        //in case can't insert into table_group due to unique key conflict
-        tableGroupRecord.tg_name = String.valueOf(System.currentTimeMillis());
-        Long newTableGroupID = tableGroupAccessor.addNewTableGroup(tableGroupRecord);
-        Long oldTableGroupId = null;
-        assert newTableGroupID != null;
-        for (Map.Entry<Long, PartitionGroupRecord> entry : partitionGroupRecordMap.entrySet()) {
-            if (oldTableGroupId == null) {
-                oldTableGroupId = entry.getValue().tg_id;
-            }
-            entry.getValue().tg_id = newTableGroupID;
-            Long oldPgId = entry.getKey();
-            Long pgId = partitionGroupAccessor.addNewPartitionGroup(entry.getValue(), false);
-            tablePartitionAccessor.updateGroupId(oldPgId, pgId);
-        }
-        tablePartitionAccessor.updateGroupId(oldTableGroupId, newTableGroupID);
-
-        String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(newTableGroupID, tableGroupRecord.tg_type);
-        List<TableGroupRecord> tableGroupRecords =
-            tableGroupAccessor
-                .getTableGroupsBySchemaAndName(tableGroupRecord.getSchema(),
-                    finalTgName, false);
-        if (GeneralUtil.isNotEmpty(tableGroupRecords)) {
-            finalTgName = "tg" + tableGroupRecord.tg_name;
-        }
-        tableGroupAccessor.updateTableGroupName(newTableGroupID, finalTgName);
-        tablePartitionAccessor.deletePartitionConfigs(tableSchema, tableName, partitionName);
-        return oldTableGroupId;
     }
 
     public long getVersionForUpdate(String tableSchema, String tableName) {
@@ -684,6 +686,10 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor.updateVersion(tableSchema, tableName, newVersion);
     }
 
+    public void updateIndexesVersion(String tableSchema, String indexName, long newVersion) {
+        indexesAccessor.updateVersion(tableSchema, indexName, newVersion);
+    }
+
     public void addNewTableName(String tableSchema, String tableName, String newTableName) {
         tablesAccessor.updateNewName(tableSchema, tableName, newTableName);
         tablesExtAccessor.updateNewName(tableSchema, tableName, newTableName);
@@ -698,7 +704,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void renameTable(String tableSchema, String tableName, String newTableName, String newTbNamePattern,
-                            SystemTableRecord sequenceRecord) {
+                            SequenceBaseRecord sequenceRecord) {
         tablesAccessor.rename(tableSchema, tableName, newTableName);
         tablesExtAccessor.rename(tableSchema, tableName, newTableName, newTbNamePattern);
         columnsAccessor.rename(tableSchema, tableName, newTableName);
@@ -711,7 +717,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void renamePartitionTable(String tableSchema, String tableName, String newTableName,
-                                     SystemTableRecord sequenceRecord) {
+                                     SequenceBaseRecord sequenceRecord) {
         tablesAccessor.rename(tableSchema, tableName, newTableName);
         tablePartitionAccessor.rename(tableSchema, tableName, newTableName);
         columnsAccessor.rename(tableSchema, tableName, newTableName);
@@ -723,12 +729,22 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public void setMultiWriteSourceColumn(String tableSchema, String tableName, String columnsName) {
+        columnsAccessor.updateStatus(tableSchema, tableName, ImmutableList.of(columnsName),
+            ColumnStatus.MULTI_WRITE_SOURCE.getValue());
+    }
+
+    public void setMultiWriteTargetColumn(String tableSchema, String tableName, String columnsName) {
+        columnsAccessor.updateStatus(tableSchema, tableName, ImmutableList.of(columnsName),
+            ColumnStatus.MULTI_WRITE_TARGET.getValue());
+    }
+
     public void hideColumns(String tableSchema, String tableName, List<String> columnsNames) {
-        columnsAccessor.updateStatus(tableSchema, tableName, columnsNames, TableStatus.ABSENT.getValue());
+        columnsAccessor.updateStatus(tableSchema, tableName, columnsNames, ColumnStatus.ABSENT.getValue());
     }
 
     public void showColumns(String tableSchema, String tableName, List<String> columnsNames) {
-        columnsAccessor.updateStatus(tableSchema, tableName, columnsNames, TableStatus.PUBLIC.getValue());
+        columnsAccessor.updateStatus(tableSchema, tableName, columnsNames, ColumnStatus.PUBLIC.getValue());
     }
 
     public void removeColumns(String tableSchema, String tableName, List<String> columnNames) {
@@ -827,6 +843,18 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public String getBeforeColumnName(String tableSchema, String tableName, String columnName) {
+        List<ColumnsRecord> columnsRecords = columnsAccessor.query(tableSchema, tableName);
+        int index = 0;
+        for (int i = 0; i < columnsRecords.size(); i++) {
+            if (columnsRecords.get(i).columnName.equalsIgnoreCase(columnName)) {
+                index = i - 1;
+                break;
+            }
+        }
+        return index == -1 ? "" : columnsRecords.get(index).columnName;
+    }
+
     public void resetColumnDefaults(String tableSchema, String tableName, List<String> columnNames,
                                     Map<String, String> convertedColumnDefaults) {
         if (GeneralUtil.isEmpty(convertedColumnDefaults)) {
@@ -878,17 +906,6 @@ public class TableInfoManager extends AbstractAccessor {
         if (GeneralUtil.isNotEmpty(columnsToUpdate)) {
             columnsAccessor.update(columnsToUpdate);
         }
-    }
-
-    public void updateAllIndexColumn(String tableSchema, String tableName, String indexName, Integer indexColumnType,
-                                     Integer indexStatus) {
-        indexesAccessor.updateAllColumnType(tableSchema, tableName, indexName, indexColumnType, indexStatus);
-    }
-
-    public void updateIndexColumn(String tableSchema, String tableName, String indexName, List<String> columnNameList,
-                                  Integer indexColumnType, Integer indexStatus) {
-        indexesAccessor
-            .updateColumnType(tableSchema, tableName, indexName, columnNameList, indexColumnType, indexStatus);
     }
 
     public void updateColumnsStatus(String tableSchema, List<String> tableNames, List<String> columnNames,
@@ -1010,15 +1027,15 @@ public class TableInfoManager extends AbstractAccessor {
         indexesAccessor.updateStatus(tableSchema, tableName, indexNames, columnNames, oldStatus, newStatus);
     }
 
-    public void createSequence(SystemTableRecord sequenceRecord) {
-        sequencesAccessor.insert(sequenceRecord);
+    public void createSequence(SequenceBaseRecord sequenceRecord, long newSeqCacheSize) {
+        sequencesAccessor.insert(sequenceRecord, newSeqCacheSize);
     }
 
-    public void alterSequence(SystemTableRecord sequenceRecord) {
+    public void alterSequence(SequenceBaseRecord sequenceRecord) {
         sequencesAccessor.update(sequenceRecord);
     }
 
-    public SystemTableRecord fetchSequence(String schemaName, String seqName) {
+    public SequenceBaseRecord fetchSequence(String schemaName, String seqName) {
         return sequencesAccessor.query(schemaName, seqName);
     }
 
@@ -1233,7 +1250,7 @@ public class TableInfoManager extends AbstractAccessor {
         public String tableName = null;
         public String phyTableSchema = null;
         public String phyTableName = null;
-        public SystemTableRecord sequenceRecord = null;
+        public SequenceBaseRecord sequenceRecord = null;
 
     }
 
@@ -1273,9 +1290,16 @@ public class TableInfoManager extends AbstractAccessor {
                         tablePartRecordInfoContext.getPartitionRecList().get(i).groupId = pgId;
                         i++;
                     }
-
-                    String finalTgName = TableGroupNameUtil
-                        .autoBuildTableGroupName(lastInsertId, tableGroupConfig.getTableGroupRecord().tg_type);
+                    String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(lastInsertId,
+                        tableGroupConfig.getTableGroupRecord().tg_type);
+                    List<TableGroupRecord> tableGroupRecords =
+                        tableGroupAccessor
+                            .getTableGroupsBySchemaAndName(tableGroupConfig.getTableGroupRecord().schema, finalTgName,
+                                false);
+                    if (GeneralUtil.isNotEmpty(tableGroupRecords)
+                        && tableGroupConfig.getTableGroupRecord().tg_type == TG_TYPE_PARTITION_TBL_TG) {
+                        finalTgName = "tg" + String.valueOf(System.currentTimeMillis());
+                    }
                     tableGroupAccessor.updateTableGroupName(lastInsertId, finalTgName);
                 }
             } else {
@@ -1371,15 +1395,22 @@ public class TableInfoManager extends AbstractAccessor {
         return recordList;
     }
 
+    public List<TableLocalPartitionRecord> getAllLocalPartitionRecord() {
+        List<TableLocalPartitionRecord> recordList = localPartitionAccessor.query();
+        return recordList;
+    }
+
     public TableLocalPartitionRecord getLocalPartitionRecord(String schemaName, String tableName) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
         TableLocalPartitionRecord record = localPartitionAccessor.queryByTableName(schemaName, tableName);
         return record;
     }
 
-    public TableLocalPartitionRecord getLocalPartitionRecordByArchiveTable(String archiveSchemaName, String archiveTableName) {
+    public TableLocalPartitionRecord getLocalPartitionRecordByArchiveTable(String archiveSchemaName,
+                                                                           String archiveTableName) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(archiveSchemaName));
-        TableLocalPartitionRecord record = localPartitionAccessor.queryByArchiveTableName(archiveSchemaName, archiveTableName);
+        TableLocalPartitionRecord record =
+            localPartitionAccessor.queryByArchiveTableName(archiveSchemaName, archiveTableName);
         return record;
     }
 
@@ -1388,7 +1419,8 @@ public class TableInfoManager extends AbstractAccessor {
         return localPartitionAccessor.insert(tableLocalPartitionRecord);
     }
 
-    public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema, String archiveTableName) {
+    public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema,
+                                   String archiveTableName) {
         localPartitionAccessor.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
     }
 

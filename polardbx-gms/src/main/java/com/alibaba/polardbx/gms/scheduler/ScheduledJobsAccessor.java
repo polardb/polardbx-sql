@@ -38,8 +38,7 @@ import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SCHEDULED_JOBS;
 public class ScheduledJobsAccessor extends AbstractAccessor {
     private static final Logger logger = LoggerFactory.getLogger(ScheduledJobsAccessor.class);
 
-    private static final String ALL_COLUMNS =
-        "`schedule_id`," +
+    private static final String ALL_COLUMNS = "`schedule_id`," +
         "`create_time`," +
         "`update_time`," +
         "`table_schema`," +
@@ -57,9 +56,10 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         "`next_fire_time`," +
         "`starts`," +
         "`ends`," +
-        "`schedule_policy`";
+        "`schedule_policy`," +
+        "`table_group_name`";
 
-    private static final String ALL_VALUES = "(null,null,null,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    private static final String ALL_VALUES = "(null,null,null,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     private static final String INSERT_TABLE_SCHEDULED_JOBS =
         "insert into " + SCHEDULED_JOBS + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
@@ -74,23 +74,30 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_name=?";
 
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_SCHEDULE_TYPE =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where schedule_type=?";
+
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_GROUP_NAME =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_group_name=?";
+
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_EXECUTOR_TYPE =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where executor_type=?";
+
     private static final String POLL_SQL =
-          "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " "
-        + "WHERE `status` = 'ENABLED' AND schedule_expr IS NOT NULL "
-        + "AND ("
-        + "        next_fire_time IS NULL "
-        + "     OR next_fire_time = 0 "
-        + "     OR next_fire_time <= UNIX_TIMESTAMP() "
-        + ") "
-        + "FOR UPDATE"
-        ;
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " "
+            + "WHERE `status` = 'ENABLED' AND schedule_expr IS NOT NULL "
+            + "AND ("
+            + "        next_fire_time IS NULL "
+            + "     OR next_fire_time = 0 "
+            + "     OR next_fire_time <= UNIX_TIMESTAMP() "
+            + ") "
+            + "FOR UPDATE";
 
     private static final String FIRE_SQL =
-          "UPDATE " + SCHEDULED_JOBS + " "
-        + "SET last_fire_time=next_fire_time, "
-        + "next_fire_time=? "
-        + "WHERE schedule_id=?"
-        ;
+        "UPDATE " + SCHEDULED_JOBS + " "
+            + "SET last_fire_time=next_fire_time, "
+            + "next_fire_time=? "
+            + "WHERE schedule_id=?";
 
     public int insert(ScheduledJobsRecord record) {
         try {
@@ -122,7 +129,7 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, scheduleId);
             List<ScheduledJobsRecord> list =
                 MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_ID, params, ScheduledJobsRecord.class, connection);
-            if(CollectionUtils.isEmpty(list)){
+            if (CollectionUtils.isEmpty(list)) {
                 return null;
             }
             return list.get(0);
@@ -131,12 +138,47 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
-    public List<ScheduledJobsRecord> query(String schemaName, String tableName){
+    public List<ScheduledJobsRecord> query(String schemaName, String tableName) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(3);
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
-            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME, params, ScheduledJobsRecord.class, connection);
+            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME, params, ScheduledJobsRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ScheduledJobsRecord> queryByScheduleType(String scheduleType) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, scheduleType);
+            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_SCHEDULE_TYPE, params, ScheduledJobsRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ScheduledJobsRecord> queryByExecutorType(String executorType) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, executorType);
+            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_EXECUTOR_TYPE, params, ScheduledJobsRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ScheduledJobsRecord> queryByTableGroupName(String schemaName, String tableGroupName) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableGroupName);
+            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_TABLE_GROUP_NAME, params, ScheduledJobsRecord.class,
+                connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
         }
@@ -150,13 +192,13 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
-    public boolean fire(long epochSeconds, long scheduleId){
+    public boolean fire(long epochSeconds, long scheduleId) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(3);
 
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, epochSeconds);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, scheduleId);
-            return MetaDbUtil.update(FIRE_SQL, params, connection)>0;
+            return MetaDbUtil.update(FIRE_SQL, params, connection) > 0;
         } catch (Exception e) {
             throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "update", e);
         }
@@ -169,10 +211,15 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEDULE_ID = "delete from " + SCHEDULED_JOBS + WHERE_SCHEDULE_ID;
 
+    private static final String DISABLE_BY_SCHEDULE_ID =
+        "update " + SCHEDULED_JOBS + " set status='DISABLED' " + WHERE_SCHEDULE_ID;
+    private static final String ENABLE_BY_SCHEDULE_ID =
+        "update " + SCHEDULED_JOBS + " set status='ENABLED' " + WHERE_SCHEDULE_ID;
+
     public int deleteById(long scheduleId) {
         try {
             final Map<Integer, ParameterContext> params =
-                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[]{scheduleId});
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[] {scheduleId});
             return MetaDbUtil.delete(DELETE_BY_SCHEDULE_ID, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
@@ -192,6 +239,28 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
+    public int disableById(long scheduleId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[] {scheduleId});
+            return MetaDbUtil.delete(DISABLE_BY_SCHEDULE_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to update " + SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
+                "update", e);
+        }
+    }
+
+    public int enableById(long scheduleId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[] {scheduleId});
+            return MetaDbUtil.delete(ENABLE_BY_SCHEDULE_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to update " + SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
+                "update", e);
+        }
+    }
+
     /**
      * Failed to {0} the system table {1}. Caused by: {2}.
      */
@@ -203,6 +272,5 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             e.getMessage()
         );
     }
-
 
 }

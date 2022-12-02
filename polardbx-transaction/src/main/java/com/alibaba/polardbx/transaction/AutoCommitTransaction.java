@@ -62,6 +62,9 @@ public class AutoCommitTransaction extends BaseTransaction {
         if (groupName == null) {
             throw new IllegalArgumentException("group name is null");
         }
+        if(ds==null){
+            throw new IllegalArgumentException("DataSource is null");
+        }
 
         lock.lock();
         try {

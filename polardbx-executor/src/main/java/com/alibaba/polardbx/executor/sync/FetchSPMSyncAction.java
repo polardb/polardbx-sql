@@ -29,6 +29,8 @@ import com.alibaba.polardbx.optimizer.core.planner.PlaceHolderExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.parametric.BaseParametricQueryAdvisor;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -83,10 +85,8 @@ public class FetchSPMSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        Map<String, BaselineInfo> baselineMap =
-            OptimizerContext.getContext(schemaName).getPlanManager().getBaselineMap();
-        Map<String, Set<Point>> parameterSqlMap =
-            OptimizerContext.getContext(schemaName).getPlanManager().getParametricQueryAdvisor().dump();
+        PlanManager planManager = PlanManager.getInstance();
+        Map<String, BaselineInfo> baselineMap = planManager.getBaselineMap(schemaName);
 
         ArrayResultCursor result = new ArrayResultCursor("PLAN_CACHE");
         result.addColumn("BASELINE_ID", DataTypes.StringType);
@@ -105,10 +105,14 @@ public class FetchSPMSyncAction implements ISyncAction {
         result.addColumn("PARAMETERIZED_SQL", DataTypes.StringType);
         result.addColumn("EXTERNALIZED_PLAN", DataTypes.StringType);
 
+        if (baselineMap == null) {
+            return result;
+        }
+
         for (Map.Entry<String, BaselineInfo> entry : baselineMap.entrySet()) {
             String paramSql = entry.getKey();
             BaselineInfo baselineInfo = entry.getValue();
-            Set<Point> points = parameterSqlMap.get(paramSql);
+            Set<Point> points = baselineInfo.getPointSet();
             for (PlanInfo planInfo : baselineInfo.getPlans()) {
                 RelNode plan = planInfo.getPlan(null, null);
                 String planExplain = null;

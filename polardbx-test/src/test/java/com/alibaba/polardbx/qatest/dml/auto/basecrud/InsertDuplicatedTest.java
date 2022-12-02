@@ -23,6 +23,8 @@ import com.alibaba.polardbx.qatest.data.TableEntityGenerator;
 import com.alibaba.polardbx.qatest.entity.ColumnEntity;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @since 5.0.1
  */
 
+@RunWith(Parameterized.class)
 public class InsertDuplicatedTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

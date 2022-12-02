@@ -8,13 +8,14 @@ partition by range(a)
   partition p2 values less than (200),
   partition p3 values less than (300)
 );
-alter table tbl_range1 set tablegroup=new_tg_for_add_part;
+alter table tbl_range1 set tablegroup=new_tg_for_add_part force;
 create table if not exists tbl_range2 (a int not null,primary key (`a`))
 partition by range(a)
 ( partition p1 values less than (100),
   partition p2 values less than (200),
   partition p3 values less than (300)
 );
+alter table tbl_range2 set tablegroup=new_tg_for_add_part force;
 show create table tbl_range1;
 show create table tbl_range2;
 

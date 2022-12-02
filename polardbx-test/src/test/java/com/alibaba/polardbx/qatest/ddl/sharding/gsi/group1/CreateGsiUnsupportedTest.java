@@ -30,8 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
-
 /**
  * @author chenmo.cm
  */
@@ -52,9 +50,10 @@ public class CreateGsiUnsupportedTest extends DDLBaseNewDBTestCase {
         + "\t`buyer_id` varchar(20) DEFAULT NULL,\n"
         + "\t`seller_id` varchar(20) DEFAULT NULL,\n"
         + "\t`order_snapshot` longtext,\n";
-    private static final String gsiTestTablePart2 = "\t`gmt_create` timestamp DEFAULT \"2019-01-27 18:23:00\",\n"
-        + "\tPRIMARY KEY (`id`)\n"
-        + ") ENGINE = InnoDB CHARSET = utf8 dbpartition by hash(`order_id`) tbpartition by week(`gmt_create`) tbpartitions 2;\n";
+    private static final String gsiTestTablePart2 =
+        "\t`gmt_create` timestamp NOT NULL DEFAULT \"2019-01-27 18:23:00\",\n"
+            + "\tPRIMARY KEY (`id`)\n"
+            + ") ENGINE = InnoDB CHARSET = utf8 dbpartition by hash(`order_id`) tbpartition by week(`gmt_create`) tbpartitions 2;\n";
     private static final String expectedGsiTestTablePart2 =
         "\t`gmt_create` timestamp NOT NULL DEFAULT \"2019-01-27 18:23:00\",\n"
             + "\tPRIMARY KEY (`id`),\n"
@@ -92,10 +91,9 @@ public class CreateGsiUnsupportedTest extends DDLBaseNewDBTestCase {
         } else {
             unsupportedColumns.put("\t`gmt_modified` timestamp,\n",
                 "Unsupported index table structure, cannot use DEFAULT CURRENT_TIMESTAMP on index or covering column.");
-
-            supportedColumns.put("\t`gmt_modified` timestamp NOT NULL DEFAULT 0,\n", "success");
-            supportedColumns.put("\t`gmt_modified` timestamp NOT NULL DEFAULT \"000-00-00 00:00:00\",\n", "success");
         }
+        supportedColumns.put("\t`gmt_modified` timestamp NOT NULL DEFAULT 0,\n", "success");
+        supportedColumns.put("\t`gmt_modified` timestamp NOT NULL DEFAULT \"000-00-00 00:00:00\",\n", "success");
         supportedColumns.put("\t`gmt_modified` timestamp NULL DEFAULT NULL,\n", "success");
         supportedColumns.put("\t`gmt_modified` timestamp NULL,\n", "success");
 
@@ -112,8 +110,7 @@ public class CreateGsiUnsupportedTest extends DDLBaseNewDBTestCase {
         this.columnDef = columnDef;
         this.errorMsg = errorMsg;
         this.sqlCreateTable = gsiTestTablePart1 + columnDef + gsiTestTablePart2;
-        this.sqlExpectedCreateTable =
-            gsiTestTablePart1 + columnDef + (isMySQL80() ? expectedGsiTestTablePart2_8 : expectedGsiTestTablePart2);
+        this.sqlExpectedCreateTable = gsiTestTablePart1 + columnDef + expectedGsiTestTablePart2;
         this.sqlCreateIndex = "CREATE UNIQUE GLOBAL INDEX "
             + gsiTestUkName
             + " ON "

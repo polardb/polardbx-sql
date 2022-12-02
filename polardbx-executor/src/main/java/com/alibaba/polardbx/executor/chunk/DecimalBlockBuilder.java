@@ -180,8 +180,12 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
         }
         int currentIntWord = DecimalTypeBase.roundUp(d.getIntegers());
         int currentFracWord = DecimalTypeBase.roundUp(d.getFractions());
+        boolean currentIsNeg = d.isNeg();
+
         if (isUnset) {
-            isSimple = (currentFracWord == 0 || currentIntWord == 1 || currentIntWord == 2) && currentFracWord == 1;
+            isSimple = !currentIsNeg
+                && (currentFracWord == 0 || currentIntWord == 1 || currentIntWord == 2)
+                && currentFracWord == 1;
             intWord = currentIntWord;
             fracWord = currentFracWord;
             isUnset = false;

@@ -16,12 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupSplitPartitionByHotValueBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableSplitPartitionByHotValueBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
@@ -37,6 +36,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionByHotValuePreparedData;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
@@ -47,7 +47,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -75,30 +74,32 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        if (preparedData.isRemainInOriginalTableGroup()) {
+            return splitInOriginTableGroup();
+        } else if (preparedData.isMoveToExistTableGroup()) {
+            return splitAndMoveToExistTableGroup();
+        } else if (preparedData.isCreateNewTableGroup()) {
+            return splitInNewTableGroup();
+        } else {
+            throw new RuntimeException("unexpected");
+        }
+    }
 
-        AlterTableGroupSplitPartitionByHotValuePreparedData alterTableGroupSplitPartitionByHotValuePreparedData =
-            (AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData;
-        String schemaName = alterTableGroupSplitPartitionByHotValuePreparedData.getSchemaName();
-        String tableGroupName = alterTableGroupSplitPartitionByHotValuePreparedData.getTableGroupName();
+    private ExecutableDdlJob splitInOriginTableGroup() {
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        Map<String, Long> tablesVersion = getTablesVersion();
+        String schemaName = preparedData.getSchemaName();
+        String tableGroupName = preparedData.getTableGroupName();
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        if (tableGroupConfig.getAllTables().size() > 1) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                "the tablegroup of this table contain more than one table, "
-                    + "please move this table to the dedicated tablegroup before this action");
-        }
-
-        Map<String, Long> tablesVersion = getTablesVersion();
-
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
-                alterTableGroupSplitPartitionByHotValuePreparedData.getTableGroupName(), tablesVersion, true,
-                alterTableGroupSplitPartitionByHotValuePreparedData.getTargetPhysicalGroups());
+                preparedData.getTableGroupName(), tablesVersion, true,
+                preparedData.getTargetPhysicalGroups());
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
 
-        for (String splitPartitionName : alterTableGroupSplitPartitionByHotValuePreparedData.getOldPartitionNames()) {
+        for (String splitPartitionName : preparedData.getOldPartitionNames()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
                     outdatedPartitionGroupId.add(record.id);
@@ -108,16 +109,16 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         }
         List<String> targetDbList = new ArrayList<>();
         int targetDbCnt =
-            alterTableGroupSplitPartitionByHotValuePreparedData.getTargetGroupDetailInfoExRecords().size();
-        List<String> newPartitions = alterTableGroupSplitPartitionByHotValuePreparedData.getNewPartitionNames();
-        for (int i = 0; i < alterTableGroupSplitPartitionByHotValuePreparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(alterTableGroupSplitPartitionByHotValuePreparedData.getTargetGroupDetailInfoExRecords()
+            preparedData.getTargetGroupDetailInfoExRecords().size();
+        List<String> newPartitions = preparedData.getNewPartitionNames();
+        for (int i = 0; i < preparedData.getNewPartitionNames().size(); i++) {
+            targetDbList.add(preparedData.getTargetGroupDetailInfoExRecords()
                 .get(i % targetDbCnt).phyDbName);
         }
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
             tableGroupConfig.getTableGroupRecord().getId(),
-            alterTableGroupSplitPartitionByHotValuePreparedData.getSourceSql(),
+            preparedData.getSourceSql(),
             ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(),
             taskType.getValue(),
             outdatedPartitionGroupId,
@@ -143,11 +144,11 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         if (stayAtPublic) {
             executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
             constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks,
-                alterTableGroupSplitPartitionByHotValuePreparedData.getOldPartitionNames().get(0));
+                preparedData.getOldPartitionNames().get(0));
         } else {
             PauseCurrentJobTask pauseCurrentJobTask = new PauseCurrentJobTask(schemaName);
             constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask),
-                alterTableGroupSplitPartitionByHotValuePreparedData.getOldPartitionNames().get(0));
+                preparedData.getOldPartitionNames().get(0));
         }
 
         if (((AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData).isSkipSplit()) {
@@ -160,23 +161,133 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         }
     }
 
+    private ExecutableDdlJob splitAndMoveToExistTableGroup() {
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        Map<String, Long> tablesVersion = getTablesVersion();
+        String schemaName = preparedData.getSchemaName();
+        String targetTableGroup = preparedData.getTargetTableGroup();
+        String sourceTableGroup = preparedData.getTableGroupName();
+        String tableName = preparedData.getTableName();
+        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+            .getTableGroupConfigByName(sourceTableGroup);
+
+        DdlTask emptyTask = new EmptyTask(schemaName);
+        DdlTask validateSourceTableGroup =
+            new AlterTableGroupValidateTask(schemaName,
+                sourceTableGroup, tablesVersion, false,
+                /*todo*/null);
+        DdlTask validateTargetTableGroup =
+            new AlterTableGroupValidateTask(schemaName,
+                targetTableGroup, preparedData.getFirstTableVersionInTargetTableGroup(), false,
+                preparedData.getTargetPhysicalGroups());
+
+        executableDdlJob.addTask(emptyTask);
+        executableDdlJob.addTask(validateSourceTableGroup);
+        executableDdlJob.addTask(validateTargetTableGroup);
+        executableDdlJob.addTaskRelationship(emptyTask, validateSourceTableGroup);
+        executableDdlJob.addTaskRelationship(emptyTask, validateTargetTableGroup);
+
+        Set<Long> outdatedPartitionGroupId = new HashSet<>();
+
+        for (String splitPartitionName : preparedData.getOldPartitionNames()) {
+            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
+                if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
+                    outdatedPartitionGroupId.add(record.id);
+                    break;
+                }
+            }
+        }
+        List<String> targetDbList = new ArrayList<>();
+        List<String> newPartitions = preparedData.getNewPartitionNames();
+        for (int i = 0; i < preparedData.getNewPartitionNames().size(); i++) {
+            targetDbList.add(preparedData.getInvisiblePartitionGroups().get(i).getPhy_db());
+        }
+        DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
+            targetTableGroup,
+            tableGroupConfig.getTableGroupRecord().getId(),
+            preparedData.getSourceSql(),
+            ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(),
+            taskType.getValue(),
+            outdatedPartitionGroupId,
+            targetDbList,
+            newPartitions);
+
+        executableDdlJob.addTask(addMetaTask);
+        executableDdlJob.addTaskRelationship(validateSourceTableGroup, addMetaTask);
+        executableDdlJob.addTaskRelationship(validateTargetTableGroup, addMetaTask);
+
+        List<DdlTask> bringUpAlterTableGroupTasks =
+            ComplexTaskFactory.bringUpAlterTableChangeTopology(schemaName, targetTableGroup, tableName,
+                taskType, executionContext);
+
+        final String finalStatus =
+            executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
+        boolean stayAtPublic = true;
+        if (StringUtils.isNotEmpty(finalStatus)) {
+            stayAtPublic =
+                StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.name(), finalStatus);
+        }
+
+        if (stayAtPublic) {
+            executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
+            constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks,
+                preparedData.getOldPartitionNames().get(0));
+        } else {
+            PauseCurrentJobTask pauseCurrentJobTask = new PauseCurrentJobTask(schemaName);
+            constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask),
+                preparedData.getOldPartitionNames().get(0));
+        }
+
+        if (((AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData).isSkipSplit()) {
+            return new TransientDdlJob();
+        } else {
+
+            // TODO(luoyanxin)
+            executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
+            return executableDdlJob;
+        }
+    }
+
+    private ExecutableDdlJob splitInNewTableGroup() {
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        Map<String, Long> tablesVersion = getTablesVersion();
+        String schemaName = preparedData.getSchemaName();
+        DdlTask validateTask =
+            new AlterTableGroupValidateTask(schemaName,
+                preparedData.getTableGroupName(), tablesVersion, false,
+                preparedData.getTargetPhysicalGroups());
+
+        SubJobTask subJobMoveTableToNewGroup =
+            new SubJobTask(schemaName, String.format("alter table %s set tablegroup=''", preparedData.getTableName()),
+                null);
+        SubJobTask subJobSplitTable = new SubJobTask(schemaName, preparedData.getSourceSql(), null);
+        subJobMoveTableToNewGroup.setParentAcquireResource(true);
+        subJobSplitTable.setParentAcquireResource(true);
+        executableDdlJob.addSequentialTasks(Lists.newArrayList(
+            validateTask,
+            subJobMoveTableToNewGroup,
+            subJobSplitTable
+        ));
+        return executableDdlJob;
+    }
+
     public static ExecutableDdlJob create(@Deprecated DDL ddl,
                                           AlterTableGroupSplitPartitionByHotValuePreparedData preparedData,
                                           ExecutionContext executionContext) {
-        AlterTableGroupSplitPartitionByHotValueBuilder alterTableGroupSplitPartitionByHotValueBuilder =
-            new AlterTableGroupSplitPartitionByHotValueBuilder(ddl, preparedData, executionContext);
+        AlterTableSplitPartitionByHotValueBuilder alterTableSplitPartitionByHotValueBuilder =
+            new AlterTableSplitPartitionByHotValueBuilder(ddl, preparedData, executionContext);
         Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
-            alterTableGroupSplitPartitionByHotValueBuilder.build().getTablesTopologyMap();
+            alterTableSplitPartitionByHotValueBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
-            alterTableGroupSplitPartitionByHotValueBuilder.getTargetTablesTopology();
+            alterTableSplitPartitionByHotValueBuilder.getTargetTablesTopology();
         Map<String, Map<String, Set<String>>> sourceTablesTopology =
-            alterTableGroupSplitPartitionByHotValueBuilder.getSourceTablesTopology();
+            alterTableSplitPartitionByHotValueBuilder.getSourceTablesTopology();
         Map<String, AlterTableGroupItemPreparedData> tableGroupItemPreparedDataMap =
-            alterTableGroupSplitPartitionByHotValueBuilder.getTablesPreparedData();
+            alterTableSplitPartitionByHotValueBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
-            alterTableGroupSplitPartitionByHotValueBuilder.getNewPartitionsPhysicalPlansMap();
+            alterTableSplitPartitionByHotValueBuilder.getNewPartitionsPhysicalPlansMap();
         Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
-            alterTableGroupSplitPartitionByHotValueBuilder.getOrderedTargetTablesLocations();
+            alterTableSplitPartitionByHotValueBuilder.getOrderedTargetTablesLocations();
         return new AlterTableSplitPartitionByHotValueJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
             orderedTargetTablesLocations, executionContext).create();
@@ -185,16 +296,16 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
     @Override
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
-        AlterTableGroupSplitPartitionByHotValueSubTaskJobFactory subTaskJobFactory =
-            new AlterTableGroupSplitPartitionByHotValueSubTaskJobFactory(ddl,
-                (AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData,
+        AlterTableSplitPartitionByHotValueSubTaskJobFactory subTaskJobFactory =
+            new AlterTableSplitPartitionByHotValueSubTaskJobFactory(ddl,
+                (AlterTableSplitPartitionByHotValuePreparedData) preparedData,
                 tablesPrepareData.get(preparedData.getTableName()),
                 newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
                 tablesTopologyMap.get(preparedData.getTableName()),
                 targetTablesTopology.get(preparedData.getTableName()),
                 sourceTablesTopology.get(preparedData.getTableName()),
                 orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
-                executionContext);
+                taskType, executionContext);
         ExecutableDdlJob subTask = subTaskJobFactory.create();
         if (((AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData).isSkipSplit()) {
             return;
@@ -208,15 +319,17 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         } else {
             executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
         }
-
-        DdlTask dropUselessTableTask = ComplexTaskFactory
-            .CreateDropUselessPhyTableTask(schemaName, preparedData.getTableName(),
-                sourceTablesTopology.get(preparedData.getTableName()),
-                executionContext);
-        executableDdlJob.addTask(dropUselessTableTask);
-        executableDdlJob
-            .addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),
-                dropUselessTableTask);
+        if (bringUpAlterTableGroupTasks.size() > 1 && !(bringUpAlterTableGroupTasks.get(
+            0) instanceof PauseCurrentJobTask)) {
+            DdlTask dropUselessTableTask = ComplexTaskFactory
+                .CreateDropUselessPhyTableTask(schemaName, preparedData.getTableName(),
+                    sourceTablesTopology.get(preparedData.getTableName()),
+                    executionContext);
+            executableDdlJob.addTask(dropUselessTableTask);
+            executableDdlJob
+                .addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),
+                    dropUselessTableTask);
+        }
         executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
     }
 

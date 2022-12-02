@@ -6,7 +6,7 @@
     <parent>
         <artifactId>polardbx</artifactId>
         <groupId>com.alibaba.polardbx</groupId>
-        <version>5.4.13-SNAPSHOT</version>
+        <version>5.4.15-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <packaging>jar</packaging>
@@ -21,9 +21,10 @@
         <mvn_threadCount>24</mvn_threadCount>
         <mvn_threadCountClasses>10</mvn_threadCountClasses>
         <mvn_threadCountSuites>10</mvn_threadCountSuites>
-        <!--  <mvn_useSystemClassLoader>false</mvn_useSystemClassLoader>-->
-        <!--  <mvn_parallelOptimized>true</mvn_parallelOptimized>-->
-        <!--  <mvn_perCoreThreadCount>false</mvn_perCoreThreadCount>-->
+        <jcip.version>1.0</jcip.version>
+<!--        <mvn_useSystemClassLoader>false</mvn_useSystemClassLoader>-->
+<!--        <mvn_parallelOptimized>true</mvn_parallelOptimized>-->
+<!--        <mvn_perCoreThreadCount>false</mvn_perCoreThreadCount>-->
         <!--  sed -i "" 's/'{mysql_connector_v5}'/'{mysql_connector_v5}'/g' tddl-qatest/pom.xml-->
     </properties>
 
@@ -102,6 +103,16 @@
             <artifactId>hamcrest</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/net.jcip/jcip-annotations -->
+        <dependency>
+            <groupId>net.jcip</groupId>
+            <artifactId>jcip-annotations</artifactId>
+            <version>${jcip.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+
     </dependencies>
 
     <build>

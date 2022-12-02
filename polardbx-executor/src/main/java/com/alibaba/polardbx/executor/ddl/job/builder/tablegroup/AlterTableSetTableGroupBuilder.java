@@ -24,8 +24,10 @@ import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -51,6 +53,9 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
     protected Map<String, Set<String>> targetTableTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected List<PartitionGroupRecord> newPartitionRecords = new ArrayList<>();
     private boolean onlyChangeSchemaMeta = false;
+    private boolean alignPartitionNameFirst = false;
+    private boolean repartition = false;
+    private Map<String, String> partitionNamesMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public AlterTableSetTableGroupBuilder(DDL ddl, AlterTableSetTableGroupPreparedData preparedData,
                                           ExecutionContext executionContext) {
@@ -61,7 +66,7 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
     @Override
     public AlterTableSetTableGroupBuilder build() {
         checkAndSetChangeSchemaMeta();
-        if (!onlyChangeSchemaMeta) {
+        if (!onlyChangeSchemaMeta && !alignPartitionNameFirst && !repartition) {
             buildSqlTemplate();
             buildChangedTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
             buildPhysicalPlans(preparedData.getTableName());
@@ -86,6 +91,7 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
             if (GeneralUtil.isEmpty(tableGroupInfo.getAllTables())) {
                 onlyChangeSchemaMeta = true;
             } else {
+                TableGroupRecord tgRecord = tableGroupInfo.getTableGroupRecord();
                 TablePartRecordInfoContext tablePartRecordInfoContext =
                     tableGroupInfo.getAllTables().get(0);
                 String tableInTbGrp = tablePartRecordInfoContext.getLogTbRec().tableName;
@@ -97,31 +103,97 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
                 PartitionInfo sourcePartitionInfo =
                     OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
                         .getPartitionInfo(logicTableName);
-                targetPartitionInfo.equals(sourcePartitionInfo);
-                if (!PartitionInfoUtil.partitionEquals(sourcePartitionInfo,targetPartitionInfo)) {
+
+                boolean partNumIsSame =
+                    sourcePartitionInfo.getPartitionBy().getPartitions().size() == targetPartitionInfo.getPartitionBy()
+                        .getPartitions().size();
+                boolean match =
+                    partNumIsSame ? PartitionInfoUtil.partitionEquals(sourcePartitionInfo, targetPartitionInfo) : false;
+                if (!match && !preparedData.isForce()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                         "the partition policy of tablegroup:" + tableGroupName + " is not match to table: "
+                            + logicTableName);
+                } else if (!match) {
+                    sourcePartitionInfo = sourcePartitionInfo.copy();
+                    if (partNumIsSame) {
+                        //change source partitionInfo's partitionName
+                        for (int i = 0; i < targetPartitionInfo.getPartitionBy().getPartitions().size(); i++) {
+                            PartitionSpec sourcePartitionSpec =
+                                sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                            PartitionSpec targetPartitionSpec =
+                                targetPartitionInfo.getPartitionBy().getPartitions().get(i);
+                            if (!sourcePartitionSpec.getName().equalsIgnoreCase(targetPartitionSpec.getName())) {
+                                partitionNamesMap.put(sourcePartitionSpec.getName(), targetPartitionSpec.getName());
+                                sourcePartitionSpec.setName(targetPartitionSpec.getName());
+                            }
+                        }
+                    }
+                    match =
+                        partNumIsSame ? PartitionInfoUtil.partitionEquals(sourcePartitionInfo, targetPartitionInfo) :
+                            false;
+                    if (match) {
+                        alignPartitionNameFirst = true;
+                    } else {
+                        List<ColumnMeta> sourcePartitionFields =
+                            sourcePartitionInfo.getPartitionBy().getPartitionFieldList();
+                        List<String> targetActualPartitionColumns =
+                            targetPartitionInfo.getPartitionBy().getActualPartitionColumns();
+                        if (targetActualPartitionColumns.size() <= sourcePartitionFields.size()) {
+                            List<ColumnMeta> targetPartitionFields =
+                                targetPartitionInfo.getPartitionBy().getPartitionFieldList();
+                            for (int i = 0; i < targetActualPartitionColumns.size(); i++) {
+                                if (!PartitionInfoUtil.partitionDataTypeEquals(sourcePartitionFields.get(i),
+                                    targetPartitionFields.get(i))) {
+                                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_COLUMN_IS_NOT_MATCH,
+                                        "the partition key of tablegroup:" + tableGroupName + " is not match to table: "
+                                            + logicTableName);
+                                }
+                            }
+                        }
+                        repartition = true;
+                    }
+                }
+                if (!StringUtils.equals(sourcePartitionInfo.getLocality(), targetPartitionInfo.getLocality())) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "the locality of tablegroup:" + tableGroupName + " is not match to locality of "
                             + logicTableName);
                 }
                 if (targetPartitionInfo.getTableGroupId().longValue() == sourcePartitionInfo.getTableGroupId()
                     .longValue()) {
                     onlyChangeSchemaMeta = true;
                     //do nothing
-                } else {
+                } else if (match) {
                     boolean allPartLocIsSame = true;
-                    for (int i=0;i<targetPartitionInfo.getPartitionBy().getPartitions().size() ;i++) {
+                    for (int i = 0; i < targetPartitionInfo.getPartitionBy().getPartitions().size(); i++) {
                         PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
                         PartitionSpec targetPartSpec = targetPartitionInfo.getPartitionBy().getPartitions().get(i);
-                        if (!sourcePartSpec.getLocation().getGroupKey().equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
+                        if (!sourcePartSpec.getLocation().getGroupKey()
+                            .equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
                             allPartLocIsSame = false;
                             break;
                         }
                     }
                     onlyChangeSchemaMeta = allPartLocIsSame;
                 }
+                boolean isSingleOrBrdTg = tgRecord.isSingleTableGroup() || tgRecord.isBroadCastTableGroup();
+                boolean isSingleOrBrdTb =
+                    sourcePartitionInfo.isGsiSingleOrSingleTable() || sourcePartitionInfo.isGsiBroadcastOrBroadcast();
+                if ((repartition && isSingleOrBrdTb) || (isSingleOrBrdTb && !isSingleOrBrdTg) || (!isSingleOrBrdTb
+                    && isSingleOrBrdTg)) {
+                    String tbType = sourcePartitionInfo.isGsiSingleOrSingleTable() ? "single table" :
+                        sourcePartitionInfo.isGsiBroadcastOrBroadcast() ? "broadcast table" : "partition table";
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        String.format("can't set the tablegroup of %s:%s to %s",
+                            tbType, preparedData.getTableName(), tableGroupName));
+                }
+            }
+
+            if (!onlyChangeSchemaMeta && !preparedData.isForce()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                    String.format("the physical location of %s is not the same as tables in %s",
+                        preparedData.getTableName(), tableGroupName));
             }
         }
-
     }
 
     @Override
@@ -196,5 +268,17 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
 
     public boolean isOnlyChangeSchemaMeta() {
         return onlyChangeSchemaMeta;
+    }
+
+    public boolean isAlignPartitionNameFirst() {
+        return alignPartitionNameFirst;
+    }
+
+    public boolean isRepartition() {
+        return repartition;
+    }
+
+    public Map<String, String> getPartitionNamesMap() {
+        return partitionNamesMap;
     }
 }

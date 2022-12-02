@@ -64,6 +64,7 @@ public class SqlTableOptions extends SqlCall {
     private TableSpaceStorage        tableSpaceStorage;
     private List<SqlIdentifier>      union;
     private Boolean                  broadcast;
+    private SqlIdentifier            algorithm;
 
     // table_option:
     // ENGINE [=] engine_name
@@ -85,6 +86,7 @@ public class SqlTableOptions extends SqlCall {
     // | PASSWORD [=] 'string'
     // | ROW_FORMAT [=] {DEFAULT|DYNAMIC|FIXED|COMPRESSED|REDUNDANT|COMPACT}
     // | UNION [=] (tbl_name[,tbl_name]...)
+    // | ALGORITHM [=] algorithm_name
     public SqlTableOptions(SqlParserPos pos){
         super(pos);
     }
@@ -124,7 +126,8 @@ public class SqlTableOptions extends SqlCall {
             tablespaceName,
             SqlUtil.wrapSqlLiteralSymbol(tableSpaceStorage),
             SqlUtil.wrapSqlNodeList(union),
-            SqlUtil.wrapSqlLiteralBoolean(broadcast)
+            SqlUtil.wrapSqlLiteralBoolean(broadcast),
+            algorithm
         );
     }
 
@@ -363,6 +366,14 @@ public class SqlTableOptions extends SqlCall {
 
     public void setDelayKeyWrite(SqlLiteral delayKeyWrite) {
         this.delayKeyWrite = delayKeyWrite;
+    }
+
+    public SqlIdentifier getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(SqlIdentifier algorithm) {
+        this.algorithm = algorithm;
     }
 
     public static enum InsertMethod {

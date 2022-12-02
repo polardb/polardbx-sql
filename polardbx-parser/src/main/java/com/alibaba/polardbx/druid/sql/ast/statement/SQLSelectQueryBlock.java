@@ -109,6 +109,10 @@ public class SQLSelectQueryBlock extends SQLObjectImpl implements SQLSelectQuery
         this.into = into;
     }
 
+    public void removeInto() {
+        this.into = null;
+    }
+
     public SQLSelectGroupByClause getGroupBy() {
         return this.groupBy;
     }

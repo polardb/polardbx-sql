@@ -1,38 +1,38 @@
 ## test month
 drop table if exists tbl;
 CREATE TABLE `tbl` (
-        `a` datetime NOT NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+`a` datetime NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(MONTH(a))
 (PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB,
- PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
- PARTITION p3 VALUES LESS THAN (4) ENGINE = InnoDB,
- PARTITION p4 VALUES LESS THAN (5) ENGINE = InnoDB,
- PARTITION p5 VALUES LESS THAN (6) ENGINE = InnoDB,
- PARTITION p6 VALUES LESS THAN (7) ENGINE = InnoDB,
- PARTITION p7 VALUES LESS THAN (8) ENGINE = InnoDB,
- PARTITION p8 VALUES LESS THAN (9) ENGINE = InnoDB,
- PARTITION p9 VALUES LESS THAN (10) ENGINE = InnoDB,
- PARTITION p10 VALUES LESS THAN (11) ENGINE = InnoDB,
- PARTITION p11 VALUES LESS THAN (12) ENGINE = InnoDB,
- PARTITION p12 VALUES LESS THAN (13) ENGINE = InnoDB);
+PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+PARTITION p3 VALUES LESS THAN (4) ENGINE = InnoDB,
+PARTITION p4 VALUES LESS THAN (5) ENGINE = InnoDB,
+PARTITION p5 VALUES LESS THAN (6) ENGINE = InnoDB,
+PARTITION p6 VALUES LESS THAN (7) ENGINE = InnoDB,
+PARTITION p7 VALUES LESS THAN (8) ENGINE = InnoDB,
+PARTITION p8 VALUES LESS THAN (9) ENGINE = InnoDB,
+PARTITION p9 VALUES LESS THAN (10) ENGINE = InnoDB,
+PARTITION p10 VALUES LESS THAN (11) ENGINE = InnoDB,
+PARTITION p11 VALUES LESS THAN (12) ENGINE = InnoDB,
+PARTITION p12 VALUES LESS THAN (13) ENGINE = InnoDB);
 show create table tbl;
-## single value insert
+  ## single value insert
 insert into tbl values ('1989-01-01 00:00:00');
-## multi values insert
+  ## multi values insert
 insert into tbl values ('1990-01-01 00:00:01'),('1991-01-01 00:00:02'),('2019-01-01 00:00:03');
-## check point select
+  ## check point select
 select * from tbl where a='1989-01-01 00:00:00' order by a;
 select * from tbl where a='1990-01-01 00:00:01' order by a;
 select * from tbl where a='1991-01-01 00:00:02' order by a;
 select * from tbl where a='2019-01-01 00:00:03' order by a;
-## check range select
+  ## check range select
 select * from tbl where (a<'2019-01-02 00:00:00' and a>='2009-12-31 00:00:00') or a between '1989-01-01 00:00:00' and '1989-11-01 00:00:00'  order by a;
-## explain point select, choose partition: p1
+  ## explain point select, choose partition: p1
 explain select * from tbl where a='2000-01-01 00:00:00' order by a;
-## explain range select, choose partition: p1,p2,p3,p4,p5,p12
+  ## explain range select, choose partition: p1,p2,p3,p4,p5,p12
 explain select * from tbl where (a<='2019-01-01 00:00:00' and a>='2018-12-31 23:59:59') or a between '1989-01-01 00:00:00' and '1989-05-31 23:59:59' order by a;
-## explain range select, choose partition: p8,p9,p10,p11,p12 
+  ## explain range select, choose partition: p8,p9,p10,p11,p12
 explain select * from tbl where a between date_format('2008-08-08 22:23:01','%Y-%m-%d 01:01:01') and  date_format('2008-12-08 22:23:01','%Y-%m-%d 01:01:01') order by a;
 
 drop table if exists t1;
@@ -49,3 +49,31 @@ select part_route('', 't1', '2021-09-12 18:00:01');
 insert into t1 values (1, '2021-09-12 18:00:01');
 select * from t1 where dt='2021-09-12 18:00:01';
 select part_route('', 't1', dt) as part from t1;
+
+drop table if exists tbl_month;
+create table tbl_month(id int, tm date)
+partition by range(month(tm))
+(partition p0 values less than(3),
+partition p1 values less than(6),
+partition pd values less than(maxvalue)
+);
+
+insert into tbl_month values(0, '20220201');
+insert into tbl_month values(0, '20220301');
+insert into tbl_month values(0, '20220601');
+select * from tbl_month order by tm;
+select * from tbl_month where tm < '2022-03-02' order by tm;
+select * from tbl_month where tm <= '2022-03-02' order by tm;
+select * from tbl_month where tm < '2022-03-01' order by tm;
+select * from tbl_month where tm <= '2022-03-01' order by tm;
+select * from tbl_month where tm < '2022-03-01' and tm >= '2022-02-01'  order by tm;
+
+create table list_month(dt date)
+partition by list(month(dt))
+(
+  partition p1 values in(1),
+  partition p2 values in(2),
+  partition pd values in(3)
+);
+insert into list_month values('20210101'),('20220101'),('20220201'),('20220301');
+select * from list_month where dt <= '20230101' order by dt;

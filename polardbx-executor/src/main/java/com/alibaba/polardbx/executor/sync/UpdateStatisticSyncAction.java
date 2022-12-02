@@ -16,10 +16,14 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
+
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
 
 public class UpdateStatisticSyncAction implements ISyncAction {
 
@@ -29,15 +33,15 @@ public class UpdateStatisticSyncAction implements ISyncAction {
 
     private String jsonString;
 
-    private transient StatisticManager.CacheLine cacheLine;
-
     public UpdateStatisticSyncAction() {
     }
 
     public UpdateStatisticSyncAction(String schemaName, String logicalTableName, StatisticManager.CacheLine cacheLine) {
         this.schemaName = schemaName;
         this.logicalTableName = logicalTableName;
-        this.cacheLine = cacheLine;
+        if (cacheLine != null) {
+            this.jsonString = StatisticManager.CacheLine.serializeToJson(cacheLine);
+        }
     }
 
     public String getSchemaName() {
@@ -57,12 +61,6 @@ public class UpdateStatisticSyncAction implements ISyncAction {
     }
 
     public String getJsonString() {
-        if (cacheLine == null) {
-            return null;
-        }
-        if (jsonString == null) {
-            jsonString = StatisticManager.CacheLine.serializeToJson(cacheLine);
-        }
         return jsonString;
     }
 
@@ -72,18 +70,24 @@ public class UpdateStatisticSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        StatisticManager statisticManager = OptimizerContext.getContext(schemaName).getStatisticManager();
-        if (cacheLine != null) {
-            statisticManager.setCacheLine(logicalTableName, cacheLine);
-        } else if (jsonString != null && getJsonString() != null) {
-            statisticManager
-                .setCacheLine(logicalTableName, StatisticManager.CacheLine.deserializeFromJson(getJsonString()));
+        if (jsonString != null && getJsonString() != null) {
+            StatisticManager.getInstance()
+                .setCacheLine(schemaName, logicalTableName,
+                    StatisticManager.CacheLine.deserializeFromJson(getJsonString()));
         }
 
         // refresh plancache
-        OptimizerContext.getContext(schemaName).getPlanManager().getPlanCache().invalidate(logicalTableName);
-        statisticManager.reloadNDVbyTableName(logicalTableName);
-        StatisticUtils.logInfo(schemaName, " sync statistic info succ:" + schemaName + ", " + logicalTableName);
+        PlanCache.getInstance().invalidate(logicalTableName);
+        StatisticManager.getInstance().reloadNDVbyTableName(schemaName, logicalTableName);
+        ModuleLogInfo.getInstance()
+            .logRecord(
+                Module.STATISTIC,
+                PROCESS_END,
+                new String[] {
+                    "sync statistic info " + schemaName + ", " + logicalTableName,
+                    "succ"
+                },
+                LogLevel.NORMAL);
         return null;
     }
 }

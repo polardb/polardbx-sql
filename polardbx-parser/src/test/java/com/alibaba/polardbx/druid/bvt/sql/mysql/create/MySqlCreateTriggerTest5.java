@@ -25,8 +25,8 @@ public class MySqlCreateTriggerTest5 extends MysqlTest {
 
     public void test_0() throws Exception {
         String sql = " CREATE DEFINER=`test_app`@`%` TRIGGER `trg_xxx_update` AFTER UPDATE ON `txxx` FOR EACH ROW begin"
-                + "\ninsert into record_history_log (object, identity, action) values('txxx', new.object_id, 'UPDATE');"
-                + "\ninsert into record_history_log_sim (object, identity, action) values('txxx', new.object_id, 'UPDATE');end";
+            + "\ninsert into record_history_log (object, identity, action) values('txxx', new.object_id, 'UPDATE');"
+            + "\ninsert into record_history_log_sim (object, identity, action) values('txxx', new.object_id, 'UPDATE');end";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         List<SQLStatement> stmtList = parser.parseStatementList();
@@ -37,16 +37,15 @@ public class MySqlCreateTriggerTest5 extends MysqlTest {
         SQLStatement stmt = stmtList.get(0);
 
         assertEquals("CREATE TRIGGER `trg_xxx_update`\n" +
-                "\tAFTER UPDATE\n" +
-                "\tON `txxx`\n" +
-                "\tFOR EACH ROW\n" +
-                "BEGIN\n" +
-                "\tINSERT INTO record_history_log (object, identity, action)\n" +
-                "\tVALUES ('txxx', new.object_id, 'UPDATE');\n" +
-                "\tINSERT INTO record_history_log_sim (object, identity, action)\n" +
-                "\tVALUES ('txxx', new.object_id, 'UPDATE');\n" +
-                "END", stmt.toString());
+            "\tAFTER UPDATE\n" +
+            "\tON `txxx`\n" +
+            "\tFOR EACH ROW\n" +
+            "BEGIN\n" +
+            "\tINSERT INTO record_history_log (object, identity, action)\n" +
+            "\tVALUES ('txxx', new.object_id, 'UPDATE');\n" +
+            "\tINSERT INTO record_history_log_sim (object, identity, action)\n" +
+            "\tVALUES ('txxx', new.object_id, 'UPDATE');\n" +
+            "END;", stmt.toString());
     }
-
 
 }

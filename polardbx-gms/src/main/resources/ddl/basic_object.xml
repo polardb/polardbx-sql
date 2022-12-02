@@ -338,12 +338,24 @@
             `logical_table_name` varchar(255) not null,
             `commit_ts` bigint(21) unsigned default null,
             `remove_ts` bigint(21) unsigned default null,
+            `file_hash` bigint(21) default null,
+            `local_partition_name` varchar(255) default null,
             key `table_index`(`table_schema`, `table_name`),
             key `task_id` (`task_id`),
             KEY `file_name`(`file_name`(255)),
+            KEY `logical_name`(`logical_schema_name`,`logical_table_name`),
             primary key (`file_id`)
          ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `files` add column `file_hash` bigint(21) default null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `files` add column `local_partition_name` varchar(255) default null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `files` add key `logical_name`(`logical_schema_name`,`logical_table_name`)
+        ]]> </Change>
     </SystemTable>
 
     <SystemTable name="table_local_partitions">
@@ -387,8 +399,8 @@
             `column_name` varchar(255) not null,
             `column_index` bigint not null,
             `bloom_filter_path` varchar(255) not null,
-            `bloom_filter_offset` bigint not null,
-            `bloom_filter_length` bigint not null,
+            `bloom_filter_offset` bigint,
+            `bloom_filter_length` bigint,
             `is_merged` bigint not null default 0 comment '1: column index data merged in one file',
             `create_time` datetime default current_timestamp,
             `update_time` datetime default current_timestamp on update current_timestamp,
@@ -404,10 +416,10 @@
         ) charset=utf8
         ]]></Create>
         <Change><![CDATA[
-            alter table `column_metas` add column `bloom_filter_offset` bigint not null
+            alter table `column_metas` add column `bloom_filter_offset` bigint
         ]]> </Change>
         <Change><![CDATA[
-            alter table `column_metas` add column `bloom_filter_length` bigint not null
+            alter table `column_metas` add column `bloom_filter_length` bigint
         ]]> </Change>
         <Change><![CDATA[
             alter table `column_metas` add column `is_merged` bigint not null default 0 comment '1: column index data merged in one file'
@@ -436,11 +448,15 @@
                   `starts` bigint not null default 0,
                   `ends` bigint not null default 0,
                   `schedule_policy` varchar(256) comment 'fire/wait/skip',
+                  `table_group_name` varchar(64),
                   UNIQUE KEY(`table_schema`, `schedule_name`),
                   KEY (`table_schema`, `table_name`),
                   KEY(`next_fire_time`)
             ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `scheduled_jobs` add column `table_group_name` varchar(64)
+        ]]> </Change>
     </SystemTable>
 
     <SystemTable name="fired_scheduled_jobs">
@@ -452,10 +468,11 @@
                   `fire_time` bigint not null default 0,
                   `start_time` bigint not null default 0,
                   `finish_time` bigint not null default 0,
-                  `state` varchar(64) not null comment 'QUEUED/RUNNING/SUCCESS/FAILED',
+                  `state` varchar(64) not null comment 'QUEUED/RUNNING/SUCCESS/FAILED/SKIPPED',
                   `remark` text,
                   `result` longtext,
                   `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+                  `table_group_name` varchar(64),
                   primary key(`schedule_id`, `fire_time`),
                   KEY (`table_schema`, `table_name`),
                   KEY (`fire_time`)
@@ -463,6 +480,9 @@
         ]]></Create>
         <Change><![CDATA[
             alter table `fired_scheduled_jobs` add column `gmt_modified` timestamp not null default current_timestamp on update current_timestamp
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `fired_scheduled_jobs` add column `table_group_name` varchar(64)
         ]]> </Change>
     </SystemTable>
 
@@ -521,4 +541,15 @@
         ]]></Create>
     </SystemTable>
 
+    <SystemTable name="partitions_heatmap">
+        <Create><![CDATA[
+            create table if not exists `partitions_heatmap` (
+                  `id` bigint unsigned not null primary key auto_increment,
+                  `layer_num` tinyint unsigned not null,
+                  `timestamp` bigint unsigned not null,
+                  `axis` TEXT,
+                  KEY (`layer_num`, `timestamp`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

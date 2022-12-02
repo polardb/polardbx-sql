@@ -1,0 +1,8 @@
+1:
+  update test_tb_bro1 set integer_test=rand()*1000000 where pk=100001;
+
+2:
+  update test_tb_bro2 set integer_test=integer_test-1 where pk=100002;
+
+3:
+  update test_tb_bro3 set integer_test=integer_test+2 where pk=100003;

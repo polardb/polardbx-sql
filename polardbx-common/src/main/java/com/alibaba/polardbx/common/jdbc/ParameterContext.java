@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.common.jdbc;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 
 import java.io.Serializable;
+import java.util.List;
 
 
 public class ParameterContext implements Serializable {
@@ -39,6 +41,10 @@ public class ParameterContext implements Serializable {
                             @JsonProperty("args") Object[] args) {
         this.parameterMethod = parameterMethod;
         this.args = args;
+        // length==2 and args[1] is a list meaning it's a targetList args for IN expr.
+        if (args.length == 2 && args[1] instanceof List) {
+            args[1] = new RawString((List) args[1]);
+        }
     }
 
     @JsonProperty
@@ -55,6 +61,7 @@ public class ParameterContext implements Serializable {
         return args;
     }
 
+    @JsonIgnore
     public Object getValue() {
         return args[1];
     }
@@ -74,6 +81,8 @@ public class ParameterContext implements Serializable {
         for (int i = 1; i < args.length; ++i) {
             if (args[i] instanceof byte[]) {
                 buffer.append(GeneralUtil.printBytes((byte[]) args[i]));
+            } else if (args[i] instanceof RawString) {
+                buffer.append(((RawString) args[i]).display());
             } else {
                 buffer.append(args[i]);
             }

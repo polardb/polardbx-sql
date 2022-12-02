@@ -19,6 +19,7 @@ package org.apache.calcite.sql;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.rel.type.RelDataType;
@@ -45,12 +46,6 @@ import java.util.List;
 public class SqlRebalance extends SqlDdl {
 
     private static final SqlSpecialOperator OPERATOR = new SqlRebalanceOperator();
-
-    public enum RebalanceTarget {
-        TABLE,
-        DATABASE,
-        CLUSTER
-    }
 
     /**
      * Options
@@ -92,6 +87,7 @@ public class SqlRebalance extends SqlDdl {
     private RebalanceTarget target;
     private String policy;
     private SqlNode tableName;
+    private SqlNode tableGroupName;
     private boolean explain = false;
     private boolean async = true;
     private boolean debug = false;
@@ -169,6 +165,11 @@ public class SqlRebalance extends SqlDdl {
         this.tableName = tableName;
     }
 
+    public void setRebalanceTableGroup(SqlNode tableGroupName) {
+        this.target = RebalanceTarget.TABLEGROUP;
+        this.tableGroupName = tableGroupName;
+    }
+
     public void setRebalanceDatabase() {
         this.target = RebalanceTarget.DATABASE;
     }
@@ -189,6 +190,10 @@ public class SqlRebalance extends SqlDdl {
         return this.target.equals(RebalanceTarget.DATABASE);
     }
 
+    public boolean isRebalanceTableGroup() {
+        return this.target.equals(RebalanceTarget.TABLEGROUP);
+    }
+
     @Override
     public void validate(SqlValidator validator, SqlValidatorScope scope) {
         // do nothing
@@ -204,6 +209,9 @@ public class SqlRebalance extends SqlDdl {
             writer.keyword("DATABASE");
         } else if (this.target.equals(RebalanceTarget.CLUSTER)) {
             writer.keyword("CLUSTER");
+        } else if(this.target.equals(RebalanceTarget.TABLEGROUP)){
+            writer.keyword("TABLEGROUP");
+            this.tableGroupName.unparse(writer, leftPrec, rightPrec);
         }
 
         if (this.maxActions != 0) {

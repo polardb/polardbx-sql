@@ -26,7 +26,7 @@ import java.util.List;
 public class mysql_block_1  extends MysqlTest {
 
     public void test_0() throws Exception {
-        String sql = "BEGIN;\n" +
+        String sql = "BEGIN\n" +
 				"    DELETE t0 FROM ktv_tmp_sqlarea t0 WHERE t0.dbid=?;\n" +
 				"    INSERT INTO ktv_tmp_sqlarea(`dbid`,`sql_id`,`parsing_schema_name`,`sql_fulltext`,`cpu_time`,`buffer_gets`,`executions`,`command_name`,`sharable_mem`,`persiste\n" +
 				"nt_mem`,`users_opening`,`fetches`,`loads`,`disk_reads`,`direct_writes`,`command_type`,`plan_hash_value`,`action`,`remote`,`is_obsolete`,`physical_read_requests`,`\n" +

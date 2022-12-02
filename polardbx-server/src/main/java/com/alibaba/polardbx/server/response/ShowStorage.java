@@ -114,7 +114,6 @@ public final class ShowStorage {
         EXTRA_PACKETS[i] = PacketUtil.getField("STORAGE_RW_INST_ID", Fields.FIELD_TYPE_VAR_STRING);
         EXTRA_PACKETS[i++].packetId = ++packetId;
 
-
         EXTRA_EOF_PACKET.packetId = ++packetId;
     }
 
@@ -220,7 +219,8 @@ public final class ShowStorage {
                     groupDetailInfoAccessor.getDbCountAndGroupCountByStorageInstId(storageInstId);
 
                 // If contains single group or default group, the instance
-                boolean deletable = DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, storageInstId, instKind);
+                boolean deletable =
+                    DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, storageInstId, instKind);
 
                 Map<String, String> storageInstInfoMap = new HashMap<>();
                 storageInstInfoMap.put("storageInstId", storageInstId);

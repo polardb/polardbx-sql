@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.corrector;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
@@ -50,7 +51,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
@@ -177,7 +180,7 @@ public class Checker {
     private final PhyTableOperation planSelectMaxPk;
 
     private final List<String> indexColumns;
-    List<Integer> primaryKeysId;
+    private List<Integer> primaryKeysId;
     private final Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator;
 
     private final ITransactionManager tm;
@@ -417,20 +420,12 @@ public class Checker {
             rowComparator);
     }
 
-    private PhyTableOperation buildSelectPlanWithParam(String dbIndex, String phyTable, long batchSize,
+    private PhyTableOperation buildSelectPlanWithParam(String logTblOrIndexTbl, String dbIndex, String phyTable, long batchSize,
                                                        List<ParameterContext> params, boolean withUpperBoundOnly,
                                                        boolean primaryToGsi) {
         final Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-
-        // Get Plan
-        final PhyTableOperation plan;
-        if (withUpperBoundOnly) {
-            plan = new PhyTableOperation(primaryToGsi ? planSelectWithMaxPrimary : planSelectWithMaxGsi);
-        } else {
-            plan = new PhyTableOperation(primaryToGsi ? planSelectWithMinAndMaxPrimary : planSelectWithMinAndMaxGsi);
-        }
 
         int nextParamIndex = 2;
 
@@ -460,9 +455,26 @@ public class Checker {
         planParams.put(nextParamIndex,
             new ParameterContext(ParameterMethod.setObject1, new Object[] {nextParamIndex, batchSize}));
 
-        plan.setDbIndex(dbIndex);
-        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
-        plan.setParam(planParams);
+        // Get Plan
+//        final PhyTableOperation plan;
+//        if (withUpperBoundOnly) {
+//            plan = new PhyTableOperation(primaryToGsi ? planSelectWithMaxPrimary : planSelectWithMaxGsi);
+//        } else {
+//            plan = new PhyTableOperation(primaryToGsi ? planSelectWithMinAndMaxPrimary : planSelectWithMinAndMaxGsi);
+//        }
+//        plan.setLogicalTableNames(ImmutableList.of(logTblOrIndexTbl));
+//        plan.setDbIndex(dbIndex);
+//        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//        plan.setParam(planParams);
+
+        PhyTableOperation targetPhyOp = withUpperBoundOnly ? (primaryToGsi ? planSelectWithMaxPrimary : planSelectWithMaxGsi) : (primaryToGsi ? planSelectWithMinAndMaxPrimary : planSelectWithMinAndMaxGsi);
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setLogTables(ImmutableList.of(logTblOrIndexTbl));
+        buildParams.setGroupName(dbIndex);
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(planParams);
+        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+
         return plan;
     }
 
@@ -487,8 +499,6 @@ public class Checker {
         final Map<Integer, ParameterContext> planParams = new HashMap<>(1);
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-
-        final PhyTableOperation plan = new PhyTableOperation(planSelectWithIn);
 
         SqlNode condition = null;
         final SqlNodeList inValues = new SqlNodeList(SqlParserPos.ZERO);
@@ -556,6 +566,10 @@ public class Checker {
             }
         }
 
+        PhyTableOperation targetPhyOp = this.planSelectWithIn;
+        BytesSql sql;
+
+
         // Generate template.
         synchronized (planSelectWithInTemplate) {
             planSelectWithInTemplate.setLockMode(lock);
@@ -564,12 +578,23 @@ public class Checker {
             } else {
                 ((SqlBasicCall) planSelectWithInTemplate.getWhere()).getOperands()[1] = inValues;
             }
-            plan.setSqlTemplate(RelUtils.toNativeSql(planSelectWithInTemplate));
+            sql = RelUtils.toNativeBytesSql(planSelectWithInTemplate);
         }
 
-        plan.setDbIndex(dbIndex);
-        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
-        plan.setParam(planParams);
+//        final PhyTableOperation plan = new PhyTableOperation(planSelectWithIn);
+//        plan.setDbIndex(dbIndex);
+//        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//        plan.setParam(planParams);
+//        plan.setBytesSql(sql);
+
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setGroupName(dbIndex);
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(planParams);
+        buildParams.setBytesSql(sql);
+        buildParams.setLockMode(lock);
+        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+
         return plan;
     }
 
@@ -783,10 +808,17 @@ public class Checker {
         params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
 
         // Build plan
-        final PhyTableOperation plan = new PhyTableOperation(this.planSelectMaxPk);
-        plan.setDbIndex(dbIndex);
-        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
-        plan.setParam(params);
+//        final PhyTableOperation plan = new PhyTableOperation(this.planSelectMaxPk);
+//        plan.setDbIndex(dbIndex);
+//        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
+//        plan.setParam(params);
+
+        PhyTableOperation targetPhyOp = this.planSelectMaxPk;
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setGroupName(dbIndex);
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(params);
+        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         // Execute query
         return GsiUtils.wrapWithSingleDbTrx(tm, baseEc, (ec) -> {
@@ -812,7 +844,7 @@ public class Checker {
     }
 
     // Check from one physical table to others(GSI or primary table).
-    private void foreachPhyTableCheck(String dbIndex, String phyTable, ExecutionContext baseEc, boolean primaryToGsi,
+    private void foreachPhyTableCheck(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext baseEc, boolean primaryToGsi,
                                       CheckerCallback cb, AtomicIntegerArray progresses, int taskId) {
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Checker start phy for {1}[{2}][{3}]",
             baseEc.getTraceId(),
@@ -848,7 +880,9 @@ public class Checker {
 
             long start = System.currentTimeMillis();
 
-            PhyTableOperation selectBaseTable = buildSelectPlanWithParam(dbIndex,
+            PhyTableOperation selectBaseTable = buildSelectPlanWithParam(
+                logTblOrIndexTbl,
+                dbIndex,
                 phyTable,
                 batchSize,
                 null == lowerBound ? upperBound : Stream.concat(lowerBound.stream(), upperBound.stream())
@@ -910,7 +944,7 @@ public class Checker {
 
                         checkRows.sort(rowComparator);
 
-                        if (!cb.batch(dbIndex, phyTable, selectEc, this, primaryToGsi, baseRows, checkRows)) {
+                        if (!cb.batch(logTblOrIndexTbl, dbIndex, phyTable, selectEc, this, primaryToGsi, baseRows, checkRows)) {
                             // Callback cancel the current batch of checking.
                             throw GeneralUtil.nestedException("Checker retry batch");
                         }
@@ -1020,7 +1054,8 @@ public class Checker {
             elapsedMillis));
     }
 
-    public Exception runTasks(List<FutureTask<Void>> futures, BlockingQueue<Object> blockingQueue) {
+    public static Exception runTasks(List<FutureTask<Void>> futures, BlockingQueue<Object> blockingQueue,
+                                     long parallelism) {
         AtomicReference<Exception> excep = new AtomicReference<>(null);
         if (parallelism <= 0) {
             futures.forEach(task -> PriorityWorkQueue.getInstance()
@@ -1103,7 +1138,7 @@ public class Checker {
                 return;
             }
             try {
-                foreachPhyTableCheck(dbIndex, phyTable, baseEc, true, cb, progresses, taskId.getAndIncrement());
+                foreachPhyTableCheck(tableName, dbIndex, phyTable, baseEc, true, cb, progresses, taskId.getAndIncrement());
             } finally {
                 taskFinishBarrier.countDown();
                 // Poll in finally to prevent dead lock on putting blockingQueue.
@@ -1114,7 +1149,7 @@ public class Checker {
         }, null))));
         gsiPhyTables.forEach((dbIndex, v) -> v.forEach(phyTable -> futuresBackward.add(new FutureTask<>(() -> {
             try {
-                foreachPhyTableCheck(dbIndex, phyTable, baseEc, false, cb, progresses, taskId.getAndIncrement());
+                foreachPhyTableCheck(indexName, dbIndex, phyTable, baseEc, false, cb, progresses, taskId.getAndIncrement());
             } finally {
                 taskFinishBarrier.countDown();
                 // Poll in finally to prevent dead lock on putting blockingQueue.
@@ -1135,11 +1170,11 @@ public class Checker {
             // No lock so run with full parallel.
             exception = runTasks(
                 Stream.concat(futuresForward.stream(), futuresBackward.stream()).collect(Collectors.toList()),
-                blockingQueue);
+                blockingQueue, parallelism);
         } else {
-            exception = runTasks(futuresForward, blockingQueue);
+            exception = runTasks(futuresForward, blockingQueue, parallelism);
             if (null == exception) {
-                exception = runTasks(futuresBackward, blockingQueue);
+                exception = runTasks(futuresBackward, blockingQueue, parallelism);
             }
         }
 
@@ -1175,7 +1210,7 @@ public class Checker {
 
     // Convert data to ParameterContext(for sort and correction(insert)) and raw
     // bytes(for compare).
-    private static List<Pair<ParameterContext, byte[]>> row2objects(Row rowSet) {
+    public static List<Pair<ParameterContext, byte[]>> row2objects(Row rowSet) {
         final List<ColumnMeta> columns = rowSet.getParentCursorMeta().getColumns();
         final List<Pair<ParameterContext, byte[]>> result = new ArrayList<>(columns.size());
         for (int i = 0; i < columns.size(); i++) {

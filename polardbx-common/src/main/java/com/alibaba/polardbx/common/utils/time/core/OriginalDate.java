@@ -124,9 +124,15 @@ public class OriginalDate extends Date implements OriginalTemporalValue {
         super.setSeconds(i);
     }
 
+    /**
+     * Gregorian calendar is not zero-based
+     */
     @Override
     public int getYear() {
         initTime();
+        if (mysqlDateTime.getYear() == 0) {
+            return -1900;
+        }
         return super.getYear();
     }
 

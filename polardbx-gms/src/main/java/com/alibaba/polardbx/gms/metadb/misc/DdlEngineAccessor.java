@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.record.CountRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.base.Preconditions;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.time.LocalDateTime;
@@ -148,6 +149,10 @@ public class DdlEngineAccessor extends AbstractAccessor {
         return query(SELECT_SCHEMA, DDL_ENGINE_TABLE, DdlEngineRecord.class, schemaName);
     }
 
+    public List<DdlEngineRecord> query(String schemaName, String object) {
+        return query(SELECT_JOB, DDL_ENGINE_TABLE, DdlEngineRecord.class, schemaName, object);
+    }
+
     public List<DdlEngineRecord> query(Set<DdlState> states) {
         try {
             String sql = fillInQuestionMarks(SELECT_STATES, states.size());
@@ -173,6 +178,9 @@ public class DdlEngineAccessor extends AbstractAccessor {
 
     public List<DdlEngineRecord> query(List<Long> jobIds) {
         try {
+            if(CollectionUtils.isEmpty(jobIds)){
+                return new ArrayList<>();
+            }
             String sql = String.format(SELECT_SPECIFIC_LIST, concatIds(jobIds));
             return MetaDbUtil.query(sql, DdlEngineRecord.class, connection);
         } catch (Exception e) {

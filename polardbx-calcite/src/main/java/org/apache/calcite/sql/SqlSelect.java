@@ -384,6 +384,10 @@ public class SqlSelect extends SqlCall {
     return optimizerHint;
   }
 
+  public void setOptimizerHint(OptimizerHint optimizerHint) {
+    this.optimizerHint = optimizerHint;
+  }
+
 }
 
 // End SqlSelect.java

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
+import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.MemoryNotEnoughException;
@@ -36,7 +38,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
@@ -61,7 +62,7 @@ public class CacheCursor implements Cursor {
 
     private Cursor cursor;
     private final List<Row> bufferRows = new LinkedList<>();
-    private Spiller spiller;
+    protected Spiller spiller;
     protected int chunkLimit;
     private BlockBuilder[] blockBuilders;
     private Iterator<Chunk> iterator;
@@ -98,6 +99,27 @@ public class CacheCursor implements Cursor {
         this.estimateRowSize = estimateRowSize;
         this.supportSpill = context.getParamManager().getBoolean(ConnectionParams.ENABLE_SPILL_OUTPUT);
         this.spillMonitor = context.getQuerySpillSpaceMonitor();
+        this.context = context;
+    }
+
+    public CacheCursor(SpillerFactory spillerFactory, Cursor cursor, MemoryPool pool, long estimateRowSize,
+                       QuerySpillSpaceMonitor spillMonitor) {
+        // TODO execution context can be removed from cache cursor and block builders
+        ExecutionContext context = new ExecutionContext();
+        this.spillerFactory = spillerFactory;
+
+        this.cursorMeta = CursorMeta.build(cursor.getReturnColumns());
+        this.dataTypes = new DataType[cursor.getReturnColumns().size()];
+        for (int i = 0; i < dataTypes.length; i++) {
+            dataTypes[i] = cursor.getReturnColumns().get(i).getDataType();
+        }
+        this.cursor = cursor;
+        this.estimateRowSize = estimateRowSize;
+        this.chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
+        this.pool = pool;
+        this.memoryAllocator = pool.getMemoryAllocatorCtx();
+        this.supportSpill = true;
+        this.spillMonitor = spillMonitor;
         this.context = context;
     }
 
@@ -161,7 +183,7 @@ public class CacheCursor implements Cursor {
         }
     }
 
-    private void cacheAllRows() {
+    public void cacheAllRows() {
         Row currentRow;
         while ((currentRow = cursor.next()) != null) {
             try {
@@ -193,10 +215,18 @@ public class CacheCursor implements Cursor {
 
         if (spiller != null) {
             spill();
-            iterator = spiller.getSpills().get(0);
+            iterator = getIteratorLater() ? null : getIterator();
         }
         cursor.close(ex);
         cursor = null;
+    }
+
+    protected Iterator<Chunk> getIterator() {
+        return spiller.getSpills().get(0);
+    }
+
+    protected boolean getIteratorLater() {
+        return false;
     }
 
     private void spill() {

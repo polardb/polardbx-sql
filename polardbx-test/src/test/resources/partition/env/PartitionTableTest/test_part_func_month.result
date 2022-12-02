@@ -134,3 +134,82 @@ SELECT part_route('', 't1', dt) AS part
 FROM t1;
 part
 p1
+DROP TABLE IF EXISTS tbl_month;
+CREATE TABLE tbl_month (
+	id int,
+	tm date
+)
+PARTITION BY RANGE (month(tm)) (
+	PARTITION p0 VALUES LESS THAN (3),
+	PARTITION p1 VALUES LESS THAN (6),
+	PARTITION pd VALUES LESS THAN MAXVALUE
+);
+INSERT INTO tbl_month
+VALUES (0, '20220201');
+INSERT INTO tbl_month
+VALUES (0, '20220301');
+INSERT INTO tbl_month
+VALUES (0, '20220601');
+SELECT *
+FROM tbl_month
+ORDER BY tm;
+id,tm
+0,2022-02-01
+0,2022-03-01
+0,2022-06-01
+SELECT *
+FROM tbl_month
+WHERE tm < '2022-03-02'
+ORDER BY tm;
+id,tm
+0,2022-02-01
+0,2022-03-01
+SELECT *
+FROM tbl_month
+WHERE tm <= '2022-03-02'
+ORDER BY tm;
+id,tm
+0,2022-02-01
+0,2022-03-01
+SELECT *
+FROM tbl_month
+WHERE tm < '2022-03-01'
+ORDER BY tm;
+id,tm
+0,2022-02-01
+SELECT *
+FROM tbl_month
+WHERE tm <= '2022-03-01'
+ORDER BY tm;
+id,tm
+0,2022-02-01
+0,2022-03-01
+SELECT *
+FROM tbl_month
+WHERE tm < '2022-03-01'
+	AND tm >= '2022-02-01'
+ORDER BY tm;
+id,tm
+0,2022-02-01
+CREATE TABLE list_month (
+	dt date
+)
+PARTITION BY LIST (month(dt)) (
+	PARTITION p1 VALUES IN (1),
+	PARTITION p2 VALUES IN (2),
+	PARTITION pd VALUES IN (3)
+);
+INSERT INTO list_month
+VALUES ('20210101'),
+	('20220101'),
+	('20220201'),
+	('20220301');
+SELECT *
+FROM list_month
+WHERE dt <= '20230101'
+ORDER BY dt;
+dt
+2021-01-01
+2022-01-01
+2022-02-01
+2022-03-01

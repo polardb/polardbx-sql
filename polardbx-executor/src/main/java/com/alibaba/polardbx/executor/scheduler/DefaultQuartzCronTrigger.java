@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.scheduler;
 
+import com.alibaba.polardbx.common.async.AsyncCallableTask;
 import com.alibaba.polardbx.common.scheduler.FiredScheduledJobState;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
@@ -39,7 +40,7 @@ import static com.cronutils.model.CronType.QUARTZ;
  * generate next fire time based on Quartz Cron Expression
  * Misfire Policy: IGNORE
  */
-public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger{
+public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger {
 
     private final ScheduledJobsRecord record;
     private final ScheduledJobsAccessor scheduledJobsAccessor;
@@ -63,9 +64,9 @@ public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger{
         ZoneId zoneId = TimeZoneUtils.zoneIdOf(record.getTimeZone());
         //Misfire Policy: IGNORE
         ZonedDateTime now = ZonedDateTime.now(zoneId);
-        ZonedDateTime referenceDateTime = record.getNextFireTime()<=0L ?
-            now: secondToZonedDateTime(record.getNextFireTime(), zoneId);
-        if(referenceDateTime.isBefore(now)){
+        ZonedDateTime referenceDateTime = record.getNextFireTime() <= 0L ?
+            now : secondToZonedDateTime(record.getNextFireTime(), zoneId);
+        if (referenceDateTime.isBefore(now)) {
             referenceDateTime = now;
         }
         Optional<ZonedDateTime> optionalNewNextExecutionTime = executionTime.nextExecution(referenceDateTime);
@@ -75,14 +76,15 @@ public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger{
     @Override
     public boolean fire() {
         Optional<ZonedDateTime> optionalNewNextExecutionTime = getNextFireTime();
-        long epochSeconds = optionalNewNextExecutionTime.isPresent()?
-            optionalNewNextExecutionTime.get().toEpochSecond():
+        long epochSeconds = optionalNewNextExecutionTime.isPresent() ?
+            optionalNewNextExecutionTime.get().toEpochSecond() :
             0L;
         scheduledJobsAccessor.fire(epochSeconds, record.getScheduleId());
-        if(epochSeconds > 0L){
+        if (epochSeconds > 0L) {
             FiredScheduledJobsRecord firedScheduledJobsRecord = new FiredScheduledJobsRecord();
             firedScheduledJobsRecord.setScheduleId(record.getScheduleId());
             firedScheduledJobsRecord.setTableSchema(record.getTableSchema());
+            firedScheduledJobsRecord.setTableGroupName(record.getTableGroupName());
             firedScheduledJobsRecord.setTableName(record.getTableName());
             firedScheduledJobsRecord.setFireTime(epochSeconds);
             firedScheduledJobsRecord.setState(FiredScheduledJobState.QUEUED.name());
@@ -100,6 +102,7 @@ public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger{
         FiredScheduledJobsRecord firedScheduledJobsRecord = new FiredScheduledJobsRecord();
         firedScheduledJobsRecord.setScheduleId(record.getScheduleId());
         firedScheduledJobsRecord.setTableSchema(record.getTableSchema());
+        firedScheduledJobsRecord.setTableGroupName(record.getTableGroupName());
         firedScheduledJobsRecord.setTableName(record.getTableName());
         firedScheduledJobsRecord.setFireTime(epochSeconds);
         firedScheduledJobsRecord.setState(FiredScheduledJobState.QUEUED.name());
@@ -107,7 +110,7 @@ public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger{
         return true;
     }
 
-    public static Cron parseCronExpr(final String cronExprString){
+    public static Cron parseCronExpr(final String cronExprString) {
         CronParser quartzCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(QUARTZ));
         Cron cron = quartzCronParser.parse(cronExprString);
         return cron;

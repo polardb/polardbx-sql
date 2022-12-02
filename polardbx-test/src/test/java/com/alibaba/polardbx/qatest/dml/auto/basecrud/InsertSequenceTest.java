@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
@@ -32,6 +33,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.Connection;
@@ -58,7 +61,7 @@ import static com.google.common.truth.Truth.assertWithMessage;
  * @author zhuoxue
  * @since 5.0.1
  */
-
+@RunWith(Parameterized.class)
 public class InsertSequenceTest extends AutoCrudBasedLockTestCase {
     private static final Log log = LogFactory.getLog(InsertSequenceTest.class);
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
@@ -78,7 +81,7 @@ public class InsertSequenceTest extends AutoCrudBasedLockTestCase {
     public void initData() throws Exception {
         log.info("开始执行用例InsertSequenceTest");
         if (baseOneTableName.startsWith("broadcast")) {
-            //JdbcUtil.setTxPolicy(ITransactionPolicy.FREE, tddlConnection);
+            JdbcUtil.setTxPolicy(ITransactionPolicy.FREE, tddlConnection);
         }
 
         String sql = "delete from  " + baseOneTableName;
@@ -609,6 +612,49 @@ public class InsertSequenceTest extends AutoCrudBasedLockTestCase {
         Assert.assertEquals(lastInsertId, returnedLastInsertId);
 
         sql = "select integer_test, varchar_test, char_test, bigint_test, float_test from " + baseOneTableName;
+
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void insertSelectLastInsertIdByMultiTest() throws Exception {
+        String hint = "/*+TDDL:CMD_EXTRA(INSERT_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+
+        List<ColumnEntity> columns = TableColumnGenerator.getAllTypeColum();
+        String sql = "insert into " + baseOneTableName + " (";
+        String values = " values ( ";
+        for (int j = 0; j < columns.size(); j++) {
+            String columnName = columns.get(j).getName();
+            sql = sql + columnName + ",";
+            values = values + " ?,";
+        }
+        sql = sql.substring(0, sql.length() - 1) + ") ";
+        values = values.substring(0, values.length() - 1) + ")";
+        sql = sql + values;
+
+        List<Object> param = columnDataGenerator.getAllColumnValue(columns, PK_COLUMN_NAME, 1);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
+
+        // Check last_insert_id for INSERT SELECT
+        sql = hint + MessageFormat
+            .format("insert into {0} (varchar_test, integer_test) select /*+TDDL:cmd_extra(MERGE_UNION_SIZE=0)*/ varchar_test, integer_test from {0} order by pk",
+                baseOneTableName);
+
+        String returnedLastInsertId =
+            String.valueOf(JdbcUtil.updateDataTddlAutoGen(tddlConnection, sql, null, "pk"));
+        String lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+
+        Assert.assertEquals(lastInsertId, returnedLastInsertId);
+        returnedLastInsertId =
+            String.valueOf(JdbcUtil.updateDataTddlAutoGen(mysqlConnection, sql, null, "pk"));
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", mysqlConnection);
+
+        Assert.assertEquals(lastInsertId, returnedLastInsertId);
+
+        sql = "select integer_test, varchar_test, char_test, bigint_test, float_test from " + baseOneTableName;
+
 
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -1181,5 +1227,41 @@ public class InsertSequenceTest extends AutoCrudBasedLockTestCase {
                 Assert.assertTrue(!rs.next());
             }
         }
+    }
+
+    @Test
+    public void insert_SequenceInsideFuncTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
+
+        String seqName = "insert_seq_func_test_seq";
+        String dropSql = "drop sequence " + seqName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql);
+
+        String createSql = "create sequence " + seqName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
+
+        String sql = String.format(
+            "insert into %s (pk,varchar_test,integer_test) values (%s.nextval, lpad(%s.nextval, 30, '0'), %s.nextval + 10)",
+            baseOneTableName, seqName, seqName, seqName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        String lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertEquals(lastInsertId, "0");
+
+        sql = String.format("insert into %s (pk) values (%s.nextval)", baseOneTableName, seqName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertEquals(lastInsertId, "0");
+
+        sql = String.format("insert into %s (pk) values (null)", baseOneTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertNotEquals(lastInsertId, "0");
     }
 }

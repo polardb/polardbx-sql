@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.balancer.stats;
 
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import lombok.Getter;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -78,6 +78,26 @@ public class BalanceStats {
         return this.tableGroupStats.stream()
             .flatMap(x -> x.getPartitionGroups().stream())
             .collect(Collectors.toList());
+    }
+
+    public Optional<TableGroupStat> filterTableGroupStat(final String tgName) {
+        if (CollectionUtils.isEmpty(tableGroupStats)) {
+            return Optional.empty();
+        }
+        for (TableGroupStat tableGroupStat : tableGroupStats) {
+            if (StringUtils.equals(tableGroupStat.getTableGroupConfig().getTableGroupRecord().getTg_name(),
+                tgName)) {
+                return Optional.of(tableGroupStat);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public List<PartitionStat> filterPartitionStat(final String tableGroupName, final Set<String> partitionNameSet) {
+        return getPartitionStats().stream().filter(e ->
+            StringUtils.equalsIgnoreCase(e.getTableGroupName(), tableGroupName)
+                && partitionNameSet.contains(e.getPartitionName())
+        ).collect(Collectors.toList());
     }
 
     /**

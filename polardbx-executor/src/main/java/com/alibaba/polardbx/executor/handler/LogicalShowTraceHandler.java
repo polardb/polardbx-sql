@@ -56,6 +56,8 @@ public class LogicalShowTraceHandler extends HandlerCommon {
 
         result.addColumn("STATEMENT", DataTypes.StringType);
         result.addColumn("PARAMS", DataTypes.StringType);
+        result.addColumn("GROUP_CONN_ID", DataTypes.IntegerType);
+        result.addColumn("TRACE_ID", DataTypes.StringType);
         result.initMeta();
         int index = 0;
 
@@ -78,7 +80,9 @@ public class LogicalShowTraceHandler extends HandlerCommon {
                     op.getTotalTimeCost(),
                     op.getPhysicalCloseCost(),
                     op.getRowsCount(), op.getSqlOrResult(),
-                    op.getParamsStr()});
+                    op.getParamsStr(),
+                    op.getGrpConnId(),
+                    op.getTraceId()});
             }
         }
 

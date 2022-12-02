@@ -53,7 +53,6 @@ import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.rpc.XConfig;
-import com.alibaba.polardbx.rpc.packet.XPacket;
 import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.server.util.StringUtil;
 import org.apache.commons.io.FileUtils;
@@ -339,9 +338,20 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         String galaxyXProtocol = serverProps.getProperty("galaxyXProtocol");
         if (!StringUtil.isEmpty(galaxyXProtocol)) {
-            if (Integer.parseInt(galaxyXProtocol) != 0) {
+            final int i = Integer.parseInt(galaxyXProtocol);
+            if (1 == i) {
                 XConfig.GALAXY_X_PROTOCOL = true;
+                XConfig.OPEN_XRPC_PROTOCOL = false;
+            } else if (2 == i) {
+                XConfig.GALAXY_X_PROTOCOL = false;
+                XConfig.OPEN_XRPC_PROTOCOL = true;
+            } else {
+                XConfig.GALAXY_X_PROTOCOL = false;
+                XConfig.OPEN_XRPC_PROTOCOL = false;
             }
+        } else {
+            XConfig.GALAXY_X_PROTOCOL = false;
+            XConfig.OPEN_XRPC_PROTOCOL = false;
         }
 
         String metaDbXprotoPort = serverProps.getProperty("metaDbXprotoPort");

@@ -36,11 +36,8 @@ Gather(concurrent=true)
   LogicalView(tables="t2[p1]", sql="SELECT `id`, `a` FROM `t2` AS `t2`")
 explain select * from t1 partition (p1) join t2 partition (p1) on t1.a=t2.a;
 Logical ExecutionPlan
-BKAJoin(condition="a = a", type="inner")
-  Gather(concurrent=true)
-    LogicalView(tables="t1[p1]", sql="SELECT `id`, `a` FROM `t1` AS `t1`")
-  Gather(concurrent=true)
-    LogicalView(tables="t2[p1]", sql="SELECT `id`, `a` FROM `t2` AS `t2` WHERE (`a` IN (...))")
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1],t2[p1]", sql="SELECT `t1`.`id`, `t1`.`a`, `t2`.`id` AS `id0`, `t2`.`a` AS `a0` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
 explain select * from t1 partition (p1) join t2 partition (p2) on t1.a=t2.a;
 Logical ExecutionPlan
 BKAJoin(condition="a = a", type="inner")

@@ -17,8 +17,10 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.parse.util.Pair;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionException;
+import com.alibaba.polardbx.optimizer.partition.exception.SubQueryDynamicValueNotReadyException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -62,12 +64,25 @@ public class PartitionPruneStepIntervalAnalyzer {
             rangeBoundDatumCollection.add(new ArrayList<>());
             rangeStepCollection.add(new ArrayList<>());
         }
-        
+
+        List<PartitionPruneStep> stopMergingSteps = new ArrayList<>();
+        List<PartitionPruneStep> toBeMergedSteps = new ArrayList<>();
+        for (int i = 0; i < stepCombine.getSubSteps().size(); i++) {
+            PartitionPruneStep step = stepCombine.getSubSteps().get(i);
+            PartitionPruneStepOp stepOp = (PartitionPruneStepOp) step;
+            if (stepOp.isDynamicSubQueryInStep()) {
+                stopMergingSteps.add(step);
+            } else {
+                toBeMergedSteps.add(step);
+            }
+        }
+
         if(useFastSinglePointIntervalMerging) {
             boolean containEqSteps = false;
             PartitionPruneStepOp firstEqStepOp = null;
-            for (int i = 0; i < stepCombine.getSubSteps().size(); i++) {
-                PartitionPruneStepOp stepOp = (PartitionPruneStepOp) stepCombine.getSubSteps().get(i);
+            for (int i = 0; i < toBeMergedSteps.size(); i++) {
+                PartitionPruneStep step = toBeMergedSteps.get(i);
+                PartitionPruneStepOp stepOp = (PartitionPruneStepOp) step;
                 PartPredicateRouteFunction routeFunction = (PartPredicateRouteFunction) stepOp.getPredRouteFunc();
                 ComparisonKind cmpKind = routeFunction.getSearchExprInfo().getCmpKind();
                 if (cmpKind == ComparisonKind.EQUAL ) {
@@ -84,8 +99,8 @@ public class PartitionPruneStepIntervalAnalyzer {
         /**
          * classify all the predicates into three kinds according to cmpKind: < & <=, = , > & >=
          */
-        for (int i = 0; i < stepCombine.getSubSteps().size(); i++) {
-            PartitionPruneStep step = stepCombine.getSubSteps().get(i);
+        for (int i = 0; i < toBeMergedSteps.size(); i++) {
+            PartitionPruneStep step = toBeMergedSteps.get(i);
 
             PartitionPruneStepOp stepOp = (PartitionPruneStepOp) step;
             PartPredicateRouteFunction routeFunction = (PartPredicateRouteFunction) stepOp.getPredRouteFunc();
@@ -102,7 +117,7 @@ public class PartitionPruneStepIntervalAnalyzer {
             } else {
 
                 /**
-                 *  col op const =>  col >= const and col <= const
+                 *  col = const =>  col >= const and col <= const
                  */
                 OpStepIntervalMerger opStepRangeMerger = (OpStepIntervalMerger) step.getIntervalMerger();
                 PartitionPruneStepOp leStep = opStepRangeMerger.getMaxValStep();
@@ -120,10 +135,23 @@ public class PartitionPruneStepIntervalAnalyzer {
             }
         }
 
+        List<StepIntervalInfo> stopMergingIntervalInfos = new ArrayList<>();
+        if (!stopMergingSteps.isEmpty()) {
+            for (int i = 0; i < stopMergingSteps.size(); i++) {
+                PartitionPruneStep step = stopMergingSteps.get(i);
+                StepIntervalInfo intervalStopMerging = new StepIntervalInfo();
+                intervalStopMerging.setForbidMerging(true);
+                intervalStopMerging.setFinalStep(step);
+                stopMergingIntervalInfos.add(intervalStopMerging);
+            }
+        }
+
         IntersectStepIntervalMerger stepRangeMerger = new IntersectStepIntervalMerger(stepCombine);
         stepRangeMerger.setPartInfo(partInfo);
         stepRangeMerger.setRangeBoundDatumCollection(rangeBoundDatumCollection);
         stepRangeMerger.setRangeStepCollection(rangeStepCollection);
+        stepRangeMerger.setStopMergingIntervalList(stopMergingIntervalInfos);
+
         return stepRangeMerger;
     }
 
@@ -573,18 +601,21 @@ public class PartitionPruneStepIntervalAnalyzer {
                                                            boolean isFindMax,
                                                            List<SearchExprInfo> searchExprInfos) {
 
-        List<SearchExprEvalResult> searchExprEvalRsInfo =
+        List<Pair<SearchExprEvalResult, Integer>> searchExprEvalRsInfo =
             computeSearchDatumInfosForIntersect(searchExprInfos, context, pruningCtx);
         if (searchExprEvalRsInfo.isEmpty()) {
             return null;
         }
 
         SearchDatumComparator queryComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
-        SearchExprEvalResult mostExprRs = searchExprEvalRsInfo.get(0);
+        SearchExprEvalResult mostExprRs = searchExprEvalRsInfo.get(0).getKey();
+        Integer mostExprIdx = searchExprEvalRsInfo.get(0).getValue();
         ComparisonKind mostExprRsCmpKind = mostExprRs.getComparisonKind();
-        int exprIndex = 0;
+        int exprIndex = mostExprIdx;
         for (int i = 1; i < searchExprEvalRsInfo.size(); i++) {
-            SearchExprEvalResult nextExprEvalRs = searchExprEvalRsInfo.get(i);
+            Pair<SearchExprEvalResult, Integer> exprRsAndExprIdx = searchExprEvalRsInfo.get(i);
+            SearchExprEvalResult nextExprEvalRs = exprRsAndExprIdx.getKey();
+            Integer nextExprIdx = exprRsAndExprIdx.getValue();
             ComparisonKind nextCmpKind = nextExprEvalRs.getComparisonKind();
             int comRs = queryComparator.compare(mostExprRs.getSearchDatumInfo(), nextExprEvalRs.getSearchDatumInfo());
             if (isFindMax) {
@@ -593,7 +624,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                     // mostDatumInfo < nextDatumInfo
                     mostExprRs = nextExprEvalRs;
                     mostExprRsCmpKind = nextCmpKind;
-                    exprIndex = i;
+                    exprIndex = nextExprIdx;
                 } else if (comRs == 0) {
                     // mostDatumInfo = nextDatumInfo
 
@@ -603,7 +634,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                         // nextCmpKind : <:4
                         mostExprRs = nextExprEvalRs;
                         mostExprRsCmpKind = nextCmpKind;
-                        exprIndex = i;
+                        exprIndex = nextExprIdx;
                     }
                 }
             } else {
@@ -614,7 +645,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                     // Find max value
                     mostExprRs = nextExprEvalRs;
                     mostExprRsCmpKind = nextCmpKind;
-                    exprIndex = i;
+                    exprIndex = nextExprIdx;
                 } else if (comRs == 0) {
                     int rs = mostExprRsCmpKind.getComparison() - nextCmpKind.getComparison();
                     if (rs == 1) {
@@ -622,7 +653,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                         // nextCmpKind : >:0
                         mostExprRs = nextExprEvalRs;
                         mostExprRsCmpKind = nextCmpKind;
-                        exprIndex = i;
+                        exprIndex = nextExprIdx;
                     }
                 }
             }
@@ -632,18 +663,19 @@ public class PartitionPruneStepIntervalAnalyzer {
         return rangeInterval;
     }
 
-    protected static List<SearchExprEvalResult> computeSearchDatumInfosForIntersect(
+    protected static List<Pair<SearchExprEvalResult, Integer>> computeSearchDatumInfosForIntersect(
         List<SearchExprInfo> searchExprInfos,
         ExecutionContext context,
         PartPruneStepPruningContext pruningCtx) {
 
-        List<SearchExprEvalResult> allDatumInfos = new ArrayList<>();
+        List<Pair<SearchExprEvalResult, Integer>> allDatumInfos = new ArrayList<>();
         for (int i = 0; i < searchExprInfos.size(); i++) {
             SearchExprInfo exprInfo = searchExprInfos.get(i);
             try {
                 SearchExprEvalResult datumInfo =
                     PartitionPrunerUtils.evalExprValsAndBuildOneDatum(context, pruningCtx, exprInfo);
-                allDatumInfos.add(datumInfo);
+                Pair rsAndExprIdxPair = new Pair(datumInfo, i);
+                allDatumInfos.add(rsAndExprIdxPair);
             } catch (Throwable ex) {
                 if (ex instanceof InvalidTypeConversionException) {
                     /**
@@ -653,7 +685,15 @@ public class PartitionPruneStepIntervalAnalyzer {
                      *  the SearchExprInfo should be treated as Always-True expr
                      */
                     continue;
-                } else {
+                }  else if (ex instanceof SubQueryDynamicValueNotReadyException) {
+                    /**
+                     *  when it is failed to compute its SearchDatumInfo because of
+                     *  the not-ready subquery-dyanamic value,
+                     *  the SearchExprInfo should be ignore and
+                     *  so generate a full scan bitset
+                     */
+                    continue;
+                }else {
                     throw ex;
                 }
             }

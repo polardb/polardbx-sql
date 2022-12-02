@@ -67,11 +67,11 @@ public class SqlRuntimeFilterFunction extends SqlFunction {
 
         // Prepare statement place holder for bloom filter data, bloom filter length, bloom filter function num
         writer.sep(",");
-        writer.print("?");
+        writer.dynamicParam();
         writer.sep(",");
-        writer.print("?");
+        writer.dynamicParam();
         writer.sep(",");
-        writer.print("?");
+        writer.dynamicParam();
 
         for (SqlNode operand : call.getOperandList()) {
             writer.sep(",");

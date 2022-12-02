@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionConnectionHolder;
 
@@ -43,8 +44,8 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        TransactionManager tm = TransactionManager.getInstance(schema);
-        Collection<ITransaction> transactions = tm.getTransactions().values();
+        Collection<ITransaction> transactions = TransactionManager.getTransactions(schema);
+
         ArrayResultCursor result = new ArrayResultCursor("TRANSACTIONS");
         result.addColumn("TRANS_ID", DataTypes.LongType);
         result.addColumn("GROUP", DataTypes.StringType);

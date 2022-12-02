@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -34,8 +36,8 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder.PhyTableSha
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.InsertWriter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfoBuilder;
 import com.alibaba.polardbx.optimizer.rel.rel2sql.TddlRelToSqlConverter;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
@@ -48,6 +50,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.hep.HepRelVertex;
 import org.apache.calcite.prepare.Prepare;
+import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.TableModify;
@@ -64,6 +67,9 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -131,6 +137,21 @@ public class LogicalInsert extends TableModify {
     protected PartitionTupleRouteInfo tupleRoutingInfo;
     protected PartitionTupleRouteInfo replicationTupleRoutingInfo;
 
+    /**
+     * 当Insert Select语句时，选择执行模式：
+     */
+    public enum InsertSelectMode {
+        // 单线程执行Insert
+        SINGLE,
+        // 多线程执行Insert
+        MULTI,
+        // 使用MPP调度别的节点执行Insert
+        MPP,
+    }
+
+    //默认单线程执行
+    protected InsertSelectMode insertSelectMode = InsertSelectMode.SINGLE;
+
     public LogicalInsert(TableModify modify) {
         this(modify.getCluster(),
             modify.getTraitSet(),
@@ -191,6 +212,17 @@ public class LogicalInsert extends TableModify {
         this.gsiInsertWriters = gsiInsertWriters;
         this.unOptimizedLogicalDynamicValues = unOptimizedLogicalDynamicValues;
         this.unOptimizedDuplicateKeyUpdateList = unOptimizedDuplicateKeyUpdateList;
+    }
+
+    /**
+     * for json Deserialization
+     */
+    public LogicalInsert(RelInput relInput) {
+        super(relInput);
+        this.dbType = DbType.MYSQL;
+        schemaName = relInput.getString("schemaName");
+        insertRowType = relInput.getRowType("insertRowType");
+        duplicateKeyUpdateList = relInput.getExpressionList("duplicateKeyUpdateList");
     }
 
     public RelDataType getInsertRowType() {
@@ -281,7 +313,7 @@ public class LogicalInsert extends TableModify {
 
         // Build LogicalDynamicValues
         final List<RexNode> tuple =
-            IntStream.range(0, fields.size()).mapToObj(i -> new RexDynamicParam(getInsertRowType(), i))
+            IntStream.range(0, fields.size()).mapToObj(i -> new RexDynamicParam(fields.get(i).getType(), i))
                 .collect(Collectors.toList());
 
         final ImmutableList<ImmutableList<RexNode>> tuples = ImmutableList.of(ImmutableList.copyOf(tuple));
@@ -455,6 +487,17 @@ public class LogicalInsert extends TableModify {
         return seqColumnIndex;
     }
 
+    /**
+     * for json serialization
+     */
+    @Override
+    public RelWriter explainTerms(RelWriter pw) {
+        return super.explainTerms(pw)
+            .item("insertRowType", insertRowType)
+            .item("schemaName", schemaName)
+            .itemIf("duplicateKeyUpdateList", duplicateKeyUpdateList, duplicateKeyUpdateList != null);
+    }
+
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
         // We need Parameters to get routing result.
@@ -500,7 +543,7 @@ public class LogicalInsert extends TableModify {
 
             // For batch insert, change params index.
             if (logicalInsert.getBatchSize() > 0) {
-                buildParamsForBatch(executionContext.getParams());
+                buildParamsForBatch(executionContext);
             }
 
             if (funcEvaluator != null && null == targetTablesHintCache) {
@@ -518,6 +561,7 @@ public class LogicalInsert extends TableModify {
             pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
             pw.item("table", getLogicalTableName());
             pw.item("columns", insertRowType);
+            pw.item("mode", insertSelectMode);
         }
 
         return pw;
@@ -773,6 +817,7 @@ public class LogicalInsert extends TableModify {
         newLogicalInsert.literalColumnIndex = literalColumnIndex;
         newLogicalInsert.seqColumnIndex = seqColumnIndex;
         newLogicalInsert.tupleRoutingInfo = tupleRoutingInfo;
+        newLogicalInsert.insertSelectMode = insertSelectMode;
         return newLogicalInsert;
     }
 
@@ -868,13 +913,24 @@ public class LogicalInsert extends TableModify {
     /**
      * Convert params from Map<> to List<Map<>>
      */
-    public void buildParamsForBatch(Parameters parameterSettings) {
+    public void buildParamsForBatch(ExecutionContext executionContext) {
+        Parameters parameterSettings = executionContext.getParams();
         if (parameterSettings == null) {
             return;
         }
 
+        String schemaName = getSchemaName();
+        if (StringUtils.isEmpty(schemaName)) {
+            schemaName = executionContext.getSchemaName();
+        }
+        final String tableName = getLogicalTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+        final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
+        final Pair<String, String> columnMultiWriteMapping =
+            TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, executionContext);
+
         final Map<Integer, ParameterContext> oldParams = parameterSettings.getCurrentParameter();
-        final int fieldNum = countParamNumInEachBatch();
+        final int fieldNum = countParamNumInEachBatch(columnMultiWriteMapping);
         final List<Integer> duplicateKeyUpdateParamIndexes = getParamInDuplicateKeyUpdateList();
 
         final int duplicateKeyUpdateParamNum = duplicateKeyUpdateParamIndexes.size();
@@ -944,11 +1000,23 @@ public class LogicalInsert extends TableModify {
      *
      * @return How many DynamicParam in each row
      */
-    private int countParamNumInEachBatch() {
+    private int countParamNumInEachBatch(Pair<String, String> columnMultiWriteMapping) {
         // It could only be LogicalDynamicValues in batch mode.
         LogicalDynamicValues input = (LogicalDynamicValues) getInput();
         // Every row must be the same.
         List<RexNode> rowNodes = input.getTuples().get(0);
+
+        // Filter out multi-write target column since it should not have user input
+        if (columnMultiWriteMapping != null) {
+            List<String> fieldNames = input.getRowType().getFieldNames();
+            for (int i = 0; i < fieldNames.size(); i++) {
+                if (fieldNames.get(i).equalsIgnoreCase(columnMultiWriteMapping.right)) {
+                    rowNodes = new ArrayList<>(rowNodes);
+                    rowNodes.remove(i);
+                    break;
+                }
+            }
+        }
 
         final Set<Integer> autoIncParamIndex = new HashSet<>(getAutoIncParamIndex());
         final long amendColumnCount = rowNodes.stream().filter(
@@ -1054,5 +1122,13 @@ public class LogicalInsert extends TableModify {
 
     public void setGsiDeleteWriters(List<DistinctWriter> gsiDeleteWriters) {
         this.gsiDeleteWriters = gsiDeleteWriters;
+    }
+
+    public void setInsertSelectMode(InsertSelectMode mode) {
+        this.insertSelectMode = mode;
+    }
+
+    public InsertSelectMode getInsertSelectMode() {
+        return insertSelectMode;
     }
 }

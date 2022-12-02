@@ -36,6 +36,8 @@ public class DdlEngineTaskRecord implements SystemTableRecord {
     public String exceptionAction;
     public String value;
     public String extra;
+    public String cost;
+    public long rootJobId;
 
     @Override
     public DdlEngineTaskRecord fill(ResultSet rs) throws SQLException {
@@ -47,6 +49,8 @@ public class DdlEngineTaskRecord implements SystemTableRecord {
         this.exceptionAction = rs.getString("exception_action");
         this.value = rs.getString("value");
         this.extra = rs.getString("extra");
+        this.cost = rs.getString("cost");
+        this.rootJobId = rs.getLong("root_job_id");
         return this;
     }
 
@@ -61,6 +65,8 @@ public class DdlEngineTaskRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.exceptionAction);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.value);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.extra);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.cost);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.rootJobId);
         return params;
     }
 
@@ -126,5 +132,21 @@ public class DdlEngineTaskRecord implements SystemTableRecord {
 
     public void setExtra(String extra) {
         this.extra = extra;
+    }
+
+    public String getCost() {
+        return cost;
+    }
+
+    public void setCost(String cost) {
+        this.cost = cost;
+    }
+
+    public long getRootJobId() {
+        return rootJobId;
+    }
+
+    public void setRootJobId(long rootJobId) {
+        this.rootJobId = rootJobId;
     }
 }

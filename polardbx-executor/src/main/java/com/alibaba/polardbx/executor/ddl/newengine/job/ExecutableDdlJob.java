@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job;
 
 import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import org.apache.commons.collections.CollectionUtils;
 
-import javax.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -111,6 +111,8 @@ public class ExecutableDdlJob extends AbstractDdlJob {
         return this;
     }
 
+
+
     /**
      * Append a job after the predecessor node
      */
@@ -123,6 +125,17 @@ public class ExecutableDdlJob extends AbstractDdlJob {
 
         // combine resources
         this.excludeResources.addAll(job.getExcludeResources());
+        return this;
+    }
+
+    public DdlJob appendTask(DdlTask task) {
+        synchronized (this.taskGraph){
+            Set<DirectedAcyclicGraph.Vertex> outSet = this.taskGraph.getAllZeroOutDegreeVertexes();
+            DirectedAcyclicGraph.Vertex vertex = this.taskGraph.addVertex(task).getKey();
+            for(DirectedAcyclicGraph.Vertex out: outSet){
+                this.taskGraph.addEdge(out, vertex);
+            }
+        }
         return this;
     }
 
@@ -197,6 +210,14 @@ public class ExecutableDdlJob extends AbstractDdlJob {
 
     public boolean isEmpty() {
         return this.taskGraph.isEmpty();
+    }
+
+    public Set<DirectedAcyclicGraph.Vertex> getAllZeroInDegreeVertexes() {
+        return this.taskGraph.getAllZeroInDegreeVertexes();
+    }
+
+    public Set<DirectedAcyclicGraph.Vertex> getAllZeroOutDegreeVertexes() {
+        return this.taskGraph.getAllZeroOutDegreeVertexes();
     }
 
 }

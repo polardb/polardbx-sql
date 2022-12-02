@@ -16,22 +16,22 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
+import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableColumnStatistic;
+import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableLogicalTableStatistic;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.misc.SchemaInfoCleaner;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.SchemaMetaCleaner;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableColumnStatistic;
-import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableLogicalTableStatistic;
 import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTableBaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTablePlanInfo;
 import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
@@ -84,17 +84,18 @@ public class SchemaMetaUtil {
 
             PolarDbXSystemTableView.deleteAll(schemaName, metaDbConn);
 
-            PolarDbXSystemTableLogicalTableStatistic.deleteAll(schemaName, metaDbConn);
-            PolarDbXSystemTableColumnStatistic.deleteAll(schemaName, metaDbConn);
+            new PolarDbXSystemTableLogicalTableStatistic().deleteAll(schemaName, metaDbConn);
+            new PolarDbXSystemTableColumnStatistic().deleteAll(schemaName, metaDbConn);
 
-            PolarDbXSystemTableBaselineInfo.deleteAll(schemaName, metaDbConn);
-            PolarDbXSystemTablePlanInfo.deleteAll(schemaName, metaDbConn);
+            PolarDbXSystemTableBaselineInfo.deleteAll(schemaName);
+            PolarDbXSystemTablePlanInfo.deleteAll(schemaName);
 
             GsiBackfillManager.deleteAll(schemaName, metaDbConn);
             CheckerManager.deleteAll(schemaName, metaDbConn);
             ddlPlanAccessor.deleteAll(schemaName);
 
             TableGroupUtils.deleteTableGroupInfoBySchema(schemaName, metaDbConn);
+            JoinGroupUtils.deleteJoinGroupInfoBySchema(schemaName, metaDbConn);
 
         } catch (Exception e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
@@ -108,13 +109,13 @@ public class SchemaMetaUtil {
         if (schemaName == null || schemaName.isEmpty()) {
             throw new IllegalArgumentException("checkSupportHll with empty schema name");
         }
-        if (!OptimizerContext.getContext(schemaName).getParamManager().getBoolean(ENABLE_HLL)) {
+        if (!InstConfUtil.getBool(ENABLE_HLL)) {
             return false;
         }
 
         ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
 
-        // should not happen, ExecutorContext shell be inited when schema inited
+        // should not happen, ExecutorContext should be inited when schema inited
         if (executorContext == null) {
             return false;
         }
@@ -131,7 +132,7 @@ public class SchemaMetaUtil {
 
         ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
 
-        // should not happen, ExecutorContext shell be inited when schema inited
+        // should not happen, ExecutorContext should be inited when schema inited
         if (executorContext == null) {
             return false;
         }

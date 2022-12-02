@@ -36,6 +36,14 @@ public class TransactionAttribute {
 
     public static final String DRDS_TRANSACTION_TIMEOUT = "drds_transaction_timeout";
 
+    /**
+     * Default intra group parallelism
+     */
+    public static final String GROUP_PARALLELISM = "GROUP_PARALLELISM";
+
+    /**
+     * 当同时提交的 group 数量达到或超过这个值时，启用并发提交
+     */
     public static final int CONCURRENT_COMMIT_LIMIT = 2;
 
     public static final int TRANSACTION_PURGE_INTERVAL = 3600;
@@ -44,7 +52,10 @@ public class TransactionAttribute {
 
     public static final int XA_RECOVER_INTERVAL = 5;
 
-    public static final String PURGE_TRANS_START_TIME = "00:00-01:00";
+    /**
+     * 默认事务清理开始时间（在该时间段内随机）：00:00 - 23:59
+     */
+    public static final String PURGE_TRANS_START_TIME = "00:00-23:59";
 
     public static final int PURGE_TRANS_BATCH_SIZE = 10000;
 
@@ -55,4 +66,5 @@ public class TransactionAttribute {
     public static final int DEADLOCK_DETECTION_INTERVAL = 1000;
 
     public static final int DEFAULT_TSO_HEARTBEAT_INTERVAL = 60000;
+
 }

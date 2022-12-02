@@ -21,9 +21,10 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptPredicateList;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
@@ -42,6 +43,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.OR;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.ROW;
+
 /**
  * The preprocessor for partition predicate
  *
@@ -49,7 +54,7 @@ import java.util.TreeMap;
  */
 public class PartPredRewriter {
 
-    protected static RexNode rewritePartPredicate(PartitionInfo partInfo,
+    protected static RexNode  rewritePartPredicate(PartitionInfo partInfo,
                                                   RelDataType relRowType,
                                                   RexNode partPred,
                                                   PartPruneStepBuildingContext context) {
@@ -93,9 +98,46 @@ public class PartPredRewriter {
             return null;
         }
 
+        SqlKind kind = partPred.getKind();
+
+//        if (kind == SqlKind.IN && ((RexCall) partPred).getOperands().get(1).getKind() == SqlKind.ROW) {
+//            // expand IN expr and transform it to OR
+//            // RexDynamicParam.subIndexForInExpr meaning the index num of IN args, so RexDynamicParam with
+//            // subIndexForInExpr=1 meaning value "b" in case like "ROW(a, b, c)"
+//            // xx IN ROW(RexDynamicParam) ==> xx IN ROW(a, b, c) ==> xx = a OR xx = b OR xx = c
+//            // And RexDynamicParam with subIndexForInExpr=1 and skIndexForInExpr=0 meaning "c" in case like
+//            // ROW((a,b), (c,d))
+//            // ROW(x1, x2) IN ROW(RexDynamicParam) ==> ROW(x1, x2) IN ROW((a,b), (c,d))
+//            RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
+//            List<RexNode> operands = Lists.newArrayList();
+//            RexCall row = (RexCall) ((RexCall) partPred).getOperands().get(1);
+//            RexNode operand0 = ((RexCall) partPred).getOperands().get(0);
+//            for (RexNode args : row.getOperands()) {
+//                List<RexNode> equalOperands = Lists.newArrayList();
+//                equalOperands.add(operand0);
+//                if (operand0.getKind() == SqlKind.ROW
+//                    && args instanceof RexDynamicParam) {
+//                    // meaning row(xx, xx) in ((xx, xx), (xx,xx))
+//                    List<RexNode> newOps = Lists.newArrayList();
+//                    RexDynamicParam orgin = (RexDynamicParam) args;
+//                    for (int i = 0; i < ((RexCall) operand0).getOperands().size(); i++) {
+//                        RexDynamicParam tmp = new RexDynamicParam(orgin.getType(), orgin.getIndex());
+//                        tmp.setSubIndex(orgin.getSubIndex());
+//                        tmp.setSkIndex(i);
+//                        newOps.add(tmp);
+//                    }
+//                    equalOperands.add(rexBuilder.makeCall(ROW, newOps));
+//                } else {
+//                    equalOperands.add(args);
+//                }
+//                operands.add(rexBuilder.makeCall(EQUALS, equalOperands));
+//            }
+//            partPred = rexBuilder.makeCall(OR, operands);
+//            kind = SqlKind.OR;
+//        }
+
         RexCall partPredInfo = (RexCall) partPred;
         RexNode rewritedPred = null;
-        SqlKind kind = partPred.getKind();
 
         if (kind == SqlKind.OR || kind == SqlKind.AND) {
             rewritedPred = rewriteAndOrExpr(context, partInfo, relRowType, partPredInfo);
@@ -265,9 +307,12 @@ public class PartPredRewriter {
         switch (opKind) {
         case LESS_THAN:
         case GREATER_THAN:
-        case EQUALS:
-        case NOT_EQUALS: {
+        case EQUALS: {
             return newPartPred;
+        }
+
+        case NOT_EQUALS: {
+            return convertNotEqExprToOrExpr(inputRef, constExpr, rexBuilder);
         }
 
         case LESS_THAN_OR_EQUAL:
@@ -289,6 +334,30 @@ public class PartPredRewriter {
 
         return null;
     }
+
+    protected static RexNode convertNotEqExprToOrExpr(RexNode predInput,
+                                                      RexNode predValue,
+                                                      RexBuilder rexBuilder) {
+
+        RexNode newExpr;
+        List<RexNode> ltOpList = new ArrayList<>();
+        ltOpList.add(predInput);
+        ltOpList.add(predValue);
+        RexNode ltExpr = rexBuilder.makeCall(TddlOperatorTable.LESS_THAN, ltOpList);
+
+        List<RexNode> gtOpList = new ArrayList<>();
+        gtOpList.add(predInput);
+        gtOpList.add(predValue);
+        RexNode gtExpr = rexBuilder.makeCall(TddlOperatorTable.GREATER_THAN, gtOpList);
+
+        List<RexNode> orOpList = new ArrayList<>();
+        orOpList.add(ltExpr);
+        orOpList.add(gtExpr);
+        RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, orOpList);
+        newExpr = orExpr;
+        return newExpr;
+    }
+
 
     /**
      * <pre>
@@ -354,7 +423,7 @@ public class PartPredRewriter {
         List<RexNode> orOpList = new ArrayList<>();
         orOpList.add(neqExpr);
         orOpList.add(eqExpr);
-        RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, orOpList);
+        RexNode orExpr = rexBuilder.makeCall(OR, orOpList);
         newExpr = orExpr;
         return newExpr;
     }
@@ -451,6 +520,7 @@ public class PartPredRewriter {
         case EQUALS: {
             return rewriteRowEqExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
+
         case NOT_EQUALS: {
             return rewriteRowNotEqExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
@@ -896,7 +966,7 @@ public class PartPredRewriter {
         } else if (allExprList.size() == 1) {
             return allExprList.get(0);
         } else {
-            RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, allExprList);
+            RexNode orExpr = rexBuilder.makeCall(OR, allExprList);
             return orExpr;
         }
     }
@@ -944,7 +1014,7 @@ public class PartPredRewriter {
             return allExprList.get(0);
         } else {
             RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
-            RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, allExprList);
+            RexNode orExpr = rexBuilder.makeCall(OR, allExprList);
             return orExpr;
         }
     }
@@ -985,7 +1055,7 @@ public class PartPredRewriter {
             return allExprList.get(0);
         } else {
             RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
-            RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, allExprList);
+            RexNode orExpr = rexBuilder.makeCall(OR, allExprList);
             return orExpr;
         }
     }
@@ -1057,25 +1127,69 @@ public class PartPredRewriter {
                 }
             }
         }
+
+        boolean enableInQueryParamOpti = false;
         if (!containConstExprOnlyInRight) {
+
             /**
-             *  Not support to perform prunint for  the case:
-             *  col1,col2, col4 in ( (1,3,4),(5,7,col2), (8,9,col3) )
-             *  ...
+             * Check if QueryParamOpti is enabled.
+             *
+             * <pre>
+             * When QueryParamOpti is enabled,
+             * (a,b,c) in ((?1,?2,?3),(?4,?5,?6)) will be convert to
+             * (a,b,c) in ((?A,(?B)), which ?A and ?B ard RexDynamic
+             *
+             * </pre>
+             *
              */
-            return null;
+            enableInQueryParamOpti = true;
+            for (int i = 0; i < rightItem.getOperands().size(); i++) {
+                RexNode valueNode = rightItem.getOperands().get(i);
+                if (!(valueNode instanceof RexDynamicParam)) {
+                    enableInQueryParamOpti = false;
+                    break;
+                } else {
+                    if (((RexDynamicParam)valueNode).getIndex() < 0) {
+                        enableInQueryParamOpti = false;
+                        break;
+                    }
+                }
+            }
+            if (!enableInQueryParamOpti) {
+                /**
+                 *  Not support to perform pruning for the case:
+                 *  col1,col2, col4 in ( (1,3,4),(5,7,col2), (8,9,col3) )
+                 *  ...
+                 */
+                return null;
+            }
         }
 
         inValList = rightItem.getOperands();
         List<RexNode> allExprList = new ArrayList<>();
         for (int i = 0; i < inValList.size(); i++) {
-            RexNode oneVal = inValList.get(i);
-            RexNode expr = rewriteRowEqExpr(context, partInfo, relRowType, leftItem, SqlKind.EQUALS, oneVal);
+            RexNode oneRowVal = inValList.get(i);
+            RexNode activeOneRowVal;
+            if (enableInQueryParamOpti) {
+                RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
+                List<RexNode> newOpsOfActiveOneRowVal = Lists.newArrayList();
+                RexDynamicParam oneRowValDynamic = (RexDynamicParam) oneRowVal;
+                for (int c = 0; c < leftItem.getOperands().size(); c++) {
+                    RexDynamicParam oneValDynamicInRow = new RexDynamicParam(oneRowValDynamic.getType(), oneRowValDynamic.getIndex());
+                    oneValDynamicInRow.setSubIndex(oneRowValDynamic.getSubIndex());
+                    oneValDynamicInRow.setSkIndex(c);
+                    newOpsOfActiveOneRowVal.add(oneValDynamicInRow);
+                }
+                activeOneRowVal = rexBuilder.makeCall(ROW, newOpsOfActiveOneRowVal);
+            } else {
+                activeOneRowVal = oneRowVal;
+            }
+            RexNode expr = rewriteRowEqExpr(context, partInfo, relRowType, leftItem, SqlKind.EQUALS, activeOneRowVal);
             if (expr != null) {
                 allExprList.add(expr);
             } else {
                 /**
-                 * Maybe no find any partition column in prediate, treat is always-true predicate
+                 * Maybe no find any partition column in predicate, treat is always-true predicate
                  */
                 RexNode alwaysTrueExpr = buildAlwaysTrueExpr();
                 allExprList.add(alwaysTrueExpr);
@@ -1088,7 +1202,7 @@ public class PartPredRewriter {
             return allExprList.get(0);
         } else {
             RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
-            RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, allExprList);
+            RexNode orExpr = rexBuilder.makeCall(OR, allExprList);
             return orExpr;
         }
     }
@@ -1118,7 +1232,6 @@ public class PartPredRewriter {
             /**
              *  Try to handle : col in ROW(1,2,3,...)
              */
-
             if (left instanceof RexInputRef) {
                 /**
                  *  Try to handle : id in (1,2,3,...)
@@ -1162,17 +1275,38 @@ public class PartPredRewriter {
         }
 
         List<RexNode> allExprList = new ArrayList<>();
-        for (int i = 0; i < inValueList.size(); i++) {
-            /**
-             * Handle pk in (v1, v2, ..., vn) and
-             * => ( (pk=v1) or (pk=v2) or ... or (pk=vn) )
-             */
-            RexNode inValExpr = inValueList.get(i);
-            List<RexNode> eqOpList = new ArrayList<>();
-            eqOpList.add(inputSide);
-            eqOpList.add(inValExpr);
-            RexNode eqExpr = rexBuilder.makeCall(TddlOperatorTable.EQUALS, eqOpList);
-            allExprList.add(eqExpr);
+
+        /**
+         * Handle pk in (normalScalarSubQuery)
+         */
+        boolean findNormalScalarSubQuery = false;
+        if (inValueList.size() == 1) {
+            RexNode inValExpr = inValueList.get(0);
+            if (SubQueryDynamicParamUtils.isApplySubQueryConstant(inValExpr)) {
+                return null;
+            } else if (SubQueryDynamicParamUtils.isNonMaxOneRowScalarSubQueryConstant(inValExpr)) {
+                List<RexNode> inOpList = new ArrayList<>();
+                inOpList.add(inputSide);
+                inOpList.add(inValExpr);
+                RexNode sbInExpr = rexBuilder.makeCall(TddlOperatorTable.IN, inOpList);
+                allExprList.add(sbInExpr);
+                findNormalScalarSubQuery = true;
+            }
+        }
+
+        if (!findNormalScalarSubQuery) {
+            for (int i = 0; i < inValueList.size(); i++) {
+                /**
+                 * Handle pk in (v1, v2, ..., vn) and
+                 * => ( (pk=v1) or (pk=v2) or ... or (pk=vn) )
+                 */
+                RexNode inValExpr = inValueList.get(i);
+                List<RexNode> eqOpList = new ArrayList<>();
+                eqOpList.add(inputSide);
+                eqOpList.add(inValExpr);
+                RexNode eqExpr = rexBuilder.makeCall(TddlOperatorTable.EQUALS, eqOpList);
+                allExprList.add(eqExpr);
+            }
         }
 
         if (allExprList.size() == 0) {
@@ -1180,7 +1314,7 @@ public class PartPredRewriter {
         } else if (allExprList.size() == 1) {
             return allExprList.get(0);
         } else {
-            RexNode orExpr = rexBuilder.makeCall(TddlOperatorTable.OR, allExprList);
+            RexNode orExpr = rexBuilder.makeCall(OR, allExprList);
             return orExpr;
         }
     }
@@ -1197,7 +1331,9 @@ public class PartPredRewriter {
         if (rexNode instanceof RexDynamicParam) {
             if (((RexDynamicParam) rexNode).getIndex() >= 0) {
                 return true;
-            } else {
+            } else if (SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(rexNode)) {
+                return true;
+            }else {
                 return false;
             }
         }

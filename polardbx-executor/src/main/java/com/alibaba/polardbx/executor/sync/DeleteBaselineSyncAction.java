@@ -17,32 +17,24 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 public class DeleteBaselineSyncAction implements ISyncAction {
 
-    private String schemaName = null;
+    private String schemaName;
 
-    private String parameterSql;
+    private final String parameterSql;
 
-    private int baselineInfoId;
+    private final Integer planInfoId;
 
-    private Integer planInfoId;
-
-    public DeleteBaselineSyncAction() {
-    }
-
-    public DeleteBaselineSyncAction(String schemaName, int baselineInfoId, String parameterSql) {
+    public DeleteBaselineSyncAction(String schemaName, String parameterSql) {
         this.schemaName = schemaName;
-        this.baselineInfoId = baselineInfoId;
         this.parameterSql = parameterSql;
         this.planInfoId = null;
     }
 
-    public DeleteBaselineSyncAction(String schemaName, int baselineInfoId, String parameterSql, int planInfoId) {
+    public DeleteBaselineSyncAction(String schemaName, String parameterSql, int planInfoId) {
         this.schemaName = schemaName;
-        this.baselineInfoId = baselineInfoId;
         this.parameterSql = parameterSql;
         this.planInfoId = planInfoId;
     }
@@ -55,37 +47,12 @@ public class DeleteBaselineSyncAction implements ISyncAction {
         this.schemaName = schemaName;
     }
 
-    public int getBaselineInfoId() {
-        return baselineInfoId;
-    }
-
-    public void setBaselineInfoId(int baselineInfoId) {
-        this.baselineInfoId = baselineInfoId;
-    }
-
-    public String getParameterSql() {
-        return parameterSql;
-    }
-
-    public void setParameterSql(String parameterSql) {
-        this.parameterSql = parameterSql;
-    }
-
-    public Integer getPlanInfoId() {
-        return planInfoId;
-    }
-
-    public void setPlanInfoId(Integer planInfoId) {
-        this.planInfoId = planInfoId;
-    }
-
     @Override
     public ResultCursor sync() {
-        PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
         if (planInfoId != null) {
-            planManager.deleteBaseline(baselineInfoId, parameterSql, planInfoId);
+            PlanManager.getInstance().deleteBaseline(schemaName, parameterSql, planInfoId);
         } else {
-            planManager.deleteBaseline(baselineInfoId, parameterSql);
+            PlanManager.getInstance().deleteBaseline(schemaName, parameterSql);
         }
         return null;
     }

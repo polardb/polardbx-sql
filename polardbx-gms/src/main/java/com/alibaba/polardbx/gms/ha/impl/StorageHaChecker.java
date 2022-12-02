@@ -58,6 +58,7 @@ public class StorageHaChecker {
     // =======HA_SQL_FOR_OTHERS=======
 
     protected static final String SELECT_GALAXY_XPORT = "select @@galaxyx_port";
+    protected static final String SELECT_XRPC_XPORT = "select @@rpc_port";
     protected static final String SELECT_POLARX_XPORT = "select @@polarx_port";
 
     protected static final String SQL_UPGRADE_LEARNER =
@@ -178,7 +179,8 @@ public class StorageHaChecker {
             .createConnection(host, port, GmsJdbcUtil.DEFAULT_PHY_DB, getHaCheckerJdbcConnPropsUrlStrFast(),
                 usr, passwd)) {
             try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(
-                XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT : SELECT_POLARX_XPORT)) {
+                XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT :
+                    (XConfig.OPEN_XRPC_PROTOCOL ? SELECT_XRPC_XPORT : SELECT_POLARX_XPORT))) {
                 if (rs.next()) {
                     return rs.getInt(1);
                 }
@@ -241,7 +243,7 @@ public class StorageHaChecker {
 
             if (XConfig.VIP_WITH_X_PROTOCOL) {
                 xport = resolveHostPort(availableAddr).getValue();
-            } else if (!XConfig.GALAXY_X_PROTOCOL ||
+            } else if ((!XConfig.GALAXY_X_PROTOCOL && !XConfig.OPEN_XRPC_PROTOCOL) ||
                 storageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_SINGLE) {
                 // Try get xport?
                 try {
@@ -258,7 +260,7 @@ public class StorageHaChecker {
 
             MetaDbLogUtil.META_DB_LOG.info(
                 "Non-cluster DN with type: " + storageType + " addr: " + availableAddr + (XConfig.GALAXY_X_PROTOCOL ?
-                    " with galaxy" : "") + " xport: " + xport);
+                    " with galaxy" : "") + (XConfig.OPEN_XRPC_PROTOCOL ? " with xrpc" : "") + " xport: " + xport);
 
             StorageNodeHaInfo storageHaInfo = new StorageNodeHaInfo(availableAddr, role, true, xport);
             addrHaInfoMap.put(availableAddr, storageHaInfo);
@@ -415,7 +417,8 @@ public class StorageHaChecker {
             }
 
             try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(
-                XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT : SELECT_POLARX_XPORT)) {
+                XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT :
+                    (XConfig.OPEN_XRPC_PROTOCOL ? SELECT_XRPC_XPORT : SELECT_POLARX_XPORT))) {
                 if (rs.next()) {
                     xPort = rs.getInt(1);
                 }
@@ -487,7 +490,8 @@ public class StorageHaChecker {
                     boolean portSucc = false;
                     try (Statement leaderStmt = leaderConn.createStatement();
                         ResultSet rs = leaderStmt.executeQuery(
-                            XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT : SELECT_POLARX_XPORT)) {
+                            XConfig.GALAXY_X_PROTOCOL ? SELECT_GALAXY_XPORT :
+                                (XConfig.OPEN_XRPC_PROTOCOL ? SELECT_XRPC_XPORT : SELECT_POLARX_XPORT))) {
                         if (rs.next()) {
                             leaderXPort = rs.getInt(1);
                         }

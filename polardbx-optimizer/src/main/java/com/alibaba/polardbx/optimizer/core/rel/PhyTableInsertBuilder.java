@@ -16,18 +16,21 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.utils.Pair;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,7 +40,7 @@ import java.util.Map;
 /**
  * @author minggong.zm 2018-01-18
  */
-public class PhyTableInsertBuilder {
+public class PhyTableInsertBuilder extends PhyOperationBuilderCommon {
 
     /**
      * SQL Template, containing all values.
@@ -67,22 +70,38 @@ public class PhyTableInsertBuilder {
     public List<RelNode> build(List<PhyTableInsertSharder.PhyTableShardResult> shardResult) {
 
         List<RelNode> phyTableModifys = new ArrayList<>();
+        String logDbName = parent.getSchemaName();
         String logicalTableName = parent.getLogicalTableName();
+
+        // Calc the galaxy digest prefix.
+        final byte[] prefixBytes =
+            Planner.getGalaxyPrepareDigestPrefix(schemaName, ImmutableList.of(logicalTableName), executionContext);
 
         boolean needBuildEveryTime = !isAllShardResultSame(shardResult);
         PhyTableOperation phyTableModify = null;
         for (PhyTableInsertSharder.PhyTableShardResult result : shardResult) {
             final String phyTableName = result.getPhyTableName();
             if (!needBuildEveryTime && phyTableModify != null) {
-                // Copy the first one, only changing groupName and tableName.
-                phyTableModify = new PhyTableOperation(phyTableModify);
-                phyTableModify.setDbIndex(result.getGroupName());
-                phyTableModify.setTableNames(ImmutableList.<List<String>>of(Lists.newArrayList(phyTableName)));
 
-                // Replace tableName in params
                 Map<Integer, ParameterContext> newParams = new HashMap<>(phyTableModify.getParam());
                 newParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTableName, 1));
-                phyTableModify.setParam(newParams);
+
+//                // Copy the first one, only changing groupName and tableName.
+//                phyTableModify = new PhyTableOperation(phyTableModify);
+//                phyTableModify.setDbIndex(result.getGroupName());
+//                phyTableModify.setTableNames(ImmutableList.<List<String>>of(Lists.newArrayList(phyTableName)));
+//                // Replace tableName in params
+//                phyTableModify.setParam(newParams);
+
+                PhyTableOperation targetPhyOp = phyTableModify;
+                PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+                buildParams.setGroupName(result.getGroupName());
+                buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTableName)));
+                buildParams.setDynamicParams(newParams);
+                // GalaxyPrepare digest will copy from targetPhyOp
+                phyTableModify =
+                    PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+
             } else {
 
                 if (executionContext != null && executionContext.getLoadDataContext() != null && executionContext
@@ -97,14 +116,17 @@ public class PhyTableInsertBuilder {
                             phyTableName);
                     SqlInsert sqlInsert = sqlInsertAndParam.getKey();
                     List<Map<Integer, ParameterContext>> batchParamters = sqlInsertAndParam.getValue();
-                    String sql = RelUtils.toNativeSql(sqlInsert, dbType);
-                    phyTableModify = buildPhyTableModify(result.getGroupName(),
+                    BytesSql sql = RelUtils.toNativeBytesSql(sqlInsert, dbType);
+                    phyTableModify = buildPhyTableModify(
+                        result.getGroupName(),
                         phyTableName,
+                        logDbName,
                         logicalTableName,
                         sql,
                         sqlInsert,
                         null,
-                        batchParamters);
+                        batchParamters,
+                        prefixBytes);
                 } else {
                     Pair<SqlInsert, Map<Integer, ParameterContext>> sqlInsertAndParam =
                         buildSqlInsertAndParam((SqlInsert) sqlTemplate,
@@ -113,14 +135,16 @@ public class PhyTableInsertBuilder {
 
                     SqlInsert sqlInsert = sqlInsertAndParam.getKey();
                     Map<Integer, ParameterContext> params = sqlInsertAndParam.getValue();
-                    String sql = RelUtils.toNativeSql(sqlInsert, dbType);
+                    BytesSql sql = RelUtils.toNativeBytesSql(sqlInsert, dbType);
                     phyTableModify = buildPhyTableModify(result.getGroupName(),
                         phyTableName,
+                        logDbName,
                         logicalTableName,
                         sql,
                         sqlInsert,
                         params,
-                        null);
+                        null,
+                        prefixBytes);
                 }
             }
 
@@ -144,24 +168,56 @@ public class PhyTableInsertBuilder {
         return true;
     }
 
-    private PhyTableOperation buildPhyTableModify(String groupIndex, String phyTableName, String logicalTableName,
-                                                  String sql, SqlInsert sqlInsert,
+    private PhyTableOperation buildPhyTableModify(String groupIndex,
+                                                  String phyTableName,
+                                                  String logDbName,
+                                                  String logTableName,
+                                                  BytesSql sql,
+                                                  SqlInsert sqlInsert,
                                                   Map<Integer, ParameterContext> params,
-                                                  List<Map<Integer, ParameterContext>> batchParams) {
-        PhyTableOperation phyTableModify =
-            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), null, parent);
-        phyTableModify.setKind(parent.getOperation().toSqlKind());
-        phyTableModify.setDbIndex(groupIndex);
+                                                  List<Map<Integer, ParameterContext>> batchParams,
+                                                  byte[] schemaPrefix) {
         List<String> tableNames = Lists.newArrayList(phyTableName);
-        phyTableModify.setTableNames(ImmutableList.of(tableNames));
 
-        phyTableModify.setSqlTemplate(sql);
-        phyTableModify.setNativeSqlNode(sqlInsert);
-        phyTableModify.setParam(params);
-        phyTableModify.setBatchParameters(batchParams);
-        phyTableModify.setLogicalTableNames(ImmutableList.of(logicalTableName));
+//        PhyTableOperation phyTableModify =
+//            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), null, parent);
+//        phyTableModify.setKind(parent.getOperation().toSqlKind());
+//        phyTableModify.setSchemaName(logDbName);
+//        phyTableModify.setLogicalTableNames(ImmutableList.of(logTableName));
+//        phyTableModify.setDbIndex(groupIndex);
+//        phyTableModify.setTableNames(ImmutableList.of(tableNames));
+//        phyTableModify.setBytesSql(sql);
+//        phyTableModify.setNativeSqlNode(sqlInsert);
+//        phyTableModify.setParam(params);
+//        phyTableModify.setBatchParameters(batchParams);
+
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setSchemaName(logDbName);
+        buildParams.setLogTables(ImmutableList.of(logTableName));
+        buildParams.setGroupName(groupIndex);
+        buildParams.setPhyTables(ImmutableList.of(tableNames));
+        buildParams.setSqlKind(parent.getOperation().toSqlKind());
+        buildParams.setLockMode(SqlSelect.LockMode.UNDEF);
+
+        buildParams.setLogicalPlan(parent);
+        buildParams.setCluster(parent.getCluster());
+        buildParams.setTraitSet(parent.getTraitSet());
+        buildParams.setRowType(parent.getRowType());
+        buildParams.setCursorMeta(null);
+        buildParams.setNativeSqlNode(sqlInsert);
+
+        buildParams.setBytesSql(sql);
+        buildParams.setDbType(DbType.MYSQL);
+        buildParams.setDynamicParams(params);
+        buildParams.setBatchParameters(batchParams);
+
+        // generate Galaxy Prepare digest.
+        Planner.setGalaxyPrepareDigest(buildParams, sql, schemaPrefix, parent);
+
+        PhyTableOperation phyTableModify = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
 
         RelUtils.changeRowType(phyTableModify, parent.getRowType());
+
         return phyTableModify;
     }
 

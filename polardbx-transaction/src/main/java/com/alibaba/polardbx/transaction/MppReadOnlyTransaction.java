@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.transaction;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
@@ -32,6 +33,7 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     private long tsoTimestamp = -1;
     private Map<String, Long> lsnMap;
     private boolean omitTso;
+    private boolean lizard1PC;
 
     public MppReadOnlyTransaction(ExecutionContext ec, ITransactionManager manager) {
         super(ec, manager);
@@ -58,8 +60,15 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     }
 
     @Override
-    public void enableOmitTso(boolean omitTso) {
+    public void enableOmitTso(boolean omitTso, boolean lizard1PC) {
         this.omitTso = omitTso;
+        this.lizard1PC = lizard1PC;
+    }
+
+    @Override
+    public IConnection getConnection(String schemaName, String group, Long grpConnId, IDataSource ds, RW rw, ExecutionContext ec)
+        throws SQLException {
+        throw new NotSupportException();
     }
 
     @Override
@@ -73,7 +82,7 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
             }
         }
         if (omitTso) {
-            useCtsTransaction(connection);
+            useCtsTransaction(connection, lizard1PC);
         } else {
             sendSnapshotSeq(connection);
         }

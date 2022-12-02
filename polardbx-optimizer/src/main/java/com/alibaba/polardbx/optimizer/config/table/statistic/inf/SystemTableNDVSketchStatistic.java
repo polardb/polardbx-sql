@@ -30,11 +30,12 @@ public interface SystemTableNDVSketchStatistic {
 
     void deleteByTableName(String schemaName, String logicalTableName);
 
-    SketchRow[] loadAll(String schemaName);
+    SketchRow[] loadAll();
 
     SketchRow[] loadByTableName(String schemaName, String tableName);
 
-    Map<String, byte[]> loadByTableNameAndColumnName(String schemaName, String tableName, String columnName);
+    void loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
+                                      Map<String, byte[]> shardParts, int[] registers);
 
     void batchReplace(final SketchRow[] rowList);
 

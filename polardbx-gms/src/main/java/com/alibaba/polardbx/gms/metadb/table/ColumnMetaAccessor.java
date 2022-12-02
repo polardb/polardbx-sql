@@ -45,11 +45,21 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
 
     private static final String SELECT_COLUMN_METAS = "select * from " + COLUMN_META_TABLE + " where table_file_name = ? and column_name = ?";
 
-    private static final String SELECT_FOR_ROLLBACK = "select * from " + COLUMN_META_TABLE
-        +  " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? for update";
+    private static final String SELECT_BY_PATH = "select * from " + COLUMN_META_TABLE + " where bloom_filter_path = ? ";
 
-    private static final String DELETE_FILES = "delete from " + COLUMN_META_TABLE +
+    private static final String SELECT_FOR_ROLLBACK = "select * from " + COLUMN_META_TABLE
+        +  " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+
+    private static final String SELECT_UNCOMMITTED_FOR_ROLLBACK = "select * from " + COLUMN_META_TABLE
+        +  " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
+
+    private static final String SELECT_BY_TABLE_FILE_NAME = "select * from " + COLUMN_META_TABLE + " where `table_file_name` = ? ";
+
+    private static final String DELETE_COLUMN_META = "delete from " + COLUMN_META_TABLE +
         " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+
+    private static final String DELETE_UNCOMMITTED_COLUMN_META = "delete from " + COLUMN_META_TABLE +
+        " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
 
     private static final String DELETE_FILES_BY_SCHEMA_TABLE = "delete from " + COLUMN_META_TABLE +
         " where `logical_schema_name` = ? and `logical_table_name` = ?";
@@ -63,6 +73,9 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
 
     private static final String READY_FILES = "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
         + " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+
+    private static final String VALID_BY_TABLE_FILE_NAME = "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
+        + " where `table_file_name` = ? ";;
 
     public int[] insert(List<ColumnMetasRecord> records) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -89,8 +102,30 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         }
     }
 
-    public List<ColumnMetasRecord> lock(Long taskId, String logicalSchemaName, String logicalTableName) {
+    public List<ColumnMetasRecord> queryByMetaKey(String metaKey) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, metaKey);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_BY_PATH, params);
+            return MetaDbUtil.query(SELECT_BY_PATH, params, ColumnMetasRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<ColumnMetasRecord> queryByTableFileName(String tableFileName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, tableFileName);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_BY_TABLE_FILE_NAME, params);
+            return MetaDbUtil.query(SELECT_BY_TABLE_FILE_NAME, params, ColumnMetasRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<ColumnMetasRecord> queryByIdAndSchemaAndTable(Long taskId, String logicalSchemaName, String logicalTableName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
         MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalTableName);
@@ -102,14 +137,40 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         }
     }
 
+    public List<ColumnMetasRecord> queryUncommitted(Long taskId, String logicalSchemaName, String logicalTableName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(3);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalTableName);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_UNCOMMITTED_FOR_ROLLBACK, params);
+            return MetaDbUtil.query(SELECT_UNCOMMITTED_FOR_ROLLBACK, params, ColumnMetasRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public void deleteUncommitted(Long taskId, String logicalSchemaName, String logicalTableName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(3);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalTableName);
+        try {
+            DdlMetaLogUtil.logSql(DELETE_UNCOMMITTED_COLUMN_META, params);
+            MetaDbUtil.delete(DELETE_UNCOMMITTED_COLUMN_META, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
     public void delete(Long taskId, String logicalSchemaName, String logicalTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
         MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalTableName);
         try {
-            DdlMetaLogUtil.logSql(DELETE_FILES, params);
-            MetaDbUtil.delete(DELETE_FILES, params, connection);
+            DdlMetaLogUtil.logSql(DELETE_COLUMN_META, params);
+            MetaDbUtil.delete(DELETE_COLUMN_META, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -162,7 +223,7 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         }
     }
 
-    public void valid(Long taskId, String logicalSchemaName, String logicalTableName) {
+    public void ready(Long taskId, String logicalSchemaName, String logicalTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
@@ -170,6 +231,17 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         try {
             DdlMetaLogUtil.logSql(READY_FILES, params);
             MetaDbUtil.update(READY_FILES, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public void validByTableFileName(String tableFileName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, tableFileName);
+        try {
+            DdlMetaLogUtil.logSql(VALID_BY_TABLE_FILE_NAME, params);
+            MetaDbUtil.update(VALID_BY_TABLE_FILE_NAME, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }

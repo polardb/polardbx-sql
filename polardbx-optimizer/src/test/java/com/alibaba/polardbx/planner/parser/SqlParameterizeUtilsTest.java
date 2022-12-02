@@ -484,7 +484,7 @@ public class SqlParameterizeUtilsTest extends TestCase {
         hashMap.put(1, p);
         hashMap.put(2, p2);
 
-        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, hashMap);
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, hashMap, true);
         Assert.assertEquals("SELECT *\n" +
             "FROM t\n" +
             "WHERE id = ?\n" +

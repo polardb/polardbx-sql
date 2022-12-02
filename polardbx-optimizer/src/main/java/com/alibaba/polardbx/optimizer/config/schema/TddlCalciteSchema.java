@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.schema;
 
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableSortedMap;
@@ -56,6 +57,7 @@ import org.apache.calcite.util.NameMultimap;
 import org.apache.calcite.util.NameSet;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author lingce.ldm 2017-12-05 12:59
@@ -63,13 +65,17 @@ import java.util.List;
 public class TddlCalciteSchema extends CalciteSchema {
 
     private final String schemaName;
-    private final ExecutionContext ec;
+    private final Map<String, SchemaManager> schemaManagers;
 
-    public TddlCalciteSchema(String schemaName, ExecutionContext ec, CalciteSchema parent, Schema schema, String name) {
-        this(schemaName, ec, parent, schema, name, null, null, null, null, null, null, null);
+    public TddlCalciteSchema(String schemaName, Map<String, SchemaManager> schemaManagers, CalciteSchema parent,
+                             Schema schema,
+                             String name) {
+        this(schemaName, schemaManagers, parent, schema, name, null, null, null, null, null, null, null);
     }
 
-    private TddlCalciteSchema(String schemaName, ExecutionContext ec, CalciteSchema parent, Schema schema, String name,
+    private TddlCalciteSchema(String schemaName, Map<String, SchemaManager> schemaManagers, CalciteSchema parent,
+                              Schema schema,
+                              String name,
                               NameMap<CalciteSchema> subSchemaMap,
                               NameMap<TableEntry> tableMap, NameMap<LatticeEntry> latticeMap,
                               NameMultimap<FunctionEntry> functionMap, NameSet functionNames,
@@ -85,7 +91,7 @@ public class TddlCalciteSchema extends CalciteSchema {
             nullaryFunctionMap,
             path);
         this.schemaName = schemaName;
-        this.ec = ec;
+        this.schemaManagers = schemaManagers;
     }
 
     @Override
@@ -95,7 +101,7 @@ public class TddlCalciteSchema extends CalciteSchema {
 
     @Override
     public CalciteSchema add(String name, Schema schema) {
-        final CalciteSchema calciteSchema = new TddlCalciteSchema(name, ec, this, schema, name);
+        final CalciteSchema calciteSchema = new TddlCalciteSchema(name, schemaManagers, this, schema, name);
         subSchemaMap.put(name, calciteSchema);
         return calciteSchema;
     }
@@ -114,13 +120,13 @@ public class TddlCalciteSchema extends CalciteSchema {
         // Check implicit schemas.
         Schema s = schema.getSubSchema(schemaName);
         if (s != null) {
-            return new TddlCalciteSchema(schemaName, ec, this, s, schemaName);
+            return new TddlCalciteSchema(schemaName, schemaManagers, this, s, schemaName);
         } else {
-            return initDsAndBuildCalciteSchema(schemaName, ec);
+            return initDsAndBuildCalciteSchema(schemaName, schemaManagers);
         }
     }
 
-    protected CalciteSchema initDsAndBuildCalciteSchema(String schemaName, ExecutionContext ec) {
+    protected CalciteSchema initDsAndBuildCalciteSchema(String schemaName, Map<String, SchemaManager> schemaManagers) {
 
         /**
          * get serverConfigManager by optHelper
@@ -133,8 +139,17 @@ public class TddlCalciteSchema extends CalciteSchema {
             if (ds == null) {
                 return null;
             } else {
-                return new TddlCalciteSchema(schemaName, ec, this,
-                    new TddlSchema(schemaName, ec.getSchemaManager(schemaName)), schemaName);
+                TddlSchema tddlSchema;
+                if (schemaManagers != null && schemaManagers.containsKey(schemaName)) {
+                    tddlSchema = new TddlSchema(schemaName, schemaManagers.get(schemaName));
+                } else {
+                    if (OptimizerContext.getContext(schemaName) == null) {
+                        return null;
+                    }
+                    tddlSchema =
+                        new TddlSchema(schemaName, OptimizerContext.getContext(schemaName).getLatestSchemaManager());
+                }
+                return new TddlCalciteSchema(schemaName, schemaManagers, this, tddlSchema, schemaName);
             }
         }
         return null;
@@ -142,21 +157,21 @@ public class TddlCalciteSchema extends CalciteSchema {
 
     public static class ViewProtoDataType implements RelProtoDataType {
 
+        private String schemaName;
         private final List<String> columnList;
 
         private final String viewDefinition;
-        private final ExecutionContext ec;
 
-        public ViewProtoDataType(List<String> columnList, String viewDefinition, ExecutionContext ec) {
+        public ViewProtoDataType(String schemaName, List<String> columnList, String viewDefinition) {
+            this.schemaName = schemaName;
             this.columnList = columnList;
             this.viewDefinition = viewDefinition;
-            this.ec = ec;
         }
 
         @Override
         public RelDataType apply(RelDataTypeFactory factory) {
             SqlNode ast = new FastsqlParser().parse(viewDefinition).get(0);
-            SqlConverter converter = SqlConverter.getInstance(ec);
+            SqlConverter converter = SqlConverter.getInstance(new ExecutionContext());
             SqlNode validatedNode = converter.validate(ast);
             RelDataType rowType = converter.toRel(validatedNode).getRowType();
 
@@ -178,16 +193,15 @@ public class TddlCalciteSchema extends CalciteSchema {
 
     public static class VirtualViewProtoDataType implements RelProtoDataType {
 
-        private final ExecutionContext ec;
         private VirtualViewType virtualViewType;
 
-        public VirtualViewProtoDataType(VirtualViewType virtualViewType, ExecutionContext ec) {
+        public VirtualViewProtoDataType(String schemaName, VirtualViewType virtualViewType) {
             this.virtualViewType = virtualViewType;
-            this.ec = ec;
         }
 
         @Override
         public RelDataType apply(RelDataTypeFactory factory) {
+            ExecutionContext ec = new ExecutionContext();
             return VirtualView
                 .create(SqlConverter.getInstance(ec).createRelOptCluster(new PlannerContext(ec)), virtualViewType)
                 .getRowType();
@@ -219,9 +233,9 @@ public class TddlCalciteSchema extends CalciteSchema {
                 RelProtoDataType relProtoDataType;
                 if (row.isVirtual()) {
                     VirtualViewType virtualViewType = row.getVirtualViewType();
-                    relProtoDataType = new VirtualViewProtoDataType(virtualViewType, ec);
+                    relProtoDataType = new VirtualViewProtoDataType(schemaName, virtualViewType);
                 } else {
-                    relProtoDataType = new ViewProtoDataType(columnList, viewDefinition, ec);
+                    relProtoDataType = new ViewProtoDataType(schemaName, columnList, viewDefinition);
                 }
                 table = new DrdsViewTable(null, relProtoDataType, row, ImmutableList.<String>of(), null);
             } else {
@@ -245,7 +259,7 @@ public class TddlCalciteSchema extends CalciteSchema {
             }
             Schema s = schema.getSubSchema(schemaName);
             if (s != null) {
-                CalciteSchema calciteSchema = new TddlCalciteSchema(schemaName, ec, this, s, schemaName);
+                CalciteSchema calciteSchema = new TddlCalciteSchema(schemaName, schemaManagers, this, s, schemaName);
                 builder.put(schemaName, calciteSchema);
             }
         }

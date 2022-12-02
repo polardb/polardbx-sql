@@ -1,0 +1,27 @@
+DROP TABLE IF EXISTS rc_char16_gbk_utf8;
+CREATE TABLE IF NOT EXISTS rc_char16_gbk_utf8 (
+c1 char(16) CHARACTER SET gbk DEFAULT NULL,
+c2 char(16) CHARACTER SET utf8 DEFAULT NULL
+)
+PARTITION BY RANGE COLUMNS (c1, c2) (
+PARTITION p0 VALUES LESS THAN (0xcac0bde7, 0xe4b896e7958c),
+PARTITION p1 VALUES LESS THAN (0xcac0bde7c8cbc3f1, 0xe4b896e7958ce4babae6b091),
+PARTITION p2 VALUES LESS THAN (0xcac0bde7c8cbc3f1cdf2cbea, 0xe4b896e7958ce4babae6b091e4b887e5b281),
+PARTITION p3 VALUES LESS THAN (maxvalue, maxvalue)
+);
+
+explain select * from rc_char16_gbk_utf8 where c1 = 0xE4B896E7958C;
+
+DROP TABLE IF EXISTS rc_varchar16_gbk_utf8;
+CREATE TABLE IF NOT EXISTS rc_varchar16_gbk_utf8 (
+c1 varchar(16) CHARACTER SET gbk DEFAULT NULL,
+c2 varchar(16) CHARACTER SET utf8 DEFAULT NULL
+)
+PARTITION BY RANGE COLUMNS (c1, c2) (
+PARTITION p0 VALUES LESS THAN (0xcac0bde7, 0xe4b896e7958c),
+PARTITION p1 VALUES LESS THAN (0xcac0bde7c8cbc3f1, 0xe4b896e7958ce4babae6b091),
+PARTITION p2 VALUES LESS THAN (0xcac0bde7c8cbc3f1cdf2cbea, 0xe4b896e7958ce4babae6b091e4b887e5b281),
+PARTITION p3 VALUES LESS THAN (maxvalue, maxvalue)
+);
+
+explain select * from rc_varchar16_gbk_utf8 where c1 = 0xE4B896E7958C;

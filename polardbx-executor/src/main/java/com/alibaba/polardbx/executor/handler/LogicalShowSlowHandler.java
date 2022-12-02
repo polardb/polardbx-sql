@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
@@ -79,6 +80,7 @@ public class LogicalShowSlowHandler extends HandlerCommon {
             result.addColumn("TRACE_ID", DataTypes.StringType);
             result.addColumn("USER", DataTypes.StringType);
             result.addColumn("HOST", DataTypes.StringType);
+            result.addColumn("DB", DataTypes.StringType);
             result.addColumn("START_TIME", DataTypes.DatetimeType);
             result.addColumn("EXECUTE_TIME", DataTypes.LongType);
             result.addColumn("AFFECT_ROW", DataTypes.LongType);
@@ -103,7 +105,9 @@ public class LogicalShowSlowHandler extends HandlerCommon {
                 }
                 size += rs.size();
             }
-
+            if (size == 0) {
+                return result;
+            }
             SQLRecorder recorder = new SQLRecorder(Math.min(size, 100));
             for (List<Map<String, Object>> rs : results) {
                 if (rs == null) {
@@ -125,11 +129,11 @@ public class LogicalShowSlowHandler extends HandlerCommon {
                 }
             }
 
-            SQLRecord[] records = recorder.getRecords();
+            SQLRecord[] records = recorder.getSortedRecords();
             for (int i = records.length - 1; i >= 0; i--) {
                 if (records[i] != null) {
                     result.addRow(new Object[] {
-                        records[i].traceId, records[i].user, records[i].host,
+                        records[i].traceId, records[i].user, records[i].host, records[i].schema,
                         new Date(records[i].startTime), records[i].executeTime, records[i].affectRow,
                         records[i].statement});
                 }
@@ -164,8 +168,10 @@ public class LogicalShowSlowHandler extends HandlerCommon {
                 }
                 size += rs.size();
             }
-
-            SQLRecorder recorder = new SQLRecorder(size > 100 ? 100 : size);
+            if (size == 0) {
+                return result;
+            }
+            SQLRecorder recorder = new SQLRecorder(Math.min(size, 100));
             for (List<Map<String, Object>> rs : results) {
                 if (rs == null) {
                     continue;
@@ -189,7 +195,7 @@ public class LogicalShowSlowHandler extends HandlerCommon {
                 }
             }
 
-            SQLRecord[] records = recorder.getRecords();
+            SQLRecord[] records = recorder.getSortedRecords();
             for (int i = records.length - 1; i >= 0; i--) {
                 if (records[i] != null) {
                     result.addRow(new Object[] {

@@ -319,6 +319,8 @@ public interface SqlWriter {
    */
   void print(int x);
 
+  void dynamicParam();
+  void lastDynamicParam();
   /**
    * Prints an identifier, quoting as necessary.
    */

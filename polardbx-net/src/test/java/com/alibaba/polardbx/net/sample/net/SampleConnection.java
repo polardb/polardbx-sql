@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.net.sample.net;
 
 import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -68,5 +69,10 @@ public class SampleConnection extends FrontendConnection {
     @Override
     public boolean isPrivilegeMode() {
         return false;
+    }
+
+    @Override
+    protected long genConnId() {
+        return ClusterAcceptIdGenerator.getInstance().nextId();
     }
 }

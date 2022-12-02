@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.calc.AbstractAggregator;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.memory.SizeOf;
@@ -46,7 +47,8 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
-import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;
@@ -112,6 +114,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
                              Executor innerInput,
                              JoinRelType joinType,
                              List<DataType> outputRelDataTypes,
+                             List<DataType> joinOutputTypes,
                              boolean maxOneRow,
                              List<EquiJoinKey> joinKeys,
                              IExpression otherCondition,
@@ -126,7 +129,8 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         this.aggregators = aggregators;
         this.outputRelDataTypes = outputRelDataTypes;
         createBlockBuilders();
-        DataType[] aggInputType = innerInput.getDataTypes().toArray(new DataType[] {});
+
+        DataType[] aggInputType = joinOutputTypes.toArray(new DataType[joinOutputTypes.size()]);
         DataType[] groupTypes = new DataType[groups.length];
         int i = 0;
         for (; i < groupTypes.length; i++) {

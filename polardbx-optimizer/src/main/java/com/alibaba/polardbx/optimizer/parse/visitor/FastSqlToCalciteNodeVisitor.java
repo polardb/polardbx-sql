@@ -21,12 +21,15 @@ import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -98,12 +101,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryOperator;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterFunctionStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterJoinGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemSetConfigStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
@@ -122,9 +133,11 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropPrimaryKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableKeys;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupAddTable;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableModifyPartitionValues;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartitionCount;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetComment;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetOption;
@@ -132,6 +145,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableTruncatePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLChangeRoleStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
@@ -139,20 +153,31 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnReference;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraintImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTriggerStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropProcedureStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTriggerStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLIfStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement.ValuesClause;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLJoinTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLLoopStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRebalanceStatement;
@@ -178,7 +203,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecylebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTablesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSubqueryTableSource;
@@ -188,7 +213,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLTruncateStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnionQuery;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnionQueryTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateSetItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SqlDataAccess;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIndexHintImpl;
@@ -197,6 +224,8 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUseIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlCaseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlRepeatStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlCharExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
@@ -217,6 +246,8 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTr
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearSeqCacheStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsContinueDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsContinueScheduleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsConvertAllSequencesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
@@ -224,11 +255,14 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRul
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsFireScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectGroupSeqRangeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsMoveDataBase;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPauseDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPauseScheduleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPushDownUdfStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
@@ -241,8 +275,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLRes
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowLocalDeadlocks;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowLocality;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMetadataLock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMoveDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowRebalanceBackFill;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowScheduleResultStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
@@ -332,25 +368,36 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlUpdateSta
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MysqlShowDbLockStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MysqlShowHtcStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MysqlShowStcStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLShowPartitionsHeatmapStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.visitor.SQLASTOutputVisitor;
+import com.alibaba.polardbx.druid.sql.repository.SchemaObject;
+import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
+import com.alibaba.polardbx.druid.sql.visitor.SQLASTOutputVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.SeqTypeUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
+import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter.HintCollection;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.parse.FastSqlParserException;
 import com.alibaba.polardbx.optimizer.parse.FastSqlParserException.ExceptionType;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TDDLSqlFunction;
 import com.alibaba.polardbx.optimizer.parse.TypeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.FieldMetaData;
@@ -360,7 +407,6 @@ import com.alibaba.polardbx.optimizer.parse.bean.TableMetaData;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.newrule.RuleUtils;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
@@ -386,11 +432,15 @@ import org.apache.calcite.sql.SqlAddSpatialIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterColumnDefaultVal;
 import org.apache.calcite.sql.SqlAlterFileStorage;
+import org.apache.calcite.sql.SqlAlterFunction;
+import org.apache.calcite.sql.SqlAlterJoinGroup;
+import org.apache.calcite.sql.SqlAlterProcedure;
 import org.apache.calcite.sql.SqlAlterRule;
 import org.apache.calcite.sql.SqlAlterSequence;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterSystemSetConfig;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.SqlAlterTable.ColumnOpt;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
 import org.apache.calcite.sql.SqlAlterTableAllocateLocalPartition;
@@ -399,20 +449,31 @@ import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlAlterTableExchangePartition;
 import org.apache.calcite.sql.SqlAlterTableExpireLocalPartition;
+import org.apache.calcite.sql.SqlAlterTableExtractPartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
+import org.apache.calcite.sql.SqlAlterTableGroupAddTable;
 import org.apache.calcite.sql.SqlAlterTableGroupExtractPartition;
 import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupRenamePartition;
+import org.apache.calcite.sql.SqlAlterTableGroupSetLocality;
+import org.apache.calcite.sql.SqlAlterTableGroupSetPartitionsLocality;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartitionByHotValue;
+import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
+import org.apache.calcite.sql.SqlAlterTableMovePartition;
+import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
+import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
+import org.apache.calcite.sql.SqlAlterTableRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
+import org.apache.calcite.sql.SqlAlterTableSplitPartition;
+import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
 import org.apache.calcite.sql.SqlAnalyzeTable;
 import org.apache.calcite.sql.SqlBaseline;
@@ -423,8 +484,6 @@ import org.apache.calcite.sql.SqlCancelDdlJob;
 import org.apache.calcite.sql.SqlChangeColumn;
 import org.apache.calcite.sql.SqlChangeConsensusRole;
 import org.apache.calcite.sql.SqlChangeDdlJob;
-import org.apache.calcite.sql.SqlChangeMaster;
-import org.apache.calcite.sql.SqlChangeReplicationFilter;
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlCheckGlobalIndex;
 import org.apache.calcite.sql.SqlCheckTable;
@@ -435,18 +494,23 @@ import org.apache.calcite.sql.SqlClearSeqCache;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlContinueDdlJob;
+import org.apache.calcite.sql.SqlContinueSchedule;
+import org.apache.calcite.sql.SqlConvertAllSequences;
 import org.apache.calcite.sql.SqlConvertToCharacterSet;
 import org.apache.calcite.sql.SqlCreateCclRule;
 import org.apache.calcite.sql.SqlCreateCclTrigger;
 import org.apache.calcite.sql.SqlCreateFileStorage;
+import org.apache.calcite.sql.SqlCreateFunction;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateIndex.SqlIndexAlgorithmType;
 import org.apache.calcite.sql.SqlCreateIndex.SqlIndexConstraintType;
 import org.apache.calcite.sql.SqlCreateIndex.SqlIndexLockType;
+import org.apache.calcite.sql.SqlCreateProcedure;
 import org.apache.calcite.sql.SqlCreateSchedule;
 import org.apache.calcite.sql.SqlCreateSequence;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlCreateTableGroup;
+import org.apache.calcite.sql.SqlCreateTrigger;
 import org.apache.calcite.sql.SqlCreateView;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDdlNodes;
@@ -455,12 +519,16 @@ import org.apache.calcite.sql.SqlDropCclRule;
 import org.apache.calcite.sql.SqlDropCclTrigger;
 import org.apache.calcite.sql.SqlDropColumn;
 import org.apache.calcite.sql.SqlDropFileStorage;
+import org.apache.calcite.sql.SqlDropFunction;
+import org.apache.calcite.sql.SqlDropFunction;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDropPrimaryKey;
+import org.apache.calcite.sql.SqlDropProcedure;
 import org.apache.calcite.sql.SqlDropSchedule;
 import org.apache.calcite.sql.SqlDropSequence;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropTableGroup;
+import org.apache.calcite.sql.SqlDropTrigger;
 import org.apache.calcite.sql.SqlDropView;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlEnableKeys;
@@ -468,7 +536,18 @@ import org.apache.calcite.sql.SqlEnableKeys.EnableType;
 import org.apache.calcite.sql.SqlExplain;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.calcite.sql.SqlFireSchedule;
 import org.apache.calcite.sql.SqlFlashbackTable;
+import org.apache.calcite.sql.SqlFunction;
+import org.apache.calcite.sql.SqlFunctionCategory;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexColumnName;
+import org.apache.calcite.sql.SqlIndexDefinition;
+import org.apache.calcite.sql.SqlExplain;
+import org.apache.calcite.sql.SqlExplainFormat;
+import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.calcite.sql.SqlFlashbackTable;
+import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
@@ -492,7 +571,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlOperator;
-import org.apache.calcite.sql.SqlOptimizeTable;
+import org.apache.calcite.sql.SqlOptimizeTableDdl;
 import org.apache.calcite.sql.SqlOrderBy;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionByHash;
@@ -501,7 +580,9 @@ import org.apache.calcite.sql.SqlPartitionByRange;
 import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
 import org.apache.calcite.sql.SqlPauseDdlJob;
+import org.apache.calcite.sql.SqlPauseSchedule;
 import org.apache.calcite.sql.SqlPurge;
+import org.apache.calcite.sql.SqlPushDownUdf;
 import org.apache.calcite.sql.SqlRebalance;
 import org.apache.calcite.sql.SqlRecoverDdlJob;
 import org.apache.calcite.sql.SqlReferenceDefinition;
@@ -515,7 +596,6 @@ import org.apache.calcite.sql.SqlRemoveDdlJob;
 import org.apache.calcite.sql.SqlRenameSequence;
 import org.apache.calcite.sql.SqlRenameTable;
 import org.apache.calcite.sql.SqlReplace;
-import org.apache.calcite.sql.SqlResetSlave;
 import org.apache.calcite.sql.SqlRollbackDdlJob;
 import org.apache.calcite.sql.SqlSavepoint;
 import org.apache.calcite.sql.SqlSelect;
@@ -535,6 +615,8 @@ import org.apache.calcite.sql.SqlShowBroadcasts;
 import org.apache.calcite.sql.SqlShowCclRule;
 import org.apache.calcite.sql.SqlShowCclTrigger;
 import org.apache.calcite.sql.SqlShowCreateDatabase;
+import org.apache.calcite.sql.SqlShowCreateFunction;
+import org.apache.calcite.sql.SqlShowCreateProcedure;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.SqlShowCreateView;
 import org.apache.calcite.sql.SqlShowDS;
@@ -544,6 +626,7 @@ import org.apache.calcite.sql.SqlShowDdlJobs;
 import org.apache.calcite.sql.SqlShowDdlResults;
 import org.apache.calcite.sql.SqlShowDdlStatus;
 import org.apache.calcite.sql.SqlShowFiles;
+import org.apache.calcite.sql.SqlShowFunctionStatus;
 import org.apache.calcite.sql.SqlShowGlobalDeadlocks;
 import org.apache.calcite.sql.SqlShowGlobalIndex;
 import org.apache.calcite.sql.SqlShowGrants;
@@ -557,11 +640,11 @@ import org.apache.calcite.sql.SqlShowPartitions;
 import org.apache.calcite.sql.SqlShowProcedureStatus;
 import org.apache.calcite.sql.SqlShowProcesslist;
 import org.apache.calcite.sql.SqlShowProfile;
+import org.apache.calcite.sql.SqlShowRebalanceBackFill;
 import org.apache.calcite.sql.SqlShowRecyclebin;
 import org.apache.calcite.sql.SqlShowRule;
 import org.apache.calcite.sql.SqlShowScheduleResults;
 import org.apache.calcite.sql.SqlShowSequences;
-import org.apache.calcite.sql.SqlShowSlaveStatus;
 import org.apache.calcite.sql.SqlShowSlow;
 import org.apache.calcite.sql.SqlShowStats;
 import org.apache.calcite.sql.SqlShowStc;
@@ -574,8 +657,6 @@ import org.apache.calcite.sql.SqlShowTrans;
 import org.apache.calcite.sql.SqlShowVariables;
 import org.apache.calcite.sql.SqlSlowSqlCcl;
 import org.apache.calcite.sql.SqlSpecialIdentifier;
-import org.apache.calcite.sql.SqlStartSlave;
-import org.apache.calcite.sql.SqlStopSlave;
 import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.sql.SqlSubPartitionBy;
 import org.apache.calcite.sql.SqlSubPartitionByHash;
@@ -601,7 +682,6 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.parser.SqlParserUtil;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.apache.calcite.sql.util.SqlBasicVisitor;
 import org.apache.calcite.util.BitString;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Pair;
@@ -609,6 +689,7 @@ import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
@@ -628,6 +709,7 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstan
 import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstants.DEFAULT_PRE_ALLOCATE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstants.NOW_FUNCTION;
 import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.Escape;
+import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.SubGt;
 import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.SubGtGt;
 import static com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement.Type.GLOBAL_TEMPORARY;
 import static com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement.Type.LOCAL_TEMPORARY;
@@ -650,12 +732,16 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     private ContextParameters context;
     private boolean top = true;
     private Map<String, String> tb2TestNames;
-    final private ExecutionContext ec;
+    private ExecutionContext ec;
+    private Map<SQLVariantRefExpr, ColumnMeta> bindMapTypes;
 
-    public FastSqlToCalciteNodeVisitor(ContextParameters context, ExecutionContext ec) {
+    public FastSqlToCalciteNodeVisitor(
+        ContextParameters context, ExecutionContext ec) {
         this.context = context;
         this.tb2TestNames = context != null ? context.getTb2TestNames() : null;
         this.ec = ec;
+        this.bindMapTypes = context != null ?
+            (Map<SQLVariantRefExpr, ColumnMeta>) context.getParameter(ContextParameterKey.BIND_TYPE_PARAMS) : null;
     }
 
     @Override
@@ -844,9 +930,9 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
                 "Do not support table with mysql partition.");
         }
-
         SqlNodeList keywords = FastSqlConstructUtils.constructKeywords(x);
         SQLExprTableSource tableSource = x.getTableSource();
+
         SqlNode targetTable = convertToSqlNode(tableSource.getExpr());
         if (context.isTestMode() && tableSource.getTableName() != null) {
             String tableName = EagleeyeHelper.rebuildTableName(tableSource.getTableName(), true);
@@ -987,7 +1073,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         // If it's using hint or in prepare mode, don't optimize.
         if (!hintCollection.pushdownOriginSql() && !context.isPrepareMode()) {
             List<ValuesClause> newValuesList =
-                FastSqlConstructUtils.convertToSingleValuesIfNeed(valuesList, columnCount);
+                FastSqlConstructUtils.convertToSingleValuesIfNeed(valuesList, columnCount, context);
             if (newValuesList.size() < valuesList.size()) {
                 isBatch = true;
                 valuesList = newValuesList;
@@ -1002,19 +1088,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             SqlNode[] valueNodes = new SqlNode[values.size()];
             for (int i = 0; i < values.size(); i++) {
                 SqlNode valueNode = convertToSqlNode(values.get(i));
-                if (null != valueNode) {
-                    valueNode.accept(new SqlBasicVisitor<Boolean>() {
-                        @Override
-                        public Boolean visit(SqlCall call) {
-                            final Boolean visited = super.visit(call);
-                            if (call.getOperator().getKind() == SqlKind.DEFAULT && call.operandCount() > 0) {
-                                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                                    "Do not support DEFAULT with parameter.");
-                            }
-                            return visited;
-                        }
-                    });
-                }
                 valueNodes[i] = valueNode;
             }
             SqlBasicCall row = new SqlBasicCall(SqlStdOperatorTable.ROW, valueNodes, SqlParserPos.ZERO);
@@ -1022,7 +1095,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
 
         this.sqlNode = new SqlBasicCall(SqlStdOperatorTable.VALUES, rows, SqlParserPos.ZERO);
-
         return isBatch;
     }
 
@@ -1063,13 +1135,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         } else {
             targetTable = FastSqlConstructUtils.constructFrom(tableSource, context, ec);
 
-            if(tableSource instanceof SQLExprTableSource) {
-                if (((SQLExprTableSource) tableSource).getPartitions() != null && !((SQLExprTableSource) tableSource).getPartitions()
-                    .isEmpty()) {
-                    throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                        "Do not support table with mysql partition.");
-                }
-            }
+//            if (tableSource instanceof SQLExprTableSource) {
+//                if (((SQLExprTableSource) tableSource).getPartitions() != null && !((SQLExprTableSource) tableSource.getPartitions()
+//                    .isEmpty()) {
+//                    throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+//                        "Do not support table with mysql partition.");
+//                }
+//            }
 
             if ((tableSource instanceof SQLExprTableSource) && (tableSource.getAlias() != null)) {
 
@@ -1080,11 +1152,11 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         List<SqlNode> columns = new ArrayList<>();
         List<SqlNode> values = new ArrayList<>();
-
         for (SQLUpdateSetItem item : x.getItems()) {
             columns.add(convertToSqlNode(item.getColumn()));
             values.add(convertToSqlNode(item.getValue()));
         }
+
         SqlNodeList targetColumnList = new SqlNodeList(columns, SqlParserPos.ZERO);
         SqlNodeList sourceExpressList = new SqlNodeList(values, SqlParserPos.ZERO);
 
@@ -1161,10 +1233,20 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         final boolean tableSourceWithAlias = null != x.getAlias();
 
         if (x instanceof SQLExprTableSource) {
-            if (((SQLExprTableSource) x).getPartitions() != null && !((SQLExprTableSource) x).getPartitions()
-                .isEmpty()) {
-                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                    "Do not support table with mysql partition.");
+            boolean containPartitions = false;
+            SqlNodeList partitions = null;
+            if (((SQLExprTableSource) x).getPartitionSize() > 0) {
+//                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+//                    "Do not support table with mysql partition.");
+                containPartitions = true;
+                List<SQLName> partNames = ((SQLExprTableSource) x).getPartitions();
+                List<SqlNode> partNameList = new ArrayList<>();
+                for (int i = 0; i < partNames.size(); i++) {
+                    SQLName partName = partNames.get(i);
+                    SqlNode partNameId = convertToSqlNode(partName);
+                    partNameList.add(partNameId);
+                }
+                partitions = new SqlNodeList(partNameList, SqlParserPos.ZERO);
             }
 
             SqlIdentifier targetTable = null;
@@ -1192,6 +1274,10 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 // remove star
                 targetTable = new SqlIdentifier(targetTable.names.subList(0, targetTable.names.size() - 1),
                     targetTable.getParserPosition());
+            }
+
+            if (containPartitions) {
+                targetTable.partitions = partitions;
             }
 
             targetTables.add(targetTable);
@@ -1607,6 +1693,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             final SqlNode tablePartitionBy = convertToSqlNode(x.getTablePartitionBy());
             final SqlNode tablePartitions = convertToSqlNode(x.getTablePartitions());
             final SqlNode partitioning = convertToSqlNode(x.getPartitioning());
+            final SqlNode tableGroup = convertToSqlNode(x.getTableGroup());
             SqlCreateIndex sqlIndexTable;
             if (x.isClustered()) {
                 sqlIndexTable = SqlCreateIndex.createClusteredIndex(SqlParserPos.ZERO,
@@ -1623,7 +1710,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     tablePartitionBy,
                     tablePartitions,
                     partitioning,
-                    x.toString());
+                    x.toString(),
+                    tableGroup);
             } else {
                 sqlIndexTable = SqlCreateIndex.createGlobalIndex(SqlParserPos.ZERO,
                     indexName,
@@ -1639,7 +1727,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     tablePartitionBy,
                     tablePartitions,
                     partitioning,
-                    x.toString());
+                    x.toString(),
+                    tableGroup);
             }
             sqlIndexTable.setHints(hints);
             this.sqlNode = sqlIndexTable;
@@ -1690,14 +1779,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     public boolean visit(SQLCreateSequenceStatement x) {
-        List headHints = x.getHeadHintsDirect();
-        if (headHints != null) {
-            final SqlNodeList sqlNodeList = FastSqlConstructUtils.convertHints(headHints, context, ec);
-        }
-        Sequence sequenceBean = null;
-        AutoIncrementType sequenceType = null;
-        if (x.getWithCache() != null && x.getWithCache()) {
-            sequenceType = AutoIncrementType.SIMPLE_CACHE;
+        final String name = x.getName().getSimpleName();
+        String schemaName = SQLUtils.normalizeNoTrim(x.getSchema());
+        schemaName = StringUtils.isBlank(schemaName) ? getDefaultSchema() : schemaName;
+
+        AutoIncrementType sequenceType;
+        if (x.isNewSeq()) {
+            sequenceType = AutoIncrementType.NEW;
         } else if (x.isGroup()) {
             sequenceType = AutoIncrementType.GROUP;
         } else if (x.isSimple()) {
@@ -1705,19 +1793,14 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         } else if (x.isTime()) {
             sequenceType = AutoIncrementType.TIME;
         } else {
-            sequenceType = AutoIncrementType.GROUP;
+            sequenceType = SeqTypeUtil.getDefaultAutoIncrementType(schemaName);
         }
-        sequenceBean = Sequence.newSequence(sequenceType);
-        final SQLName name = x.getName();
-        String schemaName = SQLUtils.normalizeNoTrim(x.getSchema());
 
-        schemaName = StringUtils.isBlank(schemaName) ? getDefaultSchema() : schemaName;
-        SqlCreateSequence sequenceNode = SqlDdlNodes.createSequence(SqlLiteral.createCharString(name.getSimpleName(),
-            SqlParserPos.ZERO), generateSequenceTableName(schemaName), x.toString(), SqlParserPos.ZERO);
-        this.sqlNode = sequenceNode;
+        Sequence sequenceBean = Sequence.newSequence(sequenceType);
         sequenceBean.setKind(SqlKind.CREATE_SEQUENCE);
-        sequenceBean.setSequenceName(name.getSimpleName());
         sequenceBean.setSchemaName(schemaName);
+        sequenceBean.setSequenceName(name);
+
         if (x.getStartWith() != null) {
             if (x.getStartWith() instanceof SQLIntegerExpr) {
                 sequenceBean.setStart(((SQLIntegerExpr) x.getStartWith()).getNumber().longValue());
@@ -1783,54 +1866,43 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         }
 
-        if (x.getWithCache() != null && x.getWithCache()) {
-            sequenceBean.setType(AutoIncrementType.SIMPLE_CACHE);
-        } else if (x.isGroup()) {
-            sequenceBean.setType(AutoIncrementType.GROUP);
-        } else if (x.isSimple()) {
-            sequenceBean.setType(AutoIncrementType.SIMPLE);
-        } else if (x.isTime()) {
-            sequenceBean.setType(AutoIncrementType.TIME);
-
-        }
-
+        SqlCreateSequence sequenceNode = SqlDdlNodes.createSequence(
+            SqlLiteral.createCharString(name, SqlParserPos.ZERO),
+            generateSequenceTableName(schemaName),
+            x.toString(),
+            SqlParserPos.ZERO);
         sequenceNode.setSequenceBean(sequenceBean.convertSequenceBeanInstance());
+        this.sqlNode = sequenceNode;
 
-        addPrivilegeVerifyItem(schemaName, name.getSimpleName(), PrivilegePoint.CREATE);
+        addPrivilegeVerifyItem(schemaName, name, PrivilegePoint.CREATE);
 
         return false;
     }
 
     public boolean visit(SQLDropSequenceStatement x) {
-        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
-        if (headHints != null) {
-            final SqlNodeList sqlNodeList = FastSqlConstructUtils.convertHints(headHints, context, ec);
-        }
-
-        final SQLName name = x.getName();
+        final String name = x.getName().getSimpleName();
         String schemaName = SQLUtils.normalizeNoTrim(x.getSchema());
-
         schemaName = StringUtils.isBlank(schemaName) ? getDefaultSchema() : schemaName;
-        SqlDropSequence sequenceNode = SqlDdlNodes.dropSequence(SqlLiteral.createCharString(name.getSimpleName(),
-            SqlParserPos.ZERO), generateSequenceTableName(schemaName), x.toString(), SqlParserPos.ZERO);
-        this.sqlNode = sequenceNode;
-        SequenceBean sequence = new SequenceBean();
-        sequence.setSequenceName(name.getSimpleName());
-        sequence.setKind(sequence.getKind());
-        sequence.setSchemaName(schemaName);
-        sequenceNode.setSequenceBean(sequence);
 
-        addPrivilegeVerifyItem(schemaName, name.getSimpleName(), PrivilegePoint.DROP);
+        SequenceBean sequence = new SequenceBean();
+        sequence.setKind(SqlKind.DROP_SEQUENCE);
+        sequence.setSchemaName(schemaName);
+        sequence.setName(name);
+
+        SqlDropSequence sequenceNode = SqlDdlNodes.dropSequence(
+            SqlLiteral.createCharString(name, SqlParserPos.ZERO),
+            generateSequenceTableName(schemaName),
+            x.toString(),
+            SqlParserPos.ZERO);
+        sequenceNode.setSequenceBean(sequence);
+        this.sqlNode = sequenceNode;
+
+        addPrivilegeVerifyItem(schemaName, name, PrivilegePoint.DROP);
 
         return false;
     }
 
     public boolean visit(MySqlRenameSequenceStatement x) {
-        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
-        if (headHints != null) {
-            final SqlNodeList sqlNodeList = FastSqlConstructUtils.convertHints(headHints, context, ec);
-        }
-
         final SQLName name = x.getName();
         final SQLName to = x.getTo();
 
@@ -1839,19 +1911,20 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             schemaName = SQLUtils.normalizeNoTrim(((SQLPropertyExpr) name).getOwner().toString());
         }
 
-        SqlRenameSequence sequenceNode = SqlDdlNodes.renameSequence(SqlLiteral.createCharString(name.getSimpleName(),
-                SqlParserPos.ZERO),
+        SequenceBean sequence = new SequenceBean();
+        sequence.setKind(SqlKind.RENAME_SEQUENCE);
+        sequence.setSchemaName(schemaName);
+        sequence.setName(name.getSimpleName());
+        sequence.setNewName(to.getSimpleName());
+
+        SqlRenameSequence sequenceNode = SqlDdlNodes.renameSequence(
+            SqlLiteral.createCharString(name.getSimpleName(), SqlParserPos.ZERO),
             SqlLiteral.createCharString(to.getSimpleName(), SqlParserPos.ZERO),
             generateSequenceTableName(schemaName),
             x.toString(),
             SqlParserPos.ZERO);
-        this.sqlNode = sequenceNode;
-        SequenceBean sequence = new SequenceBean();
-        sequence.setSequenceName(name.getSimpleName());
-        sequence.setNewSequenceName(to.getSimpleName());
-        sequence.setKind(sequence.getKind());
-        sequence.setSchemaName(schemaName);
         sequenceNode.setSequenceBean(sequence);
+        this.sqlNode = sequenceNode;
 
         addPrivilegeVerifyItem("", name.getSimpleName(), PrivilegePoint.CREATE);
         addPrivilegeVerifyItem("", name.getSimpleName(), PrivilegePoint.ALTER);
@@ -1861,22 +1934,25 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(SQLAlterSequenceStatement x) {
-        Sequence sequenceBean = new Sequence();
-        if (x.getWithCache() != null && x.getWithCache() && x.isChangeToSimple()) {
-            sequenceBean.setToType(AutoIncrementType.SIMPLE_CACHE);
-        } else if (x.isChangeToSimple()) {
-            sequenceBean.setToType(AutoIncrementType.SIMPLE);
-        } else if (x.isChangeToGroup()) {
-            sequenceBean.setToType(AutoIncrementType.GROUP);
-        } else if (x.isChangeToTime()) {
-            sequenceBean.setToType(AutoIncrementType.TIME);
-        }
-        final String seqName = x.getName().getSimpleName();
+        final String name = x.getName().getSimpleName();
         String schemaName = SQLUtils.normalizeNoTrim(x.getSchema());
         schemaName = StringUtils.isBlank(schemaName) ? getDefaultSchema() : schemaName;
+
+        Sequence sequenceBean = new Sequence();
         sequenceBean.setKind(SqlKind.ALTER_SEQUENCE);
-        sequenceBean.setSequenceName(seqName);
         sequenceBean.setSchemaName(schemaName);
+        sequenceBean.setSequenceName(name);
+
+        if (x.isChangeToGroup()) {
+            sequenceBean.setToType(AutoIncrementType.GROUP);
+        } else if (x.isChangeToSimple()) {
+            sequenceBean.setToType(AutoIncrementType.SIMPLE);
+        } else if (x.isChangeToTime()) {
+            sequenceBean.setToType(AutoIncrementType.TIME);
+        } else if (x.isChangeToNew()) {
+            sequenceBean.setToType(AutoIncrementType.NEW);
+        }
+
         if (x.getStartWith() != null && x.getStartWith() instanceof SQLIntegerExpr) {
             sequenceBean.setStart(((SQLIntegerExpr) x.getStartWith()).getNumber().longValue());
         } else if (x.getStartWith() instanceof SQLNumberExpr) {
@@ -1912,12 +1988,16 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         if (x.getCycle() != null) {
             sequenceBean.setCycle(x.getCycle());
         }
-        SqlAlterSequence sequenceNode = SqlDdlNodes.alterSequence(SqlLiteral.createCharString(seqName,
-            SqlParserPos.ZERO), generateSequenceTableName(schemaName), x.toString(), SqlParserPos.ZERO);
+
+        SqlAlterSequence sequenceNode = SqlDdlNodes.alterSequence(
+            SqlLiteral.createCharString(name, SqlParserPos.ZERO),
+            generateSequenceTableName(schemaName),
+            x.toString(),
+            SqlParserPos.ZERO);
         sequenceNode.setSequenceBean(sequenceBean.convertSequenceBeanInstance());
         this.sqlNode = sequenceNode;
 
-        addPrivilegeVerifyItem(schemaName, seqName, PrivilegePoint.ALTER);
+        addPrivilegeVerifyItem(schemaName, name, PrivilegePoint.ALTER);
 
         return false;
     }
@@ -1999,25 +2079,26 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     public boolean visit(MySqlCreateTableStatement x) {
-        if (x.getPartitioning() != null && x.getDbPartitionBy() != null) {
-            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                "Do not support mix dbpartition with range/list/hash partition.");
-        }
-        if (x.getSelect() != null) {
-            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                "Do not support create table select.");
-        }
-        if (x.findForeignKey() != null && x.findForeignKey().size() > 0) {
-            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                "Do not support foreign key.");
-        }
-        if (x.getType() != null &&
-            (x.getType() == GLOBAL_TEMPORARY || x.getType() == LOCAL_TEMPORARY || x.getType() == TEMPORARY)) {
-            throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                "Do not support temporary table.");
-        }
-        String schemaName = x.getSchema() == null ? (ec == null ? "" : ec.getSchemaName()) : x.getSchema();
-        if (!(ConfigDataMode.isFastMock() || ConfigDataMode.isMock())) {
+        if (!ConfigDataMode.isFastMock() && ConfigDataMode.getConfigServerMode() == ConfigDataMode.Mode.GMS) {
+            if (x.getPartitioning() != null && x.getDbPartitionBy() != null) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support mix dbpartition with range/list/hash partition.");
+            }
+            if (x.getSelect() != null) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support create table select.");
+            }
+            if (x.findForeignKey() != null && x.findForeignKey().size() > 0) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support foreign key.");
+            }
+            if (x.getType() != null &&
+                (x.getType() == GLOBAL_TEMPORARY || x.getType() == LOCAL_TEMPORARY || x.getType() == TEMPORARY)) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support temporary table.");
+            }
+            String schemaName = x.getSchema() == null ? (ec == null ? "" : ec.getSchemaName()) : x.getSchema();
+            schemaName = SQLUtils.normalize(schemaName);
             boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
             if (x.getPartitioning() != null) {
                 if (!isNewPartitionDb) {
@@ -2078,6 +2159,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             tableGroupName = null;
         }
 
+        final SqlNode joinGroupName;
+        if (x.getJoinGroup() != null) {
+            joinGroupName = convertToSqlNode(x.getJoinGroup());
+        } else {
+            joinGroupName = null;
+        }
+
         SqlNodeList sqlNodeList = new SqlNodeList(SqlParserPos.ZERO);
         final TableElementBean tableElementBean = new TableElementBean();
         final SequenceBean sequence = convertTableElements(tableName,
@@ -2090,7 +2178,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 "A table must have at least 1 column.");
         }
 
-        schemaName = SQLUtils.normalizeNoTrim(tableSource.getSchema());
+        String schemaName = SQLUtils.normalizeNoTrim(tableSource.getSchema());
         schemaName = StringUtils.isBlank(schemaName) ? getDefaultSchema() : schemaName;
         if (sequence != null) {
             sequence.setSchemaName(schemaName);
@@ -2152,6 +2240,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             sqlPartition,
             localPartition,
             tableGroupName,
+            joinGroupName,
             null);
         if (localPartition != null) {
             setDefaultValueForLocalPartition(localPartition);
@@ -2365,6 +2454,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             }
         } else if (TStringUtil.equalsIgnoreCase(key, "UNION")) {
             outTableOptions.setUnion(getUnionTables((SQLTableSource) valueObject, new ArrayList<>()));
+        } else if (TStringUtil.equalsIgnoreCase(key, "ALGORITHM")) {
+            outTableOptions.setAlgorithm((SqlIdentifier) value);
         }
 
         return outTableOptions;
@@ -2414,7 +2505,18 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         if (x.getPartition() != null) {
             SqlNode partition = convertToSqlNode(x.getPartition());
             SqlAlterTableRepartition alterTableNewPartition =
-                new SqlAlterTableRepartition(tableIdentifier, x.toString(), new ArrayList<>(), partition);
+                new SqlAlterTableRepartition(tableIdentifier, x.toString(), new ArrayList<>(), partition, false, null);
+
+            this.sqlNode = alterTableNewPartition;
+            return false;
+        }
+
+        if (x.getAlignToTableGroup() != null) {
+            String targetTableGroup = SQLUtils.normalizeNoTrim(x.getAlignToTableGroup().getTablegroup().toString());
+            final SqlIdentifier targetTableGroupIdentifier = new SqlIdentifier(targetTableGroup, SqlParserPos.ZERO);
+            SqlAlterTableRepartition alterTableNewPartition =
+                new SqlAlterTableRepartition(tableIdentifier, x.toString(), new ArrayList<>(), null, true,
+                    targetTableGroupIdentifier);
 
             this.sqlNode = alterTableNewPartition;
             return false;
@@ -2439,14 +2541,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
 
         if (x.isRemovePatiting()) {
-            SqlAlterTablePartitionKey alterTablePartitionKey =
-                new SqlAlterTablePartitionKey(
-                    tableIdentifier,
-                    x.toString(),
-                    null, null, null, null
-                );
-            alterTablePartitionKey.setSingle(true);
-            this.sqlNode = alterTablePartitionKey;
+            this.sqlNode = new SqlAlterTableRemovePartitioning(tableIdentifier, x.toString());
             return false;
         }
 
@@ -2464,6 +2559,12 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             final SqlNode alterItem = convertToSqlNode(sqlAlterTableItem);
             if (alterItem instanceof SqlAlterSpecification) {
                 alters.add((SqlAlterSpecification) alterItem);
+            } else if (alterItem instanceof SqlNodeList) {
+                for (SqlNode node : ((SqlNodeList) alterItem).getList()) {
+                    if (node instanceof SqlAlterSpecification) {
+                        alters.add((SqlAlterSpecification) node);
+                    }
+                }
             }
             if (sqlAlterTableItem instanceof SQLAlterTableAddColumn) {
                 final List<SQLColumnDefinition> fieldList = ((SQLAlterTableAddColumn) sqlAlterTableItem).getColumns();
@@ -2477,7 +2578,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     if (autoIncrement) {
                         sequenceBean = new SequenceBean();
                         sequenceBean.setType(sqlColumnDefinition.getSequenceType());
-                        sequenceBean.setStart(1L);
+                        sequenceBean.setStart(sequenceBean.getType() == SequenceAttribute.Type.GROUP ? 0L : 1L);
                         sequenceBean.setNew(true);
                     }
                     sqlColumnDefinition.setSequenceType(null);
@@ -2500,7 +2601,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 if (autoIncrement) {
                     sequenceBean = new SequenceBean();
                     sequenceBean.setType(sqlColumnDefinition.getSequenceType());
-                    sequenceBean.setStart(1L);
+                    sequenceBean.setStart(sequenceBean.getType() == SequenceAttribute.Type.GROUP ? 0L : 1L);
                     sequenceBean.setNew(true);
                 }
                 final MySqlAlterTableModifyColumn sqlModifyColumn = (MySqlAlterTableModifyColumn) sqlAlterTableItem;
@@ -2539,7 +2640,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 if (autoIncrement) {
                     sequenceBean = new SequenceBean();
                     sequenceBean.setType(sqlColumnDefinition.getSequenceType());
-                    sequenceBean.setStart(1L);
+                    sequenceBean.setStart(sequenceBean.getType() == SequenceAttribute.Type.GROUP ? 0L : 1L);
                     sequenceBean.setNew(true);
                 }
                 String column = sqlChangeTo.getColumnName().getSimpleName();
@@ -2634,13 +2735,33 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     if (value.equalsIgnoreCase("NULL") || value.equalsIgnoreCase("''")) {
                         value = "";
                     }
+                    List<SqlIdentifier> objectNames = new ArrayList<>();
+                    SqlIdentifier tableNameIdentifier =
+                        new SqlIdentifier(SQLUtils.normalizeNoTrim(x.getTableName()), SqlParserPos.ZERO);
+                    objectNames.add(tableNameIdentifier);
+                    if (x.getName() instanceof SQLPropertyExpr) {
+                        SQLExpr owner = ((SQLPropertyExpr) x.getName()).getOwner();
+                        if (owner instanceof SQLPropertyExpr) {
+                            objectNames.add(
+                                new SqlIdentifier(SQLUtils.normalizeNoTrim(((SQLPropertyExpr) owner).getName()),
+                                    SqlParserPos.ZERO));
+                            objectNames.add(new SqlIdentifier(
+                                SQLUtils.normalizeNoTrim(((SQLPropertyExpr) owner).getOwner().toString()),
+                                SqlParserPos.ZERO));
+                        } else {
+                            objectNames.add(
+                                new SqlIdentifier(SQLUtils.normalizeNoTrim(owner.toString()), SqlParserPos.ZERO));
+                        }
+                    }
                     SqlAlterTableSetTableGroup sqlAlterTableSetTableGroup =
                         SqlDdlNodes
-                            .alterTableSetTableGroup(new SqlIdentifier(SQLUtils.normalizeNoTrim(x.getTableName()),
-                                    SqlParserPos.ZERO),
+                            .alterTableSetTableGroup(objectNames,
+                                tableNameIdentifier,
                                 value,
                                 x.toString(),
-                                SqlParserPos.ZERO);
+                                SqlParserPos.ZERO,
+                                item.isForce()
+                            );
                     this.sqlNode = sqlAlterTableSetTableGroup;
                 }
                 return false;
@@ -2676,7 +2797,12 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                         null
                     );
                 alterTablePartitionKey.setBroadcast(true);
-                this.sqlNode = alterTablePartitionKey;
+
+                if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                    this.sqlNode = SqlAlterTableRepartition.create(alterTablePartitionKey);
+                } else {
+                    this.sqlNode = alterTablePartitionKey;
+                }
 
                 return false;
             } else if (sqlAlterTableItem instanceof DrdsAlterTableSingle) {
@@ -2690,7 +2816,21 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                         null
                     );
                 alterTablePartitionKey.setSingle(true);
-                this.sqlNode = alterTablePartitionKey;
+
+                if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                    this.sqlNode = SqlAlterTableRepartition.create(alterTablePartitionKey);
+                } else {
+                    this.sqlNode = alterTablePartitionKey;
+                }
+
+                return false;
+            } else if (sqlAlterTableItem instanceof SQLAlterTablePartitionCount) {
+                SqlAlterTablePartitionCount alterTablePartitionCount =
+                    new SqlAlterTablePartitionCount(tableIdentifier, x.toString(), alters);
+                int count = Integer.parseInt(
+                    ((SQLAlterTablePartitionCount) sqlAlterTableItem).getCount().getValue().toString());
+                alterTablePartitionCount.setPartitionCount(count);
+                this.sqlNode = alterTablePartitionCount;
 
                 return false;
             } else if (sqlAlterTableItem instanceof SQLAlterTableAddPartition) {
@@ -2709,9 +2849,12 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                         "Do not support mix TRUNCATE PARTITION with other ALTER statements");
                 }
             } else if (sqlAlterTableItem instanceof DrdsAlterTableAsOfTimeStamp) {
-                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT, "Do not support alter table as of timestamp");
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support alter table as of timestamp");
             } else if (sqlAlterTableItem instanceof DrdsAlterTablePurgeBeforeTimeStamp) {
-                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT, "Do not support alter table purge before timestamp");
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support alter table purge before timestamp");
+            } else if (sqlAlterTableItem instanceof SQLAlterTableGroupAddTable) {
             }
         }
 
@@ -2742,7 +2885,26 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 Optional.ofNullable(tableOptions).orElse(new SqlTableOptions(SqlParserPos.ZERO)));
         }
 
-        SqlAlterTable sqlAlterTable = SqlDdlNodes.alterTable(tableIdentifier,
+        List<SqlIdentifier> objectNames = new ArrayList<>();
+        SqlIdentifier tableNameIdentifier =
+            new SqlIdentifier(SQLUtils.normalizeNoTrim(x.getTableName()), SqlParserPos.ZERO);
+        objectNames.add(tableNameIdentifier);
+        if (x.getName() instanceof SQLPropertyExpr) {
+            SQLExpr owner = ((SQLPropertyExpr) x.getName()).getOwner();
+            if (owner instanceof SQLPropertyExpr) {
+                objectNames.add(
+                    new SqlIdentifier(SQLUtils.normalizeNoTrim(((SQLPropertyExpr) owner).getName()),
+                        SqlParserPos.ZERO));
+                objectNames.add(new SqlIdentifier(
+                    SQLUtils.normalizeNoTrim(((SQLPropertyExpr) owner).getOwner().toString()),
+                    SqlParserPos.ZERO));
+            } else {
+                objectNames.add(
+                    new SqlIdentifier(SQLUtils.normalizeNoTrim(owner.toString()), SqlParserPos.ZERO));
+            }
+        }
+
+        SqlAlterTable sqlAlterTable = SqlDdlNodes.alterTable(objectNames, tableIdentifier,
             columnOpts,
             x.toString(),
             tableOptions,
@@ -2807,17 +2969,23 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             new SqlIdentifier(SQLUtils.normalizeNoTrim(((SQLAlterTableStatement) x.getParent()).getTableName()),
                 SqlParserPos.ZERO);
 
-        final SqlIdentifier columnName =
-            new SqlIdentifier(SQLUtils.normalizeNoTrim(x.getColumns().get(0).getColumnName()),
-                SqlParserPos.ZERO);
+        final SqlNodeList sqlNodeList = new SqlNodeList(SqlParserPos.ZERO);
 
-        final SqlColumnDeclaration colDef = (SqlColumnDeclaration) convertToSqlNode(x.getColumns().get(0));
+        for (SQLColumnDefinition sqlColumnDefinition : x.getColumns()) {
+            final SqlIdentifier columnName =
+                new SqlIdentifier(SQLUtils.normalizeNoTrim(sqlColumnDefinition.getColumnName()), SqlParserPos.ZERO);
 
-        final SqlIdentifier afterColumn = (SqlIdentifier) convertToSqlNode(x.getAfterColumn());
+            final SqlColumnDeclaration colDef = (SqlColumnDeclaration) convertToSqlNode(sqlColumnDefinition);
 
-        this.sqlNode =
-            new SqlAddColumn(tableName, columnName, colDef, x.isFirst(), afterColumn, x.getParent().toString(),
-                SqlParserPos.ZERO);
+            final SqlIdentifier afterColumn = (SqlIdentifier) convertToSqlNode(x.getAfterColumn());
+
+            sqlNodeList.add(
+                new SqlAddColumn(tableName, columnName, colDef, x.isFirst(), afterColumn, x.getParent().toString(),
+                    SqlParserPos.ZERO));
+        }
+
+        this.sqlNode = sqlNodeList;
+
         return false;
     }
 
@@ -2965,6 +3133,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         final SqlNode tablePartitionBy = convertToSqlNode(x.getTablePartitionBy());
         final SqlNode tablePartitions = convertToSqlNode(x.getTablePartitions());
         final SqlNode partitioning = convertToSqlNode(x.getPartitioning());
+        final SqlNode tableGroup = convertToSqlNode(x.getTableGroup());
         final List<SqlIndexColumnName> columns = FastSqlConstructUtils.constructIndexColumnNames(x.getColumns());
         final List<SqlIndexColumnName> covering = FastSqlConstructUtils.constructIndexCoveringNames(x.getCovering());
         final SqlIndexConstraintType constraintType = x.isUnique() ? SqlIndexConstraintType.UNIQUE : null;
@@ -3009,7 +3178,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 tablePartitionBy,
                 tablePartitions,
                 partitioning,
-                options);
+                options,
+                tableGroup);
         } else if (x.isClustered()) {
             indexDef = SqlIndexDefinition.clusteredIndex(SqlParserPos.ZERO,
                 false,
@@ -3024,7 +3194,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 tablePartitionBy,
                 tablePartitions,
                 partitioning,
-                options);
+                options,
+                tableGroup);
         } else {
             indexDef = SqlIndexDefinition.localIndex(SqlParserPos.ZERO,
                 false,
@@ -3253,7 +3424,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     tablePartitionBy,
                     tablePartitions,
                     partitioning,
-                    options);
+                    options,
+                    null);
             } else if (uniqueIndex.isClustered()) {
                 indexDef = SqlIndexDefinition.clusteredIndex(SqlParserPos.ZERO,
                     false,
@@ -3268,7 +3440,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     tablePartitionBy,
                     tablePartitions,
                     partitioning,
-                    options);
+                    options,
+                    null);
             } else {
                 indexDef = SqlIndexDefinition.localIndex(SqlParserPos.ZERO,
                     false,
@@ -3425,6 +3598,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     final SqlNode tablePartitionBy = convertToSqlNode(tableIndex.getTablePartitionBy());
                     final SqlNode tablePartitions = convertToSqlNode(tableIndex.getTablePartitions());
                     final SqlNode partitioning = convertToSqlNode(tableIndex.getPartitioning());
+                    final SqlNode tableGroup = convertToSqlNode(tableIndex.getTableGroup());
                     final List<SqlIndexColumnName> columns =
                         FastSqlConstructUtils.constructIndexColumnNames(tableIndex.getColumns());
                     final List<SqlIndexColumnName> covering =
@@ -3469,7 +3643,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                             tablePartitionBy,
                             tablePartitions,
                             partitioning,
-                            options);
+                            options,
+                            tableGroup);
                         result.addGlobalKey(indexDef);
                     } else if (tableIndex.isClustered()) {
                         indexDef = SqlIndexDefinition.clusteredIndex(SqlParserPos.ZERO,
@@ -3485,7 +3660,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                             tablePartitionBy,
                             tablePartitions,
                             partitioning,
-                            options);
+                            options,
+                            tableGroup);
                         result.addClusteredKey(indexDef);
                     } else {
                         indexDef = SqlIndexDefinition.localIndex(SqlParserPos.ZERO,
@@ -3549,6 +3725,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                             final SqlNode tablePartitionBy = convertToSqlNode(uniqueIndex.getTablePartitionBy());
                             final SqlNode tablePartitions = convertToSqlNode(uniqueIndex.getTablePartitions());
                             final SqlNode partitioning = convertToSqlNode(uniqueIndex.getPartitioning());
+                            final SqlNode tableGroup = convertToSqlNode(uniqueIndex.getTableGroup());
                             indexDef = SqlIndexDefinition.globalIndex(SqlParserPos.ZERO,
                                 false,
                                 null,
@@ -3562,13 +3739,16 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                                 tablePartitionBy,
                                 tablePartitions,
                                 partitioning,
-                                options);
+                                options,
+                                tableGroup);
                             result.addGlobalUniqueKey(indexDef);
                         } else if (uniqueIndex.isClustered()) {
                             final SqlNode dbPartitionBy = convertToSqlNode(uniqueIndex.getDbPartitionBy());
                             final SqlNode tablePartitionBy = convertToSqlNode(uniqueIndex.getTablePartitionBy());
                             final SqlNode tablePartitions = convertToSqlNode(uniqueIndex.getTablePartitions());
                             final SqlNode partitioning = convertToSqlNode(uniqueIndex.getPartitioning());
+                            final SqlNode tableGroup = convertToSqlNode(uniqueIndex.getTableGroup());
+
                             indexDef = SqlIndexDefinition.clusteredIndex(SqlParserPos.ZERO,
                                 false,
                                 null,
@@ -3582,7 +3762,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                                 tablePartitionBy,
                                 tablePartitions,
                                 partitioning,
-                                options);
+                                options,
+                                tableGroup);
                             result.addClusteredUniqueKey(indexDef);
                         } else {
                             indexDef = SqlIndexDefinition.localIndex(SqlParserPos.ZERO,
@@ -3946,6 +4127,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             functionOperator = SqlStdOperatorTable.MIN;
         } else if (hashCode64 == FnvHash.Constants.AVG) {
             functionOperator = SqlStdOperatorTable.AVG;
+        } else if (hashCode64 == FnvHash.Constants.CHECK_SUM) {
+            functionOperator = SqlStdOperatorTable.CHECK_SUM;
         } else if (hashCode64 == FnvHash.Constants.GROUP_CONCAT) {
             return visitGroupConcat(x);
         } else if (hashCode64 == FnvHash.Constants.ROW_NUMBER) {
@@ -4236,7 +4419,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         if (alias != null) {
             if (context.isTestMode() && x.getTableName() != null && (tableNameIdentifier instanceof SqlIdentifier)) {
-
                 String tableName = EagleeyeHelper.rebuildTableName(x.getTableName(), true);
                 if (tb2TestNames != null) {
                     tb2TestNames.put(x.getTableName(), tableName);
@@ -4701,12 +4883,43 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         if ("?".equals(name)) {
             int index = x.getIndex();
+            ColumnMeta columnMeta = null;
             List<Object> params = context.getParameter(ContextParameterKey.PARAMS);
+            boolean isBinaryType = false;
+            boolean isStringType = false;
+            CharsetName targetCharSet = null;
+            boolean allowInferType =
+                bindMapTypes != null && (CollectionUtils.isNotEmpty(params) && byte[].class.isInstance(
+                    params.get(index)));
+            if (allowInferType) {
+                columnMeta = bindMapTypes.get(x);
+                if (columnMeta != null) {
+                    isBinaryType = DataTypeUtil.isBinaryType(columnMeta.getDataType());
+                    isStringType = DataTypeUtil.isStringType(columnMeta.getDataType());
+                }
+            }
             if (CollectionUtils.isNotEmpty(params)) {
                 Map<Integer, NlsString> parameterNlsStrings = context.getParameterNlsStrings();
                 if (parameterNlsStrings != null && parameterNlsStrings.containsKey(index)) {
                     // handle charset & collation literal: _{charset}value collate {collation}
                     NlsString nlsString = parameterNlsStrings.get(index);
+                    if (CharsetName.of(nlsString.getCharset()) == CharsetName.BINARY) {
+                        this.sqlNode = new SqlDynamicParam(index,
+                            SqlTypeName.BINARY,
+                            SqlParserPos.ZERO,
+                            null,
+                            null,
+                            null);
+                    } else {
+                        this.sqlNode = new SqlDynamicParam(index,
+                            SqlTypeName.CHAR,
+                            SqlParserPos.ZERO,
+                            null,
+                            nlsString.getCharset(),
+                            nlsString.getCollation());
+                    }
+                } else if (params.size() > index && params.get(index) instanceof NlsString) {
+                    NlsString nlsString = (NlsString) params.get(index);
                     this.sqlNode = new SqlDynamicParam(index,
                         SqlTypeName.CHAR,
                         SqlParserPos.ZERO,
@@ -4714,13 +4927,42 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                         nlsString.getCharset(),
                         nlsString.getCollation());
                 } else {
+                    if (allowInferType) {
+                        columnMeta = bindMapTypes.get(x);
+                        if (columnMeta != null) {
+                            if (isBinaryType) {
+                                targetCharSet = CharsetName.BINARY;
+                            } else if (isStringType) {
+                                targetCharSet = columnMeta.getDataType().getCharsetName();
+                            }
+                        }
+                    }
                     this.sqlNode = new SqlDynamicParam(index,
                         FastSqlConstructUtils.getTypeNameOfParam(params, index),
                         SqlParserPos.ZERO,
+                        null,
+                        targetCharSet != null ? targetCharSet.toJavaCharset() : null,
                         null);
+
+                    if (targetCharSet != null) {
+                        if (isBinaryType) {
+                            this.sqlNode = SqlStdOperatorTable.CAST.createCall(SqlParserPos.ZERO, sqlNode,
+                                new SqlDataTypeSpec(
+                                    new SqlIdentifier(SqlTypeName.BINARY.getName(), SqlParserPos.ZERO),
+                                    -1, -1, null, null, SqlParserPos.ZERO));
+                        } else if (isStringType) {
+                            NlsString nlsString = new NlsString(targetCharSet.name(),
+                                null, null);
+                            this.sqlNode = SqlStdOperatorTable.CONVERT.createCall(SqlParserPos.ZERO, sqlNode,
+                                SqlLiteral.createCharString(nlsString, SqlParserPos.ZERO));
+                        }
+                    }
                 }
             } else {
-                this.sqlNode = new SqlDynamicParam(index, SqlParserPos.ZERO, null);
+                this.sqlNode = new SqlDynamicParam(
+                    index, SqlTypeName.ANY, SqlParserPos.ZERO, null,
+                    null,
+                    null);
                 Object parameter = context.getParameter(ContextParameterKey.ORIGIN_PARAMETER_COUNT);
                 context.putParameter(ContextParameterKey.ORIGIN_PARAMETER_COUNT,
                     parameter == null ? 1 : ((Integer) parameter).intValue() + 1);
@@ -4881,13 +5123,19 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     public boolean visit(SQLBinaryOpExpr x) {// SQLBinaryOpExpr a >= 1 或 a>1 and
         // b <2,其中多个operator：>=|>|and|<
-        // transform ->> operator to JSON_UNQUOTE(JSON_EXTRACT())
         if (x.getOperator().equals(SubGtGt)) {
+            // transform ->> operator to JSON_UNQUOTE(JSON_EXTRACT())
+
             this.sqlNode = new SqlBasicCall(TddlOperatorTable.JSON_UNQUOTE,
                 new SqlNode[] {
                     new SqlBasicCall(TddlOperatorTable.JSON_EXTRACT, new SqlNode[] {
                         convertToSqlNode(x.getLeft()), convertToSqlNode(x.getRight())}, SqlParserPos.ZERO)},
                 SqlParserPos.ZERO);
+            return false;
+        } else if (x.getOperator().equals(SubGt)) {
+            // transform -> operator to JSON_EXTRACT()
+            this.sqlNode = new SqlBasicCall(TddlOperatorTable.JSON_EXTRACT, new SqlNode[] {
+                convertToSqlNode(x.getLeft()), convertToSqlNode(x.getRight())}, SqlParserPos.ZERO);
             return false;
         }
 
@@ -5164,9 +5412,17 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         case UNION:
             operator = SqlStdOperatorTable.UNION;
             break;
+        case EXCEPT:
+        case MINUS:
+            operator = SqlStdOperatorTable.EXCEPT;
+            break;
+        case INTERSECT:
+        case INTERSECT_DISTINCT:
+            operator = SqlStdOperatorTable.INTERSECT;
+            break;
         default:
             throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
-                "should not be here!");
+                String.format("%s not support!", x.getOperator().name));
         }
         SqlNode[] operands = {leftNode, rightNode};
         SqlNode unionSqlNode = operator.createCall(new SqlParserPos(1, 55, 3, 56).plusAll(operands), operands);
@@ -5289,6 +5545,9 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     public boolean visit(SQLInListExpr x) {
+        if (context != null) {
+            context.putParameter(ContextParameterKey.HAS_IN_EXPR, true);
+        }
         List<SQLExpr> targetList = x.getTargetList();
         List<SqlNode> inList = new ArrayList<>(targetList.size());
         for (int i = 0; i < targetList.size(); ++i) {
@@ -5873,8 +6132,39 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         for (SQLExprTableSource tableName : x.getTableSources()) {
             tableNames.add(convertToSqlNode(tableName));
         }
-        this.sqlNode = new SqlOptimizeTable(SqlParserPos.ZERO, tableNames, x.isNoWriteToBinlog(), x.isLocal());
+//        boolean optimizeTableUseDal = false;
+//        if(ec.getOriginSql().contains("/*")){
+//            Object optimizeTableUseDalObj = parseHint(ec.getSql()).get(ConnectionProperties.OPTIMIZE_TABLE_USE_DAL);
+//            optimizeTableUseDal = Boolean.valueOf(String.valueOf(optimizeTableUseDalObj));
+//        }
+//
+//        if(optimizeTableUseDal){
+//            this.sqlNode = new SqlOptimizeTable(SqlParserPos.ZERO, tableNames, x.isNoWriteToBinlog(), x.isLocal());
+//        }else {
+//            this.sqlNode = new SqlOptimizeTableDdl(SqlParserPos.ZERO, tableNames, x.isNoWriteToBinlog(), x.isLocal());
+//        }
+
+        this.sqlNode = new SqlOptimizeTableDdl(SqlParserPos.ZERO, tableNames, x.isNoWriteToBinlog(), x.isLocal());
         return false;
+    }
+
+    private HashMap<String, Object> parseHint(ByteString sql) {
+        HashMap<String, Object> cmdObjects = new HashMap<>();
+        List<SQLStatement> stmtList = FastsqlUtils.parseSql(sql.substring(sql.indexOf("/*"), sql.indexOf("*/") + 2));
+        ContextParameters contextParameters = new ContextParameters(false);
+        for (SQLStatement statement : stmtList) {
+            List<SQLCommentHint> hintList = ((MySqlHintStatement) statement).getHints();
+            SqlNodeList sqlNodes =
+                FastSqlConstructUtils.convertHints(hintList, contextParameters, new ExecutionContext());
+            HintConverter.HintCollection collection = new HintConverter.HintCollection();
+            HintUtil.collectHint(sqlNodes, collection, false, new ExecutionContext());
+            List<HintCmdOperator> hintCmdOperators = collection.cmdHintResult;
+            HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean("", cmdObjects, "");
+            for (HintCmdOperator op : hintCmdOperators) {
+                op.handle(cmdBean);
+            }
+        }
+        return cmdObjects;
     }
 
     @Override
@@ -5895,6 +6185,24 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         sqlCheckTable.setDisplayMode(x.getDisplayMode());
         this.sqlNode = sqlCheckTable;
         addPrivilegeVerifyItem(null, "", PrivilegePoint.SELECT);
+
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsShowLocality x) {
+        Object schema = context.getParameter(ContextParameterKey.SCHEMA);
+        final List<SqlNode> operands = new ArrayList<>();
+        operands.add(convertToSqlNode(x.getName()));
+        String dbName = (String) schema;
+        SqlNode where = convertToSqlNode(x.getWhere());
+        SqlNode orderBy = convertToSqlNode(x.getOrderBy());
+        SqlNode limit = convertToSqlNode(x.getLimit());
+        SqlShowLocalityInfo sqlShowLocalityInfo = new SqlShowLocalityInfo(SqlParserPos.ZERO,
+            ImmutableList.of(SqlSpecialIdentifier.LOCALITY), operands, null, where, orderBy, limit, dbName);
+
+        addPrivilegeVerifyItem(null, "", PrivilegePoint.SELECT);
+        this.sqlNode = sqlShowLocalityInfo;
 
         return false;
     }
@@ -5954,7 +6262,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
-    public boolean visit(SQLShowRecylebinStatement stmt) {
+    public boolean visit(SQLShowRecyclebinStatement stmt) {
         this.sqlNode = new SqlShowRecyclebin(SqlParserPos.ZERO,
             ImmutableList.of(SqlSpecialIdentifier.RECYCLEBIN),
             ImmutableList.<SqlNode>of());
@@ -6166,10 +6474,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(MySqlShowSequencesStatement x) {
-
-        String schema = getDefaultSchema();
-        schema = StringUtils.isBlank(schema) ? getDefaultSchema() : schema;
-
         SqlNode where = convertToSqlNode(x.getWhere());
         SqlNode orderBy = convertToSqlNode(x.getOrderBy());
         SqlNode limit = convertToSqlNode(x.getLimit());
@@ -6181,9 +6485,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             where,
             orderBy,
             limit);
-
-        showSequences
-            .setCustomUnitGroupSeqSupported(SequenceManagerProxy.getInstance().isCustomUnitGroupSeqSupported(schema));
 
         this.sqlNode = showSequences;
 
@@ -6239,6 +6540,14 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             showDdlResults.setJobIds(x.getJobIds());
         }
         this.sqlNode = showDdlResults;
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsShowRebalanceBackFill x) {
+        SqlShowRebalanceBackFill showRebalanceBackFill = new SqlShowRebalanceBackFill(SqlParserPos.ZERO,
+            ImmutableList.of(), ImmutableList.of(), null, null, null, null);
+        this.sqlNode = showRebalanceBackFill;
         return false;
     }
 
@@ -6364,7 +6673,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 String hint = headHints.get(0).toString();
                 baseline.setHint(hint);
             }
-            Planner.processParameter(outParameters, ec);
+            Planner.processParameters(outParameters, ec);
             this.sqlNode = baseline;
         } else {
             this.sqlNode = new SqlBaseline(SqlParserPos.ZERO,
@@ -6448,6 +6757,14 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     @Override
     public boolean visit(DrdsShowLocalDeadlocks x) {
         this.sqlNode = new SqlShowLocalDeadlocks(SqlParserPos.ZERO, ImmutableList.of());
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLShowPartitionsHeatmapStatement x) {
+        SqlNode timeRange = convertToSqlNode(x.getTimeRange());
+        SqlNode type = convertToSqlNode(x.getType());
+        this.sqlNode = SqlShowPartitionsHeatmap.create(SqlParserPos.ZERO, ImmutableList.of(), timeRange, type);
         return false;
     }
 
@@ -6771,29 +7088,18 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
-    public boolean visit(MySqlShowCreateFunctionStatement x) {
-        final List<SqlSpecialIdentifier> specialIdentifiers = new LinkedList<>();
-        specialIdentifiers.add(SqlSpecialIdentifier.CREATE);
-        specialIdentifiers.add(SqlSpecialIdentifier.FUNCTION);
-
-        final List<SqlNode> operands = new LinkedList<>();
-        operands.add(convertToSqlNode(x.getName()));
-
-        this.sqlNode = new SqlShow(SqlParserPos.ZERO, specialIdentifiers, operands);
+    public boolean visit(MySqlShowCreateProcedureStatement x) {
+        this.sqlNode =
+            SqlShowCreateProcedure.create(SqlParserPos.ZERO, convertToSqlNode(x.getName()));
 
         return false;
     }
 
     @Override
-    public boolean visit(MySqlShowCreateProcedureStatement x) {
-        final List<SqlSpecialIdentifier> specialIdentifiers = new LinkedList<>();
-        specialIdentifiers.add(SqlSpecialIdentifier.CREATE);
-        specialIdentifiers.add(SqlSpecialIdentifier.PROCEDURE);
-
-        final List<SqlNode> operands = new LinkedList<>();
-        operands.add(convertToSqlNode(x.getName()));
-
-        this.sqlNode = new SqlShow(SqlParserPos.ZERO, specialIdentifiers, operands);
+    public boolean visit(MySqlShowCreateFunctionStatement x) {
+        this.sqlNode =
+            SqlShowCreateFunction.create(SqlParserPos.ZERO,
+                convertToSqlNode(SQLUtils.rewriteUdfName((SQLName) x.getName())));
 
         return false;
     }
@@ -6806,7 +7112,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         final List<SqlNode> operands = new LinkedList<>();
         operands.add(convertToSqlNode(x.getName()));
-
         this.sqlNode = new SqlShow(SqlParserPos.ZERO, specialIdentifiers, operands);
 
         return false;
@@ -6934,8 +7239,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     public boolean visit(MySqlShowFunctionStatusStatement x) {
         SqlNode like = convertToSqlNode(x.getLike());
         SqlNode where = convertToSqlNode(x.getWhere());
-        this.sqlNode = new SqlShow(SqlParserPos.ZERO, ImmutableList.of(SqlSpecialIdentifier.FUNCTION,
-            SqlSpecialIdentifier.STATUS), ImmutableList.<SqlNode>of(), like, where);
+        this.sqlNode = new SqlShowFunctionStatus(SqlParserPos.ZERO, ImmutableList.of(SqlSpecialIdentifier.FUNCTION,
+            SqlSpecialIdentifier.STATUS), ImmutableList.<SqlNode>of(), like, where, null, null);
 
         return false;
     }
@@ -7539,6 +7844,47 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
+    public boolean visit(DrdsConvertAllSequencesStatement x) {
+        String fromTypeValue = x.getFromType().getSimpleName();
+        String toTypeValue = x.getToType().getSimpleName();
+        String schemaName = null;
+        boolean allSchemata = true;
+
+        SequenceAttribute.Type fromType;
+        try {
+            fromType = SequenceAttribute.Type.valueOf(fromTypeValue.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARSER, "Invalid FROM sequence type '" + fromTypeValue + "'");
+        }
+
+        SequenceAttribute.Type toType;
+        try {
+            toType = SequenceAttribute.Type.valueOf(toTypeValue.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARSER, "Invalid TO sequence type '" + toTypeValue + "'");
+        }
+
+        if (fromType == SequenceAttribute.Type.SIMPLE || toType == SequenceAttribute.Type.SIMPLE) {
+            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                "Don't support Simple Sequence related conversion in PolarDB-X 2.0");
+        }
+
+        if (fromType == toType) {
+            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                "Don't allow conversion between two same sequence types");
+        }
+
+        if (!x.isAllSchemata()) {
+            schemaName = x.getSchemaName().getSimpleName().toLowerCase();
+            allSchemata = false;
+        }
+
+        sqlNode = new SqlConvertAllSequences(SqlParserPos.ZERO, fromType, toType, schemaName, allSchemata);
+
+        return false;
+    }
+
+    @Override
     public boolean visit(SQLSavePointStatement x) {
         SqlIdentifier name =
             new SqlIdentifier(SQLUtils.normalizeNoTrim(x.getName().getSimpleName()), SqlParserPos.ZERO);
@@ -7917,7 +8263,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         return false;
     }
 
-
     @Override
     public boolean visit(DrdsCreateScheduleStatement x) {
 
@@ -7930,13 +8275,16 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
         SqlIdentifier fullTableName = new SqlIdentifier(Lists.newArrayList(schemaName, tableName), SqlParserPos.ZERO);
 
+        SqlCharStringLiteral paramsExpr = (SqlCharStringLiteral) convertToSqlNode(x.getParamsExpr());
         SqlCharStringLiteral cronExpr = (SqlCharStringLiteral) convertToSqlNode(x.getCronExpr());
         String timeZone = null;
         if (x.getTimeZone() != null) {
             timeZone = ((SqlCharStringLiteral) convertToSqlNode(x.getTimeZone())).toValue();
         }
+        final String paramExprValue = paramsExpr == null ? null : paramsExpr.toValue();
         sqlNode = new SqlCreateSchedule(SqlParserPos.ZERO,
-            false, schemaName, fullTableName, cronExpr.toValue(), timeZone);
+            false, schemaName, fullTableName, x.isForLocalPartition(), x.isForAutoSplitTableGroup(), paramExprValue,
+            cronExpr.toValue(), timeZone);
         addPrivilegeVerifyItem(schemaName, tableName, PrivilegePoint.ALTER);
         addPrivilegeVerifyItem(schemaName, tableName, PrivilegePoint.DROP);
         return false;
@@ -7949,10 +8297,27 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
+    public boolean visit(DrdsPauseScheduleStatement x) {
+        if (x.isForLocalPartition()) {
+            sqlNode = new SqlPauseSchedule(SqlParserPos.ZERO, true);
+        } else {
+            sqlNode = new SqlPauseSchedule(SqlParserPos.ZERO, x.isIfExist(), x.getScheduleId());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsContinueScheduleStatement x) {
+        sqlNode = new SqlContinueSchedule(SqlParserPos.ZERO, x.getScheduleId());
+        return false;
+    }
+
+    @Override
     public boolean visit(DrdsDropFileStorageStatement x) {
         SqlNode fileStorageName = convertToSqlNode(x.getName());
         SqlDropFileStorage
-            sqlDropFileStorage = new SqlDropFileStorage(new SqlIdentifier(fileStorageName.toString(), SqlParserPos.ZERO));
+            sqlDropFileStorage =
+            new SqlDropFileStorage(new SqlIdentifier(fileStorageName.toString(), SqlParserPos.ZERO));
         this.sqlNode = sqlDropFileStorage;
         return false;
     }
@@ -7981,7 +8346,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupSplitPartition x) {
+    public boolean visit(DrdsFireScheduleStatement x) {
+        sqlNode = new SqlFireSchedule(SqlParserPos.ZERO, x.getScheduleId());
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsSplitPartition x) {
 
         SqlNode partitionName = convertToSqlNode(x.getSplitPartitionName());
         List<SqlPartition> partitions = null;
@@ -7994,17 +8365,23 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 partitions.add((SqlPartition) convertToSqlNode(sqlPartition));
             }
         }
-        SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
-            new SqlAlterTableGroupSplitPartition(SqlParserPos.ZERO,
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
+
+        SqlAlterTableSplitPartition sqlAlterTableGroupSplitPartition =
+            isAlterTable ? new SqlAlterTableSplitPartition(SqlParserPos.ZERO,
                 partitionName,
                 atValue,
-                partitions);
+                partitions) :
+                new SqlAlterTableGroupSplitPartition(SqlParserPos.ZERO,
+                    partitionName,
+                    atValue,
+                    partitions);
         this.sqlNode = sqlAlterTableGroupSplitPartition;
         return false;
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMergePartition x) {
+    public boolean visit(DrdsMergePartition x) {
 
         SqlNode partitionName = convertToSqlNode(x.getTargetPartitionName());
         List<SqlNode> oldPartitions = new ArrayList<>();
@@ -8014,29 +8391,49 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         for (SQLName sqlPartition : x.getPartitions()) {
             oldPartitions.add(convertToSqlNode(sqlPartition));
         }
-        SqlAlterTableGroupMergePartition sqlAlterTableGroupMergePartition =
-            new SqlAlterTableGroupMergePartition(SqlParserPos.ZERO,
-                partitionName,
-                oldPartitions);
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
+
+        SqlAlterTableMergePartition sqlAlterTableGroupMergePartition =
+            isAlterTable ?
+                new SqlAlterTableMergePartition(SqlParserPos.ZERO,
+                    partitionName,
+                    oldPartitions) :
+                new SqlAlterTableGroupMergePartition(SqlParserPos.ZERO,
+                    partitionName,
+                    oldPartitions);
         this.sqlNode = sqlAlterTableGroupMergePartition;
         return false;
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMovePartition x) {
+    public boolean visit(DrdsMovePartition x) {
 
-        SqlNode storageId = convertToSqlNode(x.getTargetStorageId());
-        List<SqlNode> oldPartitions = new ArrayList<>();
-
-        assert GeneralUtil.isNotEmpty(x.getPartitions());
-
-        for (SQLName sqlPartition : x.getPartitions()) {
-            oldPartitions.add(convertToSqlNode(sqlPartition));
+        Map<SqlNode, List<SqlNode>> instPartitions = new HashMap<>();
+        for (Map.Entry<SQLName, List<SQLName>> entry : x.getInstPartitions().entrySet()) {
+            SqlNode storageId = convertToSqlNode(entry.getKey());
+            List<SqlNode> oldPartitions = new ArrayList<>();
+            assert GeneralUtil.isNotEmpty(entry.getValue());
+            for (SQLName sqlPartition : entry.getValue()) {
+                oldPartitions.add(convertToSqlNode(sqlPartition));
+            }
+            instPartitions.put(storageId, oldPartitions);
         }
-        SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition =
-            new SqlAlterTableGroupMovePartition(SqlParserPos.ZERO,
-                storageId,
-                oldPartitions);
+        Map<String, Set<String>> targetPartitions = new HashMap<>();
+        for (Map.Entry<SqlNode, List<SqlNode>> entry : instPartitions.entrySet()) {
+            String instId =
+                Util.last(((SqlIdentifier) (entry.getKey())).names);
+            Set<String> partitionsToBeMoved = entry.getValue().stream()
+                .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
+                    Collectors.toSet());
+            targetPartitions.put(instId, partitionsToBeMoved);
+        }
+
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
+
+        SqlAlterTableMovePartition sqlAlterTableGroupMovePartition =
+            isAlterTable ? new SqlAlterTableMovePartition(SqlParserPos.ZERO, instPartitions, targetPartitions) :
+                new SqlAlterTableGroupMovePartition(SqlParserPos.ZERO, instPartitions, targetPartitions);
+
         this.sqlNode = sqlAlterTableGroupMovePartition;
         return false;
     }
@@ -8097,14 +8494,17 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupExtractHotKey x) {
+    public boolean visit(DrdsExtractHotKey x) {
 
         List<SqlNode> hotkeys =
             x.getHotKeys().stream().map((e) -> convertToSqlNode(e)).collect(
                 Collectors.toList());
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
 
-        SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
-            new SqlAlterTableGroupExtractPartition(SqlParserPos.ZERO, hotkeys, x.getHotKeyPartitionName());
+        SqlAlterTableExtractPartition sqlAlterTableGroupExtractPartition =
+            isAlterTable ?
+                new SqlAlterTableExtractPartition(SqlParserPos.ZERO, hotkeys, x.getHotKeyPartitionName()) :
+                new SqlAlterTableGroupExtractPartition(SqlParserPos.ZERO, hotkeys, x.getHotKeyPartitionName());
         this.sqlNode = sqlAlterTableGroupExtractPartition;
         return false;
     }
@@ -8117,9 +8517,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 Collectors.toList());
         SqlNode partitions = convertToSqlNode(x.getPartitions());
 
-        SqlAlterTableGroupSplitPartitionByHotValue sqlAlterTableGroupSplitPartitionByHotValue =
-            new SqlAlterTableGroupSplitPartitionByHotValue(SqlParserPos.ZERO, hotkeys, partitions,
-                x.getHotKeyPartitionName());
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
+        SqlAlterTableSplitPartitionByHotValue sqlAlterTableGroupSplitPartitionByHotValue =
+            isAlterTable ?
+                new SqlAlterTableSplitPartitionByHotValue(SqlParserPos.ZERO, hotkeys, partitions,
+                    x.getHotKeyPartitionName()) :
+                new SqlAlterTableGroupSplitPartitionByHotValue(SqlParserPos.ZERO, hotkeys, partitions,
+                    x.getHotKeyPartitionName());
         this.sqlNode = sqlAlterTableGroupSplitPartitionByHotValue;
         return false;
     }
@@ -8145,7 +8549,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupRenamePartition x) {
+    public boolean visit(DrdsRenamePartition x) {
 
         List<com.alibaba.polardbx.druid.util.Pair<SQLName, SQLName>> changePartitionsPair = x.getChangePartitionsPair();
         List<com.alibaba.polardbx.common.utils.Pair<String, String>> partitionNamesPair = new ArrayList<>();
@@ -8156,9 +8560,45 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     SQLUtils.normalizeNoTrim(partitionPair.getValue().getSimpleName()));
             partitionNamesPair.add(pair);
         }
-        SqlAlterTableGroupRenamePartition sqlAlterTableGroupRenamePartition =
-            new SqlAlterTableGroupRenamePartition(SqlParserPos.ZERO, partitionNamesPair);
-        this.sqlNode = sqlAlterTableGroupRenamePartition;
+        boolean isAlterTable = (x.getParent() != null && x.getParent() instanceof SQLAlterTableStatement);
+        SqlAlterTableRenamePartition sqlAlterTableRenamePartition =
+            isAlterTable ? new SqlAlterTableRenamePartition(SqlParserPos.ZERO, partitionNamesPair) :
+                new SqlAlterTableGroupRenamePartition(SqlParserPos.ZERO, partitionNamesPair);
+        this.sqlNode = sqlAlterTableRenamePartition;
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableGroupSetLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableGroupSetLocality x) {
+        SqlNode targetLocality = convertToSqlNode(x.getTargetLocality());
+
+        SqlAlterTableGroupSetLocality sqlAlterTableGroupSetLocality = new SqlAlterTableGroupSetLocality(
+            SqlParserPos.ZERO, targetLocality);
+        sqlAlterTableGroupSetLocality.setLogical(x.getLogicalDDL());
+        this.sqlNode = sqlAlterTableGroupSetLocality;
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableGroupSetPartitionsLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableGroupSetPartitionsLocality x) {
+        SqlNode targetLocality = convertToSqlNode(x.getTargetLocality());
+        SqlNode partition = convertToSqlNode(x.getPartition());
+
+        SqlAlterTableGroupSetPartitionsLocality sqlAlterTableGroupSetPartitionsLocality =
+            new SqlAlterTableGroupSetPartitionsLocality(
+                SqlParserPos.ZERO, partition, targetLocality);
+        sqlAlterTableGroupSetPartitionsLocality.setLogical(x.getLogicalDDL());
+        this.sqlNode = sqlAlterTableGroupSetPartitionsLocality;
         return false;
     }
 
@@ -8446,6 +8886,12 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             node.setRebalanceTable(targetTable);
             break;
         }
+        case TABLEGROUP: {
+            SQLExprTableSource tableSource = x.getTableSource();
+            SqlNode targetTableGroup = convertToSqlNode(tableSource.getExpr());
+            node.setRebalanceTableGroup(targetTableGroup);
+            break;
+        }
         case DATABASE: {
             node.setRebalanceDatabase();
             break;
@@ -8491,6 +8937,14 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_PARSER, "only UNARCHIVE DATABASE/TABLEGROUP/TABLE supported");
         }
+
+        this.sqlNode = node;
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsPushDownUdfStatement x) {
+        SqlPushDownUdf node = new SqlPushDownUdf(SqlParserPos.ZERO);
         this.sqlNode = node;
         return false;
     }
@@ -8507,6 +8961,232 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
         sqlRefreshTopology.setHints(hints);
         this.sqlNode = sqlRefreshTopology;
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLCreateFunctionStatement x) {
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_UDF)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT, "udf is not support yet!");
+        }
+        if (x.getBlock() instanceof SQLBlockStatement) {
+            recursiveSetAfterSemi(x.getBlock());
+        }
+
+        sqlNode = new SqlCreateFunction(x.toString(),
+            SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())), (x.getSqlDataAccess() == SqlDataAccess.NO_SQL));
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropFunctionStatement x) {
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_UDF)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT, "udf is not support yet!");
+        }
+
+        sqlNode = new SqlDropFunction(x.toString(),
+            SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())), x.isIfExists());
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterFunctionStatement x) {
+        sqlNode = new SqlAlterFunction(x.toString(), SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())));
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLCreateProcedureStatement x) {
+        if (x.getBlock() instanceof SQLBlockStatement) {
+            recursiveSetAfterSemi(x.getBlock());
+        }
+
+        sqlNode = new SqlCreateProcedure(x.toString(), SQLUtils.normalizeSqlName(x.getName()));
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropProcedureStatement x) {
+        sqlNode = new SqlDropProcedure(x.toString(), SQLUtils.normalizeSqlName(x.getName()), x.isIfExists());
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterProcedureStatement x) {
+        sqlNode = new SqlAlterProcedure(x.toString(), SQLUtils.normalizeSqlName(x.getName()));
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLCreateTriggerStatement x) {
+        try {
+            Field name = SQLCreateTriggerStatement.class.getDeclaredField("name");
+            name.setAccessible(true);
+            name.set(x, new SQLIdentifierExpr(x.getName().getSimpleName()));
+
+            Field on = SQLCreateTriggerStatement.class.getDeclaredField("on");
+            on.setAccessible(true);
+            on.set(x, new SQLExprTableSource(x.getOn().getTableName()));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        sqlNode = new SqlCreateTrigger(x);
+        boolean value = ec.getParamManager().getBoolean(ConnectionParams.ENABLE_STORAGE_TRIGGER);
+        if (value) {
+            // valid
+        } else {
+            throw new TddlNestableRuntimeException("do not support create trigger");
+        }
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropTriggerStatement x) {
+        try {
+            Field name = SQLDropTriggerStatement.class.getDeclaredField("name");
+            name.setAccessible(true);
+            name.set(x, new SQLIdentifierExpr(x.getName().getSimpleName()));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        sqlNode = new SqlDropTrigger(x);
+        return false;
+    }
+
+    // TODO check semi
+    private void recursiveSetAfterSemi(SQLStatement stmt) {
+        if (stmt instanceof SQLBlockStatement) {
+            for (SQLStatement s : ((SQLBlockStatement) stmt).getStatementList()) {
+                recursiveSetAfterSemi(s);
+            }
+        } else if (stmt instanceof SQLIfStatement) {
+            for (SQLStatement s : ((SQLIfStatement) stmt).getStatements()) {
+                recursiveSetAfterSemi(s);
+            }
+            for (SQLIfStatement.ElseIf elseIf : ((SQLIfStatement) stmt).getElseIfList()) {
+                for (SQLStatement s : elseIf.getStatements()) {
+                    recursiveSetAfterSemi(s);
+                }
+            }
+            if (((SQLIfStatement) stmt).getElseItem() != null) {
+                for (SQLStatement s : ((SQLIfStatement) stmt).getElseItem().getStatements()) {
+                    recursiveSetAfterSemi(s);
+                }
+            }
+        } else if (stmt instanceof SQLLoopStatement) {
+            for (SQLStatement s : ((SQLLoopStatement) stmt).getStatements()) {
+                recursiveSetAfterSemi(s);
+            }
+        } else if (stmt instanceof SQLWhileStatement) {
+            for (SQLStatement s : ((SQLWhileStatement) stmt).getStatements()) {
+                recursiveSetAfterSemi(s);
+            }
+        } else if (stmt instanceof MySqlRepeatStatement) {
+            for (SQLStatement s : ((MySqlRepeatStatement) stmt).getStatements()) {
+                recursiveSetAfterSemi(s);
+            }
+        } else if (stmt instanceof MySqlCaseStatement) {
+            for (MySqlCaseStatement.MySqlWhenStatement whenStatement : ((MySqlCaseStatement) stmt).getWhenList()) {
+                for (SQLStatement s : whenStatement.getStatements()) {
+                    recursiveSetAfterSemi(s);
+                }
+            }
+            if (((MySqlCaseStatement) stmt).getElseItem() != null) {
+                for (SQLStatement s : ((MySqlCaseStatement) stmt).getElseItem().getStatements()) {
+                    recursiveSetAfterSemi(s);
+                }
+            }
+        }
+        stmt.setAfterSemi(true);
+    }
+
+    @Override
+    public boolean visit(SQLCreateJoinGroupStatement x) {
+        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
+        SqlNodeList hints = new SqlNodeList(SqlParserPos.ZERO);
+        if (headHints != null) {
+            hints = FastSqlConstructUtils.convertHints(headHints, context, ec);
+        }
+        String joinGroupName = SQLUtils.normalizeNoTrim(x.getJoinGroupName());
+        String schemaName = x.getSchemaName();
+        boolean isIfNotExists = x.isIfNotExists();
+        String locality = x.getLocality();
+
+        SqlCreateJoinGroup sqlCreateJoinGroup =
+            new SqlCreateJoinGroup(SqlParserPos.ZERO, isIfNotExists, schemaName, joinGroupName, locality);
+        sqlCreateJoinGroup.setHints(hints);
+        this.sqlNode = sqlCreateJoinGroup;
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropJoinGroupStatement x) {
+        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
+        SqlNodeList hints = new SqlNodeList(SqlParserPos.ZERO);
+        if (headHints != null) {
+            hints = FastSqlConstructUtils.convertHints(headHints, context, ec);
+        }
+        String joinGroupName = SQLUtils.normalizeNoTrim(x.getJoinGroupName());
+        boolean ifExists = x.isIfExists();
+
+        SqlDropJoinGroup sqlDropJoinGroup =
+            new SqlDropJoinGroup(SqlParserPos.ZERO, ifExists, null, joinGroupName);
+        sqlDropJoinGroup.setHints(hints);
+        this.sqlNode = sqlDropJoinGroup;
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterJoinGroupStatement x) {
+        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
+        SqlNodeList hints = new SqlNodeList(SqlParserPos.ZERO);
+        if (headHints != null) {
+            hints = FastSqlConstructUtils.convertHints(headHints, context, ec);
+        }
+        String joinGroupName = SQLUtils.normalizeNoTrim(x.getJoinGroupName());
+
+        List<String> tableNames = new ArrayList<>();
+        for (SQLName tableName : x.getTableNames()) {
+            final String normalize = SQLUtils.normalizeNoTrim(tableName.getSimpleName());
+            tableNames.add(normalize);
+        }
+        SqlAlterJoinGroup sqlAlterJoinGroup =
+            new SqlAlterJoinGroup(SqlParserPos.ZERO, joinGroupName, tableNames, x.isAdd(), x.toString());
+        sqlAlterJoinGroup.setHints(hints);
+        this.sqlNode = sqlAlterJoinGroup;
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLMergeTableGroupStatement x) {
+        List<SQLCommentHint> headHints = x.getHeadHintsDirect();
+        SqlNodeList hints = new SqlNodeList(SqlParserPos.ZERO);
+        if (headHints != null) {
+            hints = FastSqlConstructUtils.convertHints(headHints, context, ec);
+        }
+        String targetTableGroup = SQLUtils.normalizeNoTrim(x.getTargetTableGroup().getSimpleName());
+
+        List<String> sourceTableGroups = new ArrayList<>();
+        for (SQLName tableGroupName : x.getSourceTableGroup()) {
+            final String normalize = SQLUtils.normalizeNoTrim(tableGroupName.getSimpleName());
+            sourceTableGroups.add(normalize);
+        }
+        SqlMergeTableGroup sqlMergeTableGroup =
+            new SqlMergeTableGroup(SqlParserPos.ZERO, targetTableGroup, sourceTableGroups, x.toString(), x.isForce());
+        sqlMergeTableGroup.setHints(hints);
+        this.sqlNode = sqlMergeTableGroup;
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableGroupAddTable x) {
+        List<SqlNode> tables = new ArrayList<>();
+        for (SQLName sqlName : x.getTables()) {
+            tables.add(convertToSqlNode(sqlName));
+        }
+        SqlAlterTableGroupAddTable sqlAlterTableGroupAddTable =
+            new SqlAlterTableGroupAddTable(SqlParserPos.ZERO, tables, x.isForce());
+        this.sqlNode = sqlAlterTableGroupAddTable;
         return false;
     }
 

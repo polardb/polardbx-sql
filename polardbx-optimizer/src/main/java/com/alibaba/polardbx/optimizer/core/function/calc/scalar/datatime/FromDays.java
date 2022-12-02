@@ -47,19 +47,9 @@ public class FromDays extends AbstractScalarFunction {
             }
         }
 
-        long quot;
-        if (args[0] instanceof String) {
-            DivStructure divStructure = Optional.ofNullable(args[0])
-                .map(DataTypes.DecimalType::convertFrom)
-                .map(DivStructure::fromDecimal)
-                .orElse(null);
-
-            if (divStructure == null) {
-                return null;
-            }
-            quot = divStructure.getQuot();
-        } else {
-            quot = DataTypes.LongType.convertFrom(args[0]);
+        Long quot = DataTypes.LongType.convertFrom(args[0]);
+        if (quot == null) {
+            return null;
         }
 
         MysqlDateTime t = new MysqlDateTime();

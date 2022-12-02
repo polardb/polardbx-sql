@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.backfill;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -35,7 +36,7 @@ import java.util.Set;
  */
 @TaskName(name = "MoveTableBackFillTask")
 @Getter
-public class MoveTableBackFillTask extends BaseBackfillTask {
+public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
 
     String logicalTableName;
     Map<String, Set<String>> sourcePhyTables;

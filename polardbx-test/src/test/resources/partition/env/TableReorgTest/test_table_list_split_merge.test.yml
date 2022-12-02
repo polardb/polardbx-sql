@@ -1,0 +1,268 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `l1` (
+  `a` varchar(32) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`b`) (
+  PARTITION p1 VALUES IN (1,2,3),
+  PARTITION p2 VALUES IN (4,5,6),
+  PARTITION p3 VALUES IN (7,8,9),
+  PARTITION p4 VALUES IN (10,11,12)
+);
+show full create table l1;
+CREATE TABLE `l2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`b`) (
+PARTITION p1 VALUES IN (1,2,3),
+PARTITION p2 VALUES IN (4,5,6),
+PARTITION p3 VALUES IN (7,8,9),
+PARTITION p4 VALUES IN (10,11,12)
+);
+show full create table l2;
+CREATE TABLE `l3` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`b`) (
+PARTITION p1 VALUES IN (1,2,3),
+PARTITION p2 VALUES IN (4,5,6),
+PARTITION p3 VALUES IN (7,8,9),
+PARTITION p4 VALUES IN (10,11,12)
+);
+show full create table l3;
+
+CREATE TABLE `lc1` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`) (
+PARTITION p1 VALUES IN ('aaa','aab','aac'),
+PARTITION p2 VALUES IN ('baa','bab','bac'),
+PARTITION p3 VALUES IN ('caa','cab','cac'),
+PARTITION p4 VALUES IN ('daa','dab','dac')
+);
+show full create table lc1;
+CREATE TABLE `lc2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`) (
+PARTITION p1 VALUES IN ('aaa','aab','aac'),
+PARTITION p2 VALUES IN ('baa','bab','bac'),
+PARTITION p3 VALUES IN ('caa','cab','cac'),
+PARTITION p4 VALUES IN ('daa','dab','dac')
+);
+show full create table lc2;
+CREATE TABLE `lc3` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`, `b`) (
+PARTITION p1 VALUES IN (('aaa',1),('aab',2),('aac',3)),
+PARTITION p2 VALUES IN (('baa',1),('bab',2),('bac',3)),
+PARTITION p3 VALUES IN (('caa',1),('cab',2),('cac',3)),
+PARTITION p4 VALUES IN (('daa',1),('dab',2),('dac',3))
+);
+show full create table lc3;
+CREATE TABLE `lc4` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`, `b`) (
+PARTITION p1 VALUES IN (('aaa',1),('aab',2),('aac',3)),
+PARTITION p2 VALUES IN (('baa',1),('bab',2),('bac',3)),
+PARTITION p3 VALUES IN (('caa',1),('cab',2),('cac',3)),
+PARTITION p4 VALUES IN (('daa',1),('dab',2),('dac',3))
+);
+show full create table lc4;
+
+CREATE TABLE `lcd1` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`, `b`) (
+PARTITION p1 VALUES IN (('aaa',1),('aab',2),('aac',3)),
+PARTITION p2 VALUES IN (('baa',1),('bab',2),('bac',3)),
+PARTITION p3 VALUES IN (('caa',1),('cab',2),('cac',3)),
+PARTITION p4 VALUES IN (('daa',1),('dab',2),('dac',3)),
+PARTITION p5 VALUES IN (default)
+);
+show full create table lcd1;
+
+CREATE TABLE `lcd2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`, `b`) (
+PARTITION p1 VALUES IN (('aaa',1),('aab',2),('aac',3)),
+PARTITION p2 VALUES IN (('baa',1),('bab',2),('bac',3)),
+PARTITION p3 VALUES IN (('caa',1),('cab',2),('cac',3)),
+PARTITION p4 VALUES IN (('daa',1),('dab',2),('dac',3)),
+PARTITION p5 VALUES IN (default)
+);
+show full create table lcd2;
+
+alter table l1 split partition p2 into (
+PARTITION p2_1 VALUES IN (4,6),
+PARTITION p2_2 VALUES IN (5)
+);
+alter table l2 split partition p2 into (
+PARTITION p2_1 VALUES IN (4,6),
+PARTITION p2_2 VALUES IN (5)
+);
+alter table l3 split partition p2 into (
+PARTITION p2_1 VALUES IN (4,6),
+PARTITION p2_2 VALUES IN (5)
+);
+show create table l1;
+show create table l2;
+show create table l3;
+select * from l1;
+select * from l2;
+select * from l3;
+
+alter table l1 merge partitions p2_1,p2_2 to p2;
+alter table l2 merge partitions p2_1,p2_2 to p2;
+alter table l3 merge partitions p2_1,p2_2 to p2;
+show create table l1;
+show create table l2;
+show create table l3;
+select * from l1;
+select * from l2;
+select * from l3;
+
+alter table lc1 split partition p2 into (
+PARTITION p2_1 VALUES IN ('bac', 'baa'),
+PARTITION p2_2 VALUES IN ('bab')
+);
+alter table lc2 split partition p2 into (
+PARTITION p2_1 VALUES IN ('bac', 'baa'),
+PARTITION p2_2 VALUES IN ('bab')
+);
+show create table lc1;
+show create table lc2;
+select * from lc1;
+select * from lc2;
+
+alter table lc1 merge partitions p2_1,p2_2 to p2;
+alter table lc2 merge partitions p2_1,p2_2 to p2;
+show create table lc1;
+show create table lc2;
+select * from lc1;
+select * from lc2;
+
+alter table lc3 split partition p2 into (
+PARTITION p2_1 VALUES IN (('bac',3), ('baa',1)),
+PARTITION p2_2 VALUES IN (('bab',2))
+);
+alter table lc4 split partition p2 into (
+PARTITION p2_1 VALUES IN (('bac',3), ('baa',1)),
+PARTITION p2_2 VALUES IN (('bab',2))
+);
+show create table lc3;
+show create table lc4;
+select * from lc3;
+select * from lc4;
+
+alter table lc3 merge partitions p2_1,p2_2 to p2;
+alter table lc4 merge partitions p2_1,p2_2 to p2;
+show create table lc3;
+show create table lc4;
+select * from lc3;
+select * from lc4;
+  
+## error_msg: $# No found value[(4)] #$
+alter table l1 modify partition p2 drop values(4,8);
+
+alter table l1 modify partition p2 drop values(4,6);
+alter table l2 modify partition p2 drop values(4,6);
+alter table l3 modify partition p2 drop values(4,6);
+show full create table l1;
+show full create table l2;
+show full create table l3;
+## error_msg: $# ERR_PARTITION_NO_FOUND #$
+insert into l1(b,a) values(4,'4');
+select * from l1;
+select * from l2;
+select * from l3;
+
+alter table l1 modify partition p2 add values(4,6,100);
+alter table l2 modify partition p2 add values(4,6,100);
+alter table l3 modify partition p2 add values(4,6,100);
+show full create table l1;
+show full create table l2;
+show full create table l3;
+insert into l1(b,a) values(4,'4');
+select * from l1;
+select * from l2;
+select * from l3;
+
+alter table lc1 modify partition p2 drop values('baa','bac');
+alter table lc2 modify partition p2 drop values('baa','bac');
+show full create table lc1;
+show full create table lc2;
+  ## error_msg: $# ERR_PARTITION_NO_FOUND #$
+insert into lc1(b,a) values(4,'bac');
+select * from lc1;
+select * from lc2;
+
+alter table lc1 modify partition p2 add values('baa','bac','bad');
+alter table lc2 modify partition p2 add values(4,6,100);
+show full create table lc1;
+show full create table lc2;
+insert into lc1(b,a) values(4,'bac');
+select * from lc1;
+select * from lc2;
+
+alter table lc3 modify partition p2 drop values(('baa',1),('bac',3));
+alter table lc4 modify partition p2 drop values(('baa',1),('bac',3));
+show full create table lc3;
+show full create table lc4;
+  ## error_msg: $# ERR_PARTITION_NO_FOUND #$
+insert into lc4(b,a) values(4,'bad');
+select * from lc3;
+select * from lc4;
+
+alter table lc3 modify partition p2 add values(('baa',1),('bac',3),('bad',4));
+alter table lc4 modify partition p2 add values(('baa',1),('bac',3), ('bad',4));
+show full create table lc3;
+show full create table lc4;
+insert into lc4(b,a) values(4,'bad');
+select * from lc3;
+select * from lc4;
+
+alter table lc1 rename partition p1 to p1_new;
+alter table lc2 rename partition p1 to p1_new;
+alter table lc3 rename partition p1 to p1_new;
+alter table lc4 rename partition p1 to p1_new;
+alter table l1 rename partition p1 to p1_new;
+alter table l2 rename partition p1 to p1_new;
+alter table l3 rename partition p1 to p1_new;
+
+show full create table l1;
+show full create table l2;
+show full create table l3;
+show full create table lc1;
+show full create table lc2;
+show full create table lc3;
+show full create table lc4;
+  
+  ## error_msg: $# missing (DEFAULT) in the new Partition spec #$
+alter table lcd1 split partition p5 into (partition p6 values in(('zaa',1)), partition p7 values in(('xaa',1)));
+alter table lcd1 split partition p5 into (partition p6 values in(('zaa',1)), partition p5 values in(default));
+alter table lcd2 split partition p5 into (partition p6 values in(('zaa',1)), partition p5 values in(default));
+## error_msg: $# partition [p5] is not allowed to be merged, because it is default partition #$
+alter table lcd1 merge partitions p4,p5 to p10;
+## error_msg: $# It's not allowed to modify partition when table contain default partition #$
+alter table lcd1 modify partition p1 drop values(('aaa',1));
+  ## error_msg: $# It's not allowed to modify partition when table contain default partition #$
+alter table lcd1 modify partition p1 add values(('aaa',1));
+alter table lcd1 extract to partition pnew1 by hot value(('kkk',2));
+alter table lcd2 extract to partition pnew1 by hot value(('kkk',2));
+alter table lcd1 extract to partition pnew2 by hot value(('cab',2));
+alter table lcd2 extract to partition pnew2 by hot value(('cab',2));
+show full create table lcd1;
+show full create table lcd2;
+

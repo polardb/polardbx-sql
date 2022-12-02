@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.operator.MockExec;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -122,6 +123,7 @@ public class BaseVectorizedExpressionTest {
     @Before
     public void setup() {
         parser = new FastsqlParser();
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
         initOptimizerContext();
         buildTable();
         initTableData();
@@ -152,9 +154,7 @@ public class BaseVectorizedExpressionTest {
 
         OptimizerContext.loadContext(optimizerContext);
 
-        StatisticManager statisticManager = new StatisticManager(APP_NAME, new MockStatisticDatasource());
-
-        optimizerContext.setStatisticManager(statisticManager);
+        StatisticManager.sds = MockStatisticDatasource.getInstance();
 
         OptimizerContext.loadContext(optimizerContext);
     }

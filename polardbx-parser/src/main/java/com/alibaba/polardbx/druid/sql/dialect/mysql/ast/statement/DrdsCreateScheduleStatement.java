@@ -18,17 +18,8 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
-import com.google.common.base.Objects;
-
-import java.util.List;
 
 /**
  * @author guxu
@@ -37,10 +28,12 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
 
     private SQLName name;
     private SQLExpr cronExpr;
+    private SQLExpr paramsExpr;
     private SQLExpr timeZone;
 
     private boolean ifNotExists;
     private boolean forLocalPartition;
+    private boolean forAutoSplitTableGroup;
 
     public DrdsCreateScheduleStatement() {
 
@@ -72,12 +65,17 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
             x.cronExpr = this.cronExpr.clone();
             x.cronExpr.setParent(x);
         }
+        if (this.paramsExpr != null) {
+            x.paramsExpr = this.paramsExpr.clone();
+            x.paramsExpr.setParent(x);
+        }
         if (this.timeZone != null) {
             x.timeZone = this.timeZone.clone();
             x.timeZone.setParent(x);
         }
         x.setIfNotExists(this.isIfNotExists());
         x.setForLocalPartition(this.isForLocalPartition());
+        x.setForAutoSplitTableGroup(this.isForAutoSplitTableGroup());
         return x;
     }
 
@@ -95,6 +93,14 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
 
     public void setCronExpr(final SQLExpr cronExpr) {
         this.cronExpr = cronExpr;
+    }
+
+    public SQLExpr getParamsExpr() {
+        return paramsExpr;
+    }
+
+    public void setParamsExpr(SQLExpr paramsExpr) {
+        this.paramsExpr = paramsExpr;
     }
 
     public SQLExpr getTimeZone() {
@@ -119,5 +125,13 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
 
     public void setForLocalPartition(final boolean forLocalPartition) {
         this.forLocalPartition = forLocalPartition;
+    }
+
+    public boolean isForAutoSplitTableGroup() {
+        return forAutoSplitTableGroup;
+    }
+
+    public void setForAutoSplitTableGroup(boolean forAutoSplitTableGroup) {
+        this.forAutoSplitTableGroup = forAutoSplitTableGroup;
     }
 }

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.splitpartition;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.action.ActionSplitPartition;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
@@ -30,6 +31,7 @@ import org.apache.calcite.sql.SqlRebalance;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Split partition if the partition-size exceed threshold
@@ -54,14 +56,14 @@ public class PolicySplitPartition implements BalancePolicy {
         // iterate each partition-group
         for (TableGroupStat tgStat : stats.getTableGroupStats()) {
             for (PartitionGroupStat pg : tgStat.getPartitionGroups()) {
-                PartitionStat firstPartition = pg.getFirstPartition();
-                if (!supportAutoSplit(firstPartition.getPartitionStrategy())) {
+                PartitionStat largestSizePartition = pg.getLargestSizePartition().get();
+                if (!supportAutoSplit(largestSizePartition.getPartitionStrategy())) {
                     continue;
                 }
-                if (!options.manually && !firstPartition.enableAutoSplit()) {
+                if (!options.manually && !largestSizePartition.enableAutoSplit()) {
                     continue;
                 }
-                if (!needSplit(options, pg)) {
+                if (!needSplit(options, largestSizePartition)) {
                     continue;
                 }
                 if (actions.size() >= options.maxActions) {
@@ -70,8 +72,46 @@ public class PolicySplitPartition implements BalancePolicy {
 
                 List<SplitPoint> spList = splitPartitionGroup(ec, options, pg);
                 if (!spList.isEmpty()) {
-                    actions.add(new ActionSplitPartition(schemaName, pg.getFirstPartition(), spList));
+                    actions.add(
+                        new ActionSplitPartition(schemaName, pg.getLargestSizePartition().get(), spList, stats));
                 }
+            }
+        }
+
+        return actions;
+    }
+
+    @Override
+    public List<BalanceAction> applyToTableGroup(ExecutionContext ec, BalanceOptions options, BalanceStats stats,
+                                                 String schema, String tableGroupName) {
+        List<BalanceAction> actions = new ArrayList<>();
+
+        Optional<TableGroupStat> tableGroupStatOptional = stats.filterTableGroupStat(tableGroupName);
+        if (!tableGroupStatOptional.isPresent()) {
+            return actions;
+        }
+
+        TableGroupStat tableGroupStat = tableGroupStatOptional.get();
+
+        //todo guxu, 这块代码跟上面重复了。applyToPartitionDb应该复用applyToTableGroup
+        for (PartitionGroupStat pg : tableGroupStat.getPartitionGroups()) {
+            PartitionStat largestSizePartition = pg.getLargestSizePartition().get();
+            if (!supportAutoSplit(largestSizePartition.getPartitionStrategy())) {
+                continue;
+            }
+            if (!options.manually && !largestSizePartition.enableAutoSplit()) {
+                continue;
+            }
+            if (!needSplit(options, largestSizePartition)) {
+                continue;
+            }
+            if (actions.size() >= options.maxActions) {
+                break;
+            }
+
+            List<SplitPoint> spList = splitPartitionGroup(ec, options, pg);
+            if (!spList.isEmpty()) {
+                actions.add(new ActionSplitPartition(schema, pg.getLargestSizePartition().get(), spList, stats));
             }
         }
 
@@ -82,19 +122,19 @@ public class PolicySplitPartition implements BalancePolicy {
         return strategy.isRange() || strategy.isHashed();
     }
 
-    private boolean needSplit(BalanceOptions options, PartitionGroupStat stat) {
-        return stat.getTotalDiskSize() > options.maxPartitionSize;
+    public static boolean needSplit(BalanceOptions options, PartitionStat largestSizePartition) {
+        return largestSizePartition.getPartitionDiskSize() > options.maxPartitionSize;
     }
 
     private List<SplitPoint> splitPartitionGroup(ExecutionContext ec,
                                                  BalanceOptions options,
                                                  PartitionGroupStat pg) {
-        PartitionStat partition = pg.getFirstPartition();
+        PartitionStat partition = pg.getLargestSizePartition().get();
         SplitPointBuilder builder;
-        if (SplitPointUtils.supportSampling(partition)) {
-            builder = new SampleBasedSplitPointBuilder(ec);
+        if (SplitPointUtils.supportStatistics(partition)) {
+            builder = new StatisticsBasedSplitPointBuilder(ec);
         } else {
-            builder = new IndexBasedSplitter(ec);
+            throw new TddlNestableRuntimeException("split partition is not supported");
         }
         return builder.buildSplitPoint(pg, options);
     }

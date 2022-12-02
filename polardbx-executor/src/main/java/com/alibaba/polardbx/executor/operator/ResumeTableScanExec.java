@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.StreamBytesSql;
+import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
 import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -26,9 +29,12 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
+import org.bouncycastle.util.Arrays;
 
 import java.util.Iterator;
 import java.util.List;
+
+import static com.alibaba.polardbx.common.utils.GeneralUtil.buildPhysicalQuery;
 
 public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
 
@@ -43,6 +49,7 @@ public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
 
     @Override
     public void addSplit(Split split) {
+        getJdbcByDeletegate(split);
         if (log.isDebugEnabled()) {
             log.debug(context.getTraceId() + ":lv=" + this.logicalView.getRelatedId() + " addSplit:" + split);
         }
@@ -57,7 +64,7 @@ public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
         Preconditions.checkState(isFinish, logicalView.getRelatedId() + " not finish previous stage");
 
         if (consumeResultSet != null) {
-            consumeResultSet.close(true);
+            consumeResultSet.close();
             consumeResultSet = null;
         }
 
@@ -109,11 +116,11 @@ public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
     @Override
     public void doSuspend() {
         if (consumeResultSet != null) {
-            consumeResultSet.close(true);
+            consumeResultSet.close();
             consumeResultSet = null;
         }
 
-        scanClient.cancelAllThreads();
+        scanClient.cancelAllThreads(false);
     }
 
     static class StreamJdbcSplit extends JdbcSplit {
@@ -133,31 +140,15 @@ public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
             super(jdbcSplit);
             this.stepNth = 0;
             this.step = step;
+            this.supportGalaxyPrepare = false;
         }
 
         @Override
-        public String getHintSql(boolean ignore) {
-            if (physicalSql == null) {
-                physicalSql =
-                    PhyTableScanBuilder.buildPhysicalQuery(getTableNames().size(), sqlTemplate, orderBy, null, -1);
-            }
-
-            StringBuilder builder = new StringBuilder();
-            if (hint != null) {
-                builder.append(hint);
-            }
-            if (isContainSelect()) {
-                builder.append("SELECT * FROM ");
-                builder.append("( ").append(physicalSql).append(" )");
-
-                builder.append(UNION_ALIAS);
-            } else {
-                builder.append(physicalSql);
-            }
-
-            builder.append(LIMIT).append(offset()).append(",").append(fetch());
-
-            return builder.toString();
+        public BytesSql getUnionBytesSql(boolean ignore) {
+            byte[] limit = (offset() + "," + fetch()).getBytes();
+            return new StreamBytesSql(sqlTemplate.getBytesArray(), sqlTemplate.isParameterLast(),
+                getTableNames().size(),
+                orderBy == null ? null : orderBy.getBytes(), null, limit, isContainSelect());
         }
 
         protected void increaseFetchNth() {

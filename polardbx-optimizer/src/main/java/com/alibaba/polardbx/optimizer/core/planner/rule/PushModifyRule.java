@@ -41,6 +41,7 @@ import org.apache.calcite.rel.logical.LogicalSort;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyBroadcast;
+import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkOnlineModifyColumnDdl;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyGsi;
 
 /**
@@ -71,10 +72,12 @@ public abstract class PushModifyRule extends RelOptRule {
         final boolean modifyScaleoutTable = !CheckModifyLimitation
             .isAllTablesCouldPushDown(modify, context.getExecutionContext());
 
-        if (modifyBroadcastTable || checkModifyGsi(modify, context.getExecutionContext()) || modifyScaleoutTable) {
+        if (modifyBroadcastTable || checkModifyGsi(modify, context.getExecutionContext()) || modifyScaleoutTable ||
+            (modify.isUpdate() && checkOnlineModifyColumnDdl(modify, context.getExecutionContext()))) {
             // 1. Do not pushdown multi table UPDATE/DELETE modifying broadcast table
             // 2. Do not pushdown UPDATE/DELETE if modifying gsi table
             // 3. Do not pushdown the table which is in scaleout writable phase
+            // 4. Do not pushdown the table which is doing online column ddl
             return false;
         }
 

@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.context.PhyDdlExecutionRecord;
 
 import java.sql.Connection;
 
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SEMICOLON;
 import static com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
 
 public class DdlJobManagerUtils {
@@ -204,7 +205,14 @@ public class DdlJobManagerUtils {
     /**
      * Reset the whole list of physical objects done for a DDL job and also update the progress.
      */
-    public static int resetPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord, String resetPhyTablesInfo) {
+    public static int resetPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord) {
+        // Build new object done list.
+        StringBuilder buf = new StringBuilder();
+        phyDdlExecutionRecord.getPhyObjectsDone().stream()
+            .forEach(phyObjectDone -> buf.append(SEMICOLON).append(phyObjectDone));
+
+        String phyObjectsDoneStr = buf.length() > 0 ? buf.deleteCharAt(0).toString() : "";
+
         final int numPhyTablesDone = phyDdlExecutionRecord.getNumPhyObjectsDone();
         final int numPhyTablesTotal = phyDdlExecutionRecord.getNumPhyObjectsTotal();
 
@@ -215,7 +223,7 @@ public class DdlJobManagerUtils {
 
                 rowsAffected += engineTaskAccessor
                     .updatePhyDone(phyDdlExecutionRecord.getJobId(), phyDdlExecutionRecord.getTaskId(),
-                        resetPhyTablesInfo, true);
+                        phyObjectsDoneStr, true);
 
                 if (numPhyTablesTotal > 0) {
                     int progress = numPhyTablesDone * 100 / numPhyTablesTotal;

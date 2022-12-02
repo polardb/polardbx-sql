@@ -22,6 +22,7 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.calcite.util.Pair;
 import org.junit.Assert;
 import org.junit.Before;
@@ -52,6 +53,7 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_PARTIT
 /**
  * @version 1.0
  */
+@NotThreadSafe
 public class GsiCheckTest extends DDLBaseNewDBTestCase {
 
     private static final String PRIMARY_TABLE_NAME = "gsi_check_primary";
@@ -118,8 +120,10 @@ public class GsiCheckTest extends DDLBaseNewDBTestCase {
             .stream()
             .map(row -> row.get(row.size() - 1))
             .collect(Collectors.toList());
-        System.out.println("Checker: " + result.get(result.size() - 1));
-        Assert.assertTrue(result.get(result.size() - 1).contains("OK"));
+        for (int i = 0; i < result.size(); ++i) {
+            System.out.println("Checker: " + result.get(i));
+        }
+        Assert.assertTrue(result.get(result.size() - 1), result.get(result.size() - 1).contains("OK"));
     }
 
     @Before

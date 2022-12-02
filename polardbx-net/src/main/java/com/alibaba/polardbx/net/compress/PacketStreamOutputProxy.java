@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.net.compress;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.mysql.jdbc.log.LogUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -26,6 +29,7 @@ import java.io.OutputStream;
  * OutputStream直接就是conn的网络部分 Created by simiao on 15-4-17.
  */
 public abstract class PacketStreamOutputProxy extends PacketOutputProxyCommon {
+    private static final Logger logger = LoggerFactory.getLogger(PacketStreamOutputProxy.class);
 
     protected OutputStream out;
 
@@ -176,5 +180,19 @@ public abstract class PacketStreamOutputProxy extends PacketOutputProxyCommon {
          * 对于流式输出，总假设可用
          */
         return true;
+    }
+
+    @Override
+    public void close() {
+        try {
+            if (out != null) {
+                out.close();
+            }
+            if (waitForCompressStream != null) {
+                waitForCompressStream.close();
+            }
+        } catch (IOException e) {
+            logger.error("PacketStreamOutputProxy close failed!", e);
+        }
     }
 }

@@ -30,6 +30,7 @@ import com.alibaba.polardbx.net.packet.StmtPrepareReponseHeaderPacket;
 import com.alibaba.polardbx.net.packet.StmtResetPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
 import com.alibaba.polardbx.net.util.MySQLMessage;
+import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.planmanager.Statement;
 import com.alibaba.polardbx.server.executor.utils.MysqlDefs;
@@ -67,6 +68,10 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerPrepareStatementHandler.class);
     private final ServerConnection source;
+    /**
+     * params in send_long_data are regarded as blob type
+     */
+    private static final short LONG_DATA_TYPE = MysqlDefs.FIELD_TYPE_BLOB;
 
     public ServerPrepareStatementHandler(ServerConnection source) {
         this.source = source;
@@ -98,8 +103,9 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         ByteString sql = ByteString.EMPTY;
         String stmtIdStr = "";
         long affectedRow = 0;
-
         try {
+            c.checkPreparedStmtCount();
+
             StmtPreparePacket spp = new StmtPreparePacket();
             int stmtId = c.getIncStmtId();
             stmtIdStr = Integer.toString(stmtId);
@@ -107,12 +113,10 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
             String javaCharset = CharsetUtil.getJavaCharset(c.getCharset());
             Charset cs = null;
-            if (Charset.isSupported(javaCharset)) {
-                try {
-                    cs = Charset.forName(javaCharset);
-                } catch (Exception ex) {
-                    // do nothing
-                }
+            try {
+                cs = Charset.forName(javaCharset);
+            } catch (Exception ex) {
+                // do nothing
             }
             if (cs == null) {
                 c.writeErrMessage(ErrorCode.ER_UNKNOWN_CHARACTER_SET, "Unknown charset '" + c.getCharset() + "'");
@@ -121,32 +125,21 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
             sql = new ByteString(spp.arg, cs);
 
-            Statement stmt = new Statement(stmtIdStr, sql);
-            PreparedStmtCache preparedStmtCache = c.savePrepare(stmt, true);
-            /**
-             * <pre>
-             * IMPORTANT!!!
-             * Parse raw sql with ? into bind values, here might encounter some parse sql
-             error like
-             * "select * from v_table1 where comment is ? and mydate=?"
-             * which is not supported inside parser at "comment is ?" then this function
-             will throw exception
-             * then return a error packet to mysql connector, but mysql connector will
-             take over it and
-             * create a client side prepared statement rather than server side prepared
-             statement, so the next
-             * execute operation on client side will send by COM_QUERY rather than
-             COM_STMT_EXECUTE.
-             * </pre>
-             */
             boolean ret = source.initOptimizerContext();
             if (!ret) {
                 return;
             }
-
             checkMultiQuery(sql);
 
-            PreStmtMetaData metaData = c.prepareExecute(preparedStmtCache, null);
+            int queryType = ServerParse.parse(sql) & 0xff;
+            if (prepareTCL(queryType, stmtId, stmtIdStr)) {
+                return;
+            }
+
+            Statement stmt = new Statement(stmtIdStr, sql);
+            PreparedStmtCache preparedStmtCache = new PreparedStmtCache(stmt);
+
+            PreStmtMetaData metaData = c.getPreparedMetaData(preparedStmtCache, null);
             if (metaData == null) {
                 return;
             }
@@ -154,7 +147,6 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             List<FieldMetaData> fieldMetaDataList = metaData.getFieldMetaDataList();
             int bindCount = metaData.getParamCount();
             stmt.setPrepareParamCount(bindCount);
-            int queryType = ServerParse.parse(sql) & 0xff;
             // 将table into outfile 转为select * from table into outfile
             if (queryType == ServerParse.TABLE
                 && (sql.indexOf("into outfile") != -1 || sql.indexOf("INTO OUTFILE") != -1)) {
@@ -165,7 +157,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 if (bindCount > 0) { // 暂不支持set xxx=?
                     SQLException t = new SQLException("Prepare does not support sql: " + sql);
                     if (logger.isInfoEnabled()) {
-                        logger.info("prepare's stmt_id:" + stmtIdStr, t);
+                        logger.info("prepare stmt_id:" + stmtIdStr, t);
                     }
                     throw t;
                 }
@@ -185,6 +177,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
             // send back response to client
             packet.write(PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate()));
+            c.savePrepareStmtCache(preparedStmtCache, true);
         } catch (SQLException e) {
             logger.error(e.getMessage());
             c.writeErrMessage(e.getErrorCode(), e.getMessage());
@@ -245,28 +238,31 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
             PreparedStmtCache preparedStmtCache = c.getSmForPrepare().find(stmtId);
             if (preparedStmtCache == null) {
-                throw new SQLException("");
+                // jdbc loadbalance 模式下可能导致prepare-execute不在同一CN节点上
+                throw new SQLException("Prepared statement has been freed");
             }
+            if (executePreparedTCL(preparedStmtCache)) {
+                return;
+            }
+
             Statement stmt = preparedStmtCache.getStmt();
             exeLock = stmt.getExeLock();
             exeLock.lock();
 
             // read the remaining message
-            packet.readAfterStmtId(msg, stmt.getPrepareParamCount(), stmt.getParams().keySet(), stmt.getParamTypes());
+            packet.readAfterStmtId(msg, stmt.getPrepareParamCount(), stmt.getLongDataParams(), stmt.getParamTypes());
 
             // process parameters and modify by Statement
-            stmt.putAllParams(packet.values);
-            // already put all packet.paramType inside readAfterStmtId
-            // stmt.putAllParamTypes();
+            stmt.setParamArray(packet.valuesArr);
 
             List<Pair<Integer, ParameterContext>> params = new ArrayList<>();
             processParameters(stmt, params);// 这里将stmt里的prepare参数转换为优化器所需要的对象格式params
 
             stmt.clearParams();
             if (stmt.isSetQuery()) {
-                SetHandler.handleV2(stmt.getRawSql(), c, -1, false);
+                SetHandler.handleV2(stmt.getRawSql(), c, -1, false, false);
             } else {
-                c.execute(stmt.getRawSql(), preparedStmtCache, params);
+                c.execute(stmt.getRawSql(), preparedStmtCache, params, packet.stmt_id, packet.flags);
             }
         } catch (SQLException e) {
             c.writeErrMessage(e.getErrorCode(), e.getMessage());
@@ -275,6 +271,61 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 exeLock.unlock();
             }
         }
+    }
+
+    /**
+     * Prepare事务控制语句
+     */
+    private boolean prepareTCL(int queryType, int stmtId, String stmtIdStr) throws SQLException {
+        PreparedStmtCache preparedStmtCache = null;
+        if (queryType == ServerParse.BEGIN) {
+            preparedStmtCache = PreparedStmtCache.BEGIN_PREPARE_STMT_CACHE;
+        }
+        if (queryType == ServerParse.COMMIT) {
+            preparedStmtCache = PreparedStmtCache.COMMIT_PREPARE_STMT_CACHE;
+        }
+        if (queryType == ServerParse.ROLLBACK) {
+            preparedStmtCache = PreparedStmtCache.ROLLBACK_PREPARE_STMT_CACHE;
+        }
+        if (preparedStmtCache != null) {
+            ServerConnection c = this.source;
+            MysqlStmtPrepareResponsePacket packet = stmtPrepareResponseToPacket(
+                stmtId,
+                c.getSchema(),
+                new ArrayList<>(),
+                0,
+                c.getCharset(), c);
+
+            // send back response to client
+            packet.write(PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate()));
+            c.savePrepareStmtCache(stmtIdStr, preparedStmtCache, true);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 执行事务控制语句
+     */
+    private boolean executePreparedTCL(PreparedStmtCache preparedStmtCache) {
+        ServerConnection c = this.source;
+        if (preparedStmtCache == PreparedStmtCache.BEGIN_PREPARE_STMT_CACHE) {
+            c.begin();
+            PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+            return true;
+        }
+
+        if (preparedStmtCache == PreparedStmtCache.COMMIT_PREPARE_STMT_CACHE) {
+            c.commit(false);
+            return true;
+        }
+
+        if (preparedStmtCache == PreparedStmtCache.ROLLBACK_PREPARE_STMT_CACHE) {
+            c.rollback(false);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -288,6 +339,12 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             packet.read(data);
             String stmt_id = String.valueOf(packet.stmt_id);
             c.removePreparedCache(stmt_id);
+            // Close and remove the cached result set when statement is closed.
+            c.closeCacheResultSet(packet.stmt_id);
+            if (null != c.getTddlConnection() && null != c.getTddlConnection().getExecutionContext()) {
+                c.getTddlConnection().getExecutionContext().setCursorFetchMode(false);
+            }
+            c.setCursorFetchMode(false);
             // no response for STMT_CLOSE
         } catch (Exception e) {
             c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, e.getMessage());
@@ -320,11 +377,12 @@ public class ServerPrepareStatementHandler implements StatementHandler {
      * http://dev.mysql.com/doc/internals/en/com-stmt-send-long-data.html since no
      * response to client, then client will send two packet which might cause
      * race-condition to go into this function so use synchronized to sync them
+     * <p>
+     * send_long_data is invoked before stmt_execute
      */
     @Override
     public void send_long_data(byte[] data) {
         ServerConnection c = this.source;
-        String fullSql = new String(data);
         Lock exeLock = null;
 
         try {
@@ -337,41 +395,37 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             exeLock = stmt.getExeLock();
             exeLock.lock();
 
-            // here should be reach before execute, so can't find paramTypes but
-            // insert by force
-            // TODO: here must be BLOB? since no type in SEND_LONG_DATA packet
-            stmt.setParamType(packet.param_id, (short) MysqlDefs.FIELD_TYPE_BLOB);
+            if (stmt.getLongDataParams() == null) {
+                stmt.initLongDataParams();
+            }
+            stmt.setParamType(packet.param_id, LONG_DATA_TYPE);
             packet.readAfterAfterParamId(mm, stmt.getParamType(packet.param_id));
             // should append data if exist
-            Object val = stmt.getParam(packet.param_id);
-            if (logger.isInfoEnabled()) {
+            Object val = stmt.getLongDataParam(packet.param_id);
+            if (logger.isDebugEnabled()) {
                 StringBuffer sqlInfo = new StringBuffer();
                 sqlInfo.append("[execute COM_SEND_LONG_DATA]");
                 sqlInfo.append("[stmt_id:").append(stmtId).append("] ");
                 sqlInfo.append("[param_id:").append(packet.param_id).append(", ");
-                sqlInfo.append("value:").append(val).append("]");
-                logger.info(sqlInfo.toString());
+                sqlInfo.append("existed value:").append(val).append("]");
+                logger.debug(sqlInfo.toString());
             }
             if (val == null) {
-                stmt.setParam(packet.param_id, packet.data);
+                stmt.setLongDataParam(packet.param_id, packet.data);
             } else {
                 // append data
                 if (val instanceof byte[] && packet.data instanceof byte[]) {
-                    byte[] v1 = (byte[]) val;
+                    byte[] originVal = (byte[]) val;
                     byte[] v2 = (byte[]) packet.data;
-                    byte[] newobj = new byte[v1.length + v2.length];
-                    System.arraycopy(v1, 0, newobj, 0, v1.length);
-                    System.arraycopy(v2, 0, newobj, v1.length, v2.length);
-                    stmt.setParam(packet.param_id, newobj);
+                    byte[] resultObj = new byte[originVal.length + v2.length];
+                    System.arraycopy(originVal, 0, resultObj, 0, originVal.length);
+                    System.arraycopy(v2, 0, resultObj, originVal.length, v2.length);
+                    stmt.setLongDataParam(packet.param_id, resultObj);
                 } else {
-                    c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "send_long_data duplicate '" + fullSql + "'");
+                    c.writeErrMessage(ErrorCode.ER_PARSE_ERROR,
+                        "send_long_data got wrong value type, current data is: " + " '" + new String(data) + "'");
                     return;
                 }
-            }
-
-            if (stmt.getParams() == null || stmt.getParams().size() < 1) {
-                c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "Parse '" + fullSql + "'");
-                return;
             }
 
             // no response
@@ -384,15 +438,27 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         }
     }
 
-    /**
-     * todo 要考虑动态参数位置进行绑定
-     */
+    @Override
+    public void fetchData(byte[] data) {
+        ServerConnection c = this.source;
+
+        MySQLMessage mm = new MySQLMessage(data);
+        mm.position(5);
+        int stmtId = mm.readInt();
+        int numRows = mm.readInt();
+
+        c.fetchData(stmtId, numRows);
+    }
+
     private void processParameters(Statement stmt, List<Pair<Integer, ParameterContext>> params) throws SQLException {
-        if (stmt.getPrepareParamCount() > stmt.getParamTypes().size()) {
-            throw new SQLException("Parameter is not enough");
+        int prepareParamCount = stmt.getPrepareParamCount();
+        if (prepareParamCount > 0) {
+            if (stmt.getParams() == null || stmt.getParams().size() < prepareParamCount) {
+                throw new SQLException("Parameter is not enough");
+            }
         }
 
-        for (int i = 0; i < stmt.getPrepareParamCount(); i++) {
+        for (int i = 0; i < prepareParamCount; i++) {
             int paramIndex = i + 1;
             /**
              * use exact execute first packet data type to extract incoming data and always
@@ -470,7 +536,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         resp.paramPackets = new FieldPacket[resp.head.num_params];
         for (int i = 0; i < paramCounts; i++) {
             resp.paramPackets[i] = new FieldPacket();
-            resp.paramPackets[i].catalog = StringUtil.encode("def", charset);
+            resp.paramPackets[i].catalog = StringUtil.encode(FieldPacket.DEFAULT_CATALOG_STR, charset);
             resp.paramPackets[i].db = null;
             resp.paramPackets[i].table = null;
             resp.paramPackets[i].orgTable = null;
@@ -508,7 +574,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         for (FieldMetaData res : fieldMetaDataList) {
             resp.fieldPackets[i] = new FieldPacket();
             resp.fieldPackets[i].db = StringUtil.encode(db, charset);
-            resp.fieldPackets[i].catalog = StringUtil.encode("def", charset);
+            resp.fieldPackets[i].catalog = StringUtil.encode(FieldPacket.DEFAULT_CATALOG_STR, charset);
             resp.fieldPackets[i].table = StringUtil.encode(res.getTableName(), charset);
             resp.fieldPackets[i].orgTable = StringUtil.encode(res.getTableOriginName(), charset);
             resp.fieldPackets[i].name = StringUtil.encode(res.getFieldName(), charset);
@@ -530,33 +596,6 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         }
 
         return resp;
-    }
-
-    private static long getProperColumnSize(long columnSize) {
-        return columnSize < Field.DEFAULT_COLUMN_SIZE ? Field.DEFAULT_COLUMN_SIZE : columnSize + 1;
-    }
-
-    /**
-     * Refers to
-     * http://dev.mysql.com/doc/internals/en/com-query-response.html#packet
-     * -Protocol::ColumnDefinition
-     */
-    private static byte toDecimal(DataType type) {
-        byte decimal = 0;
-
-        if (DataTypeUtil.isStringType(type)
-            || DataTypeUtil.isUnderLongType(type)
-            || DataTypeUtil.equalsSemantically(DataTypes.ULongType, type)) {
-            decimal = 00;
-        } else if (DataTypeUtil.equalsSemantically(DataTypes.DoubleType, type)
-            || DataTypeUtil.equalsSemantically(DataTypes.FloatType, type)) {
-            // not clear what's dynamic string
-            decimal = 0x1f;
-        } else {
-            // TODO: not clear 0x00 to 0x51 for decimals
-        }
-
-        return decimal;
     }
 
     /**

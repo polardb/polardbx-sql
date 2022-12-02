@@ -39,6 +39,7 @@ import org.apache.calcite.sql.SqlNode;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -88,15 +89,24 @@ public class DrdsViewExpander implements RelOptTable.ToRelContext {
         plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_DIRECT_PLAN, false);
         ExecutionContext executionContext = plannerContext.getExecutionContext();
 
+        SqlConverter viewSqlConverter = SqlConverter.getInstance(row.getSchemaName(), executionContext);
+
         if (SystemTableView.Row.isVirtual(queryString)) {
             VirtualView virtualView =
                 VirtualView.create(getCluster(), SystemTableView.Row.getVirtualViewType(queryString));
             return RelRoot.of(virtualView, SqlKind.VIRTUAL_VIEW);
         } else if (row.getPlan() != null && row.getPlanType() != null) {
-            List<PrivilegeVerifyItem> originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            List<PrivilegeVerifyItem> originalItems = null;
+            if (executionContext.getPrivilegeContext() != null) {
+                originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
+            }
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            }
             SqlNode ast = new FastsqlParser().parse(queryString, executionContext).get(0);
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
+            }
             if (row.isMppPlanType()) {
                 plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, true);
             } else {
@@ -122,20 +132,34 @@ public class DrdsViewExpander implements RelOptTable.ToRelContext {
                 throw e;
             }
         } else if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CROSS_VIEW_OPTIMIZE)) {
-            List<PrivilegeVerifyItem> originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            List<PrivilegeVerifyItem> originalItems = null;
+            if (executionContext.getPrivilegeContext() != null) {
+                originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
+            }
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            }
             SqlNode ast = new FastsqlParser().parse(queryString, executionContext).get(0);
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
+            }
             RelNode plan = Planner.getInstance().getPlan(ast, plannerContext).getPlan();
             ViewPlan viewPlan = ViewPlan.create(getCluster(), relOptTableImpl, plan);
             return RelRoot.of(viewPlan, ast.getKind());
         } else {
-            List<PrivilegeVerifyItem> originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            List<PrivilegeVerifyItem> originalItems = null;
+            if (executionContext.getPrivilegeContext() != null) {
+                originalItems = executionContext.getPrivilegeContext().getPrivilegeVerifyItems();
+            }
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(null);
+            }
             SqlNode ast = new FastsqlParser().parse(queryString, executionContext).get(0);
-            executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
-            SqlNode validatedNode = sqlConverter.validate(ast);
-            return RelRoot.of(sqlConverter.toRel(validatedNode, getCluster()), ast.getKind());
+            if (executionContext.getPrivilegeContext() != null) {
+                executionContext.getPrivilegeContext().setPrivilegeVerifyItems(originalItems);
+            }
+            SqlNode validatedNode = viewSqlConverter.validate(ast);
+            return RelRoot.of(viewSqlConverter.toRel(validatedNode, getCluster()), ast.getKind());
         }
     }
 

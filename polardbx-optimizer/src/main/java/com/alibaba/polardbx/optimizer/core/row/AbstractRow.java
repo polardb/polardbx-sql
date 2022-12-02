@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.row;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -213,9 +214,8 @@ public abstract class AbstractRow implements Row {
     }
 
     @Override
-    public byte[] getBytes(int index, String encoding) {
+    public byte[] getBytes(DataType fromType, int index, String encoding) {
         Object o = this.getObject(index);
-        DataType fromType = typeOf(index);
 
         if (FunctionUtils.isNull(o)) {
             return null;
@@ -246,7 +246,10 @@ public abstract class AbstractRow implements Row {
             return o.toString().getBytes();
         }
 
-        if (o instanceof BigInteger) {
+        // just for big bit
+        if (o instanceof BigInteger
+            && fromType != null
+            && fromType.fieldType() == MySQLStandardFieldType.MYSQL_TYPE_BIT) {
             final ColumnMeta columnMeta = this.cursorMeta.getColumns().get(index);
             int precision = 64;
             if (columnMeta != null) {
@@ -319,6 +322,12 @@ public abstract class AbstractRow implements Row {
         } catch (UnsupportedEncodingException e) {
             return str.getBytes();
         }
+    }
+
+    @Override
+    public byte[] getBytes(int index, String encoding) {
+        DataType fromType = typeOf(index);
+        return getBytes(fromType, index, encoding);
     }
 
     @Override

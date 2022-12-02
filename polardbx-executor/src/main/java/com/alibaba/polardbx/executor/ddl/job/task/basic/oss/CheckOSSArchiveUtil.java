@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -40,6 +41,7 @@ import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Optional;
 
 /**
  * check whether the ddl should unarchive oss table first
@@ -224,5 +226,34 @@ public class CheckOSSArchiveUtil {
             e.printStackTrace();
             throw GeneralUtil.nestedException(e);
         }
+    }
+
+    /**
+     * get the archive table schema and name of the primary table
+     * @param schemaName the schema of primary table
+     * @param tableName the name of primary table
+     * @return the schema, table pair. null if any of schema/table is empty
+     */
+    public static Optional<Pair<String, String>> getArchive(String schemaName, String tableName) {
+        if (StringUtils.isEmpty(tableName)) {
+            return Optional.empty();
+        }
+        OptimizerContext oc = OptimizerContext.getContext(schemaName);
+        if (oc == null) {
+            return Optional.empty();
+        }
+        TableMeta tableMeta = oc.getLatestSchemaManager().getTable(tableName);
+        if (tableMeta == null) {
+            return Optional.empty();
+        }
+        LocalPartitionDefinitionInfo definitionInfo = tableMeta.getLocalPartitionDefinitionInfo();
+        if (definitionInfo == null) {
+            return Optional.empty();
+        }
+        if (StringUtils.isEmpty(definitionInfo.getArchiveTableSchema())
+            || StringUtils.isEmpty(definitionInfo.getArchiveTableName())) {
+            return Optional.empty();
+        }
+        return Optional.of(new Pair<>(definitionInfo.getArchiveTableSchema(), definitionInfo.getArchiveTableName()));
     }
 }

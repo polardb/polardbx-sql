@@ -119,6 +119,21 @@ public class AsyncPageFileChannelWriter {
         }
     }
 
+    public void flush() throws IOException {
+        synchronized (lock) {
+            checkIOException();
+            while (pendingRequest.size() > 0) {
+                try {
+                    this.lock.wait(100);
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
+                checkIOException();
+            }
+            output.flush();
+        }
+    }
+
     public ListenableFuture<?> writePage(Chunk page) throws IOException {
         return addRequest(new PageWriteRequest(page), page.estimateSize());
     }

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.ErrorCode;
-import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.optimizer.planmanager.Statement;
 import com.alibaba.polardbx.optimizer.planmanager.StatementMap;
@@ -30,6 +29,8 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import org.apache.commons.collections.CollectionUtils;
+import com.alibaba.polardbx.server.QueryResultHandler;
 
 import java.sql.SQLException;
 import java.sql.SQLSyntaxErrorException;
@@ -48,7 +49,8 @@ public final class ExecuteHandler {
     /**
      * execute stmt1 using @a,@b;
      */
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
+                              QueryResultHandler handler) {
         try {
             List<Pair<Integer, ParameterContext>> params = new ArrayList<>();
             ByteString fullSql = parse(stmt, c.getSmForQuery(), c.getUserDefVariables(), params);
@@ -57,7 +59,7 @@ public final class ExecuteHandler {
              * since here should be a pure select like SQL, otherwise it will
              * run into binary result logic which only for COM_STMT_EXECUTE.
              */
-            c.execute(fullSql, hasMore, false, params);
+            c.execute(fullSql, hasMore, false, params, null, handler);
         } catch (SQLException e) {
             logger.error(e);
             c.writeErrMessage(e.getErrorCode(), e.getMessage());
@@ -110,7 +112,7 @@ public final class ExecuteHandler {
             }
             return fullSql;
         } catch (Exception e) {
-            throw new SQLSyntaxErrorException("execute error", e);
+            throw new SQLSyntaxErrorException("execute phase error", e);
         }
     }
 
@@ -149,7 +151,7 @@ public final class ExecuteHandler {
              * compatible for both methods, we will check if the current param
              * is empty. for COM_STMT_PREPARE, should not use set variables.
              */
-            if (stmt.getParams().size() > 0) {
+            if (CollectionUtils.isNotEmpty(stmt.getParams())) {
                 obj = stmt.getParam(i);
             }
 
@@ -159,7 +161,7 @@ public final class ExecuteHandler {
              * then the optimizer has the capability to recognize it.
              */
             params.add(new Pair<>(paramIndex, new ParameterContext(ParameterMethod.setObject1,
-                new Object[] {paramIndex, Statement.preprecessStringValue(obj)})));
+                new Object[] {paramIndex, Statement.processStringValue(obj)})));
         }
     }
 }

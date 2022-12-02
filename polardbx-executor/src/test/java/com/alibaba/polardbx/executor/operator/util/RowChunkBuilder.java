@@ -58,6 +58,12 @@ public class RowChunkBuilder {
     }
 
     public RowChunkBuilder row(Object... values) {
+        if (values == null) {
+            checkArgument(1 == builders.size(), "Expected %s values, but got %s", builders.size(), 1);
+            append(0, null);
+            rowCount++;
+            return this;
+        }
         checkArgument(values.length == builders.size(), "Expected %s values, but got %s", builders.size(),
             values.length);
 

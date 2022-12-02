@@ -16,17 +16,20 @@
 
 package com.alibaba.polardbx.sequence.impl;
 
-import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
+import com.alibaba.polardbx.sequence.Sequence;
+import com.alibaba.polardbx.sequence.exception.SequenceException;
 
 /**
- * @author chensr 2016年10月19日 下午5:17:03
+ * @author chensr 2016/10/19 17:17:03
  * @since 5.0.0
  */
 public abstract class BaseSequence implements Sequence {
 
     protected String name;
     protected Type type;
+
+    protected volatile long currentValue;
 
     public String getName() {
         return name;
@@ -42,6 +45,16 @@ public abstract class BaseSequence implements Sequence {
 
     public void setType(Type type) {
         this.type = type;
+    }
+
+    @Override
+    public long currValue() throws SequenceException {
+        return currentValue;
+    }
+
+    @Override
+    public void updateValue(long value) {
+        // Nothing updated by default.
     }
 
 }

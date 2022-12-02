@@ -16,34 +16,30 @@
 
 package com.alibaba.polardbx.executor.planmanagement;
 
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
+import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
+import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.DeleteBaselineSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.UpdateBaselineSyncAction;
-import com.alibaba.polardbx.executor.sync.UpdatePlanInfoSyncAction;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.IBaselineSyncController;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.Maps;
+
+import java.util.List;
+import java.util.Map;
 
 public class BaselineSyncController implements IBaselineSyncController {
 
     @Override
-    public void updatePlanInfo(String schemaName, int originPlanId, BaselineInfo baselineInfo, PlanInfo planInfo) {
-        SyncManagerHelper.sync(
-            new UpdatePlanInfoSyncAction(
-                schemaName,
-                originPlanId,
-                planInfo,
-                baselineInfo.getParameterSql()),
-            schemaName);
-    }
-
-    @Override
-    public void updateBaseline(String schemaName, BaselineInfo baselineInfo) {
-        SyncManagerHelper.sync(
-            new UpdateBaselineSyncAction(
-                schemaName,
-                baselineInfo),
-            schemaName);
+    public void updateBaselineSync(String schemaName, BaselineInfo baselineInfo) {
+        Map<String, List<String>> baselineMap = Maps.newConcurrentMap();
+        List<String> baselineJson = Lists.newArrayList();
+        baselineJson.add(BaselineInfo.serializeBaseInfoToJson(baselineInfo));
+        baselineMap.put(schemaName, baselineJson);
+        SyncManagerHelper.sync(new BaselineUpdateSyncAction(baselineMap));
     }
 
     @Override
@@ -51,7 +47,6 @@ public class BaselineSyncController implements IBaselineSyncController {
         SyncManagerHelper.sync(
             new DeleteBaselineSyncAction(
                 schemaName,
-                baselineInfo.getId(),
                 baselineInfo.getParameterSql()),
             schemaName);
     }
@@ -61,9 +56,17 @@ public class BaselineSyncController implements IBaselineSyncController {
         SyncManagerHelper.sync(
             new DeleteBaselineSyncAction(
                 schemaName,
-                baselineInfo.getId(),
                 baselineInfo.getParameterSql(),
                 planInfo.getId()),
             schemaName);
+    }
+
+    @Override
+    public String scheduledJobsInfo() {
+        List<ScheduledJobsRecord> jobs =
+            ScheduledJobsManager.getScheduledJobResultByScheduledType(ScheduledJobExecutorType.BASELINE_SYNC.name());
+        StringBuilder stringBuilder = new StringBuilder();
+        jobs.stream().forEach(j -> stringBuilder.append(j.toString()).append(";"));
+        return stringBuilder.toString();
     }
 }

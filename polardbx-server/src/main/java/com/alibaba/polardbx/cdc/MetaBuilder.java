@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.cdc;
 
-import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.cdc.entity.LogicMeta;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -44,6 +43,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.server.conn.InnerConnection;
 import com.google.common.collect.Lists;
+import lombok.extern.slf4j.Slf4j;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -51,6 +51,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -60,6 +61,7 @@ import java.util.stream.Collectors;
 /**
  * Created by ziyang.lb
  **/
+@Slf4j
 public class MetaBuilder {
     private static volatile String lowerCaseFlag;
 
@@ -131,6 +133,102 @@ public class MetaBuilder {
             throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, "fetch the DDL of " + phyTableName
                 + " on " + groupName + " failed. Caused by: " + e.getMessage(), e);
         }
+    }
+
+    static void checkLogicTableMeta(String logicSchema, LogicMeta.LogicTableMeta tableMeta) {
+        int count = 0;
+        while (true) {
+            try {
+                checkLogicTableMetaInternal(logicSchema, tableMeta);
+                break;
+            } catch (Throwable t) {
+                if (count < 3) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                    }
+                } else {
+                    throw t;
+                }
+                count++;
+            }
+        }
+    }
+
+    private static void checkLogicTableMetaInternal(String logicSchema, LogicMeta.LogicTableMeta tableMeta) {
+        Map<String, List<LogicMeta.PhySchema>> groupPhySchema =
+            tableMeta.getPhySchemas().stream().collect(Collectors.groupingBy(LogicMeta.PhySchema::getStorageInstId));
+        groupPhySchema.forEach((k, v) -> {
+            if (v == null || v.isEmpty()) {
+                return;
+            }
+            // 进行一下随机验证，看拓扑是否有问题
+            ArrayList<LogicMeta.PhySchema> list = new ArrayList<>(v);
+            Collections.shuffle(list);
+            LogicMeta.PhySchema phySchema = list.get(0);
+            if (phySchema.getPhyTables() != null && !phySchema.getPhyTables().isEmpty()) {
+                String phyTableName = phySchema.getPhyTables().get(0);
+                try (Connection conn = getPhyConnection(logicSchema, phySchema.getGroup())) {
+                    assert conn != null;
+                    try (PreparedStatement ps = conn
+                        .prepareStatement("SHOW CREATE TABLE `" + escape(phyTableName) + "`")) {
+                        ps.executeQuery();
+                    }
+                } catch (SQLException e) {
+                    log.error("check logic table meta failed for table  " + phyTableName + " in group " + phySchema
+                        .getGroup() + ", detail info is " + JSONObject.toJSONString(tableMeta));
+                    throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC,
+                        "check logic table meta failed for table  " + phyTableName + " in group " + phySchema
+                            .getGroup(), e);
+                }
+            }
+        });
+    }
+
+    static void checkLogicDbMeta(String logicSchema, LogicMeta.LogicDbMeta dbMeta) {
+        int count = 0;
+        while (true) {
+            try {
+                checkLogicDbMetaInternal(logicSchema, dbMeta);
+                break;
+            } catch (Throwable t) {
+                if (count < 3) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                    }
+                } else {
+                    throw t;
+                }
+                count++;
+            }
+        }
+    }
+
+    private static void checkLogicDbMetaInternal(String logicSchema, LogicMeta.LogicDbMeta dbMeta) {
+        Map<String, List<LogicMeta.PhySchema>> groupPhySchema =
+            dbMeta.getPhySchemas().stream().collect(Collectors.groupingBy(LogicMeta.PhySchema::getStorageInstId));
+        groupPhySchema.forEach((k, v) -> {
+            if (v == null || v.isEmpty()) {
+                return;
+            }
+            // 每个storage进行一下随机验证，看拓扑是否有问题
+            ArrayList<LogicMeta.PhySchema> list = new ArrayList<>(v);
+            Collections.shuffle(list);
+            LogicMeta.PhySchema phySchema = list.get(0);
+            try (Connection conn = getPhyConnection(logicSchema, phySchema.getGroup())) {
+                if (conn == null) {
+                    throw new TddlNestableRuntimeException(
+                        "check logic db meta failed with group " + phySchema.getGroup());
+                }
+            } catch (SQLException e) {
+                log.error("check logic db meta failed with group " + phySchema.getGroup() + ", detail info is : "
+                    + JSONObject.toJSONString(dbMeta));
+                throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC,
+                    "check logic db meta failed with group " + phySchema.getGroup() + ", detail info is : "
+                        + JSONObject.toJSONString(dbMeta), e);
+            }
+        });
     }
 
     private static Connection getPhyConnection(String schemaName, String groupName)

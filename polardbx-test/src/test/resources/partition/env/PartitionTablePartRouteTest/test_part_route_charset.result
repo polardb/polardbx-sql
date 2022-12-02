@@ -22,6 +22,17 @@ PARTITION BY RANGE COLUMNS (c) (
 	PARTITION p1 VALUES LESS THAN (0xCAC0BDE7C8CBC3F1),
 	PARTITION p2 VALUES LESS THAN MAXVALUE
 );
+CREATE TABLE IF NOT EXISTS rc_tbl_gbk_idx (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY i_c (c)
+)
+PARTITION BY RANGE COLUMNS (c) (
+	PARTITION p0 VALUES LESS THAN (0xCAC0BDE7),
+	PARTITION p1 VALUES LESS THAN (0xCAC0BDE7C8CBC3F1),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
 SET NAMES utf8;
 SHOW CREATE TABLE rc_tbl_utf8;
 Table,Create Table
@@ -47,6 +58,18 @@ PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk_idx;
+Table,Create Table
+rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `i_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
 SET NAMES gbk;
 SHOW CREATE TABLE rc_tbl_utf8;
 Table,Create Table
@@ -67,6 +90,18 @@ rc_tbl_gbk,CREATE TABLE `rc_tbl_gbk` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) CHARACTER SET gbk NOT NULL,
 	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk_idx;
+Table,Create Table
+rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `i_c` (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
@@ -95,11 +130,30 @@ SET NAMES gbk;
 INSERT INTO rc_tbl_gbk (a, b, c)
 VALUES (5, '2012-12-11 23:00:00', 0xCAC0BDE7),
 	(6, '2012-12-12 01:00:00', 0xCAC0BDE7C8CBC3F1);
+INSERT INTO rc_tbl_gbk_idx (a, b, c)
+VALUES (5, '2012-12-11 23:00:00', 0xCAC0BDE7),
+	(6, '2012-12-12 01:00:00', 0xCAC0BDE7C8CBC3F1);
 SELECT a, b, c
 FROM rc_tbl_gbk
 WHERE c = 0xCAC0BDE7;
 a,b,c
 5,2012-12-11 23:00:00.0,世界
+SELECT a, b, c
+FROM rc_tbl_gbk_idx
+WHERE c = 0xCAC0BDE7;
+a,b,c
+5,2012-12-11 23:00:00.0,世界
+SET NAMES utf8;
+SELECT a, b, hex(c)
+FROM rc_tbl_gbk
+WHERE c = '世界';
+a,b,hex(c)
+5,2012-12-11 23:00:00.0,CAC0BDE7
+SELECT a, b, hex(c)
+FROM rc_tbl_gbk_idx
+WHERE c = '世界';
+a,b,hex(c)
+5,2012-12-11 23:00:00.0,CAC0BDE7
 SET NAMES utf8;
 SELECT a, part_route('', 'rc_tbl_utf8', c)
 FROM rc_tbl_utf8
@@ -115,7 +169,7 @@ ORDER BY a;
 Logical ExecutionPlan
 Project(hex(c)="hex(c)")
   MergeSort(sort="a ASC")
-    LogicalView(tables="rc_tbl_utf8[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_utf8` AS `rc_tbl_utf8` WHERE ((`c` = ?) OR (`c` = ?)) ORDER BY `a`")
+    LogicalView(tables="rc_tbl_utf8[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_utf8` AS `rc_tbl_utf8` WHERE ((`c` = CONVERT(? USING 'UTF8')) OR (`c` = CONVERT(? USING 'UTF8'))) ORDER BY `a`")
 SELECT part_route('', 'rc_tbl_utf8', 0xE4B896E7958C);
 part_route('', 'rc_tbl_utf8', 0xE4B896E7958C)
 p1
@@ -143,7 +197,7 @@ ORDER BY a;
 Logical ExecutionPlan
 Project(hex(c)="hex(c)")
   MergeSort(sort="a ASC")
-    LogicalView(tables="rc_tbl_gbk[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_gbk` AS `rc_tbl_gbk` WHERE ((`c` = ?) OR (`c` = ?)) ORDER BY `a`")
+    LogicalView(tables="rc_tbl_gbk[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_gbk` AS `rc_tbl_gbk` WHERE ((`c` = CONVERT(? USING 'GBK')) OR (`c` = CONVERT(? USING 'GBK'))) ORDER BY `a`")
 SELECT part_route('', 'rc_tbl_gbk', 0xCAC0BDE7);
 part_route('', 'rc_tbl_gbk', 0xCAC0BDE7)
 p1

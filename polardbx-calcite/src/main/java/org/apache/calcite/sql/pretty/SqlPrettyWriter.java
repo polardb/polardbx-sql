@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.sql.pretty;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import org.apache.calcite.avatica.util.Spaces;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
@@ -34,6 +35,8 @@ import org.slf4j.LoggerFactory;
 import java.io.StringWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -147,6 +150,7 @@ public class SqlPrettyWriter implements SqlWriter {
   private boolean keywordsLowerCase;
   private Bean bean;
   private boolean quoteAllIdentifiers;
+  private boolean disableQuoteIdentifiers = false;
   private int indentation;
   private boolean clauseStartsLine;
   private boolean selectListItemsOnSeparateLines;
@@ -220,6 +224,14 @@ public class SqlPrettyWriter implements SqlWriter {
 
   public boolean isQuoteAllIdentifiers() {
     return quoteAllIdentifiers;
+  }
+
+  public boolean isDisableQuoteIdentifiers() {
+    return disableQuoteIdentifiers;
+  }
+
+  public void setDisableQuoteIdentifiers(boolean disableQuoteIdentifiers) {
+    this.disableQuoteIdentifiers = disableQuoteIdentifiers;
   }
 
   public boolean isClauseStartsLine() {
@@ -887,10 +899,39 @@ public class SqlPrettyWriter implements SqlWriter {
     charCount += is.length();
   }
 
+  private BytesSql.BytesSqlBuilder bytesSqlBuilder = BytesSql.BytesSqlBuilder.getInstance();
+  private int lastDynamicIndex=0;
+
+  @Override
+  public void dynamicParam() {
+    whiteSpace();
+    if(sw.getBuffer().length()!=0){
+      bytesSqlBuilder.write(sw.getBuffer().subSequence(lastDynamicIndex, sw.getBuffer().length()).toString().getBytes(), StandardCharsets.UTF_8);
+    }
+    sw.write('?');
+    lastDynamicIndex = sw.getBuffer().length();
+  }
+
+  @Override
+  public void lastDynamicParam() {
+    if(lastDynamicIndex == sw.getBuffer().length()){
+      bytesSqlBuilder.setParameterLast();
+      return;
+    }
+    if(sw.getBuffer().length()!=0){
+      bytesSqlBuilder.write(sw.getBuffer().subSequence(lastDynamicIndex, sw.getBuffer().length()).toString().getBytes(), StandardCharsets.UTF_8);
+    }
+    lastDynamicIndex = sw.getBuffer().length();
+  }
+
+  public BytesSql.BytesSqlBuilder getBytesSqlBuilder() {
+    return bytesSqlBuilder;
+  }
+
   public void identifier(String name) {
     String qName = name;
-    if (isQuoteAllIdentifiers()
-        || dialect.identifierNeedsToBeQuoted(name)) {
+    if (!disableQuoteIdentifiers && (isQuoteAllIdentifiers()
+        || dialect.identifierNeedsToBeQuoted(name))) {
       qName = dialect.quoteIdentifier(name);
     }
     maybeWhitespace(qName);
@@ -1185,6 +1226,10 @@ public class SqlPrettyWriter implements SqlWriter {
       names.addAll(setterMethods.keySet());
       return names.toArray(new String[names.size()]);
     }
+  }
+
+  public Deque<FrameImpl> getListStack() {
+    return listStack;
   }
 }
 

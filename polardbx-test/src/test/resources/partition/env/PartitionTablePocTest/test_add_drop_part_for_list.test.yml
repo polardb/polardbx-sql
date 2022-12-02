@@ -9,13 +9,14 @@ partition by list(a)
   partition p2 values in (100,101),
   partition p3 values in (200,201)
 );
-alter table tbl_list1 set tablegroup=new_tg_for_add_part2;
+alter table tbl_list1 set tablegroup=new_tg_for_add_part2 force;
 create table if not exists tbl_list2 (a int not null,primary key (`a`))
 partition by list(a)
 ( partition p1 values in (10,11),
   partition p2 values in (100,101),
   partition p3 values in (200,201)
 );
+alter table tbl_list2 set tablegroup=new_tg_for_add_part2 force;
 
 ## test insert into data into p1,p2,p3
 insert into tbl_list1 values (10),(100),(200);

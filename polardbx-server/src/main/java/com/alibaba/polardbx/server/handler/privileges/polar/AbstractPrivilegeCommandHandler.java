@@ -65,8 +65,6 @@ public abstract class AbstractPrivilegeCommandHandler implements PrivilegeComman
         beforeHandle();
         doHandle();
         afterHandle();
-        PacketOutputProxyFactory.getInstance().createProxy(getServerConn())
-            .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
     }
 
     public ByteString getSql() {

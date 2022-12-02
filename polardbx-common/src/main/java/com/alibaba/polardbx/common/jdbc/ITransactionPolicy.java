@@ -36,6 +36,8 @@ public interface ITransactionPolicy {
 
         ALLOW_READ_CROSS_DB,
 
+        COBAR_STYLE,
+
         MPP_READ_ONLY_TRANSACTION,
 
         AUTO_COMMIT;
@@ -76,6 +78,7 @@ public interface ITransactionPolicy {
                 TransactionClass.TSO);
     }
 
+    Free FREE = new Free();
     AllowRead ALLOW_READ_CROSS_DB = new AllowRead();
     NoTransaction NO_TRANSACTION = new NoTransaction();
     DefaultPolicy XA = new DefaultPolicy(TransactionClass.XA);
@@ -85,6 +88,23 @@ public interface ITransactionPolicy {
 
     default TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard) {
         return getTransactionType(isAutoCommit, isReadOnly);
+    }
+
+    class Free implements ITransactionPolicy {
+
+        @Override
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
+            if (isAutoCommit) {
+                return TransactionClass.AUTO_COMMIT;
+            }
+
+            return TransactionClass.COBAR_STYLE;
+        }
+
+        @Override
+        public String toString() {
+            return "FREE";
+        }
     }
 
     class AllowRead implements ITransactionPolicy {
@@ -179,16 +199,16 @@ public interface ITransactionPolicy {
         switch (name.toUpperCase()) {
         case "BEST_EFFORT":
         case "2PC":
-        case "FLEXIBLE":
-
+        case "FLEXIBLE": // to keep compatible
         case "XA":
             return ITransactionPolicy.XA;
         case "TSO":
             return ITransactionPolicy.TSO;
+        case "FREE":
+            return ITransactionPolicy.FREE;
         case "ALLOW_READ_CROSS_DB":
         case "ALLOW_READ":
             return ITransactionPolicy.ALLOW_READ_CROSS_DB;
-        case "FREE":
         case "NO_TRANSACTION":
             return ITransactionPolicy.NO_TRANSACTION;
         default:

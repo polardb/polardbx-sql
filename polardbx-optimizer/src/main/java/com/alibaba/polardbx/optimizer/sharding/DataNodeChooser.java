@@ -73,6 +73,7 @@ public class DataNodeChooser {
         List<List<TargetDB>> result = new LinkedList<>();
         Map<String, Object> calcParams = new HashMap<>();
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
 
         if (dne instanceof LogicalView) {
             final LogicalView logicalView = (LogicalView) dne;
@@ -176,7 +177,7 @@ public class DataNodeChooser {
                 List<List<TargetDB>> result = new LinkedList<>();
                 for (int tableIndex = 0; tableIndex < logicalView.getTableNames().size(); tableIndex++) {
                     String logicalTable = logicalView.getTableNames().get(tableIndex);
-                    RelShardInfo tableShardInfo = logicalView.getRelShardInfo(tableIndex);
+                    RelShardInfo tableShardInfo = logicalView.getRelShardInfo(tableIndex, executionContext);
                     if (!ruleManager.getPartitionInfoManager().isNewPartDbTable(logicalTable)) {
                         final Map<String, Comparative> comparative = tableShardInfo.getAllComps();
                         final Map<String, Comparative> fullComparative = tableShardInfo.getAllFullComps();
@@ -186,6 +187,7 @@ public class DataNodeChooser {
                         calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
                         calcParams.put(CalcParamsAttribute.COM_DB_TB, stringMapMap);
                         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+                        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
 
                         /**
                          * 计算分片
@@ -216,14 +218,17 @@ public class DataNodeChooser {
                 Map<String, Object> calcParams = new HashMap<>();
                 calcParams.put(CalcParamsAttribute.COM_DB_TB, fullCompInfo);
                 calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
-
-                Map<String, Comparative> comparativeOfLv = logicalView.getRelShardInfo().getAllComps();
+                calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
+//                Map<String, Comparative> comparativeOfLv = logicalView.getRelShardInfo(executionContext).getAllComps();
+                Map<String, Comparative> comparativeOfLv = planShardInfo.getRelShardInfo(logicalView.getSchemaName(),
+                    logicalView.getLogicalTableName()).getAllComps();
                 if (extraCmd != null) {
                     Boolean shardForExtraDb = (Boolean) extraCmd.get("shardForExtraDb");
                     if (shardForExtraDb != null) {
                         calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, shardForExtraDb);
                     }
                 }
+
                 List<TargetDB> shard = ruleManager.shard(logicalView.getLogicalTableName(),
                     true,
                     forceAllowFullTableScan,
@@ -244,6 +249,7 @@ public class DataNodeChooser {
 
         Map<String, Object> calcParams = new HashMap<>(1);
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
 
         List<TargetDB> shards = OptimizerContext.getContext(schemaName).getRuleManager()
             .shard(tableName, true, true, null, param, calcParams, executionContext);

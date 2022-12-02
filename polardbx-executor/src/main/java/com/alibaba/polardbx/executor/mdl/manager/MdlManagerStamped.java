@@ -30,7 +30,7 @@ import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.lock.MdlLockStamped;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

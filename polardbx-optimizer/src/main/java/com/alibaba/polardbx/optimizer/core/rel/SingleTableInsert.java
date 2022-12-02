@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.primitives.Bytes;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
@@ -38,7 +41,8 @@ public class SingleTableInsert extends SingleTableOperation {
     private Map<Integer, ParameterContext> param;
 
     public SingleTableInsert(RelNode logicalPlan,
-                             ShardProcessor shardProcessor, String tableName, String sqlTemplate,
+                             ShardProcessor shardProcessor,
+                             String tableName, BytesSql sqlTemplate,
                              List<Integer> paramIndex, int autoIncParamIndex) {
         super(logicalPlan, shardProcessor, tableName, sqlTemplate, paramIndex, autoIncParamIndex);
     }
@@ -50,11 +54,6 @@ public class SingleTableInsert extends SingleTableOperation {
     public void setParam(final Map<Integer, ParameterContext> param) {
         this.param = param;
     }
-
-//    @Override
-//    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param) {
-//        return new Pair<>(dbIndex, this.param);
-//    }
 
     public Pair<String, Map<Integer, ParameterContext>> calcDbIndexAndParam(Map<Integer, ParameterContext> param,
                                                                             ExecutionContext ec) {
@@ -71,14 +70,42 @@ public class SingleTableInsert extends SingleTableOperation {
         ExplainInfo explainInfo = buildExplainInfo(((RelDrdsWriter) pw).getParams(),
             (ExecutionContext) ((RelDrdsWriter) pw).getExecutionContext());
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
-        String groupAndTableName = explainInfo.groupName;
-        if (explainInfo.tableNames != null && explainInfo.tableNames.size() > 0) {
-            groupAndTableName += (TStringUtil.isNotBlank(explainInfo.groupName) ? "." : "")
-                + "[" + TStringUtil.join(explainInfo.tableNames, ",") + "]";
-            pw.itemIf("tables", groupAndTableName, groupAndTableName != null);
-        } else {
-            pw.itemIf("groups", groupAndTableName, groupAndTableName != null);
+
+        boolean usePartTable = false;
+        PartitionInfo partInfo = null;
+        String tbName = null;
+        if (this.shardProcessor != null&& this.shardProcessor instanceof PartTableInsertShardProcessor) {
+            usePartTable = true;
+            partInfo = ((PartTableInsertShardProcessor)shardProcessor).getTupleRouteInfo().getPartInfo();
+            tbName = partInfo.getTableName();
         }
+
+        if (!usePartTable) {
+            String groupAndTableName = explainInfo.groupName;
+            if (explainInfo.tableNames != null && explainInfo.tableNames.size() > 0) {
+                groupAndTableName += (TStringUtil.isNotBlank(explainInfo.groupName) ? "." : "")
+                    + "[" + TStringUtil.join(explainInfo.tableNames, ",") + "]";
+                pw.itemIf("tables", groupAndTableName, groupAndTableName != null);
+            } else {
+                pw.itemIf("groups", groupAndTableName, groupAndTableName != null);
+            }
+        } else {
+            String phyPartNameList = "";
+            String phyGrp = explainInfo.groupName;
+            String logPhyTbInfo = "";
+            for (int phyDbIdx = 0; phyDbIdx < explainInfo.tableNames.size(); phyDbIdx++) {
+                String phyTb = (String) explainInfo.tableNames.get(0);
+                String pName = partInfo.getPartitionNameByPhyLocation(phyGrp, phyTb);
+                if (phyDbIdx > 0) {
+                    logPhyTbInfo += ",";
+                }
+                logPhyTbInfo += pName;
+            }
+            String logTb = tbName;
+            phyPartNameList += String.format("%s[%s]", logTb, logPhyTbInfo);
+            pw.itemIf("tables", phyPartNameList, phyPartNameList != null);
+        }
+
         String sql = TStringUtil.replace(getNativeSql(), "\n", " ");
         pw.item("sql", sql);
         StringBuilder builder = new StringBuilder();

@@ -392,51 +392,63 @@ public class GsiConstant {
         builder.put(C_CHAR,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_char) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_char) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_char) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_char) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_char) values(null,x'313233616263');\n"));
         builder.put(C_VARCHAR,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_varchar) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_varchar) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_varchar) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_varchar) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_varchar) values(null,x'313233616263');\n"));
         builder.put(C_BINARY,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_binary) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_binary) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_binary) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_binary) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_binary) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_VARBINARY,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_varbinary) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_varbinary) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_varbinary) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_varbinary) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_varbinary) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_BLOB_TINY,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_blob_tiny) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_blob_tiny) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_blob_tiny) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_blob_tiny) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_blob_tiny) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_BLOB,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_blob) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_blob) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_blob) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_blob) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_blob) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_BLOB_MEDIUM,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_blob_medium) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_blob_medium) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_blob_medium) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_blob_medium) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_blob_medium) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_BLOB_LONG,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_blob_long) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_blob_long) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_blob_long) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_blob_long) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_blob_long) values(null,x'0A08080E10011894AB0E');\n"));
         builder.put(C_TEXT_TINY,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_text_tiny) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_text_tiny) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_text_tiny) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_text_tiny) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_text_tiny) values(null,x'313233616263');\n"));
         builder.put(C_TEXT,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_text) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_text) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_text) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_text) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_text) values(null,x'313233616263');\n"));
         builder.put(C_TEXT_MEDIUM,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_text_medium) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_text_medium) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_text_medium) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_text_medium) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_text_medium) values(null,x'313233616263');\n"));
         builder.put(C_TEXT_LONG,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_text_long) values(null,'11');\n",
                 "insert into " + primaryTableName + "(id,c_text_long) values(null,'99');\n",
-                "insert into " + primaryTableName + "(id,c_text_long) values(null,'a中国a');\n"));
+                "insert into " + primaryTableName + "(id,c_text_long) values(null,'a中国a');\n",
+                "insert into " + primaryTableName + "(id,c_text_long) values(null,x'313233616263');\n"));
         builder.put(C_ENUM,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_enum) values(null,'a');\n",
                 "insert into " + primaryTableName + "(id,c_enum) values(null,'b');\n",
@@ -906,84 +918,108 @@ public class GsiConstant {
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_char) values(null             , 263, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_char) values(null             , 264, 'a中国a');\n "))
+                    + ", c_char) values(null             , 264, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_char) values(null             , 265, x'313233616263');\n "))
             .put(C_VARCHAR, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_varchar) values(null          , 266, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_varchar) values(null          , 267, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_varchar) values(null          , 268, 'a中国a');\n "))
+                    + ", c_varchar) values(null          , 268, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_varchar) values(null             , 269, x'313233616263');\n "))
             .put(C_BINARY, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_binary) values(null           , 270, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_binary) values(null           , 271, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_binary) values(null           , 272, 'a中国a');\n "))
+                    + ", c_binary) values(null           , 272, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_binary) values(null             , 273, x'0A08080E10011894AB0E');\n "))
             .put(C_VARBINARY, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_varbinary) values(null        , 274, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_varbinary) values(null        , 275, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_varbinary) values(null        , 276, 'a中国a');\n "))
+                    + ", c_varbinary) values(null        , 276, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_varbinary) values(null             , 277, x'0A08080E10011894AB0E');\n "))
             .put(C_BLOB_TINY, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_tiny) values(null        , 278, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_tiny) values(null        , 279, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_blob_tiny) values(null        , 280, 'a中国a');\n "))
+                    + ", c_blob_tiny) values(null        , 280, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_blob_tiny) values(null             , 281, x'0A08080E10011894AB0E');\n "))
             .put(C_BLOB, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob) values(null             , 282, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob) values(null             , 283, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_blob) values(null             , 284, 'a中国a');\n "))
+                    + ", c_blob) values(null             , 284, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_blob) values(null             , 285, x'0A08080E10011894AB0E');\n "))
             .put(C_BLOB_MEDIUM, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_medium) values(null      , 286, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_medium) values(null      , 287, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_blob_medium) values(null      , 288, 'a中国a');\n "))
+                    + ", c_blob_medium) values(null      , 288, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_blob_medium) values(null             , 289, x'0A08080E10011894AB0E');\n "))
             .put(C_BLOB_LONG, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_long) values(null        , 290, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_blob_long) values(null        , 291, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_blob_long) values(null        , 292, 'a中国a');\n "))
+                    + ", c_blob_long) values(null        , 292, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_blob_long) values(null             , 293, x'0A08080E10011894AB0E');\n "))
             .put(C_TEXT_TINY, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_tiny) values(null        , 294, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_tiny) values(null        , 295, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_text_tiny) values(null        , 296, 'a中国a');\n "))
+                    + ", c_text_tiny) values(null        , 296, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_text_tiny) values(null             , 297, x'313233616263');\n "))
             .put(C_TEXT, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text) values(null             , 298, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text) values(null             , 299, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_text) values(null             , 300, 'a中国a');\n "))
+                    + ", c_text) values(null             , 300, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_text) values(null             , 301, x'313233616263');\n "))
             .put(C_TEXT_MEDIUM, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_medium) values(null      , 302, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_medium) values(null      , 303, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_text_medium) values(null      , 304, 'a中国a');\n "))
+                    + ", c_text_medium) values(null      , 304, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_text_medium) values(null             , 305, x'313233616263');\n "))
             .put(C_TEXT_LONG, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_long) values(null        , 306, '11');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_text_long) values(null        , 307, '99');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
-                    + ", c_text_long) values(null        , 308, 'a中国a');\n "))
+                    + ", c_text_long) values(null        , 308, 'a中国a');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_text_long) values(null             , 309, x'313233616263');\n "))
             .put(C_ENUM, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_enum) values(null             , 310, 'a');\n ",
@@ -1304,51 +1340,63 @@ public class GsiConstant {
         builder.put(C_CHAR,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_VARCHAR,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_BINARY,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_VARBINARY,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_BLOB_TINY,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_BLOB,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_BLOB_MEDIUM,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_BLOB_LONG,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'0A08080E10011894AB0E'"));
         builder.put(C_TEXT_TINY,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_TEXT,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_TEXT_MEDIUM,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_TEXT_LONG,
             ImmutableList.of("'11'",
                 "'99'",
-                "'a中国a'"));
+                "'a中国a'",
+                "x'313233616263'"));
         builder.put(C_ENUM,
             ImmutableList.of("'a'",
                 "'b'",
@@ -1503,7 +1551,7 @@ public class GsiConstant {
         COLUMN_DEF_MAP.put("c_bigint_64", "  `c_bigint_64` bigint(64) DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_bigint_64_un", "  `c_bigint_64_un` bigint(64) unsigned DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_decimal", "  `c_decimal` decimal DEFAULT NULL,\n");
-        COLUMN_DEF_MAP.put("c_decimal_pr", "  `c_decimal_pr` decimal(10,3) DEFAULT NULL,\n");
+        COLUMN_DEF_MAP.put("c_decimal_pr", "  `c_decimal_pr` decimal(65,30) DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_float", "  `c_float` float DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_float_pr", "  `c_float_pr` float(10,3) DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_float_un", "  `c_float_un` float(10,3) unsigned DEFAULT NULL,\n");
@@ -1600,7 +1648,7 @@ public class GsiConstant {
         PK_COLUMN_DEF_MAP.put("c_decimal",
             "  `c_decimal` decimal                        NOT NULL DEFAULT 0                                        , \n ");
         PK_COLUMN_DEF_MAP.put("c_decimal_pr",
-            "  `c_decimal_pr` decimal(10,3)               NOT NULL DEFAULT 0                                        , \n ");
+            "  `c_decimal_pr` decimal(65,30)              NOT NULL DEFAULT 0                                        , \n ");
         PK_COLUMN_DEF_MAP.put("c_float",
             "  `c_float` float                            NOT NULL AUTO_INCREMENT                                   , \n ");
         PK_COLUMN_DEF_MAP.put("c_float_pr",
@@ -1786,7 +1834,7 @@ public class GsiConstant {
         COLUMN_TYPE_MAP.put("c_bigint_64", "  bigint(64)");
         COLUMN_TYPE_MAP.put("c_bigint_64_un", "  bigint(64) unsigned");
         COLUMN_TYPE_MAP.put("c_decimal", "  decimal");
-        COLUMN_TYPE_MAP.put("c_decimal_pr", "  decimal(10,3)");
+        COLUMN_TYPE_MAP.put("c_decimal_pr", "  decimal(65,30)");
         COLUMN_TYPE_MAP.put("c_float", "  float");
         COLUMN_TYPE_MAP.put("c_float_pr", "  float(10,3)");
         COLUMN_TYPE_MAP.put("c_float_un", "  float(10,3) unsigned");

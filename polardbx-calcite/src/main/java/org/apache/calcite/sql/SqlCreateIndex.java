@@ -69,16 +69,19 @@ public class SqlCreateIndex extends SqlCreate {
 
     private final SqlNode partitioning;
     private final String                   sourceSql;
+    //originalSql is the same as what user input, while sourceSql maybe rewrite
+    private String                         originalSql;
     private String                         primaryTableDefinition;
     private SqlCreateTable                 primaryTableNode;
     private final boolean                  clusteredIndex;
+    private final SqlNode                  tableGroupName;
 
     private SqlCreateIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
                            List<SqlIndexColumnName> columns, SqlIndexConstraintType constraintType,
                            SqlIndexResiding indexResiding, SqlIndexType indexType, List<SqlIndexOption> options,
                            SqlIndexAlgorithmType algorithm, SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                            SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
-                           String sourceSql, boolean clusteredIndex) {
+                           String sourceSql, boolean clusteredIndex, SqlNode tableGroupName) {
         super(OPERATOR, pos, false, false);
         this.indexName = indexName;
         this.name = table;
@@ -97,6 +100,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.partitioning = partitioning;
         this.sourceSql = sourceSql;
         this.clusteredIndex = clusteredIndex;
+        this.tableGroupName = tableGroupName;
     }
 
     public SqlCreateIndex(SqlParserPos pos, boolean replace, boolean ifNotExists, SqlIdentifier originTableName,
@@ -106,7 +110,8 @@ public class SqlCreateIndex extends SqlCreate {
                           SqlIndexLockType lock, List<SqlIndexColumnName> covering, SqlNode dbPartitionBy,
                           SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
                           String sourceSql, String primaryTableDefinition,
-                          SqlCreateTable primaryTableNode, boolean clusteredIndex){
+                          SqlCreateTable primaryTableNode, boolean clusteredIndex,
+                          SqlNode tableGroupName){
         super(OPERATOR, pos, replace, ifNotExists);
         this.originTableName = originTableName;
         this.indexName = indexName;
@@ -126,6 +131,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.primaryTableNode = primaryTableNode;
         this.clusteredIndex = clusteredIndex;
         this.partitioning = partitioning;
+        this.tableGroupName = tableGroupName;
     }
 
     public static SqlCreateIndex createLocalIndex(SqlIdentifier indexName, SqlIdentifier tableName,
@@ -150,7 +156,8 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             null,
             sql,
-            false);
+            false,
+            null);
     }
 
     public static SqlCreateIndex createGlobalIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -159,7 +166,7 @@ public class SqlCreateIndex extends SqlCreate {
                                                    List<SqlIndexOption> options, SqlIndexAlgorithmType algorithm,
                                                    SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                                                    SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions,
-                                                   SqlNode partitioning, String sourceSql) {
+                                                   SqlNode partitioning, String sourceSql, SqlNode tableGroupName) {
         return new SqlCreateIndex(pos,
             indexName,
             table,
@@ -176,7 +183,8 @@ public class SqlCreateIndex extends SqlCreate {
             tbPartitions,
             partitioning,
             sourceSql,
-            false);
+            false,
+            tableGroupName);
     }
 
     public static SqlCreateIndex createClusteredIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -186,7 +194,8 @@ public class SqlCreateIndex extends SqlCreate {
                                                       SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                                                       SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                                                       SqlNode tbPartitions,
-                                                      SqlNode partitioning, String sourceSql) {
+                                                      SqlNode partitioning, String sourceSql,
+                                                      SqlNode tableGroupName) {
         return new SqlCreateIndex(pos,
             indexName,
             table,
@@ -203,7 +212,8 @@ public class SqlCreateIndex extends SqlCreate {
             tbPartitions,
             partitioning,
             sourceSql,
-            true);
+            true,
+            tableGroupName);
     }
 
     @Override
@@ -403,6 +413,10 @@ public class SqlCreateIndex extends SqlCreate {
         return covering;
     }
 
+    public SqlNode getTableGroupName() {
+        return tableGroupName;
+    }
+
     public static enum SqlIndexConstraintType {
         UNIQUE, FULLTEXT, SPATIAL;
 
@@ -464,6 +478,14 @@ public class SqlCreateIndex extends SqlCreate {
         return sourceSql;
     }
 
+    public String getOriginalSql() {
+        return originalSql;
+    }
+
+    public void setOriginalSql(String originalSql) {
+        this.originalSql = originalSql;
+    }
+
     public SqlNode getPartitioning() {
         return partitioning;
     }
@@ -497,7 +519,8 @@ public class SqlCreateIndex extends SqlCreate {
             sourceSql,
             primaryTableDefinition,
             primaryTableNode,
-            clusteredIndex);
+            clusteredIndex,
+            tableGroupName);
     }
 
     public SqlCreateIndex rebuildToGsi(SqlIdentifier newName, SqlNode dbpartition, boolean clustered) {
@@ -517,7 +540,8 @@ public class SqlCreateIndex extends SqlCreate {
             null == dbpartition ? tbPartitions : null,
             partitioning,
             sourceSql,
-            clustered);
+            clustered,
+            tableGroupName);
     }
 
     public SqlCreateIndex rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition, boolean clustered) {
@@ -537,7 +561,8 @@ public class SqlCreateIndex extends SqlCreate {
             null == newPartition ? tbPartitions : null,
             null == newPartition ? partitioning : newPartition,
             sourceSql,
-            clustered);
+            clustered,
+            tableGroupName);
     }
 
     public SqlCreateIndex rebuildToExplicitLocal(SqlIdentifier newName, String sql) {
@@ -557,7 +582,8 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             null,
             null == sql ? sourceSql : sql,
-            false);
+            false,
+            tableGroupName);
     }
 
     public SqlCreateIndex replaceTableName(SqlIdentifier newTableName) {
@@ -577,6 +603,7 @@ public class SqlCreateIndex extends SqlCreate {
             tbPartitions,
             partitioning,
             sourceSql,
-            clusteredIndex);
+            clusteredIndex,
+            tableGroupName);
     }
 }

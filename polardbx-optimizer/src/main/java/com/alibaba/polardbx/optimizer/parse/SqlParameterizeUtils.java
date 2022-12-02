@@ -45,13 +45,23 @@ import java.util.Map;
  */
 public class SqlParameterizeUtils {
 
-    private final static SQLParserFeature[] parserFeatures = {
+    public final static SQLParserFeature[] parserFeatures = {
         SQLParserFeature.EnableSQLBinaryOpExprGroup, SQLParserFeature.OptimizedForParameterized,
         SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
         SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
     };
 
-    private final static VisitorFeature[] parameterizeFeatures = {
+    public final static VisitorFeature[] parameterizeFeatures = {
+//        VisitorFeature.OutputParameterizedQuesUnMergeInList,
+        VisitorFeature.OutputParameterizedSpecialNameWithBackTick,
+        VisitorFeature.OutputParameterizedUnMergeShardingTable,
+        VisitorFeature.OutputParameterizedQuesUnMergeValuesList,
+        VisitorFeature.OutputParameterizedQuesUnMergeOr,
+        VisitorFeature.OutputParameterizedQuesUnMergeAnd
+    };
+
+    private final static VisitorFeature[] parameterizeFeaturesForPrepare = {
+        VisitorFeature.OutputParameterizedSpecialNameWithBackTick,
         VisitorFeature.OutputParameterizedQuesUnMergeInList,
         VisitorFeature.OutputParameterizedUnMergeShardingTable,
         VisitorFeature.OutputParameterizedQuesUnMergeValuesList,
@@ -59,26 +69,49 @@ public class SqlParameterizeUtils {
         VisitorFeature.OutputParameterizedQuesUnMergeAnd
     };
 
+    public static SqlParameterized parameterize(String sql, boolean isPrepare) {
+        return parameterize(sql, null, isPrepare);
+    }
+
+
+    private final static VisitorFeature[] parameterizeFeaturesForMergeIn = {
+        VisitorFeature.OutputParameterizedUnMergeShardingTable,
+        VisitorFeature.OutputParameterizedQuesUnMergeValuesList,
+        VisitorFeature.OutputParameterizedQuesUnMergeOr,
+        VisitorFeature.OutputParameterizedQuesUnMergeAnd
+    };
+
+    public static String parameterizeStmtMergeIn(SQLStatement stmt, ExecutionContext executionContext) {
+        if (stmt.hasBeforeComment()) {
+            stmt.getBeforeCommentsDirect().clear();
+        }
+        List<Object> outParameters = new ArrayList<>();
+
+        StringBuilder out = new StringBuilder();
+        ParameterizedVisitor visitor = new DrdsParameterizeSqlVisitor(out, true, executionContext);
+        visitor.setOutputParameters(outParameters);
+        configVisitorFeatures(visitor, parameterizeFeaturesForMergeIn);
+
+        stmt.accept(visitor);
+        return out.toString();
+    }
+
+    public static String parameterizeSqlMergeIn(String sql, ExecutionContext executionContext) {
+        SqlParameterized sqlParameterized = parameterize(sql);
+        return parameterizeStmtMergeIn(sqlParameterized.getStmt(), executionContext);
+    }
+
     public static SqlParameterized parameterize(String sql) {
         return parameterize(sql, null, false);
     }
 
-    public static SqlParameterized parameterize(String sql, boolean forPrepare) {
-        return parameterize(sql, null, forPrepare);
-    }
-
-    public static SqlParameterized parameterize(String sql, Map<Integer, ParameterContext> params) {
-        return parameterize(ByteString.from(sql), params, new ExecutionContext(), false);
-    }
-
-    public static SqlParameterized parameterize(String sql, Map<Integer, ParameterContext> params, boolean forPrepare) {
-        return parameterize(ByteString.from(sql), params, new ExecutionContext(), forPrepare);
+    public static SqlParameterized parameterize(String sql, Map<Integer, ParameterContext> params, boolean isPrepare) {
+        return parameterize(ByteString.from(sql), params, new ExecutionContext(), isPrepare);
     }
 
     public static SqlParameterized parameterize(ByteString sql,
                                                 Map<Integer, ParameterContext> parameters,
-                                                ExecutionContext executionContext,
-                                                boolean forPrepare) {
+                                                ExecutionContext executionContext, boolean isPrepare) {
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, JdbcConstants.MYSQL,
             SqlParameterizeUtils.parserFeatures);
 
@@ -87,15 +120,19 @@ public class SqlParameterizeUtils {
             return null;
         }
         final SQLStatement statement = statements.get(0);
-        return parameterize(sql, statement, parameters, executionContext, forPrepare);
+        return parameterize(sql, statement, parameters, executionContext, isPrepare);
     }
 
     public static SqlParameterized parameterize(ByteString sql, SQLStatement statement,
                                                 Map<Integer, ParameterContext> parameters,
-                                                ExecutionContext executionContext,
-                                                boolean forPrepare) {
+                                                ExecutionContext executionContext, boolean isPrepare) {
         // prepare mode
         if (parameters != null && parameters.size() > 0) {
+            /*
+                inner prepare mode
+                系统内部的prepare语句直接将参数保存到
+                executionContext.params中
+             */
             List<Object> tmpParameters = new ArrayList<>();
             ParamCountVisitor paramCountVisitor = new ParamCountVisitor();
             statement.accept(paramCountVisitor);
@@ -103,17 +140,9 @@ public class SqlParameterizeUtils {
             for (int i = 0; i < parameterCount; i++) {
                 tmpParameters.add(parameters.get(i + 1).getValue());
             }
-            // by hongxi.chx
-            // Use the original sql instead of parameterized sql. Because
-            // the order of parameters corresponds to the original sql. For
-            // example, originalSql = 'select * from tb limit ? offset ?',
-            // params = '10, 20', parameterizedSql = 'select * from tb limit ?, ?'.
-            return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext, tmpParameters);
+            return new SqlParameterized(sql, sql.toString(), tmpParameters, statement, true);
         } else {
-            // Executing prepare statement should use the same parameterization as common queries
-            // Use the original sql in prepare phase
-            // so that it can hit cache with the same cache key in execute phase
-            return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext);
+            return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext, isPrepare);
         }
     }
 
@@ -126,16 +155,10 @@ public class SqlParameterizeUtils {
     }
 
     private static SqlParameterized parameterizeStmt(SQLStatement stmt, ByteString sql,
-                                                     ExecutionContext executionContext) {
-        return parameterizeStmt(stmt, sql, executionContext, null);
-    }
-
-    private static SqlParameterized parameterizeStmt(SQLStatement stmt, ByteString sql,
-                                                     ExecutionContext executionContext, List<Object> tmpParameters) {
-
+                                                     ExecutionContext executionContext, boolean isPrepare) {
         if (!needCache(stmt)) {
             // use sql instead of stmt.toString(), because fastsql special sql toString is buggy.
-            return new SqlParameterized(sql, sql.toString(), new ArrayList<>(), stmt);
+            return new SqlParameterized(sql, sql.toString(), new ArrayList<>(), stmt, true);
         }
 
         if (stmt.hasBeforeComment()) {
@@ -145,13 +168,18 @@ public class SqlParameterizeUtils {
 
         StringBuilder out = new StringBuilder();
         DrdsParameterizeSqlVisitor visitor = new DrdsParameterizeSqlVisitor(out, true, executionContext);
-        visitor.setTmpParameters(tmpParameters);
         visitor.setOutputParameters(outParameters);
-        configVisitorFeatures(visitor, parameterizeFeatures);
+        // for parameterize in expr
+        if (isPrepare) {
+            configVisitorFeatures(visitor, parameterizeFeaturesForPrepare);
+        } else {
+            configVisitorFeatures(visitor, parameterizeFeatures);
+            visitor.setParameterizedMergeInList(true);
+        }
 
         stmt.accept(visitor);
         String s = out.toString();
-        return new SqlParameterized(sql, s, Lists.newArrayList(outParameters), stmt);
+        return new SqlParameterized(sql, s, Lists.newArrayList(outParameters), stmt, false);
     }
 
     private static void configVisitorFeatures(ParameterizedVisitor visitor, VisitorFeature... features) {
@@ -161,4 +189,5 @@ public class SqlParameterizeUtils {
             }
         }
     }
+
 }

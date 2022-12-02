@@ -1,0 +1,25 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup mytg1;
+create tablegroup mytg2;
+CREATE TABLE `myt1` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`) PARTITIONS 1
+tablegroup=mytg1;
+CREATE TABLE `myt2` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`) PARTITIONS 1;
+CREATE TABLE `myt3` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`c`) PARTITIONS 1
+tablegroup=mytg2;
+select table_group_name, cur_part_key, max_part_key, part_count, table_count from information_schema.table_group where table_group_name like '%mytg%' order by table_group_name;
+select cur_part_key, max_part_key, part_count, table_count from information_schema.table_group where table_group_name not like '%mytg%' order by table_group_name;

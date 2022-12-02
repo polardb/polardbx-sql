@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 /**
  * alter table ddl
@@ -45,7 +46,7 @@ public class AlterTableSyncAction implements ISyncAction {
         if (tableName != null) {
             context.getLatestSchemaManager().reload(tableName);
         }
-        context.getPlanManager().invalidateCache();
+        PlanManager.getInstance().invalidateCache();
         return null;
     }
 

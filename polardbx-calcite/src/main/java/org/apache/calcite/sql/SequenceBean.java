@@ -16,7 +16,6 @@
 
 package org.apache.calcite.sql;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.druid.sql.ast.AutoIncrementType;
 
@@ -31,14 +30,14 @@ public class SequenceBean {
     private Long maxValue;
     private Integer unitCount;
     private Integer unitIndex;
-    private SequenceAttribute.Type type;
-    private SequenceAttribute.Type toType;
+    private Type type;
+    private Type toType;
     private Integer innerStep;
     private SqlKind kind;
     private Boolean cycle;
     private boolean isNew;
-    private String sequenceName;
-    private String newSequenceName;
+    private String name;
+    private String newName;
     private String schemaName;
 
     public Long getStart() {
@@ -81,11 +80,11 @@ public class SequenceBean {
         this.unitIndex = unitIndex;
     }
 
-    public SequenceAttribute.Type getType() {
+    public Type getType() {
         return type;
     }
 
-    public void setType(SequenceAttribute.Type type) {
+    public void setType(Type type) {
         this.type = type;
     }
 
@@ -105,31 +104,25 @@ public class SequenceBean {
         if (autoIncrementType == null) {
             return Type.NA;
         }
-
-        Type type;
         switch (autoIncrementType) {
+        case NEW:
+            return Type.NEW;
         case GROUP:
-            type = SequenceAttribute.Type.GROUP;
-            break;
+            return Type.GROUP;
         case SIMPLE:
-            type = SequenceAttribute.Type.SIMPLE;
-            break;
+            return Type.SIMPLE;
         case TIME:
-            type = SequenceAttribute.Type.TIME;
-            break;
+            return Type.TIME;
         default:
-            type = SequenceAttribute.Type.NA;
-            break;
+            return Type.NA;
         }
-
-        return type;
     }
 
-    public SequenceAttribute.Type getToType() {
+    public Type getToType() {
         return toType;
     }
 
-    public void setToType(SequenceAttribute.Type toType) {
+    public void setToType(Type toType) {
         this.toType = toType;
     }
 
@@ -157,20 +150,20 @@ public class SequenceBean {
         this.cycle = cycle;
     }
 
-    public String getSequenceName() {
-        return sequenceName;
+    public String getName() {
+        return name;
     }
 
-    public void setSequenceName(String sequenceName) {
-        this.sequenceName = sequenceName;
+    public void setName(String name) {
+        this.name = name;
     }
 
-    public String getNewSequenceName() {
-        return newSequenceName;
+    public String getNewName() {
+        return newName;
     }
 
-    public void setNewSequenceName(String newSequenceName) {
-        this.newSequenceName = newSequenceName;
+    public void setNewName(String newName) {
+        this.newName = newName;
     }
 
     public String getSchemaName() {

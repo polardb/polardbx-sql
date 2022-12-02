@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.utils.bloomfilter;
 
 import com.alibaba.polardbx.common.utils.hash.HashMethodInfo;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 
@@ -31,6 +32,7 @@ public class BloomFilterInfo {
     private final int hashFuncNum;
     private final long[] data;
     private final HashMethodInfo hashMethodInfo;
+
     private byte[] bytesData;
     private final List<MinMaxFilterInfo> minMaxFilterInfoList;
 
@@ -63,10 +65,12 @@ public class BloomFilterInfo {
         return hashFuncNum;
     }
 
+    @JsonIgnore
     public int getDataLenInBits() {
         return data.length * 64;
     }
 
+    @JsonIgnore
     public byte[] getBytesData() {
         synchronized (this) {
             if (bytesData == null) {

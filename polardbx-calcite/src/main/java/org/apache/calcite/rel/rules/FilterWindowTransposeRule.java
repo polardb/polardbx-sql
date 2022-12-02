@@ -16,6 +16,8 @@
 
 package org.apache.calcite.rel.rules;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.Contexts;
@@ -35,6 +37,7 @@ import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.calcite.util.ImmutableBitSet;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Planner rule that pushes a {@link Filter}
@@ -43,6 +46,7 @@ import java.util.List;
  * @see AggregateFilterTransposeRule
  */
 public class FilterWindowTransposeRule extends RelOptRule {
+  private static final Logger logger = LoggerFactory.getLogger(FilterWindowTransposeRule.class);
 
   /** The default instance of
    * {@link FilterWindowTransposeRule}.
@@ -123,10 +127,15 @@ public class FilterWindowTransposeRule extends RelOptRule {
   }
 
   private boolean canPush(Window window, ImmutableBitSet rCols) {
-    if(rCols.get(window.getRowType().getFieldCount()-1)){
+    int keySize = window.groups.size();
+    if (keySize == 0) {
       return false;
+    } else if (keySize > 1) {
+      logger.error("group within each window should be one");
+      return false;
+    } else {
+      return Optional.ofNullable(window.groups.get(0)).map(t -> t.keys).map(t -> t.contains(rCols)).orElse(false);
     }
-    return true;
   }
 }
 

@@ -49,7 +49,7 @@
   sql: |
     show character set where Charset like 'latin%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW CHARACTER SET WHERE (`Charset` LIKE 'latin%')")
+    phyquery(node="optest_0000", sql="show character set where (`charset` like 'latin%')")
 
 ## show collation
 -
@@ -68,14 +68,14 @@
   sql: |
     show collation where Charset like 'latin%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW COLLATION WHERE (`Charset` LIKE 'latin%')")
+    phyquery(node="optest_0000", sql="show collation where (`charset` like 'latin%')")
 
 ## show columns
 -
   sql: |
     show columns in test_table_a
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` WHERE (`field` <> '_drds_implicit_id_')")
+    phyquery(node="optest_0000", sql="show columns from `test_table_a` where (`field` <> '_drds_implicit_id_')")
 
 -
   sql: |
@@ -87,7 +87,7 @@
   sql: |
     show full columns from test_table_a in optest_0000 where field like 'nam%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW FULL COLUMNS FROM `test_table_a` FROM `optest_0000` WHERE ((`field` LIKE 'nam%') AND (`field` <> '_drds_implicit_id_'))")
+    phyquery(node="optest_0000", sql="show full columns from `test_table_a` from `optest_0000` where ((`field` like 'nam%') and (`field` <> '_drds_implicit_id_'))")
 
 ## show create database
 -
@@ -114,20 +114,6 @@
     show create event op_event
   plan: |
     PhyQuery(node="optest_0000", sql="SHOW CREATE EVENT `op_event`")
-
-## show create function
--
-  sql: |
-    show create function op_function
-  plan: |
-    PhyQuery(node="optest_0000", sql="SHOW CREATE FUNCTION `op_function`")
-
-## show create procedure
--
-  sql: |
-    show create procedure op_procedure
-  plan: |
-    PhyQuery(node="optest_0000", sql="SHOW CREATE PROCEDURE `op_procedure`")
 
 ## show create trigger
 -
@@ -223,7 +209,7 @@
   sql: |
     show events from optest_0000 where name like 'optest%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW EVENTS FROM `optest_0000` WHERE (`name` LIKE 'optest%')")
+    phyquery(node="optest_0000", sql="show events from `optest_0000` where (`name` like 'optest%')")
 
 -
   sql: |
@@ -235,7 +221,7 @@
   sql: |
     show events where name like 'optest%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW EVENTS WHERE (`name` LIKE 'optest%')")
+    phyquery(node="optest_0000", sql="show events where (`name` like 'optest%')")
 
 ## show function code
 -
@@ -249,19 +235,20 @@
   sql: |
     show function status
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS")
+    logicalshow(sql="show function status")
 
 -
   sql: |
     show function status like 'op_func%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS LIKE 'op_func%'")
+    logicalshow(sql="show function status like 'op_func%'")
 
 -
   sql: |
-    show function status where aaa like 'op_func%'
+    show function status where name like 'op_func%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS WHERE (`aaa` LIKE 'op_func%')")
+    filter(condition="name like 'op_func%'")
+      logicalshow(sql="show function status")
 
 # show master status
 -
@@ -293,7 +280,7 @@
   sql: |
     show open tables in optest_0000 where TABLE like 'optest%'
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW OPEN TABLES FROM `optest_0000` WHERE (`TABLE` LIKE 'optest%')")
+    phyquery(node="optest_0000", sql="show open tables from `optest_0000` where (`table` like 'optest%')")
 
 # show plugins
 -
@@ -374,7 +361,7 @@
   sql: |
     show SESSION status where Variable_name like "stat%"
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW SESSION STATUS WHERE (`Variable_name` LIKE 'stat%')")
+    phyquery(node="optest_0000", sql="show session status where (`variable_name` like 'stat%')")
 
 
 #-
@@ -400,7 +387,7 @@
   sql: |
     show TRIGGERS in optest_0000 where Engine like "inno%"
   plan: |
-    PhyQuery(node="optest_0000", sql="SHOW TRIGGERS FROM `optest_0000` WHERE (`Engine` LIKE 'inno%')")
+    phyquery(node="optest_0000", sql="show triggers from `optest_0000` where (`engine` like 'inno%')")
 
 ## show warnings
 -

@@ -85,7 +85,7 @@ public class VirtualTableRoot extends AbstractLifecycle implements Lifecycle {
     }
 
     public void setTableRules(Map<String, TableRule> virtualTableMap) {
-        Map<String, TableRule> logicTableMap = TreeMaps.caseInsensitiveMap();
+        Map<String, TableRule> logicTableMap = TreeMaps.synchronizeMap();
         for (Entry<String, TableRule> entry : virtualTableMap.entrySet()) {
             logicTableMap.put(entry.getKey(), entry.getValue());
         }

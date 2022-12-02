@@ -19,13 +19,16 @@ package com.alibaba.polardbx.qatest.transaction;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -39,20 +42,31 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 public class XATransactionFailureTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 20;
+    private final boolean shareReadView;
 
     private static final String SELECT_FROM = "SELECT pk, varchar_test, integer_test, char_test, blob_test, " +
         "tinyint_test, tinyint_1bit_test, smallint_test, mediumint_test, bit_test, bigint_test, float_test, " +
         "double_test, decimal_test, date_test, time_test, datetime_test, year_test FROM ";
 
-    @Parameters(name = "{index}:table={0}")
-    public static List<String[]> prepare() {
-        return Collections.singletonList(new String[] {
-            ExecuteTableName.UPDATE_DELETE_BASE + ExecuteTableName.MUlTI_DB_MUTIL_TB_SUFFIX
-        });
+    @Parameters(name = "{index}:table={0},shareReadView={1}")
+    public static List<Object[]> prepare() throws SQLException {
+        boolean supportShareReadView;
+        try (Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            supportShareReadView = JdbcUtil.supportShareReadView(connection);
+        }
+        List<Object[]> ret = new ArrayList<>();
+        for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
+            ret.add(new Object[] {tables[0], false});
+            if (supportShareReadView) {
+                ret.add(new Object[] {tables[0], true});
+            }
+        }
+        return ret;
     }
 
-    public XATransactionFailureTest(String baseOneTableName) {
+    public XATransactionFailureTest(String baseOneTableName, boolean shareReadView) {
         this.baseOneTableName = baseOneTableName;
+        this.shareReadView = shareReadView;
     }
 
     @Before
@@ -75,6 +89,7 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
 
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
+        JdbcUtil.setShareReadView(shareReadView, tddlConnection);
 
         try {
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
@@ -111,6 +126,7 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
 
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
+        JdbcUtil.setShareReadView(shareReadView, tddlConnection);
 
         try {
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
@@ -147,6 +163,7 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
 
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
+        JdbcUtil.setShareReadView(shareReadView, tddlConnection);
 
         try {
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
@@ -183,6 +200,7 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
 
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
+        JdbcUtil.setShareReadView(shareReadView, tddlConnection);
 
         try {
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);

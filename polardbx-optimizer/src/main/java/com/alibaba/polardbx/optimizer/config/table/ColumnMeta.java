@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 
@@ -52,7 +52,7 @@ public class ColumnMeta implements Serializable {
 
     private Field field;
 
-    private final TableStatus status;
+    private final ColumnStatus status;
 
     private final long flag;
 
@@ -61,11 +61,11 @@ public class ColumnMeta implements Serializable {
         this.name = (name);
         this.alias = alias;
         this.field = field;
-        this.status = TableStatus.PUBLIC;   //兼容以前
+        this.status = ColumnStatus.PUBLIC;   //兼容以前
         this.flag = 0;
     }
 
-    public ColumnMeta(String tableName, String name, String alias, Field field, TableStatus status, long flag) {
+    public ColumnMeta(String tableName, String name, String alias, Field field, ColumnStatus status, long flag) {
         this.tableName = (tableName);
         this.name = (name);
         this.alias = alias;
@@ -112,7 +112,7 @@ public class ColumnMeta implements Serializable {
         result = prime * result + ((name == null) ? 0 : name.toLowerCase().hashCode());
         result = prime * result + (this.isNullable() ? 1231 : 1237);
         result = prime * result + ((tableName == null) ? 0 : tableName.toLowerCase().hashCode());
-        if (TableStatus.PUBLIC == status && 0 == flag) {
+        if (ColumnStatus.PUBLIC == status && 0 == flag) {
             return result; // Keep original hash code when default.
         }
         result = prime * result + status.hashCode();
@@ -215,7 +215,7 @@ public class ColumnMeta implements Serializable {
         return this.field;
     }
 
-    public TableStatus getStatus() {
+    public ColumnStatus getStatus() {
         return status;
     }
 

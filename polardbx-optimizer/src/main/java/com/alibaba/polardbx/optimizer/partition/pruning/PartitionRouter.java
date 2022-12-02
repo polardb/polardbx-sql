@@ -42,6 +42,9 @@ public abstract class PartitionRouter {
         // for Hash/List/List columns/Key, the route result is desc by the set of part position
         protected Set<Integer> partPosiSet = new TreeSet<>();
 
+        // Only if do one tuple routing for Hash/Key partition, the hashCodeInfo will be not null, or else are always null
+        protected Long[] hashCodeInfo;
+
         public RouterResult() {
         }
     }

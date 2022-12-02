@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.optimizer.parse.visitor;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.google.common.collect.Maps;
 import org.apache.calcite.util.NlsString;
@@ -35,7 +37,7 @@ import java.util.Map;
  */
 public class ContextParameters {
 
-    public HashMap<ContextParameterKey, Object> contextParameters;
+    private HashMap<ContextParameterKey, Object> contextParameters;
 
     private List<SQLCommentHint> headHints;
     private boolean prepareMode = false;
@@ -93,6 +95,10 @@ public class ContextParameters {
 
     public boolean isUnderSet() {
         return null != underSet.peek() && underSet.peek();
+    }
+
+    public boolean hasInExpr(){
+        return contextParameters.get(ContextParameterKey.HAS_IN_EXPR)!=null;
     }
 
     public PrivilegeContext getPrivilegeContext() {

@@ -46,6 +46,8 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableInde
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -92,7 +94,6 @@ import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.alibaba.polardbx.rule.model.AdvancedParameter;
 import com.alibaba.polardbx.rule.model.DateEnumerationParameter;
 import com.alibaba.polardbx.rule.utils.GroovyRuleTimeShardFuncionUtils;
-import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -635,7 +636,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         String columnName =
                             SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
                         ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
-                        if (columnMeta.isBinaryDefault()) {
+                        if (columnMeta != null && columnMeta.isBinaryDefault()) {
                             SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
                             ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
                         }
@@ -646,6 +647,14 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         && !needShowImplicitId(executionContext)) {
                         toRemove.add(sqlTableElement);
                     }
+
+                    if (sqlTableElement instanceof SQLColumnDefinition && TableColumnUtils
+                        .isHiddenColumn(executionContext, schemaName, tableName,
+                            SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
+                        && !showCreateTable.isFull()) {
+                        toRemove.add(sqlTableElement);
+                    }
+
                     if (sqlTableElement instanceof MySqlPrimaryKey
                         && SqlValidatorImpl
                         .isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
@@ -718,7 +727,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                                 SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
                             if (seqType != SequenceAttribute.Type.NA) {
                                 // Replace it with extended syntax.
-                                String replacement = SequenceAttribute.EXTENDED_AUTO_INC_SYNTAX + seqType.getKeyword();
+                                String replacement = SequenceAttribute.EXTENDED_AUTO_INC_SYNTAX + seqType;
                                 sql = StringUtils.replaceOnce(sql,
                                     SequenceAttribute.NATIVE_AUTO_INC_SYNTAX,
                                     replacement);
@@ -733,7 +742,9 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 LocalityInfo localityInfo = lm.getLocalityOfTable(tableMeta.getId());
                 if (localityInfo != null) {
                     LocalityDesc localityDesc = LocalityDesc.parse(localityInfo.getLocality());
-                    sql += "\n" + localityDesc.showCreate();
+                    if (!localityDesc.holdEmptyDnList()) {
+                        sql += "\n" + localityDesc.showCreate();
+                    }
                 }
 
                 // Have to replace twice for compatibility with

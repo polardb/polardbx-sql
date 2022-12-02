@@ -30,13 +30,15 @@ import java.util.Collections;
 import java.util.List;
 
 public class MySqlUserName extends MySqlExprImpl implements SQLName, Cloneable {
+    public static int MAX_USER_NAME_IN_PROCEDURE = 32;
+    public static int MAX_HOST_NAME_IN_PROCEDURE = 60;
 
     private String userName;
     private String host;
     private String identifiedBy;
 
-    private long   userNameHashCod64;
-    private long   hashCode64;
+    private long userNameHashCod64;
+    private long hashCode64;
 
     public String getUserName() {
         return userName;
@@ -114,10 +116,10 @@ public class MySqlUserName extends MySqlExprImpl implements SQLName, Cloneable {
     public MySqlUserName clone() {
         MySqlUserName x = new MySqlUserName();
 
-        x.userName          = userName;
-        x.host              = host;
+        x.userName = userName;
+        x.host = host;
         x.identifiedBy = identifiedBy;
-        x.hashCode64        = hashCode64;
+        x.hashCode64 = hashCode64;
         x.userNameHashCod64 = userNameHashCod64;
 
         return x;
@@ -130,7 +132,7 @@ public class MySqlUserName extends MySqlExprImpl implements SQLName, Cloneable {
 
     public long nameHashCode64() {
         if (userNameHashCod64 == 0
-                && userName != null) {
+            && userName != null) {
             userNameHashCod64 = FnvHash.hashCode64(userName);
         }
         return userNameHashCod64;

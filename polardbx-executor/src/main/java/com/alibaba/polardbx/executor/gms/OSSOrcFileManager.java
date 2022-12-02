@@ -38,14 +38,14 @@ public class OSSOrcFileManager implements FileManager {
     }
 
     @Override
-    public List<FileMeta> getFiles(String physicalSchema, String physicalTable) {
+    public List<FileMeta> getFiles(String physicalSchema, String physicalTable, String logicalTableName) {
         List<FileMeta> fileMetaSet = new ArrayList<>();
         try (Connection connection = MetaDbUtil.getConnection()) {
             FilesAccessor filesAccessor = new FilesAccessor();
             filesAccessor.setConnection(connection);
             // query meta db && filter table files.
             List<FilesRecord> filesRecords = filesAccessor
-                .query(physicalSchema, physicalTable)
+                .query(physicalSchema, physicalTable, logicalTableName)
                 .stream()
                 .filter(filesRecord -> OSSFileType.of(filesRecord.fileType) == OSSFileType.TABLE_FILE)
                 .collect(Collectors.toList());
@@ -71,7 +71,7 @@ public class OSSOrcFileManager implements FileManager {
             Set<String> physicalTableNameSet = entry.getValue();
             for (String physicalTable : physicalTableNameSet) {
                 List<FileMeta> phyTableList = new ArrayList<>();
-                List<FileMeta> phyTableFileMetas = getFiles(groupKey, physicalTable);
+                List<FileMeta> phyTableFileMetas = getFiles(groupKey, physicalTable, tableMeta.getTableName());
                 // fill with column metas
                 phyTableFileMetas.forEach(fileMeta -> fileMeta.initColumnMetas(tableMeta));
                 phyTableList.addAll(phyTableFileMetas);
