@@ -2,7 +2,7 @@
 
 function usage() {
         echo "About"
-        echo "  This is manage sciprt. You can imitate manage server through startup.sh command."
+        echo "  This is manage script. You can imitate manage server through startup.sh command."
         echo "Usage:"
         echo "  startup.sh [<options>] [args]"
         echo "Options: "
@@ -12,7 +12,7 @@ function usage() {
         echo "  -S polarxPasswd PolarDB-X root password"
         echo "  -P dnPasswdKey  DnPasswordKey"
         echo "  -d dnList       dnList"
-        echo "  -F              Force cleanup before initialize "
+        echo "  -F              Force cleanup before initialize"
         echo "  -h              Show Help"
         echo "  -D				      DRDS mode"
         echo "  -b port			    enable debug port"
