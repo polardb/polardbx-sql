@@ -21,229 +21,229 @@
 # Test sum for sharding table, should add FORCE INDEX
 - sql: |
 
-    select sum(id) from test_force_index_tb1;
+    select sum(a) from test_force_index_tb1;
 
   plan: |
 
-    hashagg(sum(id)="sum(sum(id))")
+    hashagg(sum(a)="sum(sum(a))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum(`id`) as `sum(id)` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum(`a`) as `sum(a)` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test sum for single table, should add FORCE INDEX
 - sql: |
 
-    select sum(id) from test_force_index_single;
+    select sum(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select sum(`test_force_index_single`.`id`) as `sum(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select sum(`test_force_index_single`.`a`) as `sum(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test avg for sharding table, should add FORCE INDEX
 - sql: |
 
-    select avg(id) from test_force_index_tb1;
+    select avg(a) from test_force_index_tb1;
 
   plan: |
 
-    project(avg(id)="$f0 / $f1")
+    project(avg(a)="$f0 / $f1")
       hashagg($f0="sum($f0)", $f1="sum($f1)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum(`id`) as `$f0`, count(*) as `$f1` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum(`a`) as `$f0`, count(`a`) as `$f1` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test avg for single table, should add FORCE INDEX
 - sql: |
 
-    select avg(id) from test_force_index_single;
+    select avg(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select avg(`test_force_index_single`.`id`) as `avg(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select avg(`test_force_index_single`.`a`) as `avg(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test std for sharding table, should add FORCE INDEX
 - sql: |
 
-    select std(id) from test_force_index_tb1;
+    select std(a) from test_force_index_tb1;
 
   plan: |
 
-    project(std(id)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 0.5)")
+    project(std(a)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 0.5)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test std for single table, should add FORCE INDEX
 - sql: |
 
-    select std(id) from test_force_index_single;
+    select std(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select std(`test_force_index_single`.`id`) as `std(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select std(`test_force_index_single`.`a`) as `std(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test stddev for sharding table, should add FORCE INDEX
 - sql: |
 
-    select stddev(id) from test_force_index_tb1;
+    select stddev(a) from test_force_index_tb1;
 
   plan: |
 
-    project(stddev(id)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 0.5)")
+    project(stddev(a)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 0.5)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test stddev for single table, should add FORCE INDEX
 - sql: |
 
-    select stddev(id) from test_force_index_single;
+    select stddev(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select stddev(`test_force_index_single`.`id`) as `stddev(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select stddev(`test_force_index_single`.`a`) as `stddev(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test stddev_samp for sharding table, should add FORCE INDEX
 - sql: |
 
-    select stddev_samp(id) from test_force_index_tb1;
+    select stddev_samp(a) from test_force_index_tb1;
 
   plan: |
 
-    project(stddev_samp(id)="special_pow($f0 - $f1 * $f1 / $f2 / case(=($2, 1), null, -($2, 1)), 0.5)")
+    project(stddev_samp(a)="special_pow($f0 - $f1 * $f1 / $f2 / case(=($2, 1), null, -($2, 1)), 0.5)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test stddev_samp for single table, should add FORCE INDEX
 - sql: |
 
-    select stddev_samp(id) from test_force_index_single;
+    select stddev_samp(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select stddev_samp(`test_force_index_single`.`id`) as `stddev_samp(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select stddev_samp(`test_force_index_single`.`a`) as `stddev_samp(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test var_pop for sharding table, should add FORCE INDEX
 - sql: |
 
-    select var_pop(id) from test_force_index_tb1;
+    select var_pop(a) from test_force_index_tb1;
 
   plan: |
 
-    project(var_pop(id)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 1.0)")
+    project(var_pop(a)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 1.0)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test var_pop for single table, should add FORCE INDEX
 - sql: |
 
-    select var_pop(id) from test_force_index_single;
+    select var_pop(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select var_pop(`test_force_index_single`.`id`) as `var_pop(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select var_pop(`test_force_index_single`.`a`) as `var_pop(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test var_samp for sharding table, should add FORCE INDEX
 - sql: |
 
-    select var_samp(id) from test_force_index_tb1;
+    select var_samp(a) from test_force_index_tb1;
 
   plan: |
 
-    project(var_samp(id)="special_pow($f0 - $f1 * $f1 / $f2 / case(=($2, 1), null, -($2, 1)), 1.0)")
+    project(var_samp(a)="special_pow($f0 - $f1 * $f1 / $f2 / case(=($2, 1), null, -($2, 1)), 1.0)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test var_samp for single table, should add FORCE INDEX
 - sql: |
 
-    select var_samp(id) from test_force_index_single;
+    select var_samp(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select var_samp(`test_force_index_single`.`id`) as `var_samp(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select var_samp(`test_force_index_single`.`a`) as `var_samp(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test variance for sharding table, should add FORCE INDEX
 - sql: |
 
-    select variance(id) from test_force_index_tb1;
+    select variance(a) from test_force_index_tb1;
 
   plan: |
 
-    project(variance(id)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 1.0)")
+    project(variance(a)="special_pow($f0 - $f1 * $f1 / $f2 / $f2, 1.0)")
       hashagg($f0="sum($f0)", $f1="sum($f1)", $f2="sum($f2)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`id` * `id`)) as `$f0`, sum(`id`) as `$f1`, count(*) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select sum((`a` * `a`)) as `$f0`, sum(`a`) as `$f1`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary)")
 
 # Test variance for single table, should add FORCE INDEX
 - sql: |
 
-    select variance(id) from test_force_index_single;
+    select variance(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select variance(`test_force_index_single`.`id`) as `variance(id)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select variance(`test_force_index_single`.`a`) as `variance(a)` from `test_force_index_single` as `test_force_index_single` force index(primary)")
 
 # Test min for sharding table, should NOT add FORCE INDEX
 - sql: |
 
-    select min(id) from test_force_index_tb1;
+    select min(a) from test_force_index_tb1;
 
   plan: |
 
-    hashagg(min(id)="min(min(id))")
+    hashagg(min(a)="min(min(a))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select min(`id`) as `min(id)` from `test_force_index_tb1` as `test_force_index_tb1`")
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select min(`a`) as `min(a)` from `test_force_index_tb1` as `test_force_index_tb1`")
 
 # Test min for single table, should NOT add FORCE INDEX
 - sql: |
 
-    select min(id) from test_force_index_single;
+    select min(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select min(`test_force_index_single`.`id`) as `min(id)` from `test_force_index_single` as `test_force_index_single`")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select min(`test_force_index_single`.`a`) as `min(a)` from `test_force_index_single` as `test_force_index_single`")
 
 # Test max for sharding table, should NOT add FORCE INDEX
 - sql: |
 
-    select max(id) from test_force_index_tb1;
+    select max(a) from test_force_index_tb1;
 
   plan: |
 
-    hashagg(max(id)="max(max(id))")
+    hashagg(max(a)="max(max(a))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select max(`id`) as `max(id)` from `test_force_index_tb1` as `test_force_index_tb1`")
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select max(`a`) as `max(a)` from `test_force_index_tb1` as `test_force_index_tb1`")
 
 # Test max for single table, should NOT add FORCE INDEX
 - sql: |
 
-    select max(id) from test_force_index_single;
+    select max(a) from test_force_index_single;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select max(`test_force_index_single`.`id`) as `max(id)` from `test_force_index_single` as `test_force_index_single`")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select max(`test_force_index_single`.`a`) as `max(a)` from `test_force_index_single` as `test_force_index_single`")
 
 # Test count with filter for sharding table, should NOT add FORCE INDEX
 - sql: |
 
-    select count(0) from test_force_index_tb1 where id > 100;
+    select count(0) from test_force_index_tb1 where a > 100;
 
   plan: |
 
     hashagg(count(0)="sum(count(0))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` where (`id` > ?)")
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` where (`a` > ?)")
 
 # Test count with filter for single table, should NOT add FORCE INDEX
 - sql: |
 
-    select count(0) from test_force_index_single where id > 100;
+    select count(0) from test_force_index_single where a > 100;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` where (`test_force_index_single`.`id` > ?)", params="100")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` where (`test_force_index_single`.`a` > ?)", params="100")
 
 # Test count with group by for sharding table
 - sql: |
@@ -283,46 +283,46 @@
     logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` force index(primary) group by `test_force_index_single`.`id`")
 
 
-# Test count with group by for sharding table, should add FORCE INDEX
+# Test count with group by for sharding table
 - sql: |
 
-    select count(0) from test_force_index_tb1 group by name;
+    select count(0) from test_force_index_tb1 group by a;
 
   plan: |
 
     project(count(0)="count(0)")
-      hashagg(group="name", count(0)="sum(count(0))")
+      hashagg(group="a", count(0)="sum(count(0))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` group by `name`")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` group by `a`")
 
 - sql: |
 
-    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count(0) from test_force_index_tb1 group by name;
+    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count(0) from test_force_index_tb1 group by a;
 
   plan: |
 
     project(count(0)="count(0)")
-      hashagg(group="name", count(0)="sum(count(0))")
+      hashagg(group="a", count(0)="sum(count(0))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary) group by `name`")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary) group by `a`")
 
 
 # Test count with group by for single table
 - sql: |
 
-    select count(0) from test_force_index_single group by name;
+    select count(0) from test_force_index_single group by a;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`name`")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`a`")
 
 - sql: |
 
-    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count(0) from test_force_index_single group by name;
+    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count(0) from test_force_index_single group by a;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` force index(primary) group by `test_force_index_single`.`name`")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` force index(primary) group by `test_force_index_single`.`a`")
 
 
 # Test subquery for sharding table, should add FORCE INDEX
@@ -348,45 +348,45 @@
 # Test subquery for sharding table
 - sql: |
 
-    select count from (select count(0) as count from test_force_index_tb1 group by name having count(id) > 0) as t;
+    select count from (select count(0) as count from test_force_index_tb1 group by a having count(a) > 0) as t;
 
   plan: |
 
     project(count="count")
-      filter(condition="count > ?0")
-        hashagg(group="name", count="sum(count)")
+      filter(condition="$f2 > ?0")
+        hashagg(group="a", count="sum(count)", $f2="sum($f2)")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count` from `test_force_index_tb1` as `test_force_index_tb1` group by `name`")
+            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` group by `a`")
 
 - sql: |
 
-    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count from (select count(0) as count from test_force_index_tb1 group by name having count(id) > 0) as t;
+    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count from (select count(0) as count from test_force_index_tb1 group by a having count(a) > 0) as t;
 
   plan: |
 
     project(count="count")
-      filter(condition="count > ?0")
-        hashagg(group="name", count="sum(count)")
+      filter(condition="$f2 > ?0")
+        hashagg(group="a", count="sum(count)", $f2="sum($f2)")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary) group by `name`")
+            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count`, count(`a`) as `$f2` from `test_force_index_tb1` as `test_force_index_tb1` force index(primary) group by `a`")
 
 
 # Test subquery for single table
 - sql: |
 
-    select count from (select count(0) as count from test_force_index_single group by name having count(id) > 0) as t;
+    select count from (select count(0) as count from test_force_index_single group by a having count(a) > 0) as t;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`name` having (count(`id`) > ?)) as `t`", params="0")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`a` having (count(`a`) > ?)) as `t`", params="0")
 
 - sql: |
 
-    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true*/select count from (select count(0) as count from test_force_index_single group by name having count(id) > 0) as t;
+    /*+TDDL:ENABLE_FORCE_PRIMARY_FOR_GROUP_BY=true ENABLE_FORCE_PRIMARY_FOR_FILTER=true*/select count from (select count(0) as count from test_force_index_single group by a having count(a) > 0) as t;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`name` having (count(`id`) > ?)) as `t`", params="0")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` force index(primary) group by `test_force_index_single`.`a` having (count(`a`) > ?)) as `t`", params="0")
 
 
 # Test already FORCE INDEX, should not add FORCE INDEX
@@ -457,3 +457,78 @@
   plan: |
 
     logicalview(tables="optest_0000.test_force_index_min_max_single", sql="select max(`test_force_index_min_max_single`.`b`) as `max(b)` from `test_force_index_min_max_single` as `test_force_index_min_max_single` force index(primary)")
+
+# If table does not have any secondary index, should NOT add FORCE INDEX
+- sql: |
+
+    select count(0) from test_force_index_tb1_no_idx;
+
+  plan: |
+
+    hashagg(count(0)="sum(count(0))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_index_tb1_no_idx", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1_no_idx` as `test_force_index_tb1_no_idx`")
+
+- sql: |
+
+    select count(0) from test_force_index_single_no_idx;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_force_index_single_no_idx", sql="select count(0) as `count(0)` from `test_force_index_single_no_idx` as `test_force_index_single_no_idx`")
+
+# Test flashback query
+- sql: |
+
+    select count(0) from test_force_index_tb1 as of timestamp '2022-01-01 00:00:00';
+
+  plan: |
+
+    hashagg(count(0)="sum(count(0))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1` as of timestamp ? as `test_force_index_tb1` force index(primary)")
+
+
+- sql: |
+
+    select count(0) from test_force_index_single as of timestamp '2022-01-01 00:00:00';
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as of timestamp ? as `test_force_index_single` force index(primary)", params="2022-01-01 00:00:00")
+
+- sql: |
+
+    select count(0) from test_force_index_tb1 as of timestamp '2022-01-01 00:00:00' as tt;
+
+  plan: |
+
+    hashagg(count(0)="sum(count(0))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1` as of timestamp ? as `test_force_index_tb1` force index(primary)")
+
+- sql: |
+
+    select count(0) from test_force_index_single as of timestamp '2022-01-01 00:00:00' as tt;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as of timestamp ? as `tt` force index(primary)", params="2022-01-01 00:00:00")
+
+- sql: |
+
+    select count(0) from test_force_index_tb1 as of timestamp '2022-01-01 00:00:00' as tt force index(local_index);
+
+  plan: |
+
+    hashagg(count(0)="sum(count(0))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select count(*) as `count(0)` from `test_force_index_tb1` as of timestamp ? as `test_force_index_tb1` force index(local_index)")
+
+- sql: |
+
+    select count(0) from test_force_index_single as of timestamp '2022-01-01 00:00:00' as tt force index(local_index);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as of timestamp ? as `tt` force index(local_index)", params="2022-01-01 00:00:00")

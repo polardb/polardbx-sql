@@ -444,6 +444,8 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             select.setFrom(visit((SqlJoin) from));
         } else if (fromKind == SqlKind.SELECT) {
             select.setFrom(visit((SqlCall) from));
+        } else if (fromKind == SqlKind.AS_OF) {
+            select.setFrom(buildAsOfNode((SqlBasicCall) from));
         }
     }
 

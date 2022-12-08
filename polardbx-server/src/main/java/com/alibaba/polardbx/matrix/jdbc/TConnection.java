@@ -627,7 +627,7 @@ public class TConnection implements ITConnection {
             trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
             if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext) && executionContext.isTsoTransaction()) {
                 // If this plan can be optimized, rebuild plan.
-                plan = Planner.getInstance().plan(sql, executionContext);
+                plan = rebuildPlan(sql, executionContext, originParams, false);
             }
         }
 
@@ -652,13 +652,7 @@ public class TConnection implements ITConnection {
 
             // If any meta is modified during optimization, rebuild plan
             if (metaVersionChanged(plan, metaVersions, executionContext) || testRebuild) {
-                if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
-                    .isEmpty(originParams.getFirstParameter())) {
-                    // rebuild plan during executing preparedStmt should reset origin params
-                    // Resume empty parameters for insert
-                    executionContext.setParams(originParams);
-                }
-                plan = rebuildPlan(sql, executionContext);
+                plan = rebuildPlan(sql, executionContext, originParams, true);
 
                 // Update transaction policy for modify of broadcast table and
                 // of table with global secondary index
@@ -667,7 +661,7 @@ public class TConnection implements ITConnection {
                     if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext)
                         && executionContext.isTsoTransaction()) {
                         // If this plan can be optimized, rebuild plan.
-                        plan = Planner.getInstance().plan(sql, executionContext);
+                        plan = rebuildPlan(sql, executionContext, originParams, false);
                     }
                 }
             }
@@ -768,14 +762,26 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext) {
-        SQLRecorderLogger.ddlLogger.warn(
-            MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
-                executionContext.getTraceId(),
-                sql,
-                GsiUtils.rowToString(executionContext.getParams())));
+    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext,
+                                      Parameters originParams,
+                                      boolean causedByMetaChanged) {
+        if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
+            .isEmpty(originParams.getFirstParameter())) {
+            // rebuild plan during executing preparedStmt should reset origin params
+            // Resume empty parameters for insert
+            executionContext.setParams(originParams.clone());
+        }
 
-        executionContext.refreshTableMeta();
+        if (causedByMetaChanged) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
+                    executionContext.getTraceId(),
+                    sql,
+                    GsiUtils.rowToString(executionContext.getParams())));
+
+            executionContext.refreshTableMeta();
+        }
+
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
         this.lastExecutionBeginNano = System.nanoTime();
         this.lastExecutionBeginUnixTime = unixTimeStamp();

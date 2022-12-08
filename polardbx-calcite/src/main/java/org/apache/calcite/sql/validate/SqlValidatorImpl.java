@@ -3258,7 +3258,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         case AS_OF:
         case AS:
             call = (SqlCall) node;
-            if (alias == null) {
+            // For AS_OF, call.operand(1) is not an alias, but a "?".
+            if (alias == null && kind != SqlKind.AS_OF) {
                 alias = call.operand(1).toString();
             }
             SqlValidatorScope usingScope2 = usingScope;

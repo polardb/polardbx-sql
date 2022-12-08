@@ -4494,6 +4494,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
             SqlNode sqlNodeHint = FastSqlConstructUtils.constructForceIndex(x, context, ec);
             ((SqlIdentifier) tableNameIdentifier).indexNode = sqlNodeHint;
+            ((SqlIdentifier) tableNameIdentifier).partitions = partitions;
 
             tableNameIdentifier = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
                 tableNameIdentifier,
@@ -4513,7 +4514,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             }
             SqlNode sqlNodeHint = FastSqlConstructUtils.constructForceIndex(x, context, ec);
             // Note: Use of computeAlias will normalize(will trim) internal, so use normalizeNoTrim here.
-            SqlNode aliasIdentifier = new SqlIdentifier(SQLUtils.normalizeNoTrim(alias), SqlParserPos.ZERO);
+            SqlIdentifier aliasIdentifier = new SqlIdentifier(SQLUtils.normalizeNoTrim(alias), SqlParserPos.ZERO);
 
             // avoid handling table name like '?' in mock mode
             if (!(tableNameIdentifier instanceof SqlIdentifier) && ConfigDataMode.isFastMock()) {
@@ -4554,9 +4555,14 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             } else {
                 SqlNode sqlNodeHint = FastSqlConstructUtils.constructForceIndex(x, context, ec);
                 this.sqlNode = tableNameIdentifier;
-                if (tableNameIdentifier instanceof SqlIdentifier) {
-                    ((SqlIdentifier) tableNameIdentifier).indexNode = sqlNodeHint;
-                    ((SqlIdentifier) tableNameIdentifier).partitions = partitions;
+                SqlNode exactTableIdentifier = tableNameIdentifier;
+                // For AS_OF, tableNameIdentifier is "`tb` AS OF TIMESTAMP ?", and we should get `tb` from that.
+                if (tableNameIdentifier instanceof SqlBasicCall && SqlKind.AS_OF == tableNameIdentifier.getKind()) {
+                    exactTableIdentifier = ((SqlBasicCall) tableNameIdentifier).getOperandList().get(0);
+                }
+                if (exactTableIdentifier instanceof SqlIdentifier) {
+                    ((SqlIdentifier) exactTableIdentifier).indexNode = sqlNodeHint;
+                    ((SqlIdentifier) exactTableIdentifier).partitions = partitions;
                 }
             }
         }

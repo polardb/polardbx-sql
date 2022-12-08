@@ -28,9 +28,6 @@ public class CollectorTableVisitor extends ReplaceTableNameWithSomethingVisitor 
 
     @Override
     protected SqlNode buildSth(SqlNode sqlNode) {
-        if (!(sqlNode instanceof SqlIdentifier)) {
-            return sqlNode;
-        }
         return sqlNode;
     }
 
