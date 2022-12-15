@@ -909,6 +909,33 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAlterTableDropAddCompPrimaryKey() {
+        if (TStringUtil.isNotEmpty(schemaPrefix)) {
+            return;
+        }
+
+        String tableName = "drop_add_comp_pk";
+
+        dropTableIfExists(tableName);
+
+        String sql = "CREATE TABLE " + tableName + " (\n"
+            + "col1 varchar(255) DEFAULT NULL,\n"
+            + "col2 varchar(255) NOT NULL,\n"
+            + "id int(11) NOT NULL AUTO_INCREMENT,\n"
+            + "PRIMARY KEY (id,col2)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "ALTER TABLE " + tableName + "\n"
+            + "DROP PRIMARY KEY,\n"
+            + "DROP COLUMN col2,\n"
+            + "ADD PRIMARY KEY (id) USING BTREE";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
     public void testAlterTableDropKey() throws SQLException {
         if (TStringUtil.isNotEmpty(schemaPrefix)) {
             return;

@@ -1135,6 +1135,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 }
             } else if (alterItem instanceof SqlDropPrimaryKey) {
                 primaryKeyDropped = true;
+                droppedIndexes.add("PRIMARY");
             } else if (alterItem instanceof SqlAddPrimaryKey) {
                 SqlAddPrimaryKey addPrimaryKey = (SqlAddPrimaryKey) alterItem;
                 for (SqlIndexColumnName indexColumnName : addPrimaryKey.getColumns()) {
