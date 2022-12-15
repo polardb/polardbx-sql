@@ -353,6 +353,7 @@ public class TableMetaChanger {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
         String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
+        boolean renamePhyTable = executionContext.needToRenamePhyTables();
 
         // Rename sequence if exists.
         SequenceBaseRecord sequenceRecord = null;
@@ -365,9 +366,13 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
 
+        // Replace with new physical table name
+        if (renamePhyTable) {
+            tableInfoManager.renamePartitionTablePhyTable(schemaName, logicalTableName, newLogicalTableName);
+        }
+
         // Replace with new table name
-        tableInfoManager
-            .renamePartitionTable(schemaName, logicalTableName, newLogicalTableName, sequenceRecord);
+        tableInfoManager.renamePartitionTable(schemaName, logicalTableName, newLogicalTableName, sequenceRecord);
 
         // Unregister the old table data id.
         CONFIG_MANAGER.unregister(tableDataId, metaDbConn);

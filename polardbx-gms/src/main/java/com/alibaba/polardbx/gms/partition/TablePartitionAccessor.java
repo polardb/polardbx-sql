@@ -178,6 +178,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
     private static final String UPDATE_TABLES_RENAME =
         "update table_partitions set `table_name` = ? where table_schema=? and table_name=? ";
 
+    private static final String UPDATE_RENAME_PHYSICAL_TABLE =
+        "update table_partitions set `phy_table` = ? where id = ? ";
+
     private static final String GET_TABLE_PARTITIONS_BY_GID_AND_PART_FROM_DELTA_TABLE =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.TABLE_PARTITIONS_DELTA
             + " where table_schema=? and group_id=? and part_name=? and part_level<>0";
@@ -1174,6 +1177,20 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableSchema);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
             MetaDbUtil.update(UPDATE_TABLES_RENAME, params, connection);
+            return;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void renamePhyTableName(Long id, String newPhyTableName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newPhyTableName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
+            MetaDbUtil.update(UPDATE_RENAME_PHYSICAL_TABLE, params, connection);
             return;
         } catch (Exception e) {
             logger.error("Failed to query the system table 'table_partitions'", e);

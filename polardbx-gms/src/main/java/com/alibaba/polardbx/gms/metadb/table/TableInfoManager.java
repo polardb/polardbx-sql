@@ -38,7 +38,9 @@ import com.alibaba.polardbx.gms.partition.TableLocalPartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionSpecConfig;
 import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
@@ -726,6 +728,16 @@ public class TableInfoManager extends AbstractAccessor {
         columnMetaAccessor.rename(tableSchema, tableName, newTableName);
         if (sequenceRecord != null) {
             sequencesAccessor.rename(sequenceRecord);
+        }
+    }
+
+    public void renamePartitionTablePhyTable(String tableSchema, String tableName, String newTableName) {
+        TablePartitionConfig tablePartitionConfig =
+            tablePartitionAccessor.getTablePartitionConfig(tableSchema, tableName, false);
+        for (TablePartitionSpecConfig item : tablePartitionConfig.getPartitionSpecConfigs()) {
+            String phyTableName = item.getSpecConfigInfo().phyTable;
+            String newPhyTableName = TStringUtil.replaceWithIgnoreCase(phyTableName, tableName, newTableName);
+            tablePartitionAccessor.renamePhyTableName(item.getSpecConfigInfo().id, newPhyTableName);
         }
     }
 
