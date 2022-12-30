@@ -2,7 +2,7 @@
 
 本文介绍如何快速上手体验 PolarDB-X 数据库。要上手 PolarDB-X 数据库，你将使用到 PXD 工具。通过 PXD，你只需执行一行命令就可在本地快速拉起一个 PolarDB-X。
 > 注意：
-> - PXD 主要面向的是开发测试场景，生产环境请使用 [GalaxyKube](https://github.com/ApsaraDB/galaxykube) 在 K8S 上进行部署
+> - PXD 主要面向的是开发测试场景，生产环境请使用 [PolarDB-X Operator](https://github.com/polardb/polardbx-operator) 在 K8S 上进行部署
 
 
 

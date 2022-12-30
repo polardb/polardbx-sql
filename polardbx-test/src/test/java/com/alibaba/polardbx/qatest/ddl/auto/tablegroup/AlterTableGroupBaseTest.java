@@ -57,10 +57,9 @@ public class AlterTableGroupBaseTest extends DDLBaseNewDBTestCase {
     protected static List<String> finalTableStatus;
     protected static String originUseDbName;
     protected static String originSqlMode;
-    protected static boolean needAutoDropDbAfterTest = true;
-    protected static boolean printExecutedSqlLog = false;
-    protected static String tableGroupName = "altertablegroup_tg";
-    protected static String pk = "id";
+    protected static final boolean printExecutedSqlLog = false;
+    protected static final String tableGroupName = "altertablegroup_tg";
+    protected static final String pk = "id";
 
     public static final String PARTITION_BY_BIGINT_KEY =
         " partition by key(id) partitions 3";

@@ -8,17 +8,17 @@ This document explains the development process of PolarDB-X, covering code compi
 
 On your computer, get the source code of PolarDB-X from github repositories:
 
-[GalaxyEngine](https://github.com/ApsaraDB/galaxyengine)
+[PolarDB-X Engine](https://github.com/polardb/polardbx-engine)
 
-[GalaxySQL](https://github.com/ApsaraDB/galaxysql)
+[PolarDB-X SQL](https://github.com/polardb/polardbx-sql)
 
-[GalaxyGlue](https://github.com/ApsaraDB/galaxyglue)
+[PolarDB-X Glue](https://github.com/polardb/polardbx-glue)
 
-[GalaxyCDC](https://github.com/ApsaraDB/galaxycdc)
+[PolarDB-X CDC](https://github.com/polardb/polardbx-cdc)
 
 Check out the `main` branch of each repository.
 
-### Compiling PolarDB-X Data Node (GalaxyEngine)
+### Compiling PolarDB-X Data Node (PolarDB-X Engine)
 
 **Install dependencies on CentOS7**
 
@@ -55,8 +55,8 @@ apt install make automake cmake git bison libaio-dev libncurses-dev libsasl2-dev
 **Compile && Install**
 
 ```bash
-# enter galaxyengine directory
-cd galaxyengine
+# enter polardbx-engine directory
+cd polardbx-engine
 
 # install boost 1.70 (Note: Put boost into the repository to avoid downloading)
 wget https://boostorg.jfrog.io/artifactory/main/release/1.70.0/source/boost_1_70_0.tar.gz
@@ -76,16 +76,16 @@ make -j8
 make install
 ```
 
-### Compiling PolarDB-X Compute Node (GalaxySQL&GalaxyGlue)
+### Compiling PolarDB-X Compute Node (PolarDB-X SQL & PolarDB-X Glue)
 
 ```shell
 # install JDK 1.8 and Maven 3
 
-# make sure polardbx-rpc (galaxyglue) initialized
+# make sure polardbx-rpc (polardbx-glue) initialized
 git submodule update --init
 
-# enter the galaxysql directory 
-cd galaxysql/
+# enter the polardbx-sql directory 
+cd polardbx-sql/
 
 # compile&install
 mvn install -D maven.test.skip=true -D env=release 
@@ -94,10 +94,10 @@ mvn install -D maven.test.skip=true -D env=release
 tar zxvf target/polardbx-server-*-SNAPSHOT.tar.gz
 ```
 
-### Compiling PolarDB-X CDC (GalaxyCDC)
+### Compiling PolarDB-X CDC (PolarDB-X CDC)
 
 ```shell
-cd galaxycdc
+cd polardbx-cdc
 
 # compile&install
 mvn install -D maven.test.skip=true -D env=release 
@@ -107,7 +107,7 @@ tar zxvf polardbx-cdc-assemble/target/polardbx-binlog*.tar.gz
 ```
 
 ### Start PolarDB-X DN
-> NOTE: GalaxyEngine is a derivative work of MySQL, the following will use mysql and galaxyengine without distinction
+> NOTE: PolarDB-X Engine is a derivative work of MySQL, the following will use mysql and polardbx-engine without distinction
 > 
 - This step starts a mysql process that acts as the metadb and DN
 - Refer to the mysql configuration file (my.cnf) in the appendix to modify it accordingly. By default, 4886 is used as mysql port and 32886 as private protocol port

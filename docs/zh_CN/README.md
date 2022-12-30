@@ -52,7 +52,7 @@ PXD 使用说明参考[这里](quickstart.md)。
 
 2. K8S 部署模式
 
-PolarDB-X 提供 K8S 部署模式，通过该方式，可对 PolarDB-X 集群做更多定制化配置。K8S 部署教程参考[这里](https://github.com/ApsaraDB/galaxykube#quick-start) 。
+PolarDB-X 提供 K8S 部署模式，通过该方式，可对 PolarDB-X 集群做更多定制化配置。K8S 部署教程参考[这里](https://github.com/polardb/polardbx-operator#quick-start) 。
 
 3. 源码编译安装模式
 
@@ -88,23 +88,23 @@ PolarDB-X 采用 Shared-nothing 与存储分离计算架构进行设计，系统
 
 PolarDB-X 提供通过 K8S Operator 方式管理以上4个组件，同时计算节点与存储节点之间可通过私有协议进行 RPC 通信，这些组件对应的仓库如下。
 
-| 组件名称 | 仓库地址 | 版本号             |
-| --- | --- |-----------------|
-| 计算节点（CN, Compute Node） | [galaxysql](https://github.com/ApsaraDB/galaxysql) | v5.4.13-16615127 |
-| 元数据服务（GMS, Global Meta Service） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
-| 存储节点（DN, Data Node） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
-| 日志节点（CDC, Change Data Capture） | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) | v5.4.13 |
-| 私有协议 | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) |  v5.4.13-16615127 |
-| K8S Operator | [galaxykube](https://github.com/ApsaraDB/galaxykube) | v1.2.2 |
+| 组件名称 | 仓库地址                                                              | 版本号             |
+| --- |-------------------------------------------------------------------|-----------------|
+| 计算节点（CN, Compute Node） | [polardbx-sql](https://github.com/polardb/polardbx-sql)           | v5.4.13-16615127 |
+| 元数据服务（GMS, Global Meta Service） | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
+| 存储节点（DN, Data Node） | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
+| 日志节点（CDC, Change Data Capture） | [polardbx-cdc](https://github.com/polardb/polardbx-cdc)           | v5.4.13 |
+| 私有协议 | [polardbx-glue](https://github.com/polardb/polardbx-glue)         |  v5.4.13-16615127 |
+| K8S Operator | [polardbx-operator](https://github.com/polardb/polardbx-operator) | v1.2.2 |
 
 
 
-## 什么是 ApsaraDB GalaxySQL ？
-GalaxySQL 是 PolarDB-X 的计算节点（CN, Compute Node）。
+## 什么是 PolarDB-X SQL ？
+PolarDB-X SQL 是 PolarDB-X 的计算节点（CN, Compute Node）。
 
 
 ## License
-ApsaraDB GalaxySQL 采用 Apache License 2.0 协议。协议详情参看 [License](../../LICENSE) 文件。
+PolarDB-X SQL 采用 Apache License 2.0 协议。协议详情参看 [License](../../LICENSE) 文件。
 
 
 ## 贡献
@@ -120,7 +120,7 @@ ApsaraDB GalaxySQL 采用 Apache License 2.0 协议。协议详情参看 [Licens
 
 
 ## 致谢
-ApsaraDB GalaxySQL 中引用或借鉴了很多开源社区的代码，例如 Calcite、Presto 等，真诚感谢这些项目和贡献人员。
+PolarDB-X SQL 中引用或借鉴了很多开源社区的代码，例如 Calcite、Presto 等，真诚感谢这些项目和贡献人员。
 ## 
 
 

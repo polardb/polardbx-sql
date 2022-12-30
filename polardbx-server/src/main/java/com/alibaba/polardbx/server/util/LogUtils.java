@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.server.util;
 
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.polardbx.common.audit.AuditAction;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.Lexer;
 import com.alibaba.polardbx.druid.sql.parser.Token;
+import com.alibaba.polardbx.gms.privilege.audit.AuditPrivilege;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
 import com.alibaba.polardbx.optimizer.ccl.common.CclMetric;
 import com.alibaba.polardbx.optimizer.ccl.common.CclSqlMetric;
@@ -159,6 +161,7 @@ public class LogUtils {
             if (isDDL(token)) {
                 recordDdl.info(
                     SQLRecorderLogger.ddlLogFormat.format(new Object[] {sql, duration, affectRow, c.getTraceId()}));
+                polarAuditDb(c, sql, token);
             }
 
             sqlInfo.append("[V3] ");
@@ -469,5 +472,16 @@ public class LogUtils {
 
     public static void resetEnableSqlProfileLog(boolean enableSqlProfileLog) {
         LogUtils.enableSqlProfileLog = enableSqlProfileLog;
+    }
+
+    public static void polarAuditDb(ServerConnection c, String auditInfo, Token token) {
+        if (token == null) {
+            return;
+        }
+        AuditAction auditAction = AuditAction.value(token.name);
+        if (auditAction == null) {
+            return;
+        }
+        AuditPrivilege.polarAuditDb(c.getConnectionInfo(), auditInfo, auditAction);
     }
 }

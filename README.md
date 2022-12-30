@@ -1,5 +1,5 @@
 
-[![LICENSE](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://github.com/ApsaraDB/galaxysql/blob/main/LICENSE)
+[![LICENSE](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://github.com/polardb/polardbx-sql/blob/main/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Java-blue.svg)](https://www.java.com/)
 
 [中文文档](https://polardbx.com)
@@ -56,7 +56,7 @@ See the [PXD Quick Start](docs/en/quickstart.md).
 ### To quick start with PolarDB-X on Kubernetes
 PolarDB-X provides K8S deployment mode, through which you can customize the configuration of PolarDB-X cluster.
 
-See the [K8S Quick Start](https://github.com/ApsaraDB/galaxykube#quick-start).
+See the [K8S Quick Start](https://github.com/polardb/polardbx-operator#quick-start).
 
 ### To start developing PolarDB-X
 If you want to compile and install PolarDB-X from source code, or start development, you can refer the [Development Guide](docs/en/quickstart-development.md).
@@ -89,22 +89,22 @@ The CDC Node provides change data capture capability that is fully compatible wi
 
 PolarDB-X provides tool to manage the above components through K8S Operator, and the RPC between the CN and DN can be done through private protocol component. The corresponding repositories of these components are as follows.
 
-| **Component Name**        | **Repository** | **Version** |
-|---------------------------| --- |---|
-| CN (Compute Node)         | [galaxysql](https://github.com/ApsaraDB/galaxysql) | v5.4.13-16615127 |
-| GMS (Global Meta Service) | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
-| DN (Data Node)            | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
-| CDC (Change Data Capture) | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) | v5.4.13 |
-| RPC                       | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) | v5.4.13-16615127 |
-| K8S Operator              | [galaxykube](https://github.com/ApsaraDB/galaxykube) | v1.2.2 |
+| **Component Name**        | **Repository**                                                    | **Version** |
+|---------------------------|-------------------------------------------------------------------|---|
+| CN (Compute Node)         | [polardbx-sql](https://github.com/polardb/polardbx-sql)           | v5.4.13-16615127 |
+| GMS (Global Meta Service) | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
+| DN (Data Node)            | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
+| CDC (Change Data Capture) | [polardbx-cdc](https://github.com/polardb/polardbx-cdc)           | v5.4.13 |
+| RPC                       | [polardbx-glue](https://github.com/polardb/polardbx-glue)         | v5.4.13-16615127 |
+| K8S Operator              | [polardbx-operator](https://github.com/polardb/polardbx-operator) | v1.2.2 |
 
 
-## What is ApsaraDB GalaxySQL ？
-ApsaraDB GalaxySQL is one component of PolarDB-X, namely CN (Compute Node).
+## What is PolarDB-X SQL ？
+PolarDB-X SQL is one component of PolarDB-X, namely CN (Compute Node).
 
 
 ## Licensing
-ApsaraDB GalaxySQL is under the Apache License 2.0. See the [License](LICENSE) file for details.
+PolarDB-X SQL is under the Apache License 2.0. See the [License](LICENSE) file for details.
 
 
 ## Contributing
@@ -122,4 +122,4 @@ You can join these groups and chats to discuss and ask PolarDB-X related questio
    
 
 ## Acknowledgements
-ApsaraDB GalaxySQL references from many open source projects, such as Calcite, Presto etc. Sincere thanks to these projects and contributors.
+PolarDB-X SQL references from many open source projects, such as Calcite, Presto etc. Sincere thanks to these projects and contributors.

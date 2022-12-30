@@ -37,7 +37,7 @@ public class BaselineSyncController implements IBaselineSyncController {
     public void updateBaselineSync(String schemaName, BaselineInfo baselineInfo) {
         Map<String, List<String>> baselineMap = Maps.newConcurrentMap();
         List<String> baselineJson = Lists.newArrayList();
-        baselineJson.add(BaselineInfo.serializeBaseInfoToJson(baselineInfo));
+        baselineJson.add(BaselineInfo.serializeToJson(baselineInfo, false));
         baselineMap.put(schemaName, baselineJson);
         SyncManagerHelper.sync(new BaselineUpdateSyncAction(baselineMap));
     }

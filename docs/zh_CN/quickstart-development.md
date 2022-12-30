@@ -7,14 +7,14 @@
 
 ### 准备工作
 
-- 下载 [GalaxyEngine](https://github.com/ApsaraDB/galaxyengine) 代码，main分支
-- 下载 [GalaxySQL](https://github.com/ApsaraDB/galaxysql) 代码，main分支
-- 下载 [GalaxyGlue](https://github.com/ApsaraDB/galaxyglue) 代码，main分支
-- 下载 [GalaxyCDC](https://github.com/ApsaraDB/galaxycdc) 代码，main分支
+- 下载 [PolarDB-X Engine](https://github.com/polardb/polardbx-engine) 代码，main 分支
+- 下载 [PolarDB-X SQL](https://github.com/polardb/polardbx-sql) 代码，main 分支
+- 下载 [PolarDB-X Glue](https://github.com/polardb/polardbx-glue) 代码，main 分支
+- 下载 [PolarDB-X CDC](https://github.com/polardb/polardbx-cdc) 代码，main 分支
 
-### 编译 PolarDB-X DN (存储节点，代号GalaxyEngine)
+### 编译 PolarDB-X DN (存储节点，代号 PolarDB-X Engine)
 
-此步骤编译和安装GalaxyEngine（mysql）
+此步骤编译和安装 PolarDB-X Engine（mysql）
 
 **安装依赖（CentOS7)**
 
@@ -50,8 +50,8 @@ apt install make automake cmake git bison libaio-dev libncurses-dev libsasl2-dev
 **编译**
 
 ```bash
-# 进入 galaxyengine 代码路径
-cd galaxyengine
+# 进入 polardbx-engine 代码路径
+cd polardbx-engine
 
 # 安装boost1.70 (注：把boost放到仓库里避免下载）
 wget https://boostorg.jfrog.io/artifactory/main/release/1.70.0/source/boost_1_70_0.tar.gz
@@ -72,16 +72,16 @@ make install
 ```
 
 
-### 编译 PolarDB-X CN (计算节点，代号GalaxySQL)
-此步骤编译和安装galaxysql & galaxyglue代码。
+### 编译 PolarDB-X CN (计算节点，代号 PolarDB-X SQL)
+此步骤编译和安装 polardbx-sql & polardbx-glue代码。
 ```yaml
 # 安装依赖 JDK 1.8 和 Maven 3
 # 配置 Maven 仓库地址
 
 # 进入代码目录 
-cd galaxysql/
+cd polardbx-sql/
 
-# 确保 polardbx-rpc 子模块 (GalaxyGlue) 已初始化
+# 确保 polardbx-rpc 子模块 (PolarDB-X Glue) 已初始化
 git submodule update --init
 
 # 编译打包
@@ -91,8 +91,8 @@ mvn install -D skipTests=true -D env=release
 tar zxvf target/polardbx-server-5.4.13-SNAPSHOT.tar.gz
 ```
 
-### 编译 PolarDB-X CDC（日志节点，代号GalaxyCDC）
-此步骤编译和安装 galaxycdc 代码。
+### 编译 PolarDB-X CDC（日志节点，代号 PolarDB-X CDC）
+此步骤编译和安装 polardbx-cdc 代码。
 ```yaml
 # 进入CDC代码
 

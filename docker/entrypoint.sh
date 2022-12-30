@@ -14,19 +14,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-GALAXYSQL_HOME=/home/admin/drds-server
+POLARDBX_SQL_HOME=/home/admin/drds-server
 
-function galaxysql_pid() {
-  ps auxf | grep java | grep TddlLauncher | awk '{print $2}'
+function polardbx_sql_pid() {
+  jps | grep Tddl | cut -d ' ' -f 1
 }
 
 function kill_and_clean() {
   local pid
-  pid=$(galaxysql_pid)
+  pid=$(polardbx_sql_pid)
   if [ -n "$pid" ]; then
     kill -9 "$pid"
   fi
-  rm -f $GALAXYSQL_HOME/bin/*.pid
+  rm -f $POLARDBX_SQL_HOME/bin/*.pid
 }
 
 function prepare() {
@@ -36,12 +36,12 @@ function prepare() {
 }
 
 function start_process() {
-  $GALAXYSQL_HOME/bin/startup.sh -w wisp -D
+  $POLARDBX_SQL_HOME/bin/startup.sh -D
 }
 
 last_pid=0
 function report_pid() {
-  pid=$(galaxysql_pid)
+  pid=$(polardbx_sql_pid)
   if [ -z "$pid" ]; then
     echo "Process dead. Exit."
     last_pid=0

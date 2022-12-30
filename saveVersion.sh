@@ -34,7 +34,7 @@ if [ -d .svn ]; then
 elif [ -d .git ]; then
   revision=`git log -1 --pretty=format:"%H"`
   hostname=`hostname`
-  url="git@github.com:ApsaraDB/galaxysql.git"
+  url="git@github.com:polardb/polardbx-sql.git"
   branch="Unknown"
   #url=`git remote -v | grep origin | grep fetch |  awk '{print $2}'`
   #branch=`git branch --no-color | grep '*' | awk '{print $2}'`

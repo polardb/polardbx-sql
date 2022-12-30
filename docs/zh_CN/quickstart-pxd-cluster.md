@@ -78,10 +78,10 @@ type: polardbx
 cluster:
   name: pxc_test
   gms:
-    image: polardbx/galaxyengine:latest
+    image: polardbx/polardbx-engine:latest
     host_group: [10.168.0.37]
   cn:
-    image: polardbx/galaxysql:latest
+    image: polardbx/polardbx-sql:latest
     replica: 2
     nodes:
       - host: 10.168.0.38
@@ -89,7 +89,7 @@ cluster:
     resources:
       mem_limit: 4G
   dn:
-    image: polardbx/galaxyengine:latest
+    image: polardbx/polardbx-engine:latest
     replica: 2
     nodes:
       - host_group: [10.168.0.38]
@@ -97,7 +97,7 @@ cluster:
     resources:
       mem_limit: 4G
   cdc:
-    image: polardbx/galaxycdc:latest
+    image: polardbx/polardbx-cdc:latest
     replica: 1
     nodes:
       - host: 10.168.0.37
