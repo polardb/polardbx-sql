@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.server.ServerConnection;
@@ -27,8 +28,6 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLSetStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.common.audit.AuditAction;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.privilege.UserPasswdChecker;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -75,7 +74,13 @@ public class PolarSetPasswordHandler extends AbstractPrivilegeCommandHandler {
             SQLSetStatement statement =
                 (SQLSetStatement) FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
             SQLAssignItem assignItem = statement.getItems().get(0);
-            MySqlUserName userName = MySqlUserName.fromIdentifier((SQLIdentifierExpr) assignItem.getTarget());
+            SQLExpr target = assignItem.getTarget();
+            MySqlUserName userName;
+            if (target instanceof MySqlUserName) {
+                userName = (MySqlUserName) target;
+            } else {
+                userName =  MySqlUserName.fromIdentifier((SQLIdentifierExpr) target);
+            }
             String password = "";
 
             if (assignItem.getValue() instanceof SQLCharExpr) {
