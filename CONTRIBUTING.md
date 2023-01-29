@@ -22,7 +22,7 @@ Let's use an example to walk through the list.
 
 ### Fork Your Own Branch
 
-There are many PolarDB-X related repositories, take PolarDB-X SQL and PolarDB-X Glue for an example. On Github page of [PolarDB-X SQL](https://github.com/polardb/polardbx-sql) and [PolarDB-X Glue](https://github.com/polardbx/polardbx-glue), Click **fork** button to create your own polardbx-sql and polardbx-glue repository.
+There are many PolarDB-X related repositories, take PolarDB-X SQL and PolarDB-X Glue for an example. On Github page of [PolarDB-X SQL](https://github.com/polardb/polardbx-sql) and [PolarDB-X Glue](https://github.com/polardb/polardbx-glue), Click **fork** button to create your own polardbx-sql and polardbx-glue repository.
 
 ### Create Local Repository
 ```bash
