@@ -80,7 +80,7 @@ public class ProcedureResultHandler implements QueryResultHandler {
         if (!selectForDeeperUse) {
             proxy =
                 ResultSetUtil.resultSetToPacket(resultSet, serverConnection.getCharset(), serverConnection,
-                    new AtomicLong(0),
+                    outAffectedRows,
                     proxy);
         } else {
             cursor = PLUtils.buildCacheCursor(((TResultSet) resultSet).getResultCursor(), plContext);
@@ -124,6 +124,10 @@ public class ProcedureResultHandler implements QueryResultHandler {
 
     public Throwable getException() {
         return exception;
+    }
+
+    public void clearException() {
+        exception = null;
     }
 
     public PlCacheCursor getCurosr() {

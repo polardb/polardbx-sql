@@ -16,12 +16,13 @@
 
 package com.alibaba.polardbx.server.util;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.server.ServerConnection;
+
+import java.util.Properties;
 
 /**
  * @author wcf
@@ -41,39 +42,21 @@ public class ProcedureUtils {
         return schema + "." + procedureName.getSimpleName();
     }
 
-    public static long getCursorMemoryLimit(ServerConnection connection) {
-        Object value = connection.getConnectionVariables().get(ConnectionProperties.PL_CURSOR_MEMORY_LIMIT);
+    public static long getVariableValue(ServerConnection connection, ConfigParam var) {
+        String varName = var.getName();
+        // get session variable
+        Object value = connection.getConnectionVariables().get(varName);
         if (value == null) {
-            return Long.parseLong(ConnectionParams.PL_CURSOR_MEMORY_LIMIT.getDefault());
-        } else {
-            return Long.parseLong(String.valueOf(value));
+            Properties cnProperties =
+                MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
+            if (cnProperties.containsKey(varName)) {
+                // get global variable
+                value = cnProperties.get(varName);
+            } else {
+                // get default value
+                value = var.getDefault();
+            }
         }
-    }
-
-    public static long getProcedureMemoryLimit(ServerConnection connection) {
-        Object value = connection.getConnectionVariables().get(ConnectionProperties.PL_MEMORY_LIMIT);
-        if (value == null) {
-            return Long.parseLong(ConnectionParams.PL_MEMORY_LIMIT.getDefault());
-        } else {
-            return Long.parseLong(String.valueOf(value));
-        }
-    }
-
-    public static long getPlInternalCacheSize(ServerConnection connection) {
-        Object value = connection.getConnectionVariables().get(ConnectionProperties.PL_INTERNAL_CACHE_SIZE);
-        if (value == null) {
-            return Long.parseLong(ConnectionParams.PL_INTERNAL_CACHE_SIZE.getDefault());
-        } else {
-            return Long.parseLong(String.valueOf(value));
-        }
-    }
-
-    public static long getMaxSpDepth(ServerConnection connection) {
-        Object value = connection.getConnectionVariables().get(ConnectionProperties.MAX_PL_DEPTH);
-        if (value == null) {
-            return Long.parseLong(ConnectionParams.MAX_PL_DEPTH.getDefault());
-        } else {
-            return Long.parseLong(String.valueOf(value));
-        }
+        return Long.parseLong(String.valueOf(value));
     }
 }

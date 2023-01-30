@@ -16,13 +16,13 @@ import org.apache.calcite.sql.SqlAlterProcedure;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LogicalAlterProcedureHandler extends LogicalCommonDdlHandler{
+public class LogicalAlterProcedureHandler extends LogicalCommonDdlHandler {
     public LogicalAlterProcedureHandler(IRepository repo) {
         super(repo);
     }
 
     @Override
-    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext){
+    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
         List<DdlTask> taskList = new ArrayList<>();
@@ -32,7 +32,8 @@ public class LogicalAlterProcedureHandler extends LogicalCommonDdlHandler{
         return executableDdlJob;
     }
 
-    private AlterProcedureTask getAlterProcedureTask(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+    private AlterProcedureTask getAlterProcedureTask(BaseDdlOperation logicalDdlPlan,
+                                                     ExecutionContext executionContext) {
         SqlAlterProcedure alterProcedure = ((LogicalAlterProcedure) logicalDdlPlan).getSqlAlterProcedure();
         SQLName procedureName = alterProcedure.getProcedureName();
         String procedureSchema = PLUtils.getProcedureSchema(procedureName, executionContext.getSchemaName());

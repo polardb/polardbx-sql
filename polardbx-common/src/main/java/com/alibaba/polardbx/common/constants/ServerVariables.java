@@ -16,11 +16,16 @@
 
 package com.alibaba.polardbx.common.constants;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.LongConfigParam;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 public class ServerVariables {
 
@@ -44,7 +49,9 @@ public class ServerVariables {
 
     public static Set<String> globalBannedVariables = new HashSet<>();
 
-    public static final Set<String> SUPPORT_SET_GLOBAL_VARIABLES;
+    public static final Set<String> SUPPORT_SHOW_CN_GLOBAL_VARIABLES;
+
+    public static final Set<String> CN_VARIABLES_REPLACE_DN_VARIABLES = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
     /**
      * Parameters of timer task which are modifiable during runtime.
@@ -56,6 +63,12 @@ public class ServerVariables {
     public static final Set<String> MODIFIABLE_DEADLOCK_DETECTION_PARAM = ImmutableSet.of(
         ConnectionProperties.ENABLE_DEADLOCK_DETECTION,
         ConnectionProperties.DEADLOCK_DETECTION_INTERVAL);
+
+    public static final List<LongConfigParam> PROCEDURE_PARAMS = ImmutableList.of(
+        ConnectionParams.MAX_PL_DEPTH,
+        ConnectionParams.PL_MEMORY_LIMIT,
+        ConnectionParams.PL_CURSOR_MEMORY_LIMIT,
+        ConnectionParams.PL_INTERNAL_CACHE_SIZE);
 
     public static final Set<String> MODIFIABLE_TIMER_TASK_PARAM;
 
@@ -2712,7 +2725,11 @@ public class ServerVariables {
 
         MODIFIABLE_TIMER_TASK_PARAM = modifiableTimerTaskVarBuilder.build();
 
-        SUPPORT_SET_GLOBAL_VARIABLES = supportSetGlobalVarBuilder.build();
+        for (LongConfigParam procedureParam : PROCEDURE_PARAMS) {
+            supportSetGlobalVarBuilder.add(procedureParam.getName());
+        }
+
+        SUPPORT_SHOW_CN_GLOBAL_VARIABLES = supportSetGlobalVarBuilder.build();
     }
 
     public static boolean contains(String variable) {
@@ -2757,9 +2774,5 @@ public class ServerVariables {
 
     public static boolean isGlobalBanned(String variable) {
         return globalBannedVariables.contains(variable.toLowerCase());
-    }
-
-    public static boolean isSetGlobalSupported(String variable) {
-        return SUPPORT_SET_GLOBAL_VARIABLES.contains(variable.toLowerCase());
     }
 }

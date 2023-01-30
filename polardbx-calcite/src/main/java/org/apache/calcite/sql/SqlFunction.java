@@ -383,8 +383,9 @@ public class SqlFunction extends SqlOperator {
                     true);
                 // lookup user defined function
                 if (function == null) {
-                  function = (SqlFunction) SqlUtil.lookupRoutine(validator.getOperatorTable(),
-                        new SqlIdentifier(replaceUdfName(getNameAsId().getSimple()), SqlParserPos.ZERO), argTypes, argNames,
+                    function = (SqlFunction) SqlUtil.lookupRoutine(validator.getOperatorTable(),
+                        new SqlIdentifier(replaceUdfName(getNameAsId().getSimple()), SqlParserPos.ZERO), argTypes,
+                        argNames,
                         getFunctionType(), SqlSyntax.FUNCTION, getKind(),
                         validator.getCatalogReader().nameMatcher(),
                         true);
@@ -457,9 +458,9 @@ public class SqlFunction extends SqlOperator {
         return super.isDeterministic();
     }
 
-  public static String replaceUdfName(String simpleName) {
-    return "mysql." + simpleName;
-  }
+    public static String replaceUdfName(String simpleName) {
+        return "mysql." + simpleName.toLowerCase();
+    }
 }
 
 // End SqlFunction.java

@@ -8846,7 +8846,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         return false;
     }
 
-
     @Override
     public boolean visit(MySqlSetDefaultRoleStatement x) {
         List<SqlUserName> users = x.getUsers()
@@ -8974,7 +8973,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
 
         sqlNode = new SqlCreateFunction(x.toString(),
-            SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())), (x.getSqlDataAccess() == SqlDataAccess.NO_SQL));
+            SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())),
+            (x.getSqlDataAccess() == SqlDataAccess.NO_SQL));
         return false;
     }
 
@@ -8991,7 +8991,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(SQLAlterFunctionStatement x) {
-        sqlNode = new SqlAlterFunction(x.toString(), SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())));
+        sqlNode = new SqlAlterFunction(x.toString(),
+            SqlFunction.replaceUdfName(SQLUtils.normalize(x.getName().getSimpleName())));
         return false;
     }
 

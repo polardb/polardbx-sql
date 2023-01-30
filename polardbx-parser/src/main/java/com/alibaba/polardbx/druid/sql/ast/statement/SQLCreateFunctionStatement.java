@@ -154,7 +154,6 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
         this.sqlSecurity = sqlSecurity;
     }
 
-
     public SQLName getAuthid() {
         return authid;
     }

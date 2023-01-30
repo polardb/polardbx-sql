@@ -65,11 +65,13 @@ public class ProcedureMtrTest extends BaseTestCase {
 
     public static Object[] fileNameAndMaxLine() {
         return new Pair[] {
+            Pair.of("random_procedure.sql", Integer.MAX_VALUE),
             Pair.of("simple_procedure_test.sql", Integer.MAX_VALUE),
             Pair.of("procedure_alias_test.sql", Integer.MAX_VALUE),
             Pair.of("show_procedure_test.sql", Integer.MAX_VALUE),
             Pair.of("show_function_test.sql", Integer.MAX_VALUE),
-            Pair.of("procedure_exception_handler_test.sql", Integer.MAX_VALUE)
+            Pair.of("procedure_exception_handler_test.sql", Integer.MAX_VALUE),
+            Pair.of("dml_with_udf_test.sql", Integer.MAX_VALUE)
         };
     }
 
@@ -95,7 +97,8 @@ public class ProcedureMtrTest extends BaseTestCase {
     public void getConnection() {
         this.mysqlConnection = getMysqlConnection();
         this.tddlConnection = getPolardbxConnection();
-        JdbcUtil.executeSuccess(tddlConnection, "SET ENABLE_UDF = true");
+        JdbcUtil.executeSuccess(tddlConnection, "set global log_bin_trust_function_creators = on");
+        JdbcUtil.executeSuccess(mysqlConnection, "set global log_bin_trust_function_creators = on");
     }
 
     @Test

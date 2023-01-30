@@ -7986,7 +7986,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
-    public void endVisit(DrdsUnArchiveStatement x){
+    public void endVisit(DrdsUnArchiveStatement x) {
     }
 
     @Override
@@ -8097,6 +8097,9 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     public void postVisit(SQLObject x) {
         if (x instanceof SQLStatement) {
             if (x instanceof SQLBlockStatement && ((SQLBlockStatement) x).isImplicit()) {
+                return;
+            }
+            if (x instanceof SQLBlockStatement && x.getParent() instanceof MySqlDeclareHandlerStatement) {
                 return;
             }
             // TODO check create trigger and create event

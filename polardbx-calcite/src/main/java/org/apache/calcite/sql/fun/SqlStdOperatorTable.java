@@ -65,6 +65,7 @@ import org.apache.calcite.util.Pair;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.apache.calcite.sql.type.ReturnTypes.ARITHMETIC_NON_DECIMAL_NULLABLE;
 import static org.apache.calcite.sql.type.ReturnTypes.DOUBLE_NULLABLE;
@@ -85,7 +86,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
 
   protected static final Set<SqlOperator> VECTORIZED_OPERATORS = new HashSet<>();
 
-  protected static final Set<SqlOperator> TYPE_COERCION_ENABLE_OPERATORS = new HashSet<>();
+  protected static final Set<SqlOperator> TYPE_COERCION_ENABLE_OPERATORS = ConcurrentHashMap.newKeySet();
 
   //-------------------------------------------------------------
   //                   SET OPERATORS
@@ -2454,7 +2455,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
 
     public void disableTypeCoercion(String name, SqlSyntax sqlSyntax) {
         TYPE_COERCION_ENABLE_OPERATORS.removeIf(
-            operator -> name.equals(operator.getName()) && sqlSyntax == operator.getSyntax());
+            operator -> name.equalsIgnoreCase(operator.getName()) && sqlSyntax == operator.getSyntax());
     }
 }
 

@@ -14,13 +14,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class LogicalPushDownUdfHanlder extends LogicalCommonDdlHandler{
+public class LogicalPushDownUdfHanlder extends LogicalCommonDdlHandler {
     public LogicalPushDownUdfHanlder(IRepository repo) {
         super(repo);
     }
 
     @Override
-    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext){
+    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
         List<DdlTask> taskList = new ArrayList<>();

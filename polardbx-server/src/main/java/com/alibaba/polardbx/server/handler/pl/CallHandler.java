@@ -18,25 +18,22 @@ package com.alibaba.polardbx.server.handler.pl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCallStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.ExceptionHandler;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
-import com.alibaba.polardbx.executor.pl.AbstractPl;
 import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.executor.pl.PlContext;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.executor.pl.ProcedureManager;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.util.SpParameter;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
-import com.alibaba.polardbx.server.QueryResultHandler;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.handler.SetHandler;
 import com.alibaba.polardbx.server.util.ProcedureUtils;
@@ -62,18 +59,17 @@ public class CallHandler implements PlCommandHandler {
             handler = createProcResultHandler(c, plContext, hasMore);
 
             RuntimeProcedure
-                procedure = new RuntimeProcedure(createProcedureStatement, c, handler, plContext, PlConstants.INIT_DEPTH);
+                procedure =
+                new RuntimeProcedure(createProcedureStatement, c, handler, plContext, PlConstants.INIT_DEPTH);
 
             // register runtime procedure, so we can kill it
             RuntimeProcedureManager.getInstance().register(c.getId(), procedure);
 
             handleProcedure(procedure, statement, null, c, null);
 
-            if (procedure.getHandler().getException() == null) {
-                // write total affect rows, sum of update/delete/insert statement executed in the procedure
-                procedure.getHandler().writeAffectRows();
-                procedure.getHandler().writeBackToClient();
-            }
+            // write total affect rows, sum of update/delete/insert statement executed in the procedure
+            procedure.getHandler().writeAffectRows();
+            procedure.getHandler().writeBackToClient();
         } catch (Exception ex) {
             if (handler != null && handler.getProxy() != null) {
                 handler.getProxy().close();
@@ -91,8 +87,10 @@ public class CallHandler implements PlCommandHandler {
 
     private long getCursorMemoryLimit(ServerConnection c) {
         long procedureMemoryLimit =
-            Math.max(ProcedureUtils.getProcedureMemoryLimit(c), MemoryAllocatorCtx.BLOCK_SIZE);
-        return Math.max(Math.min(ProcedureUtils.getCursorMemoryLimit(c), procedureMemoryLimit),
+            Math.max(ProcedureUtils.getVariableValue(c, ConnectionParams.PL_MEMORY_LIMIT),
+                MemoryAllocatorCtx.BLOCK_SIZE);
+        return Math.max(
+            Math.min(ProcedureUtils.getVariableValue(c, ConnectionParams.PL_CURSOR_MEMORY_LIMIT), procedureMemoryLimit),
             MemoryAllocatorCtx.BLOCK_SIZE);
     }
 

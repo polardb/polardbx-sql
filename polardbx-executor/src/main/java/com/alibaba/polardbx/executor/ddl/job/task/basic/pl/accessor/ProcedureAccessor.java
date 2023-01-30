@@ -81,14 +81,18 @@ public class ProcedureAccessor extends AbstractAccessor {
                 + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = '%s'",
             GmsSystemTables.ROUTINES, PROCEDURE);
 
-    private final static String SHOW_PROCEDURE_STATUS = String.format("SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, "
-            + "DEFINER, LAST_ALTERED, CREATED, SECURITY_TYPE, ROUTINE_COMMENT, CHARACTER_SET_CLIENT, "
-            + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME LIKE ? AND ROUTINE_TYPE = '%s'",
-        GmsSystemTables.ROUTINES, PROCEDURE);
+    private final static String SHOW_PROCEDURE_STATUS =
+        String.format("SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, "
+                + "DEFINER, LAST_ALTERED, CREATED, SECURITY_TYPE, ROUTINE_COMMENT, CHARACTER_SET_CLIENT, "
+                + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME LIKE ? AND ROUTINE_TYPE = '%s'",
+            GmsSystemTables.ROUTINES, PROCEDURE);
 
-    private final static String ALTER_PROCEDURE = "UPDATE " + GmsSystemTables.ROUTINES + " SET %s WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + PROCEDURE + "'";
+    private final static String ALTER_PROCEDURE = "UPDATE " + GmsSystemTables.ROUTINES
+        + " SET %s WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + PROCEDURE + "'";
 
-    private final static String ALTER_PROCEDURE_WITH_COMMENT = "UPDATE " + GmsSystemTables.ROUTINES + " SET ROUTINE_COMMENT = ? , %s WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + PROCEDURE + "'";
+    private final static String ALTER_PROCEDURE_WITH_COMMENT = "UPDATE " + GmsSystemTables.ROUTINES
+        + " SET ROUTINE_COMMENT = ? , %s WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + PROCEDURE
+        + "'";
 
     public int insertProcedure(String schema,
                                String procedureName, String content,
@@ -160,7 +164,8 @@ public class ProcedureAccessor extends AbstractAccessor {
                               String procedureName, String content) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
-            SQLAlterProcedureStatement statement = (SQLAlterProcedureStatement)FastsqlUtils.parseSql(content, SQLParserFeature.IgnoreNameQuotes).get(0);
+            SQLAlterProcedureStatement statement =
+                (SQLAlterProcedureStatement) FastsqlUtils.parseSql(content, SQLParserFeature.IgnoreNameQuotes).get(0);
             String alterProcedure;
             if (statement.isExistsComment()) {
                 alterProcedure = String.format(ALTER_PROCEDURE_WITH_COMMENT, getModifyPart(statement));
@@ -169,7 +174,8 @@ public class ProcedureAccessor extends AbstractAccessor {
             }
             int index = 1;
             if (statement.isExistsComment()) {
-                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, Optional.ofNullable(statement.getComment()).map(t -> t.getText()).orElse(""));
+                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString,
+                    Optional.ofNullable(statement.getComment()).map(t -> t.getText()).orElse(""));
             }
             MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, schema);
             MetaDbUtil.setParameter(index, params, ParameterMethod.setString, procedureName);
@@ -192,7 +198,7 @@ public class ProcedureAccessor extends AbstractAccessor {
         if (statement.isExistsLanguageSql()) {
             sb.append(" , ").append(" ROUTINE_BODY = ").append("'").append(SQL).append("'");
         }
-        if (statement.isExistsSqlSecurity()) {
+        if (statement.isExistsSqlDataAccess()) {
             sb.append(" , ").append(" SQL_DATA_ACCESS = ").append("'").append(statement.getSqlDataAccess()).append("'");
         }
         return sb.toString();

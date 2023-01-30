@@ -18,14 +18,13 @@ package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.ReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.base.Splitter;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -37,6 +36,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_PARTITIONING_DEFINITION;
 
+@FileStoreIgnore
 public class ProcedureFullTypeTest extends BaseTestCase {
     protected Connection tddlConnection;
 
@@ -134,7 +134,6 @@ public class ProcedureFullTypeTest extends BaseTestCase {
             + "where " + "(" + StringUtils.join(columns, ",") + ") \n"
             + "in " + "((" + StringUtils.join(variables, ",") + "));\n"
             + "end;";
-        System.out.println(createFunc);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createFunc);
     }
 
@@ -152,11 +151,8 @@ public class ProcedureFullTypeTest extends BaseTestCase {
         if (usingNewPartDb()) {
             return;
         }
-        System.out.println("table:\n" + FULL_TYPE_TABLE);
-        System.out.println();
         List<String> values = Splitter.on('|').splitToList(INSERT_VALUES);
         String SELECT_SQL = String.format("trace select test_full_type(%s) as matched", StringUtils.join(values, ","));
-        System.out.println(SELECT_SQL);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, SELECT_SQL);
         if (rs.next()) {
             int matched = rs.getInt("matched");

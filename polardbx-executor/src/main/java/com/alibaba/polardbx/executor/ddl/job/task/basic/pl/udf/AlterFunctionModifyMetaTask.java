@@ -19,7 +19,7 @@ public class AlterFunctionModifyMetaTask extends BaseGmsTask {
 
     @JSONCreator
     public AlterFunctionModifyMetaTask(String schemaName, String logicalTableName, String functionName,
-                              String alterFunctionContent) {
+                                       String alterFunctionContent) {
         super(schemaName, logicalTableName);
         this.functionName = functionName;
         this.alterFunctionContent = alterFunctionContent;

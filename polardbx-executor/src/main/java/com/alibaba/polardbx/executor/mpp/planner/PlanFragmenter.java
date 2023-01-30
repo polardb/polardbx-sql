@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
@@ -39,7 +36,11 @@ import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelDistributions;
@@ -74,8 +75,21 @@ public class PlanFragmenter {
 
     private static final Logger log = LoggerFactory.getLogger(PlanFragmenter.class);
 
+    public static boolean needExchange(RelNode node) {
+        if (!(node instanceof Exchange)
+            && node.getTraitSet().getTrait(RelCollationTraitDef.INSTANCE).getFieldCollations().size() > 0) {
+            return true;
+        }
+        return false;
+    }
+
     public static Pair<SubPlan, Integer> buildRootFragment(RelNode root, Session session) {
         FragmentProperties properties = new FragmentProperties();
+        if (needExchange(root)) {
+            RelTraitSet relTraits = root.getTraitSet();
+            RelCollation toCollation = relTraits.getTrait(RelCollationTraitDef.INSTANCE);
+            root = MppExchange.create(root, toCollation, RelDistributions.SINGLETON);
+        }
         Fragmenter fragmenter = new Fragmenter(session, root);
         root = fragmenter.visit(null, root, properties);
         SubPlan result = fragmenter.buildRootFragment(root, properties);
@@ -418,8 +432,8 @@ public class PlanFragmenter {
                         paramManager.getInt(ConnectionParams.LOOKUP_JOIN_PARALLELISM_FACTOR);
                     bkaJoinParallelism = Math.max(outerParallelism * lookupJoinParallelismFactor, bkaJoinParallelism);
                     bkaJoinParallelism = Math.max(Math.min(bkaJoinParallelism,
-                        ExecUtils
-                            .getMppMaxParallelism(session.getClientContext().getParamManager(), !onlyUseReadInstance)),
+                            ExecUtils
+                                .getMppMaxParallelism(session.getClientContext().getParamManager(), !onlyUseReadInstance)),
                         ExecUtils.getMppMinParallelism(session.getClientContext().getParamManager()));
                 }
             }

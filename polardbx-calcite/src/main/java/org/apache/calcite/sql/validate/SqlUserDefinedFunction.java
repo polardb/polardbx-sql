@@ -95,6 +95,11 @@ public class SqlUserDefinedFunction extends SqlFunction {
   public boolean isPushable() {
     return pushable;
   }
+
+  @Override
+  public boolean isDeterministic() {
+    return false;
+  }
 }
 
 // End SqlUserDefinedFunction.java

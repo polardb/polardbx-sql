@@ -16,7 +16,8 @@ public class FunctionMetaRecord implements SystemTableRecord {
         FunctionMetaRecord record = new FunctionMetaRecord();
         record.name = rs.getString("ROUTINE_NAME");
         record.routineMeta = rs.getString("ROUTINE_META");
-        record.canPush = Optional.ofNullable(rs.getString("SQL_DATA_ACCESS")).map(String::trim).map(t -> t.equalsIgnoreCase("NO SQL")).orElse(false);
+        record.canPush = Optional.ofNullable(rs.getString("SQL_DATA_ACCESS")).map(String::trim)
+            .map(t -> t.equalsIgnoreCase("NO SQL")).orElse(false);
         return record;
     }
 }

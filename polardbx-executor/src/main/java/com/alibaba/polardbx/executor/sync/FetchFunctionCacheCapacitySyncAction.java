@@ -6,7 +6,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
-public class FetchFunctionCacheCapacitySyncAction implements ISyncAction{
+public class FetchFunctionCacheCapacitySyncAction implements ISyncAction {
     public FetchFunctionCacheCapacitySyncAction() {
 
     }

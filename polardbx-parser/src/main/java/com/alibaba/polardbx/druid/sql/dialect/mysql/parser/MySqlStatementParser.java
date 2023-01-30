@@ -3430,13 +3430,6 @@ public class MySqlStatementParser extends SQLStatementParser {
         List<SQLStatement> statementList = block.getStatementList();
         this.parseStatementList(statementList, -1, block);
 
-        if (lexer.token() != Token.END
-            && statementList.size() > 0
-            && (statementList.get(statementList.size() - 1) instanceof SQLCommitStatement
-            || statementList.get(statementList.size() - 1) instanceof SQLRollbackStatement)) {
-            block.setEndOfCommit(true);
-            return block;
-        }
         accept(Token.END);
 
         checkDuplicateDeclareItems(block);
@@ -3573,8 +3566,8 @@ public class MySqlStatementParser extends SQLStatementParser {
         // see https://dev.mysql.com/doc/refman/5.7/en/explain.html
 
         switch (dbType) {
-            case mysql:
-                Lexer.SavePoint mark = lexer.mark();
+        case mysql:
+            Lexer.SavePoint mark = lexer.mark();
 
             if (lexer.token() == Token.LPAREN) {
                 lexer.nextToken();
@@ -8411,9 +8404,9 @@ public class MySqlStatementParser extends SQLStatementParser {
                 stmt.addItem(item);
                 return true;
             } else if (lexer.identifierEquals("REORGANIZE")) {
-                    // REORGANIZE PARTITION partition_names INTO (partition_definitions)
-                    lexer.nextToken();
-                    accept(Token.PARTITION);
+                // REORGANIZE PARTITION partition_names INTO (partition_definitions)
+                lexer.nextToken();
+                accept(Token.PARTITION);
 
                 SQLAlterTableReOrganizePartition item = new SQLAlterTableReOrganizePartition();
 

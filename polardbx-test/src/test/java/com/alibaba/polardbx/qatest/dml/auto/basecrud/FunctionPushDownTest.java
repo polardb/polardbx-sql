@@ -58,7 +58,8 @@ public class FunctionPushDownTest extends BaseTestCase {
 
     private void functionPushedToDn(String function, boolean shouldPush) throws SQLException {
         try (Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery("select * from information_schema.pushed_function where function = '" + function + "'")) {
+            ResultSet rs = statement.executeQuery(
+                "select * from information_schema.pushed_function where function = '" + function + "'")) {
             boolean hasResult = rs.next();
             Assert.assertTrue(shouldPush == hasResult, "function push down test failed!");
         }
@@ -79,7 +80,9 @@ public class FunctionPushDownTest extends BaseTestCase {
 
     private void recreateFunction(Connection connection, String functionName, boolean isNosql) {
         JdbcUtil.executeSuccess(connection, "drop function if exists " + functionName);
-        JdbcUtil.executeSuccess(connection, String.format("create function %s(a int) returns int %s return a + 1", functionName, isNosql ? " no sql" : ""));
+        JdbcUtil.executeSuccess(connection,
+            String.format("create function %s(a int) returns int %s return a + 1", functionName,
+                isNosql ? " no sql" : ""));
     }
 
     @After

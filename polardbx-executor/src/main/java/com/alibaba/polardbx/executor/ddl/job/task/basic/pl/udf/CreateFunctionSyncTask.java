@@ -41,7 +41,8 @@ public class CreateFunctionSyncTask extends BaseDdlTask {
     private boolean canPush;
 
     @JSONCreator
-    public CreateFunctionSyncTask(String schemaName, String functionName, String createFunctionContent, boolean canPush) {
+    public CreateFunctionSyncTask(String schemaName, String functionName, String createFunctionContent,
+                                  boolean canPush) {
         super(schemaName);
         this.functionName = functionName;
         this.createFunctionContent = createFunctionContent;

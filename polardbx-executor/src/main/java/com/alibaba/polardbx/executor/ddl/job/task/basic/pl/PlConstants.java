@@ -58,9 +58,11 @@ public class PlConstants {
 
     public final static SQLCreateProcedureStatement PROCEDURE_STMT_HOLDER = new SQLCreateProcedureStatement();
 
-    public final static Pair<SQLCreateProcedureStatement, Long> PROCEDURE_PLACE_HOLDER = Pair.of(PROCEDURE_STMT_HOLDER, 0L);
+    public final static Pair<SQLCreateProcedureStatement, Long> PROCEDURE_PLACE_HOLDER =
+        Pair.of(PROCEDURE_STMT_HOLDER, 0L);
 
     public final static SQLCreateFunctionStatement FUNCTION_STMT_HOLDER = new SQLCreateFunctionStatement();
 
-    public final static Pair<SQLCreateFunctionStatement, Long> FUNCTION_PLACE_HOLDER = Pair.of(FUNCTION_STMT_HOLDER, 0L);
+    public final static Pair<SQLCreateFunctionStatement, Long> FUNCTION_PLACE_HOLDER =
+        Pair.of(FUNCTION_STMT_HOLDER, 0L);
 }

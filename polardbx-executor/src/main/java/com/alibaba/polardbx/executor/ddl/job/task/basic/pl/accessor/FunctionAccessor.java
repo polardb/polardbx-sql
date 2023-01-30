@@ -67,26 +67,35 @@ public class FunctionAccessor extends AbstractAccessor {
             FUNCTION);
 
     static final String LOAD_FUNCTION_METAS =
-        String.format("SELECT ROUTINE_NAME, ROUTINE_META, SQL_DATA_ACCESS FROM routines WHERE ROUTINE_TYPE = '%s'", FUNCTION);
+        String.format("SELECT ROUTINE_NAME, ROUTINE_META, SQL_DATA_ACCESS FROM routines WHERE ROUTINE_TYPE = '%s'",
+            FUNCTION);
 
-    private final static String SHOW_FUNCTION_STATUS = String.format("SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, "
-            + "DEFINER, LAST_ALTERED, CREATED, SECURITY_TYPE, ROUTINE_COMMENT, CHARACTER_SET_CLIENT, "
-            + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME LIKE ? AND ROUTINE_TYPE = '%s'",
-        GmsSystemTables.ROUTINES, FUNCTION);
+    private final static String SHOW_FUNCTION_STATUS =
+        String.format("SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, "
+                + "DEFINER, LAST_ALTERED, CREATED, SECURITY_TYPE, ROUTINE_COMMENT, CHARACTER_SET_CLIENT, "
+                + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME LIKE ? AND ROUTINE_TYPE = '%s'",
+            GmsSystemTables.ROUTINES, FUNCTION);
 
     private final static String FIND_FUNCTION_DEFINITION =
-        String.format("SELECT ROUTINE_META, SQL_DATA_ACCESS, ROUTINE_NAME, ROUTINE_DEFINITION FROM routines WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '%s'", FUNCTION);
+        String.format(
+            "SELECT ROUTINE_META, SQL_DATA_ACCESS, ROUTINE_NAME, ROUTINE_DEFINITION FROM routines WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '%s'",
+            FUNCTION);
 
     private final static String GET_PUSHABLE_FUNCTIONS =
-        String.format("SELECT ROUTINE_META, SQL_DATA_ACCESS, ROUTINE_NAME, ROUTINE_DEFINITION FROM routines WHERE ROUTINE_TYPE = '%s' AND SQL_DATA_ACCESS = '%s'", FUNCTION, NO_SQL);
+        String.format(
+            "SELECT ROUTINE_META, SQL_DATA_ACCESS, ROUTINE_NAME, ROUTINE_DEFINITION FROM routines WHERE ROUTINE_TYPE = '%s' AND SQL_DATA_ACCESS = '%s'",
+            FUNCTION, NO_SQL);
 
     private static String SHOW_CREATE_FUNCTION =
         String.format("SELECT ROUTINE_SCHEMA, ROUTINE_NAME, SQL_MODE, ROUTINE_DEFINITION, CHARACTER_SET_CLIENT, "
-            + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '%s'", GmsSystemTables.ROUTINES, FUNCTION);
+                + "COLLATION_CONNECTION, DATABASE_COLLATION FROM %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '%s'",
+            GmsSystemTables.ROUTINES, FUNCTION);
 
-    private final static String ALTER_FUNCTION = "UPDATE " + GmsSystemTables.ROUTINES + " SET %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + FUNCTION + "'";
+    private final static String ALTER_FUNCTION =
+        "UPDATE " + GmsSystemTables.ROUTINES + " SET %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + FUNCTION + "'";
 
-    private final static String ALTER_FUNCTION_WITH_COMMENT = "UPDATE " + GmsSystemTables.ROUTINES + " SET ROUTINE_COMMENT = ? , %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + FUNCTION + "'";
+    private final static String ALTER_FUNCTION_WITH_COMMENT = "UPDATE " + GmsSystemTables.ROUTINES
+        + " SET ROUTINE_COMMENT = ? , %s WHERE ROUTINE_NAME = ? AND ROUTINE_TYPE = '" + FUNCTION + "'";
 
     public int insertFunction(String functionName, String content, ExecutionContext executionContext) {
         try {
@@ -153,7 +162,8 @@ public class FunctionAccessor extends AbstractAccessor {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
             SQLAlterFunctionStatement
-                statement = (SQLAlterFunctionStatement)FastsqlUtils.parseSql(content, SQLParserFeature.IgnoreNameQuotes).get(0);
+                statement =
+                (SQLAlterFunctionStatement) FastsqlUtils.parseSql(content, SQLParserFeature.IgnoreNameQuotes).get(0);
             String alterProcedure;
             if (statement.isExistsComment()) {
                 alterProcedure = String.format(ALTER_FUNCTION_WITH_COMMENT, getModifyPart(statement));
@@ -162,7 +172,8 @@ public class FunctionAccessor extends AbstractAccessor {
             }
             int index = 1;
             if (statement.isExistsComment()) {
-                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, Optional.ofNullable(statement.getComment()).map(t -> t.getText()).orElse(""));
+                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString,
+                    Optional.ofNullable(statement.getComment()).map(t -> t.getText()).orElse(""));
             }
             MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, functionName);
             int affectedRow = MetaDbUtil.delete(alterProcedure, params, connection);

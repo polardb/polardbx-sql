@@ -12,7 +12,7 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import java.util.LinkedList;
 import java.util.List;
 
-public class InformationSchemaFunctionCacheCapacity extends VirtualView{
+public class InformationSchemaFunctionCacheCapacity extends VirtualView {
     public InformationSchemaFunctionCacheCapacity(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet, VirtualViewType.FUNCTION_CACHE_CAPACITY);
     }

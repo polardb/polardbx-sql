@@ -31,6 +31,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCloseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLFetchStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLIfStatement;
@@ -73,7 +74,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 
 public abstract class AbstractPl {
-    private static final Logger logger = LoggerFactory.getLogger(AbstractPl.class);
+    protected static final Logger logger = LoggerFactory.getLogger(AbstractPl.class);
 
     protected final String name;
 
@@ -152,7 +153,8 @@ public abstract class AbstractPl {
                     handleNormalSelect((SQLSelectStatement) stmt);
                 }
             } else if (isNotSupportType(stmt)) {
-                throw new RuntimeException("execute procedure/function failed: Not support type: " + stmt.getClass().getSimpleName());
+                throw new RuntimeException(
+                    "execute procedure/function failed: Not support type: " + stmt.getClass().getSimpleName());
             } else {
                 handleOtherStmt(stmt);
             }
@@ -196,9 +198,12 @@ public abstract class AbstractPl {
      */
     protected SQLBlockStatement findHandlerBlock(SQLStatement statement, int errorCode, Exception ex) {
         SQLBlockStatement blockStatement = locatedBlockStmt.getIfPresent(statement);
-        while (!blockStmtToHandler.containsKey(blockStatement) || !blockStmtToHandler.get(blockStatement).containsKey(errorCode)) {
-            if (blockStatement != null && blockStatement.getParent() instanceof SQLCreateProcedureStatement) {
-                throw new RuntimeException("execute procedure/function failed: " + ex.getMessage() + ", and no related exception handler found");
+        while (!blockStmtToHandler.containsKey(blockStatement) || !blockStmtToHandler.get(blockStatement)
+            .containsKey(errorCode)) {
+            if (blockStatement != null && (blockStatement.getParent() instanceof SQLCreateProcedureStatement
+                || blockStatement.getParent() instanceof SQLCreateFunctionStatement)) {
+                throw new RuntimeException("execute procedure/function failed: " + ex.getMessage()
+                    + ", and no related exception handler found");
             }
             blockStatement = nextParentBlockStmt(blockStatement);
         }
@@ -232,7 +237,8 @@ public abstract class AbstractPl {
     protected SQLBlockStatement nextParentBlockStmt(SQLBlockStatement blockStatement) {
         SQLStatement parentStmt = blockStatement;
         if (blockStatement == null) {
-            throw new RuntimeException("execute procedure/function failed: may be got bad parameter that not initialized");
+            throw new RuntimeException(
+                "execute procedure/function failed: may be got bad parameter that not initialized");
         }
         if (parentNotSQLStatement(parentStmt) && parentStmt.getParent() != null) {
             parentStmt = (SQLStatement) parentStmt.getParent().getParent();
@@ -259,7 +265,9 @@ public abstract class AbstractPl {
                 continue;
             }
             if (!(statement.getParent() instanceof SQLStatement)) {
-                throw new RuntimeException("Execute procedure/function failed: Type " + statement.getParent().getClass().getSimpleName() + " found, but not support yet!");
+                throw new RuntimeException(
+                    "Execute procedure/function failed: Type " + statement.getParent().getClass().getSimpleName()
+                        + " found, but not support yet!");
             }
             statement = (SQLStatement) statement.getParent();
         }
@@ -336,7 +344,8 @@ public abstract class AbstractPl {
         SQLBlockStatement blockStatement = findParentBlockStatement(stmt);
         blockStmtToErrorCode.putIfAbsent(blockStatement, new TreeMap<>(String.CASE_INSENSITIVE_ORDER));
         if (stmt.getConditionValue().getType() != ConditionValue.ConditionType.MYSQL_ERROR_CODE) {
-            throw new RuntimeException("execute procedure/function failed: declare named condition only accept error code");
+            throw new RuntimeException(
+                "execute procedure/function failed: declare named condition only accept error code");
         }
         blockStmtToErrorCode.get(blockStatement)
             .put(stmt.getConditionName(), Integer.valueOf(stmt.getConditionValue().getValue()));
@@ -371,13 +380,17 @@ public abstract class AbstractPl {
         case SELF:
             if (!blockStmtToErrorCode.containsKey(blockStatement) ||
                 !blockStmtToErrorCode.get(blockStatement).containsKey(value)) {
-                throw new RuntimeException("execute procedure/function failed: named condition " + conditionValue.getValue() + " not declared before");
+                throw new RuntimeException(
+                    "execute procedure/function failed: named condition " + conditionValue.getValue()
+                        + " not declared before");
             }
             Integer errorCode = blockStmtToErrorCode.get(blockStatement).get(value);
             codeToHandler.put(errorCode, exceptionHandler);
             break;
         default:
-            throw new RuntimeException("execute procedure/function failed: named condition type: " + conditionValue.getType() + " not support");
+            throw new RuntimeException(
+                "execute procedure/function failed: named condition type: " + conditionValue.getType()
+                    + " not support");
         }
     }
 

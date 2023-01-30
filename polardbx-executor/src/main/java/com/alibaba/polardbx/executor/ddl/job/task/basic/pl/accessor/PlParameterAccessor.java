@@ -58,7 +58,8 @@ public class PlParameterAccessor extends AbstractAccessor {
     static String INSERT_FUNCTION_PARAMS =
         String.format("INSERT INTO %s (SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME, ORDINAL_POSITION, "
                 + "PARAMETER_MODE, PARAMETER_NAME, DATA_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, DTD_IDENTIFIER, ROUTINE_TYPE) "
-                + "VALUES ('%s', '%s', ?, ?, ?, ?, ?, '%s', '%s', ?, '%s')", GmsSystemTables.PARAMETERS, DEF_ROUTINE_CATALOG,
+                + "VALUES ('%s', '%s', ?, ?, ?, ?, ?, '%s', '%s', ?, '%s')", GmsSystemTables.PARAMETERS,
+            DEF_ROUTINE_CATALOG,
             MYSQL, MOCK_CHARACTER_SET_CLIENT, MOCK_COLLATION_CONNECTION, FUNCTION);
 
     static String DROP_FUNCTION_PARAMS =
@@ -91,7 +92,9 @@ public class PlParameterAccessor extends AbstractAccessor {
     }
 
     public int insertFunctionParams(String functionName, String functionContent) {
-        SQLCreateFunctionStatement statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(functionContent, SQLParserFeature.IgnoreNameQuotes).get(0);
+        SQLCreateFunctionStatement statement =
+            (SQLCreateFunctionStatement) FastsqlUtils.parseSql(functionContent, SQLParserFeature.IgnoreNameQuotes)
+                .get(0);
         int ordinal = 1, affectedRow = 0;
         for (SQLParameter parameter : statement.getParameters()) {
             try {

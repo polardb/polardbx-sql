@@ -1875,7 +1875,6 @@ public class ConnectionParams {
         true
     );
 
-
     /**
      * switch groupKey between sourceGroupKey and targetGroupKey
      */
@@ -2668,7 +2667,6 @@ public class ConnectionParams {
     public static final IntConfigParam IN_PRUNE_MAX_TIME = new IntConfigParam(
         ConnectionProperties.IN_PRUNE_MAX_TIME, 1, Integer.MAX_VALUE, 100, true);
 
-
     /**
      * Allow re-binding a new archive table to ttl table, replacing the old archive table.
      */
@@ -2680,7 +2678,7 @@ public class ConnectionParams {
     public static final BooleanConfigParam ALLOW_CREATE_TABLE_LIKE_FILE_STORE = new BooleanConfigParam(
         ConnectionProperties.ALLOW_CREATE_TABLE_LIKE_FILE_STORE, false, true);
 
-    public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR =  new StringConfigParam(
+    public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR = new StringConfigParam(
         ConnectionProperties.PURGE_OSS_FILE_CRON_EXPR, "0 0 1 ? * WED", true);
     public static final IntConfigParam PURGE_OSS_FILE_BEFORE_DAY = new IntConfigParam(
         ConnectionProperties.PURGE_OSS_FILE_BEFORE_DAY, 1, Integer.MAX_VALUE, 60, true);
@@ -2770,7 +2768,7 @@ public class ConnectionParams {
         ConnectionProperties.OPTIMIZE_TABLE_USE_DAL, false, true);
 
     public static final BooleanConfigParam ENABLE_AUTO_SPLIT_PARTITION = new BooleanConfigParam(
-            ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION, true, true);
+        ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION, true, true);
 
     public static final BooleanConfigParam ENABLE_MODULE_LOG = new BooleanConfigParam(
         ConnectionProperties.ENABLE_MODULE_LOG, true, true);
