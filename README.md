@@ -1,6 +1,7 @@
 
 [![LICENSE](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://github.com/polardb/polardbx-sql/blob/main/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Java-blue.svg)](https://www.java.com/)
+[![Leaderboard](https://img.shields.io/badge/PolarDB--X-Check%20Your%20Contribution-orange)](https://opensource.alibaba.com/contribution_leaderboard/details?projectValue=polardb-x)
 
 [中文文档](https://polardbx.com)
 
