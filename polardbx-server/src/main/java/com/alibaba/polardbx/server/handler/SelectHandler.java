@@ -59,6 +59,7 @@ public final class SelectHandler {
             case ServerParseSelect.LASTTXCXID:
                 SelectLastTxcId.response(exData, c, hasMore);
                 break;
+            case ServerParseSelect.SESSION_TRANSACTION_READ_ONLY:
             case ServerParseSelect.SESSION_TX_READ_ONLY:
                 SelectSessionTxReadOnly.response(c, hasMore);
                 break;

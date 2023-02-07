@@ -42,6 +42,7 @@ public final class ServerParseSelect {
     public static final int EXTRACT_TRACE_ID = 13;
     public static final int SEQ_NEXTVAL_BENCHMARK = 14;
     public static final int SEQ_SKIP_BENCHMARK = 15;
+    public static final int SESSION_TRANSACTION_READ_ONLY = 16;
 
     private static final char[] _VERSION_COMMENT = "VERSION_COMMENT".toCharArray();
     private static final char[] _IDENTITY = "IDENTITY".toCharArray();
@@ -53,6 +54,7 @@ public final class ServerParseSelect {
     private static final char[] _EXTRACT_TRACE_ID = "EXTRACT_TRACE_ID".toCharArray();
     private static final char[] _SEQ_NEXTVAL_BENCHMARK = "SEQ_NEXTVAL_BENCHMARK".toCharArray();
     private static final char[] _SEQ_SKIP_BENCHMARK = "SEQ_SKIP_BENCHMARK".toCharArray();
+    private static final char[] _SESSION_TRANSACTION_READ_ONLY = "SESSION.TRANSACTION_READ_ONLY".toCharArray();
 
     public static int parse(String stmt, int offset, Object[] exData) {
         return parse(ByteString.from(stmt), offset, exData);
@@ -570,6 +572,12 @@ public final class ServerParseSelect {
                 return OTHER;
             }
             return SESSION_TX_READ_ONLY;
+        } else if (ParseUtil.compare(stmt, offset, _SESSION_TRANSACTION_READ_ONLY)) {
+            int length = offset + _SESSION_TRANSACTION_READ_ONLY.length;
+            if (stmt.length() > length && stmt.charAt(length) != ' ') {
+                return OTHER;
+            }
+            return SESSION_TRANSACTION_READ_ONLY;
         }
         return OTHER;
     }

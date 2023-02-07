@@ -723,7 +723,8 @@ public final class SetHandler {
                             c.setSqlMock(false);
                         }
                         c.getExtraServerVariables().put(key.getName().toLowerCase(), val);
-                    } else if ("tx_read_only".equalsIgnoreCase(key.getName())) {
+                    } else if ("tx_read_only".equalsIgnoreCase(key.getName())
+                        || "transaction_read_only".equalsIgnoreCase(key.getName())) {
                         boolean val = RelUtils.booleanValue(oriValue);
                         c.setReadOnly(val);
                     } else if ("polardbx_server_id".equalsIgnoreCase(key.getName())) {
