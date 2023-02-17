@@ -27,10 +27,8 @@ import java.util.Map;
  */
 public class BaselineUpdateSyncAction implements ISyncAction {
 
-    /**
-     * schema -> list<baseline>
-     */
-    Map<String, List<String>> baselineMap;
+    // json baseline
+    private Map<String, List<String>> baselineMap;
 
     public BaselineUpdateSyncAction(Map<String, List<String>> baselineMap) {
         this.baselineMap = baselineMap;
@@ -42,5 +40,15 @@ public class BaselineUpdateSyncAction implements ISyncAction {
         return null;
     }
 
+    /**
+     * schema -> list<baseline>
+     */
+    public Map<String, List<String>> getBaselineMap() {
+        return baselineMap;
+    }
+
+    public void setBaselineMap(Map<String, List<String>> baselineMap) {
+        this.baselineMap = baselineMap;
+    }
 }
 

@@ -1,7 +1,7 @@
 # 快速配置OSS存储
  
 - 首先源码编译安装 PolarDB-X，可参考[源码编译部署](quickstart-development.md)
-- 或者通过K8S构建出 PolarDB-X集群，可参考[K8S部署](http://www.github.com/ApsaraDB/galaxykube/blob/main/docs/zh/deploy/quick-start.md)
+- 或者通过K8S构建出 PolarDB-X集群，可参考[K8S部署](http://www.github.com/polardb/polardbx-operator/blob/main/docs/zh/deploy/quick-start.md)
 
 安装完成后连接PolarDB-X集群，通过如下SQL命令进行OSS存储初始化:
 

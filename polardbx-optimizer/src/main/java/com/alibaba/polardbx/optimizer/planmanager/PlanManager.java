@@ -912,6 +912,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             for (String bJson : entry.getValue()) {
                 BaselineInfo b = BaselineInfo.deserializeFromJson(bJson);
                 baselineInfoMap.put(b.getParameterSql(), b);
+                if (ConfigDataMode.isMasterMode() && LeaderStatusBridge.getInstance().hasLeadership()) {
+                    // persist baseline
+                    PolarDbXSystemTableBaselineInfo.persist(schema, b);
+                }
             }
         }
     }

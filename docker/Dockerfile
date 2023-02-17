@@ -1,4 +1,4 @@
-FROM polardbx/galaxybasejava:20221027-sdfa
+FROM polardbx/polardbxbasejava:20221129
 
 WORKDIR /home/admin
 

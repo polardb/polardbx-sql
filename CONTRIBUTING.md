@@ -22,11 +22,11 @@ Let's use an example to walk through the list.
 
 ### Fork Your Own Branch
 
-There are many PolarDB-X related repositories, take ApasaraDB GalaxySQL and ApasaraDB GalaxyGlue for an example. On Github page of [GalaxySQL](https://github.com/apsaradb/galaxysql) and [GalaxyGlue](https://github.com/apsaradb/galaxyglue), Click **fork** button to create your own galaxysql and galaxyglue repository.
+There are many PolarDB-X related repositories, take PolarDB-X SQL and PolarDB-X Glue for an example. On Github page of [PolarDB-X SQL](https://github.com/polardb/polardbx-sql) and [PolarDB-X Glue](https://github.com/polardbx/polardbx-glue), Click **fork** button to create your own polardbx-sql and polardbx-glue repository.
 
 ### Create Local Repository
 ```bash
-git clone --recursive https://github.com/your_github/galaxysql.git
+git clone --recursive https://github.com/your_github/polardbx-sql.git
 ```
 ### Create a dev Branch (named as your_github_id_feature_name)
 ```bash
@@ -50,7 +50,7 @@ git push --recurse-submodules=on-demand origin your_github_id_feature_name
 ```
 
 ### Create a PR
-Click **New pull request** or **Compare & pull  request** button, choose to compare branches apsaradb/galaxysql and your_github/your_github_id_feature_name, and write PR description.
+Click **New pull request** or **Compare & pull request** button, choose to compare branches polardb/polardbx-sql/main and your_github/your_github_id_feature_name, and write PR description.
 
 ### Address Reviewers' Comments
 Resolve all problems raised by reviewers and update PR.

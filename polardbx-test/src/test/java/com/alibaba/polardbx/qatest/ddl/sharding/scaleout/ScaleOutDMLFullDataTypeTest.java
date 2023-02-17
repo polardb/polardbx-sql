@@ -134,8 +134,13 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         }
         String tddlSql = "use " + logicalDatabase;
         JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
+        String sqlMode =
+            "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
+        if (isMySQL80()) {
+            sqlMode = "NO_ENGINE_SUBSTITUTION";
+        }
         try {
-            setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+            setSqlMode(sqlMode, tddlConnection);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -153,6 +158,13 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         if (indexSk.equalsIgnoreCase(C_INT_32)) {
             System.out.println(LocalTime.now().toString() + ":" + "start to run the testcase");
         }
+        final String sqlMode ;
+        if (isMySQL80()) {
+            sqlMode = "NO_ENGINE_SUBSTITUTION";
+        } else {
+            sqlMode =
+                "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
+        }
         System.out.println(LocalTime.now().toString() + ":" + "start to run the testcase");
         final AtomicBoolean stop = new AtomicBoolean(false);
         String hint =
@@ -167,11 +179,11 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         final List<Future> inserts =
             ImmutableList.of(dmlPool
                     .submit(new DMLRunner(stop, normalTable1, (sql) -> {
-                        setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+                        setSqlMode(sqlMode, tddlConnection);
                         executeDml(hintStr + sql);
                     })),
                 dmlPool.submit(new DMLRunner(stop, normalTable2, (sql) -> {
-                    setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+                    setSqlMode(sqlMode, tddlConnection);
                     executeDml(hintStr + sql);
                 })));
 

@@ -2,7 +2,7 @@
 
 function usage() {
         echo "About"
-        echo "  This is manage sciprt. You can imitate manage server through startup.sh command."
+        echo "  This is manage script. You can imitate manage server through startup.sh command."
         echo "Usage:"
         echo "  startup.sh [<options>] [args]"
         echo "Options: "
@@ -12,7 +12,7 @@ function usage() {
         echo "  -S polarxPasswd PolarDB-X root password"
         echo "  -P dnPasswdKey  DnPasswordKey"
         echo "  -d dnList       dnList"
-        echo "  -F              Force cleanup before initialize "
+        echo "  -F              Force cleanup before initialize"
         echo "  -h              Show Help"
         echo "  -D				      DRDS mode"
         echo "  -b port			    enable debug port"
@@ -398,22 +398,26 @@ if [ -n "$str" ]; then
         freecount=`expr $memory / 1024 / 1024`
     fi
 
-    if [ $freecount -lt 2048 ] ; then
-        JAVA_OPTS="-server -Xms1024m -Xmx1024m "
-    elif [ $freecount -le 4096 ] ; then
-        JAVA_OPTS="-server -Xms2g -Xmx2g "
-    elif [ $freecount -le 8192 ] ; then
-        JAVA_OPTS="-server -Xms4g -Xmx4g "
-    elif [ $freecount -le 16384 ] ; then
-        JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
-    elif [ $freecount -le 32768 ] ; then
-        JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
-    elif [ $freecount -le 65536 ] ; then
-        JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
-    elif [ $freecount -le 131072 ] ; then
+    if [ $freecount -ge 131072 ] ; then
         JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=24g"
-    elif [ $freecount -gt 131072 ] ; then
-        JAVA_OPTS="-server -Xms120g -Xmx120g -XX:MaxDirectMemorySize=32g"
+    elif [ $freecount -ge 65536 ] ; then
+        JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
+    elif [ $freecount -ge 32768  ] ; then
+        JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
+    elif [ $freecount -ge 16384  ] ; then
+        JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
+    elif [ $freecount -ge 8192 ] ; then
+        JAVA_OPTS="-server -Xms4g -Xmx4g "
+    elif [ $freecount -ge 4096 ] ; then
+        JAVA_OPTS="-server -Xms2g -Xmx2g "
+    elif [ $freecount -ge 2048 ] ; then
+        JAVA_OPTS="-server -Xms1024m -Xmx1024m "
+    elif [ $freecount -ge 1024 ] ; then
+        JAVA_OPTS="-server -Xms512m -Xmx512m "
+    elif [ $freecount -ge 512 ] ; then
+        JAVA_OPTS="-server -Xms256m -Xmx256m "
+    elif [ $freecount -ge 256 ] ; then
+        JAVA_OPTS="-server -Xms128m -Xmx128m "
     fi
 else
 	echo "not support 32-bit java startup"
