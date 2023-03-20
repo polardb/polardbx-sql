@@ -36,7 +36,7 @@ function prepare() {
 }
 
 function start_process() {
-  $POLARDBX_SQL_HOME/bin/startup.sh -D
+  $POLARDBX_SQL_HOME/bin/startup.sh -w wisp -D
 }
 
 last_pid=0
