@@ -22,12 +22,12 @@ import java.sql.Statement;
 
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
  * @author ximing.yd
- * @date 2022/3/10 2:14 下午
  */
 public class ShowHeatmapTest extends ReadBaseTestCase {
 
@@ -39,6 +39,7 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test
@@ -69,6 +70,7 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test
@@ -79,6 +81,7 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test
@@ -89,6 +92,7 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test
@@ -99,6 +103,7 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test
@@ -109,5 +114,6 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
+        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 }

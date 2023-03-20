@@ -41,6 +41,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPre
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.sql.SqlAddIndex;
+import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIndexDefinition;
@@ -127,6 +128,7 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
             targetTableName = GsiUtils.generateRandomGsiName(primaryTableName);
         }
         tableNameMap.put(primaryTableName, targetTableName);
+        ast.setLogicalSecondaryTableName(targetTableName);
         createGsiPrepareDataList.add(new AlterTablePartitionsPrepareData(primaryTableName, targetTableName));
 
         // handle gsi table
@@ -176,7 +178,9 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
         );
 
         List<SqlAddIndex> sqlAddIndexList = repartitionGsi.stream().map(e ->
-            new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
+            StringUtils.equalsIgnoreCase(e.getType(), "UNIQUE") ?
+                new SqlAddUniqueIndex(SqlParserPos.ZERO, e.getIndexName(), e) :
+                new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
         ).collect(Collectors.toList());
         ast.getAlters().addAll(sqlAddIndexList);
     }

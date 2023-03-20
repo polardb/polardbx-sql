@@ -1,6 +1,5 @@
 package org.apache.calcite.sql;
 
-
 import com.alibaba.polardbx.common.cdc.RplConstants;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -20,7 +19,6 @@ import java.util.Map;
 
 /**
  * @author shicai.xsc 2021/3/5 13:32
- * @desc
  * @since 5.0.0.0
  */
 public class SqlReplicationBase extends SqlDal {
@@ -77,7 +75,7 @@ public class SqlReplicationBase extends SqlDal {
         if (channelNode != null) {
             writer.keyword("FOR");
             writer.keyword(RplConstants.CHANNEL);
-            String channel = ((NlsString)((SqlCharStringLiteral)channelNode).value).getValue();
+            String channel = ((NlsString) ((SqlCharStringLiteral) channelNode).value).getValue();
             params.put(RplConstants.CHANNEL, channel);
             writer.print(channel);
         }
@@ -88,12 +86,12 @@ public class SqlReplicationBase extends SqlDal {
     }
 
     private void dealOption(SqlNode key, SqlNode value) {
-        String k = ((NlsString)((SqlCharStringLiteral)key).value).getValue();
+        String k = ((NlsString) ((SqlCharStringLiteral) key).value).getValue();
         String v;
         if (value instanceof SqlCharStringLiteral) {
-            Object vv = ((SqlCharStringLiteral)value).getValue();
+            Object vv = ((SqlCharStringLiteral) value).getValue();
             if (vv instanceof NlsString) {
-                v = ((NlsString)vv).getValue();
+                v = ((NlsString) vv).getValue();
             } else {
                 v = vv.toString();
             }
@@ -123,4 +121,3 @@ public class SqlReplicationBase extends SqlDal {
         return params;
     }
 }
-

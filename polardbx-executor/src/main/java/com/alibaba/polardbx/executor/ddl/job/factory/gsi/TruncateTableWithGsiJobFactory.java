@@ -130,7 +130,8 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         result.appendJob2(dropTmpTableJob);
 
         result.setExceptionActionForAllSuccessor(validateTableVersionTask, DdlExceptionAction.ROLLBACK);
-        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask, DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask,
+            DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
         result.setExceptionActionForAllSuccessor(recoverThenPauseTask, DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
 
         return result;
@@ -177,7 +178,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     private ExecutableDdlJob generateCutOverJob() {
         ExecutableDdlJob cutOverJob = new ExecutableDdlJob();
         CdcTruncateTableWithGsiMarkTask cdcTask =
-            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName, "");
+            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName);
         TruncateCutOverTask cutOverTask =
             new TruncateCutOverTask(schemaName, logicalTableName, tmpIndexTableMap, tmpPrimaryTableName);
         TruncateSyncTask syncTask =

@@ -81,6 +81,9 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemaP
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemataHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSequencesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSessionPerfHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHistoryHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStorageHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTableDetailHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTableGroupHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTablePrivilegesHandler;
@@ -144,6 +147,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaUserPrivilegesHandler(this));
         subHandler.add(new InformationSchemaTablePrivilegesHandler(this));
         subHandler.add(new InformationSchemaSchemaPrivilegesHandler(this));
+        subHandler.add(new InformationSchemaStorageHandler(this));
         subHandler.add(new InformationSchemaTableGroupHandler(this));
         subHandler.add(new InformationSchemaLocalPartitionsHandler(this));
         subHandler.add(new InformationSchemaLocalPartitionsScheduleHandler(this));

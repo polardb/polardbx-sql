@@ -55,6 +55,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * @since 3.0.1
  */
 public class ResultSetUtil {
+    public final static long NO_SQL_SELECT_LIMIT = -88;
+    public final static long MAX_SQL_SELECT_LIMIT = 1000_000_000_000_000L;
 
     public static int toFlag(TResultSetMetaData metaData, int column, ColumnMeta meta) throws SQLException {
         int flags = toFlag(metaData, column);
@@ -155,7 +157,8 @@ public class ResultSetUtil {
     }
 
     public static IPacketOutputProxy resultSetToPacket(ResultSet rs, String charset, FrontendConnection c,
-                                                       AtomicLong affectRow, IPacketOutputProxy proxy)
+                                                       AtomicLong affectRow, IPacketOutputProxy proxy,
+                                                       long sqlSelectLimit)
         throws Exception {
 
         boolean withProxy = proxy != null;
@@ -271,6 +274,11 @@ public class ResultSetUtil {
         do {
             if (!existNext) {
                 // 不存在记录，直接退出
+                break;
+            }
+            if (sqlSelectLimit != NO_SQL_SELECT_LIMIT && sqlSelectLimit < MAX_SQL_SELECT_LIMIT
+                && sqlSelectLimit-- <= 0L) {
+                rs.close();
                 break;
             }
             RowDataPacket row = null;

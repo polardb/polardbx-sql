@@ -23,19 +23,22 @@ import com.alibaba.polardbx.druid.util.JdbcConstants;
 
 import java.util.List;
 
-public class mysql_block_0  extends MysqlTest {
+public class mysql_block_0 extends MysqlTest {
 
     public void test_0() throws Exception {
         String sql = "BEGIN\n" +
-				"DELETE t0 FROM ktv_ind_columns t0 WHERE t0.dbid=?;\n" +
-				"    INSERT INTO ktv_ind_columns(index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,collection_time)\n" +
-				"    SELECT DISTINCT index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,now()\n" +
-				"    FROM ktv_tmp_ind_columns WHERE dbid=?;\n" +
-				"    COMMIT;"; //
+            "DELETE t0 FROM ktv_ind_columns t0 WHERE t0.dbid=?;\n" +
+            "    INSERT INTO ktv_ind_columns(index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,collection_time)\n"
+            +
+            "    SELECT DISTINCT index_owner,index_name,table_owner,TABLE_NAME,COLUMN_NAME,column_position,column_length,descend,dbId,now()\n"
+            +
+            "    FROM ktv_tmp_ind_columns WHERE dbid=?;\n" +
+            "    COMMIT;\n" +
+            "END;";
 
         List<SQLStatement> statementList = SQLUtils.parseStatements(sql, JdbcConstants.MYSQL);
-		assertEquals(1, statementList.size());
-		SQLStatement stmt = statementList.get(0);
+        assertEquals(1, statementList.size());
+        SQLStatement stmt = statementList.get(0);
 
         SchemaStatVisitor visitor = SQLUtils.createSchemaStatVisitor(JdbcConstants.MYSQL);
         for (SQLStatement statement : statementList) {
@@ -59,35 +62,37 @@ public class mysql_block_0  extends MysqlTest {
 
         // Assert.assertTrue(visitor.getColumns().contains(new TableStat.Column("employees", "salary")));
 
-		{
-			String output = SQLUtils.toMySqlString(stmt);
-			assertEquals("BEGIN;\n" +
-							"DELETE t0\n" +
-							"FROM ktv_ind_columns t0\n" +
-							"WHERE t0.dbid = ?;\n" +
-							"INSERT INTO ktv_ind_columns (index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
-							"\t, column_position, column_length, descend, dbId, collection_time)\n" +
-							"SELECT DISTINCT index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
-							"\t, column_position, column_length, descend, dbId, now()\n" +
-							"FROM ktv_tmp_ind_columns\n" +
-							"WHERE dbid = ?;\n" +
-							"COMMIT;", //
-					output);
-		}
-		{
-			String output = SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION);
-			assertEquals("begin;\n" +
-							"delete t0\n" +
-							"from ktv_ind_columns t0\n" +
-							"where t0.dbid = ?;\n" +
-							"insert into ktv_ind_columns (index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
-							"\t, column_position, column_length, descend, dbId, collection_time)\n" +
-							"select distinct index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
-							"\t, column_position, column_length, descend, dbId, now()\n" +
-							"from ktv_tmp_ind_columns\n" +
-							"where dbid = ?;\n" +
-							"commit;", //
-					output);
-		}
-	}
+        {
+            String output = SQLUtils.toMySqlString(stmt);
+            assertEquals("BEGIN\n" +
+                    "\tDELETE t0\n" +
+                    "\tFROM ktv_ind_columns t0\n" +
+                    "\tWHERE t0.dbid = ?;\n" +
+                    "\tINSERT INTO ktv_ind_columns (index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
+                    "\t\t, column_position, column_length, descend, dbId, collection_time)\n" +
+                    "\tSELECT DISTINCT index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
+                    "\t\t, column_position, column_length, descend, dbId, now()\n" +
+                    "\tFROM ktv_tmp_ind_columns\n" +
+                    "\tWHERE dbid = ?;\n" +
+                    "\tCOMMIT;\n" +
+                    "END;",
+                output);
+        }
+        {
+            String output = SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION);
+            assertEquals("begin\n" +
+                    "\tdelete t0\n" +
+                    "\tfrom ktv_ind_columns t0\n" +
+                    "\twhere t0.dbid = ?;\n" +
+                    "\tinsert into ktv_ind_columns (index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
+                    "\t\t, column_position, column_length, descend, dbId, collection_time)\n" +
+                    "\tselect distinct index_owner, index_name, table_owner, TABLE_NAME, COLUMN_NAME\n" +
+                    "\t\t, column_position, column_length, descend, dbId, now()\n" +
+                    "\tfrom ktv_tmp_ind_columns\n" +
+                    "\twhere dbid = ?;\n" +
+                    "\tcommit;\n" +
+                    "end;",
+                output);
+        }
+    }
 }

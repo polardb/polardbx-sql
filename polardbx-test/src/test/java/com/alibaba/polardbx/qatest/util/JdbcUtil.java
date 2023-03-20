@@ -556,7 +556,6 @@ public class JdbcUtil {
                 try {
                     if (isTddl && param.get(i) == null) {
                         preparedStatement.setObject(i + 1, java.sql.Types.NULL);
-
                     } else {
                         preparedStatement.setObject(i + 1, param.get(i));
                     }
@@ -1742,7 +1741,9 @@ public class JdbcUtil {
 
     public static void createPartDatabaseUsingUtf8(Connection polarxConn, String logDb) {
         String createDbSql =
-            String.format("/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto' DEFAULT CHARSET = utf8;", logDb);
+            String.format(
+                "/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto' DEFAULT CHARSET = utf8;",
+                logDb);
         JdbcUtil.executeUpdate(polarxConn, createDbSql);
         useDb(polarxConn, logDb);
     }

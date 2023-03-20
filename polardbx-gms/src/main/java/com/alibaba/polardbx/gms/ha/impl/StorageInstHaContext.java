@@ -35,46 +35,19 @@ import java.util.stream.Collectors;
  * @author chenghui.lch
  */
 public class StorageInstHaContext {
-
     public enum StorageHaStatus {
         NORMAL, SWITCHING
     }
 
-    protected String instId;
-
-    protected String storageInstId;
-
-    protected String storageMasterInstId;
-
-    protected boolean isMasterMode = false;
-
-    protected String user;
-
-    protected String encPasswd;
+    public static int HA_WRITE_LOCK_WAIT_TIMEOUT = 20;// unit: sec
+    public static int HA_WRITE_LOCK_RETRY_TIME = 2;// unit: sec
+    public static int SLEEP_TIME_AFTER_FETCH_TIMEOUT = 5000;// unit: milli sec
 
     /**
-     * the type of storage (such as xcluster/mysql/polardb)
+     * ============================= DN properties of Leader Area  ====================================
+     * ================================================================================================
+     *
      */
-    protected int storageType;
-
-    /**
-     * the storage inst kind (such master inst / slave inst / metadb inst)
-     */
-    protected int storageKind;
-
-    /**
-     * the ha status for the storage inst
-     * <pre>
-     *      the ha status will be updated during running  StorageHaManager.StorageHaSwitchTask
-     * </pre>
-     */
-    protected volatile StorageHaStatus haStatus = StorageHaStatus.NORMAL;
-
-    /**
-     * The vip addr of storage, sometime it will be null
-     */
-    protected volatile String storageVipAddr;
-
     /**
      * For PolarDB-X master, currAvailableNodeAddr is leader
      * <p>
@@ -84,6 +57,39 @@ public class StorageInstHaContext {
      * </pre>
      */
     protected volatile String currAvailableNodeAddr;
+
+    /**
+     * Label if current leader addr is a vip addr
+     */
+    protected volatile boolean currIsVip;
+
+    /**
+     * Label if current leader addr is using xproto
+     * when currXport > 0, it means current leader is using xproto, or else is using jdbc
+     */
+    protected volatile int currXport = -1;
+
+    /**
+     * The user of current available node addr
+     */
+    protected volatile String user;
+
+    /**
+     * THe enc passwd of current available node addr
+     */
+    protected volatile String encPasswd;
+
+    /**
+     * ============================= DN properties of Memory Area  ====================================
+     * ================================================================================================
+     */
+    /**
+     * the ha status for the storage inst
+     * <pre>
+     *      the ha status will be updated during running  StorageHaManager.StorageHaSwitchTask
+     * </pre>
+     */
+    protected volatile StorageHaStatus haStatus = StorageHaStatus.NORMAL;
 
     /**
      * label if the currAvailableNodeAddr is healthy
@@ -103,6 +109,46 @@ public class StorageInstHaContext {
     protected volatile Map<String, StorageNodeHaInfo> allStorageNodeHaInfoMap;
 
     /**
+     * <pre>
+     *     All TGroupDataSource need to get read lock of storage to do initialization, and
+     *     HA switch task need to get write lock to do switch task for current storage.
+     *     This lock is used to avoid the TGroupDataSource initialization during its storage is doing ha switch task.
+     * </pre>
+     */
+    protected final ReentrantReadWriteLock haLock = new ReentrantReadWriteLock();
+
+    /**
+     * ============================= DN properties of MetaDB Area ====================================
+     * ===============================================================================================
+     */
+
+    protected String storageInstId;
+
+    protected String instId;
+
+    protected String storageMasterInstId;
+
+    protected boolean isMasterMode = false;
+
+    /**
+     * the type of storage (such as xcluster/mysql/polardb)
+     */
+    protected int storageType;
+
+    /**
+     * the storage inst kind (such master inst / slave inst / metadb inst)
+     */
+    protected int storageKind;
+
+    /**
+     * The vip addr of storage, sometime it will be null
+     */
+    protected volatile String storageVipAddr;
+    protected volatile StorageInfoRecord storageVipInfo;
+    protected volatile String storageVipUser;
+    protected volatile String storageVipEncPasswd;
+
+    /**
      * The storage nodes that loaded from metaDB that its vip info is excluded for x-cluster storage type
      * <pre>
      *     When the storage_info of metaDB is modified, it will be refreshed by the callback of ConfigListener.
@@ -112,15 +158,6 @@ public class StorageInstHaContext {
      */
     protected volatile Map<String, StorageInfoRecord> storageNodeInfos;
 
-    /**
-     * <pre>
-     *     All TGroupDataSource need to get read lock of storage to do initialization, and
-     *     HA switch task need to get write lock to do switch task for current storage.
-     *     This lock is used to avoid the TGroupDataSource initialization during its storage is doing ha switch task.
-     * </pre>
-     */
-    protected final ReentrantReadWriteLock haLock = new ReentrantReadWriteLock();
-
     protected static StorageInstHaContext buildStorageInstHaContext(String instId,
                                                                     String storageInstId,
                                                                     String storageMasterInstId,
@@ -129,6 +166,7 @@ public class StorageInstHaContext {
                                                                     int storageType,
                                                                     int instKind,
                                                                     String vipAddr,
+                                                                    StorageInfoRecord vipInfo,
                                                                     Map<String, StorageNodeHaInfo> storageNodeHaInfoMap,
                                                                     Map<String, StorageInfoRecord> addrStorageNodeMap) {
 
@@ -137,12 +175,17 @@ public class StorageInstHaContext {
         storageInstHaContext.instId = instId;
         storageInstHaContext.storageInstId = storageInstId;
         storageInstHaContext.storageMasterInstId = storageMasterInstId;
-        storageInstHaContext.user = user;
-        storageInstHaContext.encPasswd = encPasswd;
         storageInstHaContext.storageType = storageType;
         storageInstHaContext.storageKind = instKind;
         storageInstHaContext.storageVipAddr = vipAddr;
+        storageInstHaContext.storageVipInfo = vipInfo;
         storageInstHaContext.storageNodeInfos = addrStorageNodeMap;
+        storageInstHaContext.user = user;
+        storageInstHaContext.encPasswd = encPasswd;
+        if (vipInfo != null) {
+            storageInstHaContext.storageVipUser = vipInfo.user;
+            storageInstHaContext.storageVipEncPasswd = vipInfo.passwdEnc;
+        }
 
         boolean isMasterMode = storageInstHaContext.storageKind != StorageInfoRecord.INST_KIND_SLAVE;
         storageInstHaContext.isMasterMode = isMasterMode;
@@ -157,7 +200,23 @@ public class StorageInstHaContext {
                     break;
                 }
             }
+
+            // check leaderAddr is vip address or not
+            boolean isVipAddr = true;
+            for (Map.Entry<String, StorageNodeHaInfo> addrRoleInfo : storageNodeHaInfoMap.entrySet()) {
+                if (addrRoleInfo.getKey().equals(leaderAddr) && !addrRoleInfo.getValue().isVip()) {
+                    isVipAddr = false;
+                    break; // found one with same addr but not vip, means vip is set to actual leader addr
+                }
+            }
+
             storageInstHaContext.currAvailableNodeAddr = leaderAddr;
+            storageInstHaContext.currIsVip = isVipAddr;
+            if (leaderAddr != null) {
+                storageInstHaContext.currXport =
+                    StorageHaManager.getAndCheckXportDryRun(leaderAddr, isVipAddr, storageInstHaContext,
+                        storageNodeHaInfoMap.get(leaderAddr));
+            }
         } else {
             // Find healthy learner for slave mode
             String healthyLearnerAddr = null;
@@ -169,9 +228,24 @@ public class StorageInstHaContext {
                     break;
                 }
             }
+
+            // check leaderAddr is vip address or not
+            boolean isVipAddr = true;
+            for (Map.Entry<String, StorageNodeHaInfo> addrRoleInfo : storageNodeHaInfoMap.entrySet()) {
+                if (addrRoleInfo.getKey().equals(healthyLearnerAddr) && !addrRoleInfo.getValue().isVip()) {
+                    isVipAddr = false;
+                    break; // found one with same addr but not vip, means vip is set to actual leader addr
+                }
+            }
+
             storageInstHaContext.currAvailableNodeAddr = healthyLearnerAddr;
+            storageInstHaContext.currIsVip = isVipAddr;
             if (healthyLearnerAddr == null) {
                 storageInstHaContext.isCurrAvailableNodeAddrHealthy = false;
+            } else {
+                storageInstHaContext.currXport =
+                    StorageHaManager.getAndCheckXportDryRun(healthyLearnerAddr, isVipAddr, storageInstHaContext,
+                        storageNodeHaInfoMap.get(healthyLearnerAddr));
             }
         }
         storageInstHaContext.allStorageNodeHaInfoMap = storageNodeHaInfoMap;
@@ -204,6 +278,10 @@ public class StorageInstHaContext {
 
     public String getCurrAvailableNodeAddr() {
         return currAvailableNodeAddr;
+    }
+
+    public boolean isCurrIsVip() {
+        return currIsVip;
     }
 
     public int getStorageKind() {
@@ -292,6 +370,28 @@ public class StorageInstHaContext {
         return false;
     }
 
+    @Override
+    public String toString() {
+        return "StorageInstHaContext{" +
+            "instId='" + instId + '\'' +
+            ", storageInstId='" + storageInstId + '\'' +
+            ", storageMasterInstId='" + storageMasterInstId + '\'' +
+            ", haStatus=" + haStatus +
+            ", storageNodeInfos=" + storageNodeInfos +
+            ", currAvailableNodeAddr=" + currAvailableNodeAddr +
+            ", currIsVip=" + currIsVip +
+            ", storageVipAddr=" + storageVipAddr +
+            ", storageVipUser=" + storageVipUser +
+            '}';
+    }
+
+    public StorageInfoRecord getStorageVipInfo() {
+        return storageVipInfo;
+    }
+
+    public void setStorageVipInfo(StorageInfoRecord storageVipInfo) {
+        this.storageVipInfo = storageVipInfo;
+    }
 
     public String getStorageVipAddr() {
         return storageVipAddr;
@@ -301,19 +401,32 @@ public class StorageInstHaContext {
         this.storageVipAddr = storageVipAddr;
     }
 
-
     public ReentrantReadWriteLock getHaLock() {
         return haLock;
     }
 
-    @Override
-    public String toString() {
-        return "StorageInstHaContext{" +
-            "instId='" + instId + '\'' +
-            ", storageInstId='" + storageInstId + '\'' +
-            ", storageMasterInstId='" + storageMasterInstId + '\'' +
-            ", haStatus=" + haStatus +
-            ", storageNodeInfos=" + storageNodeInfos +
-            '}';
+    public Map<String, StorageInfoRecord> getStorageNodeInfos() {
+        return storageNodeInfos;
     }
+
+    public String getStorageVipUser() {
+        return storageVipUser;
+    }
+
+    public void setStorageVipUser(String storageVipUser) {
+        this.storageVipUser = storageVipUser;
+    }
+
+    public String getStorageVipEncPasswd() {
+        return storageVipEncPasswd;
+    }
+
+    public void setStorageVipEncPasswd(String storageVipEncPasswd) {
+        this.storageVipEncPasswd = storageVipEncPasswd;
+    }
+
+    public int getCurrXport() {
+        return currXport;
+    }
+
 }

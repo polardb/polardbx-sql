@@ -56,7 +56,7 @@ public class PagesSerde {
 
     public SerializedChunk serialize(boolean localChunk, Chunk page) {
         if (localChunk) {
-            return new SerializedChunk(page, (int) page.getSizeInBytes(), ChunkCompression.UNCOMPRESSED,
+            return new SerializedChunk(page, (int) page.getElementUsedBytes(), ChunkCompression.UNCOMPRESSED,
                 page.getPositionCount());
         }
         return serializeForce(page);
@@ -64,7 +64,7 @@ public class PagesSerde {
 
     private SerializedChunk serializeForce(Chunk page) {
         SliceOutput serializationBuffer =
-            new DynamicSliceOutput(toIntExact((page.getSizeInBytes() + Integer.BYTES))); // block
+            new DynamicSliceOutput(toIntExact((page.getElementUsedBytes() + Integer.BYTES))); // block
         // length is an int
         PagesSerdeUtil.writeRawPage(page, serializationBuffer, blockEncodings);
 

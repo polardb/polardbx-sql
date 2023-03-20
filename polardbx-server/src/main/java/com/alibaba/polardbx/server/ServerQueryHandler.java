@@ -104,8 +104,14 @@ public class ServerQueryHandler implements QueryHandler {
         }
 
         // Split multi-statement into single ones
-        MultiStatementSplitter splitter = new MultiStatementSplitter(sql);
-        List<ByteString> statements = splitter.split();
+        List<ByteString> statements;
+        try {
+            MultiStatementSplitter splitter = new MultiStatementSplitter(sql);
+            statements = splitter.split();
+        } catch (Exception e) {
+            c.handleError(ErrorCode.ERR_HANDLE_DATA, e, sql.toString(), false);
+            return;
+        }
 
         // Returns an OK packet for statements with comment only (e.g. "-- example")
         if (statements.isEmpty()) {

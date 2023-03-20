@@ -5,7 +5,7 @@ cleaner_log='/home/admin/drds-server/logs/cleaner.log'
 
 if [ -z $1 ]; then
     max_used=90
-else 
+else
     max_used=$1
 fi
 
@@ -23,9 +23,9 @@ print() {
 if [ -z "`ls -A $drds_path`" ]; then
    print "$drds_path is empty!"
    exit
-else 
+else
    print "handle: $drds_path"
-fi 
+fi
 
 get_disc_space() {
     raw_amount=`df -h $drds_path|sed '1d'`

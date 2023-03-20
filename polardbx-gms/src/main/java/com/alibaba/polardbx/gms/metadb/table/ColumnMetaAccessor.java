@@ -26,14 +26,16 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-public class ColumnMetaAccessor  extends AbstractAccessor {
+public class ColumnMetaAccessor extends AbstractAccessor {
     private static final Logger LOGGER = LoggerFactory.getLogger("oss");
 
     private static final String COLUMN_META_TABLE = wrap(GmsSystemTables.COLUMN_METAS);
@@ -43,39 +45,51 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
             + "(`table_file_name`,`table_schema`,`table_name`,`stripe_index`,`stripe_offset`,`stripe_length`,`column_name`,`column_index`,`bloom_filter_path`,`bloom_filter_offset`,`bloom_filter_length`,`is_merged`,`task_id`,`life_cycle`, `engine`, `logical_schema_name`, `logical_table_name`) "
             + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    private static final String SELECT_COLUMN_METAS = "select * from " + COLUMN_META_TABLE + " where table_file_name = ? and column_name = ?";
+    private static final String SELECT_COLUMN_METAS =
+        "select * from " + COLUMN_META_TABLE + " where table_file_name = ? and column_name = ?";
 
     private static final String SELECT_BY_PATH = "select * from " + COLUMN_META_TABLE + " where bloom_filter_path = ? ";
 
     private static final String SELECT_FOR_ROLLBACK = "select * from " + COLUMN_META_TABLE
-        +  " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+        + " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
 
     private static final String SELECT_UNCOMMITTED_FOR_ROLLBACK = "select * from " + COLUMN_META_TABLE
-        +  " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
+        + " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = "
+        + OSSMetaLifeCycle.CREATING.ordinal();
 
-    private static final String SELECT_BY_TABLE_FILE_NAME = "select * from " + COLUMN_META_TABLE + " where `table_file_name` = ? ";
+    private static final String SELECT_BY_TABLE_FILE_NAME =
+        "select * from " + COLUMN_META_TABLE + " where `table_file_name` = ? ";
 
     private static final String DELETE_COLUMN_META = "delete from " + COLUMN_META_TABLE +
         " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
 
     private static final String DELETE_UNCOMMITTED_COLUMN_META = "delete from " + COLUMN_META_TABLE +
-        " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
+        " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? and `life_cycle` = "
+        + OSSMetaLifeCycle.CREATING.ordinal();
 
     private static final String DELETE_FILES_BY_SCHEMA_TABLE = "delete from " + COLUMN_META_TABLE +
         " where `logical_schema_name` = ? and `logical_table_name` = ?";
 
     private static final String DELETE_FILES_BY_ID = "delete from " + COLUMN_META_TABLE +
-            " where `column_meta_id` = ?";
+        " where `column_meta_id` = ?";
 
-    private static final String DELETE_FILES_BY_SCHEMA = "delete from " + COLUMN_META_TABLE + " where `logical_schema_name` = ?";
+    private static final String DELETE_FILES_BY_SCHEMA =
+        "delete from " + COLUMN_META_TABLE + " where `logical_schema_name` = ?";
 
-    private static final String RENAME_FILES = "update " + COLUMN_META_TABLE + " set `logical_table_name` = ? where `logical_schema_name` = ? and `logical_table_name` = ?";
+    private static final String RENAME_FILES = "update " + COLUMN_META_TABLE
+        + " set `logical_table_name` = ? where `logical_schema_name` = ? and `logical_table_name` = ?";
 
-    private static final String READY_FILES = "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
-        + " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+    private static final String UPDATE_TABLE_SCHEMA =
+        "update " + COLUMN_META_TABLE + " set `table_schema` = ? where `table_file_name` in (%s)";
 
-    private static final String VALID_BY_TABLE_FILE_NAME = "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
-        + " where `table_file_name` = ? ";;
+    private static final String READY_FILES =
+        "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
+            + " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
+
+    private static final String VALID_BY_TABLE_FILE_NAME =
+        "update " + COLUMN_META_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
+            + " where `table_file_name` = ? ";
+    ;
 
     public int[] insert(List<ColumnMetasRecord> records) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -93,12 +107,12 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
     public List<ColumnMetasRecord> query(String tableFileName, String columnName) {
         try {
             Map<Integer, ParameterContext> params = MetaDbUtil.buildParameters(
-                    ParameterMethod.setObject1,
-                    new Object[] {tableFileName, columnName});
+                ParameterMethod.setObject1,
+                new Object[] {tableFileName, columnName});
 
             return MetaDbUtil.query(SELECT_COLUMN_METAS, params, ColumnMetasRecord.class, connection);
         } catch (Exception e) {
-           throw GeneralUtil.nestedException(e);
+            throw GeneralUtil.nestedException(e);
         }
     }
 
@@ -124,7 +138,8 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         }
     }
 
-    public List<ColumnMetasRecord> queryByIdAndSchemaAndTable(Long taskId, String logicalSchemaName, String logicalTableName) {
+    public List<ColumnMetasRecord> queryByIdAndSchemaAndTable(Long taskId, String logicalSchemaName,
+                                                              String logicalTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
@@ -218,6 +233,24 @@ public class ColumnMetaAccessor  extends AbstractAccessor {
         try {
             DdlMetaLogUtil.logSql(RENAME_FILES, params);
             MetaDbUtil.delete(RENAME_FILES, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public void updateTableSchema(String phySchema, Set<String> fileNames) {
+        if (CollectionUtils.isEmpty(fileNames)) {
+            return;
+        }
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(phySchema);
+        if (GeneralUtil.isNotEmpty(fileNames)) {
+            paramValues.addAll(fileNames);
+        }
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+        try {
+            DdlMetaLogUtil.logSql(String.format(UPDATE_TABLE_SCHEMA, concatParams(fileNames)), params);
+            MetaDbUtil.update(String.format(UPDATE_TABLE_SCHEMA, concatParams(fileNames)), params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }

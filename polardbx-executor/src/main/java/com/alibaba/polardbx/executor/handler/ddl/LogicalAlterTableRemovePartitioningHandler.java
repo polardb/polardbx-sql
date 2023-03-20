@@ -156,6 +156,8 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
 
         // local index --> gsi
         TableMeta tableMeta = executionContext.getSchemaManager().getTable(primaryTableName);
+        Set<String> primaryKey = new TreeSet<>(CASE_INSENSITIVE_ORDER);
+        primaryKey.addAll(tableMeta.getPrimaryKey().stream().map(ColumnMeta::getName).collect(Collectors.toList()));
 
         for (IndexMeta indexMeta : tableMeta.getAllIndexes()) {
             String indexName = indexMeta.getPhysicalIndexName().toLowerCase();
@@ -198,7 +200,7 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             indexCols.addAll(indexKeys);
             List<String> dropColumns = new ArrayList<>();
             for (String col : originPartitionKey) {
-                if (!indexCols.contains(col)) {
+                if (!indexCols.contains(col) && !primaryKey.contains(col)) {
                     dropColumns.add(col);
                 }
             }

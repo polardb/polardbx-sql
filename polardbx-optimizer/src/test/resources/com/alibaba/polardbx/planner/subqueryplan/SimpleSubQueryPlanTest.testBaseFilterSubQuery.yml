@@ -73,7 +73,7 @@
     FROM test_tb6 a
     WHERE a.id = 5
   plan: |
-    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `sub` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `sub` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
 
 - sql: |
     /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
@@ -90,14 +90,14 @@
     WHERE a.id = 5
   plan: |
     correlateapply(cor=$cor, leftconditions=[$0], opkind=equals, type=semi)
-      logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+      logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
       project($f0="id")
         filter(condition="$cor.name = name")
           gather(concurrent=true)
             logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
     cache node:
 
-    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
     gather(concurrent=true)
       logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
 
@@ -344,7 +344,7 @@
   plan: |
     project(id="id", name="name", sub="id < 100 and id0", cor=[$cor0])
       semibkajoin(condition="name = name", type="left")
-        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` in((((select count(*) as `count(id)` from `test_tb5` as `test_tb5`))))))")
+        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` = some (select count(*) as `count(id)` from `test_tb5` as `test_tb5`)))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
 

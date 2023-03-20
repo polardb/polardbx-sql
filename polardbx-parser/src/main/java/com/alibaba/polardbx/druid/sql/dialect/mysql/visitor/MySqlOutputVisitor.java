@@ -27,7 +27,9 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLOrderBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartition;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionValue;
 import com.alibaba.polardbx.druid.sql.ast.SQLSetQuantifier;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLWindow;
@@ -3712,6 +3714,10 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     @Override
     public boolean visit(MySqlShowMasterStatusStatement x) {
         print0(ucase ? "SHOW MASTER STATUS" : "show master status");
+        if (x.getWith() != null) {
+            print0(ucase ? " WITH " : " with ");
+            x.getWith().accept(this);
+        }
         return false;
     }
 
@@ -4895,10 +4901,8 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             if (i != 0) {
                 print(',');
             } else if (item instanceof SQLAlterTableModifyPartitionValues) {
-                print0(ucase ? " MODIFY PARTITION " : "modify partition ");
-                if (x.getItems().size() >= 1) {
-                    needParentheses = true;
-                }
+                //print0(ucase ? " MODIFY PARTITION " : "modify partition ");
+                needParentheses = false;
             }
             println();
             if (i == 0 && needParentheses) {
@@ -4965,6 +4969,27 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         if (alignToTableGroup != null) {
             alignToTableGroup.accept(this);
         }
+
+        return false;
+    }
+
+    public boolean visit(SQLAlterTableModifyPartitionValues x) {
+
+        SQLPartition sqlPartitionDef = x.getSqlPartition();
+        SQLName name = sqlPartitionDef.getName();
+        SQLPartitionValue values = sqlPartitionDef.getValues();
+        boolean isAdd = x.isAdd();
+
+        print0(ucase ? " MODIFY PARTITION " : " modify partition ");
+
+        name.accept(this);
+
+        if (isAdd) {
+            print0(ucase ? " ADD " : "add ");
+        } else {
+            print0(ucase ? " DROP " : "drop ");
+        }
+        values.accept(this);
 
         return false;
     }
@@ -7492,6 +7517,40 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
+    public void endVisit(DrdsShowStorage x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowStorage x) {
+        if (!x.isFull()) {
+            print0(ucase ? "SHOW STORAGE" : "show storage");
+        } else {
+            print0(ucase ? "SHOW FULL STORAGE" : "show full storage");
+        }
+
+        if (x.isShowReplicas()) {
+            print0(ucase ? " REPLICAS " : " replicas ");
+        }
+
+        if (x.getWhere() != null) {
+            print0(ucase ? " WHERE " : " where ");
+            x.getWhere().accept(this);
+        }
+
+        if (x.getOrderBy() != null) {
+            print0(" ");
+            x.getOrderBy().accept(this);
+        }
+
+        if (x.getLimit() != null) {
+            print0(" ");
+            x.getLimit().accept(this);
+        }
+        return false;
+    }
+
+    @Override
     public void endVisit(DrdsShowTableGroup x) {
 
     }
@@ -7646,6 +7705,17 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public void endVisit(DrdsAlterTableExpireLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
+        print0(ucase ? "SHOW BINARY STREAMS" : "show binary streams");
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
 
     }
 
@@ -7986,7 +8056,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
-    public void endVisit(DrdsUnArchiveStatement x){
+    public void endVisit(DrdsUnArchiveStatement x) {
     }
 
     @Override
@@ -8099,6 +8169,9 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             if (x instanceof SQLBlockStatement && ((SQLBlockStatement) x).isImplicit()) {
                 return;
             }
+            if (x instanceof SQLBlockStatement && x.getParent() instanceof MySqlDeclareHandlerStatement) {
+                return;
+            }
             // TODO check create trigger and create event
             if (x instanceof SQLCreateProcedureStatement || x instanceof SQLCreateFunctionStatement
                 || x instanceof MySqlCreateEventStatement) {
@@ -8110,7 +8183,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public boolean visit(DrdsAlignToTableGroup x) {
-        print0(ucase ? " ALIGN TO " : " align to ");
+        print0(ucase ? " PARTITION ALIGN TO " : " partition align to ");
         x.getTablegroup().accept(this);
         return false;
     }

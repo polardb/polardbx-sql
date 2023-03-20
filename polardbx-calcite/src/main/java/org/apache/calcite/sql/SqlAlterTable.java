@@ -65,13 +65,17 @@ public class SqlAlterTable extends SqlCreate {
     private final SqlIdentifier originTableName;
     private final List<SqlIdentifier> objectNames;
 
+    // for repartition
+    private String logicalSecondaryTableName;
+
     private List<String> logicalReferencedTables = null;
     private List<String> physicalReferencedTables = null;
 
     /**
      * Creates a SqlCreateIndex.
      */
-    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName,
+                         Map<ColumnOpt, List<String>> columnOpts, String sql,
                          SqlTableOptions tableOptions, List<SqlAlterSpecification> alters, SqlParserPos pos) {
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.tableOptions = tableOptions;
@@ -83,7 +87,8 @@ public class SqlAlterTable extends SqlCreate {
         this.objectNames = objectNames;
     }
 
-    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName,
+                         Map<ColumnOpt, List<String>> columnOpts, String sql,
                          SqlParserPos pos) {
         this(objectNames, tableName, columnOpts, sql, null, null, pos);
     }
@@ -399,5 +404,13 @@ public class SqlAlterTable extends SqlCreate {
 
     public boolean isDropFile() {
         return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableDropFile;
+    }
+
+    public String getLogicalSecondaryTableName() {
+        return logicalSecondaryTableName;
+    }
+
+    public void setLogicalSecondaryTableName(String logicalSecondaryTableName) {
+        this.logicalSecondaryTableName = logicalSecondaryTableName;
     }
 }

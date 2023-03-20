@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 // TODO:
@@ -57,36 +59,44 @@ public class FilesAccessor extends AbstractAccessor {
         "update " + FILES_TABLE + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ? where `file_id` = ?";
 
     private static final String CHANGE_FILE_META_SIZE_ROW_HASH_LIFE =
-        "update " + FILES_TABLE + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ?, `file_hash` = ?, `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()
+        "update " + FILES_TABLE
+            + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ?, `file_hash` = ?, `life_cycle`= "
+            + OSSMetaLifeCycle.READY.ordinal()
             + "  where `file_id` = ?";
 
     private static final String CHANGE_FILE_HASH_RECORD =
         "update " + FILES_TABLE + " set `file_hash` = ?  where `file_id` = ?";
 
     private static final String SELECT_VISIBLE_FILES =
-        "select * from " + FILES_TABLE + " where `table_schema` = ? and `table_name` = ? and `logical_table_name` = ?and `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal()  +
-    " order by `create_time`";
+        "select * from " + FILES_TABLE
+            + " where `table_schema` = ? and `table_name` = ? and `logical_table_name` = ?and `life_cycle`= "
+            + OSSMetaLifeCycle.READY.ordinal() +
+            " order by `create_time`";
 
     private static final String SELECT_FILES_BY_LOGICAL_SCHEMA_TABLE =
-            "select * from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ? order by `create_time`";
+        "select * from " + FILES_TABLE
+            + " where `logical_schema_name` = ? and `logical_table_name` = ? order by `create_time`";
 
     private static final String SELECT_TABLE_FORMAT_FILE_BY_LOGICAL_SCHEMA_TABLE =
-            "select * from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ? and `file_type` = 'TABLE FORMAT' order by `create_time`";
+        "select * from " + FILES_TABLE
+            + " where `logical_schema_name` = ? and `logical_table_name` = ? and `file_type` = 'TABLE FORMAT' order by `create_time`";
 
     private static final String SELECT_LATEST_FILE_BY_LOGICAL_SCHEMA_TABLE =
-            "select * from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ? and `commit_ts` is not null and `remove_ts` is null and `file_type` != 'TABLE FORMAT' order by `create_time` desc limit 1";
+        "select * from " + FILES_TABLE
+            + " where `logical_schema_name` = ? and `logical_table_name` = ? and `commit_ts` is not null and `remove_ts` is null and `file_type` != 'TABLE FORMAT' order by `create_time` desc limit 1";
 
     private static final String SELECT_FILES_BY_LOGICAL_SCHEMA =
-            "select * from " + FILES_TABLE + " where `logical_schema_name` = ? order by `create_time`";
+        "select * from " + FILES_TABLE + " where `logical_schema_name` = ? order by `create_time`";
 
     private static final String SELECT_FILES_BY_FILE_NAME =
-            "select * from " + FILES_TABLE + " where `file_name` = ?";
+        "select * from " + FILES_TABLE + " where `file_name` = ?";
 
     private static final String SELECT_FILES_BY_ENGINE =
-            "select * from " + FILES_TABLE + " where `engine` = ? order by `create_time`";
+        "select * from " + FILES_TABLE + " where `engine` = ? order by `create_time`";
 
     private static final String SELECT_FILES_BY_LOCAL_PARTITION =
-        "select * from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ? and `table_schema` = ? and `table_name` = ? and `local_partition_name` = ?"
+        "select * from " + FILES_TABLE
+            + " where `logical_schema_name` = ? and `logical_table_name` = ? and `table_schema` = ? and `table_name` = ? and `local_partition_name` = ?"
             + "and file_name like '%.orc%'";
 
     private static final String SELECT_FOR_ROLLBACK =
@@ -99,25 +109,35 @@ public class FilesAccessor extends AbstractAccessor {
             + "and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
 
     private static final String DELETE_UNCOMMITTED_FOR_ROLLBACK =
-        "delete from " + FILES_TABLE + " where  `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? "
+        "delete from " + FILES_TABLE
+            + " where  `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? "
             + "and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
 
     private static final String DELETE_FILES = "delete from " + FILES_TABLE +
         " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ?";
 
-    private static final String DELETE_FILES_BY_SCHEMA_TABLE = "delete from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ?";
+    private static final String DELETE_FILES_BY_SCHEMA_TABLE =
+        "delete from " + FILES_TABLE + " where `logical_schema_name` = ? and `logical_table_name` = ?";
 
-    private static final String DELETE_FILES_BY_SCHEMA = "delete from " + FILES_TABLE + " where `logical_schema_name` = ?";
+    private static final String DELETE_FILES_BY_SCHEMA =
+        "delete from " + FILES_TABLE + " where `logical_schema_name` = ?";
 
     private static final String DELETE_FILES_BY_ID = "delete from " + FILES_TABLE + " where `file_id` = ?";
 
-    private static final String RENAME_FILES = "update " + FILES_TABLE + " set `logical_table_name` = ? where `logical_schema_name` = ? and `logical_table_name` = ?";
+    private static final String RENAME_FILES = "update " + FILES_TABLE
+        + " set `logical_table_name` = ? where `logical_schema_name` = ? and `logical_table_name` = ?";
 
-    private static final String UPDATE_COMMIT_TS = "update " + FILES_TABLE + " set `commit_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and `task_id` = ?";
+    private static final String UPDATE_COMMIT_TS = "update " + FILES_TABLE
+        + " set `commit_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and `task_id` = ?";
 
-    private static final String UPDATE_REMOVE_TS = "update " + FILES_TABLE + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and `file_name` in (%s)";
+    private static final String UPDATE_REMOVE_TS = "update " + FILES_TABLE
+        + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and `file_name` in (%s)";
 
-    private static final String UPDATE_WHOLE_TABLE_REMOVE_TS = "update " + FILES_TABLE + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and commit_ts is not null && remove_ts is null";
+    private static final String UPDATE_WHOLE_TABLE_REMOVE_TS = "update " + FILES_TABLE
+        + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and commit_ts is not null && remove_ts is null";
+
+    private static final String UPDATE_TABLE_SCHEMA =
+        "update " + FILES_TABLE + " set `table_schema` = ? where `file_id` in (%s)";
 
     private static final String READY_FILES =
         "update " + FILES_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal() +
@@ -156,7 +176,7 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
-    public void vaildFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount) {
+    public void validFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount) {
         Map<Integer, ParameterContext> params = new HashMap<>(4);
         int index = 0;
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setBytes, fileMeta);
@@ -188,19 +208,23 @@ public class FilesAccessor extends AbstractAccessor {
     }
 
     public List<FilesRecord> query(String phyTableSchema, String phyTableName, String logicalTableName) {
-        return query(SELECT_VISIBLE_FILES, FILES_TABLE, FilesRecord.class, phyTableSchema, phyTableName, logicalTableName);
+        return query(SELECT_VISIBLE_FILES, FILES_TABLE, FilesRecord.class, phyTableSchema, phyTableName,
+            logicalTableName);
     }
 
     public List<FilesRecord> queryByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
-        return query(SELECT_FILES_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class, logicalSchemaName, logicalTableName);
+        return query(SELECT_FILES_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class, logicalSchemaName,
+            logicalTableName);
     }
 
     public List<FilesRecord> queryTableFormatByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
-        return query(SELECT_TABLE_FORMAT_FILE_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class, logicalSchemaName, logicalTableName);
+        return query(SELECT_TABLE_FORMAT_FILE_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class,
+            logicalSchemaName, logicalTableName);
     }
 
     public List<FilesRecord> queryLatestFileByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
-        return query(SELECT_LATEST_FILE_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class, logicalSchemaName, logicalTableName);
+        return query(SELECT_LATEST_FILE_BY_LOGICAL_SCHEMA_TABLE, FILES_TABLE, FilesRecord.class, logicalSchemaName,
+            logicalTableName);
     }
 
     public List<FilesRecord> queryByLogicalSchema(String logicalSchemaName) {
@@ -221,7 +245,7 @@ public class FilesAccessor extends AbstractAccessor {
         try {
             Map<Integer, ParameterContext> params
                 = MetaDbUtil.buildStringParameters(
-                    new String[] {logicalTableSchema, logicalTableName, phyTableSchema, phyTableName, localPartition});
+                new String[] {logicalTableSchema, logicalTableName, phyTableSchema, phyTableName, localPartition});
 
             return MetaDbUtil.query(SELECT_FILES_BY_LOCAL_PARTITION, params, FilesRecord.class, connection);
         } catch (Exception e) {
@@ -263,7 +287,8 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
-    public List<FilesRecord> queryByIdAndSchemaAndTable(Long taskId, String logicalSchemaName, String logicalTableName) {
+    public List<FilesRecord> queryByIdAndSchemaAndTable(Long taskId, String logicalSchemaName,
+                                                        String logicalTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);
@@ -420,6 +445,29 @@ public class FilesAccessor extends AbstractAccessor {
         try {
             DdlMetaLogUtil.logSql(UPDATE_WHOLE_TABLE_REMOVE_TS, params);
             MetaDbUtil.update(UPDATE_WHOLE_TABLE_REMOVE_TS, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public void updateTableSchema(String phySchema, Set<Long> fileIds) {
+        if (CollectionUtils.isEmpty(fileIds)) {
+            return;
+        }
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        int paramIndex = 1;
+        MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setString, phySchema);
+        for (Long fileId : fileIds) {
+            MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setLong, fileId);
+        }
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < fileIds.size(); i++) {
+            buf.append(COMMA).append(QUESTION_MARK);
+        }
+        String questionMark = buf.deleteCharAt(0).toString();
+        try {
+            DdlMetaLogUtil.logSql(String.format(UPDATE_TABLE_SCHEMA, questionMark), params);
+            MetaDbUtil.update(String.format(UPDATE_TABLE_SCHEMA, questionMark), params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }

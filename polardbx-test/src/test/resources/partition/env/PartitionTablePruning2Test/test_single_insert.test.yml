@@ -1,0 +1,25 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table tbl_sin
+(
+pk     decimal(18)    not null comment '',
+c1     varchar(256)  null comment '',
+primary key (pk)
+) single;
+
+show create table tbl_sin;
+
+insert into tbl_sin values (1000, 'abcd');
+select pk,c1 from tbl_sin;
+
+create table tbl_bro
+(
+pk     decimal(18)    not null comment '',
+c1     varchar(256)  null comment '',
+primary key (pk)
+) broadcast;
+
+show create table tbl_bro;
+
+insert into tbl_bro values (1000, 'abcd');
+select pk,c1 from tbl_bro;

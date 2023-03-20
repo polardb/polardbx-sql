@@ -37,7 +37,6 @@ import java.util.Random;
  */
 public class BloomFilterBenchTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(BloomFilterBenchTest.class);
-
     private static final int NUM_ELEMENT = 10_000_000;
     private static final double FPP = 0.03;
     private static final List<HashMethodInfo> SUPPORT_HASH_INFO = new ArrayList<HashMethodInfo>() {{

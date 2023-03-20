@@ -21,6 +21,7 @@ import com.google.common.collect.Lists;
 import junit.framework.TestCase;
 import org.junit.Test;
 
+import java.util.BitSet;
 import java.util.List;
 
 /**
@@ -41,5 +42,59 @@ public class RawStringTest extends TestCase {
         RawString rawString = new RawString(list);
         System.out.println(rawString);
         Assert.assertTrue(rawString.buildRawString().equals("'string','1',3,'s\\n','s\\rt','s\\'t','s\"t'"));
+    }
+
+    @Test
+    public void testRawStringWithNull() {
+        List list = Lists.newLinkedList();
+        list.add("string");
+        list.add("1");
+        list.add(3);
+        list.add(null);
+        list.add("s\n");
+        list.add("s\rt");
+        list.add("s't");
+        list.add("s\"t");
+        RawString rawString = new RawString(list);
+        System.out.println(rawString);
+        System.out.println(rawString.buildRawString());
+        BitSet b = new BitSet();
+        b.set(1);
+        b.set(3);
+        b.set(4);
+        b.set(6);
+        System.out.println(rawString.buildRawString(b));
+        System.out.println(rawString.display());
+        Assert.assertTrue(rawString.buildRawString().equals("'string','1',3,null,'s\\n','s\\rt','s\\'t','s\"t'"));
+    }
+
+    @Test
+    public void testRawStringListWithNull() {
+        List list1 = Lists.newLinkedList();
+        list1.add("string");
+        list1.add("1");
+        list1.add(3);
+        list1.add(null);
+
+        List list2 = Lists.newLinkedList();
+        list2.add("s\n");
+        list2.add("s\rt");
+        list2.add("s't");
+        list2.add("s\"t");
+
+        List<List<Object>> topList = Lists.newArrayList();
+        topList.add(list1);
+        topList.add(list2);
+
+        RawString rawString = new RawString(topList);
+        System.out.println(rawString);
+        System.out.println(rawString.buildRawString());
+        BitSet b = new BitSet();
+        b.set(0);
+        b.set(1);
+        System.out.println("bit string:" + rawString.buildRawString(b));
+        Assert.assertTrue(rawString.buildRawString(b).equals("('string','1',3,null),('s\\n','s\\rt','s\\'t','s\"t')"));
+        System.out.println(rawString.display());
+        Assert.assertTrue(rawString.buildRawString().equals("('string','1',3,null),('s\\n','s\\rt','s\\'t','s\"t')"));
     }
 }

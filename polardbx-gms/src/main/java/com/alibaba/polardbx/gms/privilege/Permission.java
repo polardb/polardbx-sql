@@ -42,12 +42,24 @@ public class Permission {
     @Nullable
     private final PrivilegeKind privilege;
     private final PrivilegeScope scope;
+    private final boolean isAnyTable;
 
     private Permission(String database, String table, PrivilegeKind privilege, PrivilegeScope scope) {
         this.database = database;
         this.table = table;
         this.privilege = privilege;
         this.scope = scope;
+        this.isAnyTable = false;
+    }
+
+    private Permission(String database, String table,
+                       PrivilegeKind privilege, PrivilegeScope scope,
+                       boolean isAnyTable) {
+        this.database = database;
+        this.table = table;
+        this.privilege = privilege;
+        this.scope = scope;
+        this.isAnyTable = isAnyTable;
     }
 
     public String getDatabase() {
@@ -56,6 +68,10 @@ public class Permission {
 
     public String getTable() {
         return table;
+    }
+
+    public boolean isAnyTable() {
+        return isAnyTable;
     }
 
     @Nullable
@@ -81,6 +97,12 @@ public class Permission {
         return new Permission(database, EMPTY, privilege, PrivilegeScope.DATABASE);
     }
 
+    public static Permission databasePermission(String database, boolean isAnyTable, PrivilegeKind privilege) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(database), "Database can't be blank!");
+
+        return new Permission(database, EMPTY, privilege, PrivilegeScope.DATABASE, isAnyTable);
+    }
+
     public static Permission tablePermission(String database, String table, PrivilegeKind privilege) {
         Preconditions.checkArgument(StringUtils.isNotBlank(database), "Database can't be blank!");
         Preconditions.checkArgument(StringUtils.isNotBlank(table), "Table can't be blank!");
@@ -88,12 +110,12 @@ public class Permission {
         return new Permission(database, table, privilege, PrivilegeScope.TABLE);
     }
 
-    public static Permission from(String database, String table, PrivilegeKind privilege) {
+    public static Permission from(String database, String table, boolean isAnyTable, PrivilegeKind privilege) {
         Preconditions.checkNotNull(privilege, "Privilege can't be null!");
         if (StringUtils.isNotBlank(table)) {
             return tablePermission(database, table, privilege);
         } else if (StringUtils.isNotBlank(database)) {
-            return databasePermission(database, privilege);
+            return databasePermission(database, isAnyTable, privilege);
         } else {
             return instancePermission(privilege);
         }

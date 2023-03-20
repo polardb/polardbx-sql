@@ -320,6 +320,9 @@ public class ShardingAdvisor {
     boolean suitableSql(RelNode plan, String schema) {
         TableScanFinder tsf = new TableScanFinder();
         plan.accept(tsf);
+        if (tsf.shouldSkip()) {
+            return false;
+        }
         List<Pair<String, TableScan>> results = tsf.getResult();
         if (results.size() == 0) {
             return false;

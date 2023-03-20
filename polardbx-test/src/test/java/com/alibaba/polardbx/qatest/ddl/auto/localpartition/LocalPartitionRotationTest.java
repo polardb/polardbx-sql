@@ -24,6 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -137,7 +138,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
                 tddlConnection,
                 String.format("INSERT INTO %s VALUES (1,2,3,'%s')", primaryTableName, dateIterator.toString())
             );
-            dateIterator = now.plusMonths(i+1);
+            dateIterator = now.plusMonths(i + 1);
         }
 
         ResultSet resultSet = JdbcUtil.executeQuery(
@@ -146,7 +147,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
         int cnt = resultSet.getInt("cnt");
         Assert.assertEquals("Found Error", cnt, 12);
 
-        dateIterator = now.plusMonths(i+6);
+        dateIterator = now.plusMonths(i + 6);
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("set @FP_OVERRIDE_NOW='%s'", dateIterator)
         );
@@ -175,6 +176,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
             + "    c3 bigint,\n"
             + "    gmt_modified DATE PRIMARY KEY NOT NULL\n"
             + ")\n"
+            + "PARTITION BY HASH(gmt_modified)\n"
             + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
             + "STARTWITH '%s'\n"
             + "INTERVAL 1 MONTH\n"

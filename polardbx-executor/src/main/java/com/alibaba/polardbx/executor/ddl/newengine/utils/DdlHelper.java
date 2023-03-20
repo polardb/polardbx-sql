@@ -32,12 +32,13 @@ import com.alibaba.polardbx.common.utils.encrypt.MD5Utils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
@@ -54,6 +55,7 @@ import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
 import org.apache.calcite.rel.RelNode;
@@ -63,14 +65,26 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -83,6 +97,7 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import static com.alibaba.polardbx.common.ddl.Attribute.MEDIAN_JOB_IDLE_WAITING_TIME;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NATIVE_AUTO_INC_SYNTAX;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.BACKTICK;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.COLON;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_NUM_OF_DDL_SCHEDULERS;
@@ -109,10 +124,6 @@ public class DdlHelper {
 
     public static boolean isRunnable(String schemaName) {
         return isRunnable() && !SYSTEM_SCHEMATA.contains(schemaName);
-    }
-
-    public static ExecutorService createThreadPool(int poolSize, String threadName) {
-        return createThreadPool(poolSize, 0L, threadName, new ThreadPoolExecutor.AbortPolicy());
     }
 
     public static ExecutorService createThreadPool(int poolSize, long keepAliveTime, String threadName) {
@@ -330,6 +341,7 @@ public class DdlHelper {
 
     public static String genHashCodeForPhyTableDDL(String schemaName, String groupName, String phyTableName) {
         String phyTableDDL = null;
+
         try (Connection conn = getPhyConnection(schemaName, groupName);
             PreparedStatement ps = conn.prepareStatement("SHOW CREATE TABLE " + phyTableName);
             ResultSet rs = ps.executeQuery()) {
@@ -340,6 +352,34 @@ public class DdlHelper {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_FAILED, "fetch the DDL of " + phyTableName
                 + " on " + groupName + ". Caused by: " + e.getMessage(), e);
         }
+
+        if (TStringUtil.isEmpty(phyTableDDL)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_FAILED, "fetch the DDL of " + phyTableName
+                + " on " + groupName + ". Caused by: empty content");
+        }
+
+        // We have to remove the AUTO_INCREMENT part since it may be changed by DML during the DDL execution,
+        // or that may make hashcode changed and cause bad determination in some scenarios.
+        if (TStringUtil.containsIgnoreCase(phyTableDDL, NATIVE_AUTO_INC_SYNTAX)) {
+            MySqlCreateTableStatement createTableStmt =
+                (MySqlCreateTableStatement) FastsqlUtils.parseSql(phyTableDDL).get(0);
+            List<SQLAssignItem> tableOptions = createTableStmt.getTableOptions();
+            if (GeneralUtil.isNotEmpty(tableOptions)) {
+                Iterator<SQLAssignItem> iterator = tableOptions.iterator();
+                while (iterator.hasNext()) {
+                    SQLExpr sqlExpr = iterator.next().getTarget();
+                    if (sqlExpr instanceof SQLIdentifierExpr && TStringUtil.equalsIgnoreCase(
+                        ((SQLIdentifierExpr) sqlExpr).getSimpleName(), NATIVE_AUTO_INC_SYNTAX)) {
+                        iterator.remove();
+                        break;
+                    }
+                }
+            }
+            phyTableDDL = createTableStmt.toString();
+        }
+
+        phyTableDDL = TStringUtil.deleteWhitespace(phyTableDDL).toLowerCase();
+
         return TStringUtil.isEmpty(phyTableDDL) ? NONE : MD5Utils.getInstance().getMD5String(phyTableDDL);
     }
 
@@ -469,20 +509,6 @@ public class DdlHelper {
             logger.error(String.format("parse param:[%s=%s] error", key, val), e);
             return defaultVal;
         }
-    }
-
-    public static CostEstimableDdlTask.CostInfo aggregateCostInfo(DdlJob ddlJob){
-        if(ddlJob == null || ddlJob.getAllTasks() == null){
-            return CostEstimableDdlTask.createCostInfo(0L, 0L);
-        }
-        List<CostEstimableDdlTask.CostInfo> costInfoList = new ArrayList<>();
-        List<DdlTask> ddlTasks = ddlJob.getAllTasks();
-        for(DdlTask task: ddlTasks){
-            if(task != null && task instanceof CostEstimableDdlTask){
-                costInfoList.add(((CostEstimableDdlTask) task).getCostInfo());
-            }
-        }
-        return CostEstimableDdlTask.aggregate(costInfoList);
     }
 
     public static String compress(String data) {

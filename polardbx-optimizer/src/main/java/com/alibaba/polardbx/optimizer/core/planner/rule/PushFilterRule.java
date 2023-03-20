@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -93,8 +94,12 @@ public class PushFilterRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         Filter filter = call.rel(0);
         LogicalView logicalView = call.rel(1);
+        PlannerContext context = call.getPlanner().getContext().unwrap(PlannerContext.class);
+        if (RelUtils.isNotPushLastInsertId(context, filter)) {
+            return;
+        }
         if (logicalView instanceof OSSTableScan
-            && !((OSSTableScan)logicalView).canPushFilterProject()) {
+            && !((OSSTableScan) logicalView).canPushFilterProject()) {
             return;
         }
         Pair<RexNode, RexNode> pair = splitConditionByPushable(filter.getCondition(), logicalView);
@@ -133,7 +138,7 @@ public class PushFilterRule extends RelOptRule {
             return true;
         }
         if (logicalView instanceof OSSTableScan
-            && !((OSSTableScan)logicalView).canPushFilterProject()) {
+            && !((OSSTableScan) logicalView).canPushFilterProject()) {
             return true;
         }
 

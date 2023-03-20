@@ -136,6 +136,11 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTablePartitionCount;
     }
 
+    public boolean isPrimaryTableRepartition(String indexName) {
+        return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTable
+            && StringUtils.equalsIgnoreCase(((SqlAlterTable) relDdl.sqlNode).getLogicalSecondaryTableName(), indexName);
+    }
+
     /**
      * @return true if it's repartition single or broadcast
      */
@@ -680,7 +685,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     }
                     fullColumn.add(columnName);
 
-                    if (!isRepartition() && columnDefinition.isAutoIncrement()) {
+                    if (!isPrimaryTableRepartition(gsiName) && columnDefinition.isAutoIncrement()) {
                         columnDefinition.setAutoIncrement(false);
                     }
 
@@ -1210,7 +1215,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         List<String> columnNameList =
             pkList.stream().map(e -> ((SQLIdentifierExpr) e.getExpr()).getName().replace("`", "").toLowerCase())
                 .collect(
-                Collectors.toList());
+                    Collectors.toList());
         if (!columnNameList.contains(localPartitionColumn)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
                 String.format("Primary Key must contain local partition column: %s", localPartitionColumn));

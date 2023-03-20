@@ -29,7 +29,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * A fixed-length implement of BigInteger block
- *
  */
 public class BigIntegerBlock extends AbstractCommonBlock {
     private static final long NULL_VALUE = 0L;
@@ -48,17 +47,13 @@ public class BigIntegerBlock extends AbstractCommonBlock {
     public BigIntegerBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, byte[] data) {
         super(DataTypes.ULongType, positionCount, valueIsNull, valueIsNull != null);
         this.data = data;
-
-        estimatedSize = INSTANCE_SIZE + sizeOf(data);
-        sizeInBytes = (LENGTH + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public BigIntegerBlock(int positionCount, boolean[] valueIsNull, byte[] data, boolean hasNull) {
         super(DataTypes.ULongType, positionCount, valueIsNull, hasNull);
         this.data = data;
-
-        estimatedSize = INSTANCE_SIZE + sizeOf(data) + sizeOf(valueIsNull);
-        sizeInBytes = (LENGTH + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -158,5 +153,11 @@ public class BigIntegerBlock extends AbstractCommonBlock {
         BigInteger bigInteger = getBigInteger(position);
         long longVal = bigInteger.longValue();
         return Long.hashCode(longVal);
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data);
+        elementUsedBytes = Byte.BYTES * positionCount + LENGTH * positionCount;
     }
 }

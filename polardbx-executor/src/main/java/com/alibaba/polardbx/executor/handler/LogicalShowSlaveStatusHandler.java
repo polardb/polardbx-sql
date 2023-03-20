@@ -38,12 +38,11 @@ import java.util.Map;
 
 /**
  * @author shicai.xsc 2021/3/5 14:32
- * @desc
  * @since 5.0.0.0
  */
 public class LogicalShowSlaveStatusHandler extends LogicalReplicationBaseHandler {
 
-    public LogicalShowSlaveStatusHandler(IRepository repo){
+    public LogicalShowSlaveStatusHandler(IRepository repo) {
         super(repo);
     }
 
@@ -56,7 +55,8 @@ public class LogicalShowSlaveStatusHandler extends LogicalReplicationBaseHandler
             .setRequest(JSON.toJSONString(sqlNode.getParams()))
             .build();
 
-        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub = CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
+        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub =
+            CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
         Iterator<ShowSlaveStatusResponse> response = blockingStub.showSlaveStatus(request);
 
         ArrayResultCursor result = new ArrayResultCursor("SHOW SLAVE STATUS");
@@ -117,6 +117,9 @@ public class LogicalShowSlaveStatusHandler extends LogicalReplicationBaseHandler
         result.addColumn("Replicate_Rewrite_DB", DataTypes.StringType, false);
         result.addColumn("Channel_Name", DataTypes.StringType, false);
         result.addColumn("Master_TLS_Version", DataTypes.StringType, false);
+        result.addColumn("Replicate_Mode", DataTypes.StringType, false);
+        result.addColumn("Running_Stage", DataTypes.StringType, false);
+
         result.initMeta();
 
         while (response.hasNext()) {
@@ -124,7 +127,8 @@ public class LogicalShowSlaveStatusHandler extends LogicalReplicationBaseHandler
             result.addRow(values);
 
             Map<String, String> params = JSON.parseObject(response.next().getResponse(),
-                new TypeReference<HashMap<String, String>>() {});
+                new TypeReference<HashMap<String, String>>() {
+                });
 
             for (int i = 0; i < result.getReturnColumns().size(); i++) {
                 ColumnMeta columnMeta = result.getReturnColumns().get(i);

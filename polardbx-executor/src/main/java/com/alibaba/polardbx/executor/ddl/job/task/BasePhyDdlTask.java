@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -124,34 +123,32 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         PhyDdlExecutionRecord phyDdlExecutionRecord = new PhyDdlExecutionRecord(jobId, taskId, inputs.size());
         executionContext.setPhyDdlExecutionRecord(phyDdlExecutionRecord);
         executionContext.setExtraDatas(new HashMap<>());
-        try {
 
-            DdlJobManagerUtils.reloadPhyTablesDone(phyDdlExecutionRecord);
+        DdlJobManagerUtils.reloadPhyTablesDone(phyDdlExecutionRecord);
 
-            List<Cursor> inputCursors = new ArrayList<>();
-            List<Throwable> exceptions = new ArrayList<>();
-            List<Throwable> closeExceptions = null;
-            FailPoint.injectRandomExceptionFromHint(executionContext);
-            FailPoint.injectRandomSuspendFromHint(executionContext);
+        List<Cursor> inputCursors = new ArrayList<>();
+        List<Throwable> exceptions = new ArrayList<>();
+        List<Throwable> closeExceptions = null;
+        FailPoint.injectRandomExceptionFromHint(executionContext);
+        FailPoint.injectRandomSuspendFromHint(executionContext);
 
-            executeConcurrently(inputs, inputCursors, exceptions, executionContext);
+        executeConcurrently(inputs, inputCursors, exceptions, executionContext);
 
-            for (Cursor affectRowCursor : inputCursors) {
-                Row row;
-                while ((row = affectRowCursor.next()) != null) {
-                    row.getInteger(0);
-                }
-                closeExceptions = affectRowCursor.close(exceptions);
+        for (Cursor affectRowCursor : inputCursors) {
+            Row row;
+            while ((row = affectRowCursor.next()) != null) {
+                row.getInteger(0);
             }
-
-            if (closeExceptions != null && !closeExceptions.isEmpty()) {
-                exceptions.addAll(closeExceptions);
-            }
-
-            verifyResult((PhyDdlTableOperation) inputs.get(0), exceptions, executionContext);
-        } finally {
-            DdlJobManagerUtils.clearPhyTablesDone(phyDdlExecutionRecord);
+            closeExceptions = affectRowCursor.close(exceptions);
         }
+
+        if (closeExceptions != null && !closeExceptions.isEmpty()) {
+            exceptions.addAll(closeExceptions);
+        }
+
+        verifyResult((PhyDdlTableOperation) inputs.get(0), exceptions, executionContext);
+
+        DdlJobManagerUtils.clearPhyTablesDone(phyDdlExecutionRecord);
     }
 
     protected void verifyResult(PhyDdlTableOperation ddl, List<Throwable> exceptions,
@@ -181,7 +178,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                 int countUnknownTables = 0;
                 for (ExecutionContext.ErrorMessage errMsg : failedMsgs) {
                     if (errMsg != null) {
-                        if(shouldIgnore(errMsg, ignoredErrorCodeList)){
+                        if (shouldIgnore(errMsg, ignoredErrorCodeList)) {
                             continue;
                         }
                         causedMsg.append(DdlConstants.SEMICOLON).append(errMsg.getCode());
@@ -204,7 +201,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             // Exceptions from executor/cursor.
             if (exceptions != null) {
                 for (Throwable e : exceptions) {
-                    if(shouldIgnore(e, ignoredErrorCodeList)){
+                    if (shouldIgnore(e, ignoredErrorCodeList)) {
                         continue;
                     }
                     causedMsg.append(DdlConstants.SEMICOLON).append(e.getMessage());
@@ -219,6 +216,11 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             if (countError == 0) {
                 // No any error actually.
                 return;
+            }
+
+            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+                inputCount = objectDoneCount;
+                objectDoneCount = inputCount - objectDoneCount;
             }
 
             // Put various errors together.
@@ -309,34 +311,35 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         return QueryConcurrencyPolicy.INSTANCE_CONCURRENT;
     }
 
-    private List<String> getIgnoredErrorCodeList(ExecutionContext executionContext){
+    private List<String> getIgnoredErrorCodeList(ExecutionContext executionContext) {
         try {
-            String physicalDdlIgnoredErrorCodeList = executionContext.getParamManager().getString(ConnectionParams.PHYSICAL_DDL_IGNORED_ERROR_CODE);
-            if(StringUtils.isEmpty(physicalDdlIgnoredErrorCodeList)){
+            String physicalDdlIgnoredErrorCodeList =
+                executionContext.getParamManager().getString(ConnectionParams.PHYSICAL_DDL_IGNORED_ERROR_CODE);
+            if (StringUtils.isEmpty(physicalDdlIgnoredErrorCodeList)) {
                 return new ArrayList<>();
             }
             return Splitter.on(",").splitToList(physicalDdlIgnoredErrorCodeList);
-        }catch (Exception e){
+        } catch (Exception e) {
             return new ArrayList<>();
         }
     }
 
-    private boolean shouldIgnore(Throwable e, List<String> ignoredErrorCodeList){
-        if(e instanceof TddlNestableRuntimeException){
+    private boolean shouldIgnore(Throwable e, List<String> ignoredErrorCodeList) {
+        if (e instanceof TddlNestableRuntimeException) {
             String errorCode = String.valueOf(((TddlNestableRuntimeException) e).getErrorCode());
-            if(ignoredErrorCodeList.contains(errorCode)){
+            if (ignoredErrorCodeList.contains(errorCode)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean shouldIgnore(ExecutionContext.ErrorMessage errMsg, List<String> ignoredErrorCodeList){
-        if(errMsg == null){
+    private boolean shouldIgnore(ExecutionContext.ErrorMessage errMsg, List<String> ignoredErrorCodeList) {
+        if (errMsg == null) {
             return false;
         }
         String errorCode = String.valueOf(errMsg.getCode());
-        if(ignoredErrorCodeList.contains(errorCode)){
+        if (ignoredErrorCodeList.contains(errorCode)) {
             return true;
         }
 

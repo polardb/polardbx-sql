@@ -163,6 +163,13 @@ public class SqlIdentifier extends SqlNode {
     this(names, collation, pos, componentPositions, indexNode, null, null);
   }
 
+  public SqlIdentifier(
+      String name,
+      SqlParserPos pos,
+      SqlNode indexNode) {
+    this(ImmutableList.of(name), null, pos, null, indexNode, null, null);
+  }
+
   /**
    * Creates a compound identifier, for example <code>foo.bar</code>.
    *
@@ -364,15 +371,16 @@ public class SqlIdentifier extends SqlNode {
       int rightPrec) {
     final SqlWriter.Frame frame =
         writer.startList(SqlWriter.FrameTypeEnum.IDENTIFIER);
-    for (String name : names) {
+    for (int i = 0; i < names.size(); i++) {
       writer.sep(".");
-      if (name.equals("")) {
+      if (names.get(i).equals("")) {
         writer.print("*");
       } else {
-        writer.identifier(name);
+        writer.identifier(names.get(i));
         // Write partitions;
         SqlWriter.FrameTypeEnum frame1 = ((SqlPrettyWriter) writer).peekOptStack();
-        if (indexNode != null && frame1 == SqlWriter.FrameTypeEnum.FROM_LIST) {
+        // Parse index node only for the last name.
+        if (indexNode != null && frame1 == SqlWriter.FrameTypeEnum.FROM_LIST && i == names.size() - 1) {
           if (indexNode instanceof SqlNodeList) {
             SqlNodeList list = (SqlNodeList) indexNode;
             for (SqlNode node : list) {

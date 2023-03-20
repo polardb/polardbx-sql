@@ -14,14 +14,20 @@
  * limitations under the License.
  */
 
-package com.alibaba.polardbx.matrix.jdbc.utils;
+package com.alibaba.polardbx.common.utils;
 
+import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Sets;
+import com.google.common.collect.UnmodifiableIterator;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Merge a delta map into a base map.
@@ -36,6 +42,11 @@ public final class MergeHashMap<K, V> implements Map<K, V> {
 
     public MergeHashMap(Map<K, V> base) {
         this.base = base;
+    }
+
+    private MergeHashMap(Map<K, V> base, HashMap<K, V> delta) {
+        this.base = base;
+        this.delta.putAll(delta);
     }
 
     @Override
@@ -100,6 +111,21 @@ public final class MergeHashMap<K, V> implements Map<K, V> {
 
     @Override
     public Set<Entry<K, V>> entrySet() {
-        return Sets.union(delta.entrySet(), base.entrySet());
+//        Set entries = Sets.union(delta.entrySet(), base.entrySet());
+
+        /**
+         * Use the delta map the newest val of entryset of MergeHashMap, instead of using union which will
+         * build a wrong result
+         */
+        HashMap mergedRsMap = new HashMap(base);
+        mergedRsMap.putAll(delta);
+        Set entries = mergedRsMap.entrySet();
+
+        return entries;
+    }
+
+    public Map<K, V> deepCopy() {
+        MergeHashMap newMap = new MergeHashMap(base, delta);
+        return newMap;
     }
 }

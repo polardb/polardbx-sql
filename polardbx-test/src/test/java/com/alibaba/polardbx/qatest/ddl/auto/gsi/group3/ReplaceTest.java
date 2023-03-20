@@ -42,6 +42,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     private static final String DISABLE_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI=FALSE";
     private static final String FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE";
     private static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER=TRUE";
+    private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
+    private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
 
     private static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -3543,5 +3545,64 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(allResult.get(0).get(0).equals("2"));
         Assert.assertTrue(allResult.get(0).get(1).equals("2018-01-01 00:00:01.123"));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexName));
+    }
+
+    @Test
+    public void testReplaceJson() {
+        final String tableName = "replace_json_tbl";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) partition by hash(b)) partition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testReplaceJson1() {
+        final String tableName = "replace_json_tbl1";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) partition by hash(b)) partition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
     }
 }

@@ -135,6 +135,8 @@ import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyViewUnion;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemRefreshStorage;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemReloadStorage;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalRebalance;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterFileStorage;
@@ -315,6 +317,9 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_CHANGE_CONSENSUS_LEADER_HANDLER = new LogicalChangeConsensusRoleHandler(repo);
         LOGICAL_ALTER_SYSTEM_SET_CONFIG_HANDLER = new LogicalAlterSystemSetConfigHandler(repo);
 
+        LOGICAL_ALTER_SYSTEM_REFRESH_STORAGE_HANDLER = new LogicalAlterSystemRefreshStorageHandler(repo);
+        LOGICAL_ALTER_SYSTEM_RELOAD_STORAGE_HANDLER = new LogicalAlterSystemReloadStorageHandler(repo);
+
         INSPECT_RULE_VERSION_HANDLER = new InspectRuleVersionHandler(repo);
         CLEAR_SEQ_CACHE_HANDLER = new ClearSeqCacheHandler(repo);
         INSPECT_GROUP_SEQ_RANGE_HANDLER = new InspectGroupSeqRangeHandler(repo);
@@ -338,6 +343,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_SHOW_BINARY_LOGS_HANDLER = new LogicalShowBinaryLogsHandler(repo);
         LOGICAL_SHOW_MASTER_STATUS_HANDLER = new LogicalShowMasterStatusHandler(repo);
         LOGICAL_SHOW_BINLOG_EVENTS_HANDLER = new LogicalShowBinlogEventsHandler(repo);
+        LOGICAL_SHOW_BINARY_STREAMS_HANDLER = new LogicalShowBinaryStreamsHandler(repo);
         LOGICAL_CHANGE_MASTER_HANDLER = new LogicalChangeMasterHandler(repo);
         LOGICAL_CHANGE_REPLICATION_FILTER_HANDLER = new LogicalChangeReplicationFilterHandler(repo);
         LOGICAL_SHOW_SLAVE_STATUS_HANDLER = new LogicalShowSlaveStatusHandler(repo);
@@ -531,6 +537,9 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_CHANGE_CONSENSUS_LEADER_HANDLER;
     private final PlanHandler LOGICAL_ALTER_SYSTEM_SET_CONFIG_HANDLER;
 
+    private final PlanHandler LOGICAL_ALTER_SYSTEM_REFRESH_STORAGE_HANDLER;
+    private final PlanHandler LOGICAL_ALTER_SYSTEM_RELOAD_STORAGE_HANDLER;
+
     private final PlanHandler INSPECT_RULE_VERSION_HANDLER;
     private final PlanHandler CLEAR_SEQ_CACHE_HANDLER;
     private final PlanHandler INSPECT_GROUP_SEQ_RANGE_HANDLER;
@@ -553,6 +562,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_SHOW_BINARY_LOGS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_MASTER_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
+    private final PlanHandler LOGICAL_SHOW_BINARY_STREAMS_HANDLER;
     private final PlanHandler LOGICAL_CHANGE_MASTER_HANDLER;
     private final PlanHandler LOGICAL_CHANGE_REPLICATION_FILTER_HANDLER;
     private final PlanHandler LOGICAL_SHOW_SLAVE_STATUS_HANDLER;
@@ -705,6 +715,10 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_CHANGE_CONSENSUS_LEADER_HANDLER;
         } else if (logicalPlan instanceof LogicalAlterSystemSetConfig) {
             return LOGICAL_ALTER_SYSTEM_SET_CONFIG_HANDLER;
+        } else if (logicalPlan instanceof LogicalAlterSystemRefreshStorage) {
+            return LOGICAL_ALTER_SYSTEM_REFRESH_STORAGE_HANDLER;
+        } else if (logicalPlan instanceof LogicalAlterSystemReloadStorage) {
+            return LOGICAL_ALTER_SYSTEM_RELOAD_STORAGE_HANDLER;
         } else if (logicalPlan instanceof GsiBackfill) {
             return GSI_BACKFILL_HANDLER;
         } else if (logicalPlan instanceof ColumnBackFill) {
@@ -951,6 +965,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_SHOW_MASTER_STATUS_HANDLER;
             case SHOW_BINLOG_EVENTS:
                 return LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
+            case SHOW_BINARY_STREAMS:
+                return LOGICAL_SHOW_BINARY_STREAMS_HANDLER;
             case CHANGE_MASTER:
                 return LOGICAL_CHANGE_MASTER_HANDLER;
             case CHANGE_REPLICATION_FILTER:

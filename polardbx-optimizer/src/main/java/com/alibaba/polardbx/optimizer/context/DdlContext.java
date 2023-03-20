@@ -90,6 +90,10 @@ public class DdlContext {
     private String encoding;
     private String timeZone;
 
+    private Boolean explain;
+
+    private String errorMessage;
+
     public static DdlContext create(String schemaName, String objectName, DdlType ddlType,
                                     ExecutionContext executionContext) {
         DdlContext ddlContext = new DdlContext();
@@ -118,7 +122,8 @@ public class DdlContext {
             ddlStmt = executionContext.getOriginSql();
         }
 
-        ddlContext.setDdlStmt(ddlStmt);
+        String ddlStmtWithoutDebugHint = filterOutDebugHint(ddlStmt, executionContext);
+        ddlContext.setDdlStmt(ddlStmtWithoutDebugHint);
 
         ddlContext.addDataPassed(SQLRecord.CONN_ID, executionContext.getConnId());
         ddlContext.addDataPassed(SQLRecord.CLIENT_IP, executionContext.getClientIp());
@@ -147,6 +152,15 @@ public class DdlContext {
         }
 
         return ddlContext;
+    }
+
+    private static String filterOutDebugHint(String origStmt, ExecutionContext executionContext) {
+        if (executionContext.getParamManager().getString(ConnectionParams.DDL_ENGINE_DEBUG) != null ||
+            TStringUtil.containsIgnoreCase(origStmt, ConnectionProperties.DDL_ENGINE_DEBUG)) {
+            // Remove the debug hint to avoid running repeatedly in potentially subsequent recovery.
+            return TStringUtil.substringAfterLast(origStmt, "*/");
+        }
+        return origStmt;
     }
 
     public DdlContext copy() {
@@ -414,5 +428,21 @@ public class DdlContext {
 
     public void setParentDdlContext(DdlContext parentDdlContext) {
         this.parentDdlContext = parentDdlContext;
+    }
+
+    public void setExplain(Boolean explain) {
+        this.explain = explain;
+    }
+
+    public Boolean getExplain() {
+        return explain;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 }

@@ -122,6 +122,9 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String UPDATE_INDEXES_STATUS_SPECIFIED_GSI_COLUMNS =
         UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE_INDEXES_COLUMNS_STATUS_GSI;
 
+    private static final String UPDATE_INDEXES_STATUS_SPECIFIED_COLUMNS =
+        UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE + "and `column_name` in (%s)";
+
     private static final String UPDATE_INDEXES_RENAME = UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_LOCAL_INDEXES_RENAME =
@@ -299,6 +302,21 @@ public class IndexesAccessor extends AbstractAccessor {
         return update(
             String.format(UPDATE_INDEXES_STATUS_SPECIFIED_GSI_COLUMNS, concatParams(indexNames), concatParams(columns)),
             INDEXES_TABLE, params);
+    }
+
+    public int updateColumnStatus(String tableSchema, String tableName, List<String> columns, int newStatus) {
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(String.valueOf(newStatus));
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(columns)) {
+            paramValues.addAll(columns);
+        }
+
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+
+        return update(
+            String.format(UPDATE_INDEXES_STATUS_SPECIFIED_COLUMNS, concatParams(columns)), INDEXES_TABLE, params);
     }
 
     public int updateColumnName(String tableSchema, String tableName, String newColumnName, String oldColumnName) {

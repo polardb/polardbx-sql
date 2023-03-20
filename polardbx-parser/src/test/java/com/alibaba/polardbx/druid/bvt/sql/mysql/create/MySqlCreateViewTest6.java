@@ -30,7 +30,7 @@ public class MySqlCreateViewTest6 extends TestCase {
 
     public void test_0() throws Exception {
         String sql = "create or replace  sql security invoker view my_view4(c1, 1c, _, c1_2) \n" +
-                "\tas select * from  (t1 as tt1, t2 as tt2) inner join t1 on t1.col1 = tt1.col1;";
+            "\tas select * from  (t1 as tt1, t2 as tt2) inner join t1 on t1.col1 = tt1.col1;";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         List<SQLStatement> statementList = parser.parseStatementList();
@@ -42,31 +42,31 @@ public class MySqlCreateViewTest6 extends TestCase {
         MySqlSchemaStatVisitor visitor = new MySqlSchemaStatVisitor();
         stmt.accept(visitor);
 
-        assertEquals("CREATE OR REPLACE SQL SECURITY = invoker\n" +
-                        "\tVIEW my_view4 (\n" +
-                        "\tc1, \n" +
-                        "\t1c, \n" +
-                        "\t_, \n" +
-                        "\tc1_2\n" +
-                        ")\n" +
-                        "AS\n" +
-                        "SELECT *\n" +
-                        "FROM (t1 tt1, t2 tt2)\n" +
-                        "\tINNER JOIN t1 ON t1.col1 = tt1.col1;", //
-                SQLUtils.toMySqlString(stmt));
+        assertEquals("CREATE OR REPLACE SQL SECURITY invoker\n" +
+                "\tVIEW my_view4 (\n" +
+                "\tc1, \n" +
+                "\t1c, \n" +
+                "\t_, \n" +
+                "\tc1_2\n" +
+                ")\n" +
+                "AS\n" +
+                "SELECT *\n" +
+                "FROM (t1 tt1, t2 tt2)\n" +
+                "\tINNER JOIN t1 ON t1.col1 = tt1.col1;", //
+            SQLUtils.toMySqlString(stmt));
 
-        assertEquals("create or replace sql security = invoker\n" +
-                        "\tview my_view4 (\n" +
-                        "\tc1, \n" +
-                        "\t1c, \n" +
-                        "\t_, \n" +
-                        "\tc1_2\n" +
-                        ")\n" +
-                        "as\n" +
-                        "select *\n" +
-                        "from (t1 tt1, t2 tt2)\n" +
-                        "\tinner join t1 on t1.col1 = tt1.col1;", //
-                SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        assertEquals("create or replace sql security invoker\n" +
+                "\tview my_view4 (\n" +
+                "\tc1, \n" +
+                "\t1c, \n" +
+                "\t_, \n" +
+                "\tc1_2\n" +
+                ")\n" +
+                "as\n" +
+                "select *\n" +
+                "from (t1 tt1, t2 tt2)\n" +
+                "\tinner join t1 on t1.col1 = tt1.col1;", //
+            SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
 //        System.out.println("Tables : " + visitor.getTables());
         System.out.println("fields : " + visitor.getColumns());

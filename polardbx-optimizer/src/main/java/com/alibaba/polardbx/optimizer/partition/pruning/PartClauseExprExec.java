@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -76,6 +77,11 @@ public class PartClauseExprExec {
      * The datatype of partition column definition
      */
     protected DataType partColDataType;
+
+    /**
+     * The column meta of the partition column
+     */
+    protected ColumnMeta partColMeta;
 
     protected PartitionBoundValueKind valueKind;
 
@@ -139,6 +145,7 @@ public class PartClauseExprExec {
         exprEvalParams.needGetTypeFromDynamicExpr = dynamicConstExprOnly;
         exprEvalParams.exprReturnType = predExprReturnType;
         exprEvalParams.partColType = partColDataType;
+        exprEvalParams.partColMeta = partColMeta;
         exprEvalParams.executionContext = context;
         exprEvalParams.pruningCtx = pruningCtx;
         exprEvalParams.fldEndpoints = fldEndpoints;
@@ -172,7 +179,7 @@ public class PartClauseExprExec {
     public void setValueKind(PartitionBoundValueKind valueKind) {
         this.valueKind = valueKind;
     }
-    
+
     public void setAlwaysNullValue(boolean alwaysNullValue) {
         this.alwaysNullValue = alwaysNullValue;
     }
@@ -235,5 +242,13 @@ public class PartClauseExprExec {
 
     public void setPartFldAccessType(PartFieldAccessType partFldAccessType) {
         this.partFldAccessType = partFldAccessType;
+    }
+
+    public ColumnMeta getPartColMeta() {
+        return partColMeta;
+    }
+
+    public void setPartColMeta(ColumnMeta partColMeta) {
+        this.partColMeta = partColMeta;
     }
 }

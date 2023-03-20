@@ -55,6 +55,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableModifyViewBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.core.rel.TableFinder;
@@ -296,6 +297,7 @@ public class PostPlanner {
                     canPushdown &= !withGsi & !needRelicateWrite & !needOnlineColumnModify;
                 }
             }
+            canPushdown &= !RelUtils.existUnPushableLastInsertId(plan);
             canPushdown &= isAllAtOnePhyTb && !existUnPushableRelNode(plan);
             if (canPushdown) {
                 String schemaNamesOfAst = schemaNamesOfPlan.get(0);

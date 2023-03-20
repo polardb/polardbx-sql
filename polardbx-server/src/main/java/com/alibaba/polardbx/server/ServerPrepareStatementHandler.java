@@ -204,8 +204,13 @@ public class ServerPrepareStatementHandler implements StatementHandler {
      * Don't worry. The client implementation (e.g. JDBC Driver) will handle this correctly
      */
     private void checkMultiQuery(ByteString sql) throws SQLException {
-        List<ByteString> splitted = new MultiStatementSplitter(sql).split();
-        if (splitted.size() != 1) {
+        List<ByteString> splitted = null;
+        try {
+            splitted = new MultiStatementSplitter(sql).split();
+        } catch (Exception e) {
+            logger.warn(e);
+        }
+        if (splitted == null || splitted.size() != 1) {
             throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR);
         }
     }

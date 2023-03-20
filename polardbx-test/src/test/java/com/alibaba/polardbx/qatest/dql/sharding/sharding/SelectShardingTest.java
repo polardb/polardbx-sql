@@ -89,7 +89,6 @@ public class SelectShardingTest extends ReadBaseTestCase {
 
     }
 
-
     @Test
     public void conditionEqual() {
         final List<String> tableNames = ImmutableList.of(baseOneTableName);
@@ -1030,7 +1029,7 @@ public class SelectShardingTest extends ReadBaseTestCase {
             ResultSet rs = statement.executeQuery(sql);
             rs.next();
             if (!usingNewPartDb()) {
-                Assert.assertTrue( 4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"));
+                Assert.assertTrue(4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"));
             } else {
                 Assert.assertTrue(3 == rs.getInt("SHARD_COUNT"));
             }

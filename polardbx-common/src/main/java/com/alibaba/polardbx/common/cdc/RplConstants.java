@@ -18,7 +18,6 @@ package com.alibaba.polardbx.common.cdc;
 
 /**
  * @author shicai.xsc 2021/3/5 11:20
- * @desc
  * @since 5.0.0.0
  */
 public class RplConstants {
@@ -41,6 +40,8 @@ public class RplConstants {
     public final static String SOURCE_HOST_TYPE = "SOURCE_HOST_TYPE";
 
     public final static String DEST_APPLIER_TYPE = "DEST_APPLIER_TYPE";
+
+    public final static String MODE = "MODE";
 
     public final static String CHANNEL = "CHANNEL";
 

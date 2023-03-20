@@ -1,4 +1,11 @@
 - sql: |
+    select ID   from MSTB_SIGN_INFO  where 1= 1    AND PAYMENT_INSTANCE_CODE in( select parvalue   from pl_parlst  where parname= 'SOP202101ACEC')    AND TRADE_DIST= 59383056    AND CHANNEL= '40'    and status= 1;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="optest_0000.mstb_sign_info_[00-09],pl_parlst", shardcount=10, sql="select `id` from `mstb_sign_info` as `mstb_sign_info` where (((((`channel` = '40') and (`status` = 1)) and (1 = 1)) and (`trade_dist` = 59383056)) and (`payment_instance_code` in (select `parvalue` from `pl_parlst` as `pl_parlst` where (`parname` = 'sop202101acec'))))")    
+
+- sql: |
     select count(*)
     from
       apple a

@@ -468,6 +468,11 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
+    public boolean useXproto(Connection connection) {
+        return JdbcUtil.getStringResult(JdbcUtil.executeQuery("show datasources", connection), false)
+            .stream().noneMatch(l -> l.stream().anyMatch(s -> s.contains("jdbc:mysql://")));
+    }
+
     @After
     public void afterBaseTestCase() {
         Throwable throwable = null;

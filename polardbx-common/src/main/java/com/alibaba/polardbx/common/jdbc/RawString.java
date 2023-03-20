@@ -112,13 +112,13 @@ public class RawString implements Serializable {
                     if (m instanceof Number) {
                         stringBuilder.append(m).append(",");
                     } else {
-                        stringBuilder.append(TStringUtil.quoteString(m.toString())).append(",");
+                        stringBuilder.append(objectToRawString(m));
                     }
                 }
                 stringBuilder.setLength(stringBuilder.length() - 1);
                 stringBuilder.append(')').append(',');
             } else {
-                stringBuilder.append(TStringUtil.quoteString(o.toString())).append(",");
+                stringBuilder.append(objectToRawString(o));
             }
             i = x.nextSetBit(i + 1);
         }

@@ -352,7 +352,9 @@ public class SqlCreateTable extends SqlCreate {
             String trimmedComment = StringUtils.strip(comment, "'");
             return trimmedComment.equalsIgnoreCase("load_oss")
                 || trimmedComment.equalsIgnoreCase("load_s3")
-                || trimmedComment.equalsIgnoreCase("load_local_disk");
+                || trimmedComment.equalsIgnoreCase("load_local_disk")
+                || trimmedComment.equalsIgnoreCase("load_nfs")
+                || trimmedComment.equalsIgnoreCase("load_external_disk");
         }
         return false;
     }
@@ -1229,6 +1231,7 @@ public class SqlCreateTable extends SqlCreate {
                 }
             }
             break;
+        //case "BINARY":
         case "GEOMETRY":
         case "POINT":
         case "LINESTRING":
@@ -1237,7 +1240,6 @@ public class SqlCreateTable extends SqlCreate {
         case "MULTILINESTRING":
         case "MULTIPOLYGON":
         case "GEOMETRYCOLLECTION":
-        case "BINARY":
         case "SET":
             throw new UnsupportedOperationException("Invalid type for a sharding key.");
         default:
@@ -1797,6 +1799,8 @@ public class SqlCreateTable extends SqlCreate {
             case "VARCHAR":
             case "NVARCHAR":
             case "NCHAR":
+            case "VARBINARY":
+            case "BINARY":
                 if (arguments != null && arguments.size() > 0
                     && arguments.get(0) instanceof SQLIntegerExpr) {
                     typeLen = ((SQLIntegerExpr) arguments.get(0)).getNumber().intValue();

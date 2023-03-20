@@ -272,20 +272,18 @@
     select * from lineitem_range where l_commitdate = '1997-01-01';
 
   plan: |
-    Project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment")
-      BKAJoin(condition="(l_linenumber = l_linenumber AND l_orderkey = l_orderkey) AND l_shipdate <=> l_shipdate", type="inner")
-        IndexScan(tables="lineitem_range__what_if_gsi_l_commitdate[p2]", sql="SELECT `l_commitdate`, `l_linenumber`, `l_orderkey`, `l_shipdate` FROM `lineitem_range__what_if_gsi_l_commitdate` AS `lineitem_range__what_if_gsi_l_commitdate` WHERE (`l_commitdate` = '1997-01-01')")
-        Gather(concurrent=true)
-          LogicalView(tables="lineitem_range[p0,p1,p2]", shardCount=3, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem_range` AS `lineitem_range` WHERE ((`l_commitdate` = '1997-01-01') AND (((`l_linenumber`, `l_orderkey`)) IN (...)))")
-
+    project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment")
+      bkajoin(condition="(l_linenumber = l_linenumber and l_orderkey = l_orderkey) and l_shipdate = l_shipdate", type="inner")
+        indexscan(tables="lineitem_range__what_if_gsi_l_commitdate[p2]", sql="select `l_commitdate`, `l_linenumber`, `l_orderkey`, `l_shipdate` from `lineitem_range__what_if_gsi_l_commitdate` as `lineitem_range__what_if_gsi_l_commitdate` where (`l_commitdate` = '1997-01-01')")
+        gather(concurrent=true)
+          logicalview(tables="lineitem_range[p0,p1,p2]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem_range` as `lineitem_range` where ((`l_commitdate` = '1997-01-01') and (((`l_linenumber`, `l_orderkey`, `l_shipdate`)) in (...)))")
 
 - sql: |
     select * from lineitem_range2 where l_commitdate = '1997-01-01';
 
   plan: |
-    Project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment")
-      BKAJoin(condition="(l_linenumber = l_linenumber AND l_orderkey = l_orderkey) AND l_shipdate <=> l_shipdate", type="inner")
-        IndexScan(tables="lineitem_range2__what_if_gsi_l_commitdate[p2]", sql="SELECT `l_commitdate`, `l_linenumber`, `l_orderkey`, `l_shipdate` FROM `lineitem_range2__what_if_gsi_l_commitdate` AS `lineitem_range2__what_if_gsi_l_commitdate` WHERE (`l_commitdate` = '1997-01-01')")
-        Gather(concurrent=true)
-          LogicalView(tables="lineitem_range2[p0,p1,p2]", shardCount=3, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem_range2` AS `lineitem_range2` WHERE ((`l_commitdate` = '1997-01-01') AND (((`l_linenumber`, `l_orderkey`)) IN (...)))")
-
+    project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment")
+      bkajoin(condition="(l_linenumber = l_linenumber and l_orderkey = l_orderkey) and l_shipdate = l_shipdate", type="inner")
+        indexscan(tables="lineitem_range2__what_if_gsi_l_commitdate[p2]", sql="select `l_commitdate`, `l_linenumber`, `l_orderkey`, `l_shipdate` from `lineitem_range2__what_if_gsi_l_commitdate` as `lineitem_range2__what_if_gsi_l_commitdate` where (`l_commitdate` = '1997-01-01')")
+        gather(concurrent=true)
+          logicalview(tables="lineitem_range2[p0,p1,p2]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem_range2` as `lineitem_range2` where ((`l_commitdate` = '1997-01-01') and (((`l_linenumber`, `l_orderkey`, `l_shipdate`)) in (...)))")

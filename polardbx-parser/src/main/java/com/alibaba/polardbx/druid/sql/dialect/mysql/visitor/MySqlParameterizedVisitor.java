@@ -2341,6 +2341,16 @@ public class MySqlParameterizedVisitor extends SQLASTParameterizedVisitor implem
     }
 
     @Override
+    public boolean visit(DrdsShowStorage x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowStorage x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsShowTableGroup x) {
         return true;
     }
@@ -2491,6 +2501,16 @@ public class MySqlParameterizedVisitor extends SQLASTParameterizedVisitor implem
 
     @Override
     public void endVisit(DrdsShowLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
 
     }
 

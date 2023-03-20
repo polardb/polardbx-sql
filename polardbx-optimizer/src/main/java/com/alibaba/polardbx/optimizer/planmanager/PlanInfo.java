@@ -328,4 +328,9 @@ public class PlanInfo {
     public void setFixHint(String fixHint) {
         this.fixHint = fixHint;
     }
+
+    // only for ut test
+    public void setId(int id) {
+        this.id = id;
+    }
 }

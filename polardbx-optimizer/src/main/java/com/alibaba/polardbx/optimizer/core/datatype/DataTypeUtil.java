@@ -51,7 +51,6 @@ import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
-import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -500,6 +499,33 @@ public class DataTypeUtil {
             value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
         } else if (value instanceof UInt64) {
             value = ((UInt64) value).toBigInteger();
+        } else if (value instanceof ZeroDate || value instanceof ZeroTime || value instanceof ZeroTimestamp) {
+            /**
+             * For date like "0000-00-00" partition result is different for ZeroDate and String.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             * </p>
+             * For ZeroDate/ZeroTime/ZeroTimestamp object,
+             * jdbc will convert object to string "1970-01-01 08:00:00" in {@link com.mysql.jdbc.PreparedStatement#setObject(int, java.lang.Object)}.
+             * This will make where-condition return false because "1970-01-01 08:00:00" is not equal to "0000-00-00 00:00:00", and then cause update fail.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             */
+            value = value.toString();
+        } else if (value instanceof OriginalDate || value instanceof OriginalTime
+            || value instanceof OriginalTimestamp) {
+            /**
+             * For date like "0000-00-00" partition result is different for ZeroDate and String.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             * </p>
+             * For OriginalDate/OriginalTime/OriginalTimestamp object,
+             * jdbc will convert object to string "0002-11-30 00:00:00" in {@link com.mysql.jdbc.PreparedStatement#setObject(int, java.lang.Object)}.
+             * This will make where-condition return false because "0002-11-30 00:00:00" is not equal to "0000-00-00 00:00:00", and then cause update fail.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             * But in this function, we have no information about precision so that only convert  "0000-00-00 00:00:00" to string for supporting customer's case.
+             */
+            final String stringValue = value.toString();
+            if ("0000-00-00 00:00:00".equals(stringValue)) {
+                value = stringValue;
+            }
         }
         return value;
     }

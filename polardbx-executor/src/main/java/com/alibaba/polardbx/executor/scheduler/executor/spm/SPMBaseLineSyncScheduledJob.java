@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor.spm;
 
+import ch.qos.logback.core.db.DBHelper;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTableBaselineInfo;
@@ -147,8 +149,7 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
     }
 
     private Map<String, Map<String, BaselineInfo>> queryBaselineFromCluster() {
-        List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new BaselineQuerySyncAction(), null, SyncScope.ALL);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.syncWithDefaultDB(new BaselineQuerySyncAction());
 
         Map<String, Map<String, BaselineInfo>> current = PlanManager.getInstance().getBaselineMap();
         // Node
@@ -180,12 +181,13 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
             } else {
                 Map<String, BaselineInfo> currentMap = current.get(schema);
                 Map<String, BaselineInfo> tempMap = temp.get(schema);
-                mergeSubBaseline(currentMap, tempMap);
+                mergeSubBaseline(schema, currentMap, tempMap);
             }
         }
     }
 
-    private void mergeSubBaseline(Map<String, BaselineInfo> currentMap,
+    private void mergeSubBaseline(String schema,
+                                  Map<String, BaselineInfo> currentMap,
                                   Map<String, BaselineInfo> tempMap) {
         for (Map.Entry<String, BaselineInfo> e : tempMap.entrySet()) {
             String sql = e.getKey();
@@ -198,7 +200,7 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
                 BaselineInfo c = currentMap.get(sql);
                 BaselineInfo t = e.getValue();
 
-                c.merge(t);
+                c.merge(schema, t);
             }
         }
     }
@@ -215,6 +217,6 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
     }
 
     private void syncBaseLineInfoAndPlanInfo() {
-        SyncManagerHelper.sync(new BaselineLoadSyncAction());
+        SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
     }
 }

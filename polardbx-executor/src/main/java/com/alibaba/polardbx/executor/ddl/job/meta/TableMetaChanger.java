@@ -47,6 +47,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -209,10 +210,10 @@ public class TableMetaChanger {
         PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
 
-        sequenceBean = SequenceMetaChanger.createSequenceIfExists(schemaName, logicalTableName, sequenceBean,
+        boolean needToCreate = SequenceMetaChanger.createSequenceIfExists(schemaName, logicalTableName, sequenceBean,
             tablesExtRecord, isPartitioned, ifNotExists, sqlKind, executionContext);
 
-        if (sequenceBean != null) {
+        if (needToCreate) {
             SequenceBaseRecord sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
             phyInfoSchemaContext.sequenceRecord = sequenceRecord;
         }
@@ -353,6 +354,7 @@ public class TableMetaChanger {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
         String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
+        boolean renamePhyTable = executionContext.needToRenamePhyTables();
 
         // Rename sequence if exists.
         SequenceBaseRecord sequenceRecord = null;
@@ -365,9 +367,20 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
 
+        // for ttl
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+        if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
+            tableInfoManager.renameLocalPartitionInfo(schemaName, logicalTableName, newLogicalTableName);
+        }
+
+        // Replace with new physical table name
+        if (renamePhyTable) {
+            tableInfoManager.renamePartitionTablePhyTable(schemaName, logicalTableName, newLogicalTableName);
+        }
+
         // Replace with new table name
-        tableInfoManager
-            .renamePartitionTable(schemaName, logicalTableName, newLogicalTableName, sequenceRecord);
+        tableInfoManager.renamePartitionTable(schemaName, logicalTableName, newLogicalTableName, sequenceRecord);
 
         // Unregister the old table data id.
         CONFIG_MANAGER.unregister(tableDataId, metaDbConn);
@@ -387,6 +400,7 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         tableInfoManager.hideColumns(schemaName, logicalTableName, columnNames);
+        tableInfoManager.hideIndexesColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.hideIndexes(schemaName, logicalTableName, indexNames);
     }
 
@@ -395,6 +409,7 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         tableInfoManager.showColumns(schemaName, logicalTableName, columnNames);
+        tableInfoManager.showIndexesColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.showIndexes(schemaName, logicalTableName, indexNames);
     }
 

@@ -52,7 +52,7 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -88,6 +88,7 @@ import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -1217,9 +1218,13 @@ public class PartitionInfoUtil {
                 int fldSqlType = fldDataType.getSqlType();
                 if (fldSqlType == Types.BINARY || ((fldSqlType == Types.CHAR || fldSqlType == Types.VARCHAR)
                     && fldDataType.getCollationName() == CollationName.BINARY)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("This data type 'CHARACTER SET %s COLLATE %s' are not allowed",
-                            fldDataType.getStringSqlType(), CollationName.BINARY.name()));
+                    if (checkStrategy == PartitionStrategy.RANGE_COLUMNS
+                        || checkStrategy == PartitionStrategy.LIST_COLUMNS) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format(
+                                "This data type 'CHARACTER SET %s COLLATE %s' are not allowed in range/list partition strategy",
+                                fldDataType.getStringSqlType(), CollationName.BINARY.name()));
+                    }
                 }
 
                 if (DataTypeUtil.anyMatchSemantically(fldDataType, DataTypes.TimestampType, DataTypes.TimeType)) {
@@ -1678,7 +1683,8 @@ public class PartitionInfoUtil {
                             List<String> actualPartCols = getActualPartitionColumns(partitionInfo);
                             String tableLocality = partitionInfo.getLocality();
                             String compareTableGroupLocality = comparePartitionInfo.getLocality();
-                            if (partitionEquals(partitionInfo, comparePartitionInfo, actualPartCols.size()) && tableLocality.equals(compareTableGroupLocality)) {
+                            if (partitionEquals(partitionInfo, comparePartitionInfo, actualPartCols.size())
+                                && tableLocality.equals(compareTableGroupLocality)) {
                                 match = true;
                             }
                         } else if (partitionInfo.equals(comparePartitionInfo)) {
@@ -1954,7 +1960,30 @@ public class PartitionInfoUtil {
         } else if (!DataTypeUtil.equals(partColMeta.getDataType(), otherPartColMeta.getDataType(), true)) {
             return false;
         }
+        if (!checkBinaryLengthIfNeed(partColMeta, otherPartColMeta)) {
+            return false;
+        }
 
+        return true;
+    }
+
+    private static boolean checkBinaryLengthIfNeed(ColumnMeta cm1, ColumnMeta cm2) {
+        Field fld1 = cm1.getField();
+        Field fld2 = cm2.getField();
+        RelDataType relDt1 = fld1.getRelType();
+        RelDataType relDt2 = fld2.getRelType();
+        SqlTypeName typeName1 = relDt1.getSqlTypeName();
+        SqlTypeName typeName2 = relDt2.getSqlTypeName();
+        int precision1 = relDt1.getPrecision();
+        int precision2 = relDt2.getPrecision();
+        if (typeName1 != typeName2) {
+            return false;
+        }
+        if (typeName1 == SqlTypeName.VARBINARY || typeName1 == SqlTypeName.BINARY) {
+            if (precision1 != precision2) {
+                return false;
+            }
+        }
         return true;
     }
 

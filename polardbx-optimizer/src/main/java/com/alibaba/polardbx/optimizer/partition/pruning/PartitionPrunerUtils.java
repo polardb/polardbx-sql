@@ -22,10 +22,12 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -52,6 +54,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -546,6 +549,7 @@ public class PartitionPrunerUtils {
         boolean needGetTypeFromDynamicExpr = evalParams.needGetTypeFromDynamicExpr;
         DataType exprReturnType = evalParams.exprReturnType;
         DataType partColType = evalParams.partColType;
+        ColumnMeta partColMeta = evalParams.partColMeta;
         boolean[] fldEndpoints = evalParams.fldEndpoints;
         ExecutionContext executionContext = evalParams.executionContext;
         PartPruneStepPruningContext pruningCtx = evalParams.pruningCtx;
@@ -594,7 +598,8 @@ public class PartitionPrunerUtils {
          */
         PartitionField partField =
             PartitionPrunerUtils
-                .buildPartField(evalValObj, exprDataType, partColType, fldEndpoints, executionContext, accessType);
+                .buildPartFieldForPartCol(evalValObj, exprDataType, partColType, partColMeta, fldEndpoints,
+                    executionContext, accessType);
 
         if (needCacheEvalResult) {
             /**
@@ -641,9 +646,50 @@ public class PartitionPrunerUtils {
                                                 boolean[] endpoints,
                                                 ExecutionContext context,
                                                 PartFieldAccessType accessType) {
+        return buildPartFieldInner(predExprVal, predExprDataType, partFldDataType, 0, false, endpoints, context,
+            accessType);
+    }
+
+    public static PartitionField buildPartFieldForPartCol(Object predExprVal,
+                                                          DataType predExprDataType,
+                                                          DataType partFldDataType,
+                                                          ColumnMeta partColMeta,
+                                                          boolean[] endpoints,
+                                                          ExecutionContext context,
+                                                          PartFieldAccessType accessType) {
+        int binaryLengthDef = 0;
+        boolean useVarbinary = false;
+        if (partFldDataType instanceof BinaryType && partColMeta != null) {
+            binaryLengthDef = partColMeta.getField().getPrecision();
+            if (partColMeta.getField().getRelType().getSqlTypeName() == SqlTypeName.VARBINARY) {
+                useVarbinary = true;
+            }
+        }
+        return buildPartFieldInner(predExprVal, predExprDataType, partFldDataType, binaryLengthDef, useVarbinary,
+            endpoints, context, accessType);
+    }
+
+    protected static PartitionField buildPartFieldInner(Object predExprVal,
+                                                        DataType predExprDataType,
+                                                        DataType partFldDataType,
+                                                        int partFldBinaryTypeLen,
+                                                        boolean useVarbinary,
+                                                        boolean[] endpoints,
+                                                        ExecutionContext context,
+                                                        PartFieldAccessType accessType) {
 
         // make field of partition key by its data type definition
-        PartitionField field = PartitionFieldBuilder.createField(partFldDataType);
+        PartitionField field = null;
+        if (partFldDataType instanceof BinaryType) {
+            if (useVarbinary) {
+                field = PartitionFieldBuilder.createVarBinaryField(partFldBinaryTypeLen);
+            } else {
+                field = PartitionFieldBuilder.createBinaryField(partFldBinaryTypeLen);
+            }
+        } else {
+            field = PartitionFieldBuilder.createField(partFldDataType);
+        }
+
         SessionProperties sessionProperties;
         if (context == null) {
             if (endpoints == null) {

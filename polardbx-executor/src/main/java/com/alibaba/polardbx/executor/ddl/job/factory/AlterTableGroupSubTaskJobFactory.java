@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPartLocalIndexBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.DropPartLocalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupItemBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -193,7 +194,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
         Map<String, Set<String>> newTopology = newPartitionInfo.getTopology();
         DdlTask cdcDdlMarkTask =
-            new CdcTableGroupDdlMarkTask(schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
+            new CdcTableGroupDdlMarkTask(tableGroupName, schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
         if (stayAtPublic) {
             cdcTableGroupDdlMarkTask = cdcDdlMarkTask;
         }

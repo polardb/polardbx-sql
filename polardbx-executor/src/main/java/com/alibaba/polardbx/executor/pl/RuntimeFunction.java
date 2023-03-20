@@ -90,11 +90,10 @@ public class RuntimeFunction extends AbstractPl {
         }
     }
 
-
     private void checkReachedMaxDepth() {
         long maxRecursiveDepth =
             executionContext.getParamManager().getLong(ConnectionParams.MAX_PL_DEPTH);
-        if (depth >= maxRecursiveDepth) {
+        if (depth > maxRecursiveDepth) {
             throw new RuntimeException("reached max sp recursive depth:" + depth);
         }
     }
@@ -102,7 +101,8 @@ public class RuntimeFunction extends AbstractPl {
     public void open() {
         initPlParams(createFuncStmt.getParameters());
         initMemoryPool();
-        RuntimeFunctionManager.getInstance().register(executionContext.getTraceId(), System.identityHashCode(this), this);
+        RuntimeFunctionManager.getInstance()
+            .register(executionContext.getTraceId(), System.identityHashCode(this), this);
     }
 
     @Override
@@ -196,7 +196,8 @@ public class RuntimeFunction extends AbstractPl {
 
     private String newTempTraceId(String traceId) {
         traceId = getOriginTraceId(traceId);
-        return traceId + PlConstants.INTERNAL_TRACE_ID + String.valueOf(depth + 1) + PlConstants.SPLIT_CHAR + UUID.randomUUID();
+        return traceId + PlConstants.INTERNAL_TRACE_ID + String.valueOf(depth + 1) + PlConstants.SPLIT_CHAR
+            + UUID.randomUUID();
     }
 
     private String getOriginTraceId(String traceId) {
@@ -207,7 +208,8 @@ public class RuntimeFunction extends AbstractPl {
         return traceId;
     }
 
-    public static ExecutionContext prepareExecutionContext(ExecutionContext executionContext, String traceId, SpParameterizedStmt parameterizedStmt) {
+    public static ExecutionContext prepareExecutionContext(ExecutionContext executionContext, String traceId,
+                                                           SpParameterizedStmt parameterizedStmt) {
         // TODO check query spill monitor
         ExecutionContext.CopyOption copyOption = new ExecutionContext.CopyOption()
             .setMemoryPoolHolder(new QueryMemoryPoolHolder())
@@ -216,6 +218,11 @@ public class RuntimeFunction extends AbstractPl {
         context.setTraceId(traceId);
         context.setMemoryPool(MemoryManager.getInstance().createQueryMemoryPool(
             true, context.getTraceId(), context.getExtraCmds()));
+        if (executionContext.getParamManager() != null) {
+            context.setParamManager(executionContext.getParamManager());
+        } else {
+            logger.error("udf: param manager should not null");
+        }
         return context;
     }
 

@@ -26,16 +26,17 @@ import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorTemplate;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
+import com.alibaba.polardbx.gms.sync.GmsSyncDataSource;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.sync.ISyncResultHandler;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -82,11 +83,11 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
                                                    SyncScope scope, ISyncResultHandler handler,
                                                    boolean throwExceptions) {
         final List<List<Map<String, Object>>> results = Collections.synchronizedList(new ArrayList(1));
-        final List<Pair<NodeInfo, List<Map<String, Object>>>> resultsForHandler =
+        final List<Pair<GmsNode, List<Map<String, Object>>>> resultsForHandler =
             Collections.synchronizedList(new ArrayList(1));
 
         // Perform the sync action locally first.
-        final NodeInfo localNode = GmsNodeManager.getInstance().getLocalNode();
+        final GmsNode localNode = GmsNodeManager.getInstance().getLocalNode();
         List<Map<String, Object>> localResult = null;
 
         if (scope == null) {
@@ -111,16 +112,16 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
             break;
         }
 
-        List<NodeInfo> originSyncNodes = GmsNodeManager.getInstance().getNodesBySyncScope(scope);
+        List<GmsNode> originSyncNodes = GmsNodeManager.getInstance().getNodesBySyncScope(scope);
 
-        List<NodeInfo> syncNodes = new ArrayList<>();
+        List<GmsNode> syncNodes = new ArrayList<>();
         synchronized (originSyncNodes) {
             syncNodes.addAll(originSyncNodes);
         }
 
         if (GeneralUtil.isNotEmpty(syncNodes)) {
             sync(resultsForHandler, localNode, syncNodes, action, schemaName, throwExceptions);
-            for (Pair<NodeInfo, List<Map<String, Object>>> result : resultsForHandler) {
+            for (Pair<GmsNode, List<Map<String, Object>>> result : resultsForHandler) {
                 results.add(result.getValue());
             }
         }
@@ -137,14 +138,14 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
         return results;
     }
 
-    private void sync(List<Pair<NodeInfo, List<Map<String, Object>>>> resultsForHandler, NodeInfo localNode,
-                      List<NodeInfo> remoteNodes, IGmsSyncAction action, String schemaName, boolean throwExceptions) {
+    private void sync(List<Pair<GmsNode, List<Map<String, Object>>>> resultsForHandler, GmsNode localNode,
+                      List<GmsNode> remoteNodes, IGmsSyncAction action, String schemaName, boolean throwExceptions) {
         // Use thread pool for manager port to avoid conflict with server port.
         ExecutorTemplate template = new ExecutorTemplate(CobarServer.getInstance().getManagerExecutor());
 
         Map<String, String> nodeExceptions = new HashMap<>();
 
-        for (final NodeInfo remoteNode : remoteNodes) {
+        for (final GmsNode remoteNode : remoteNodes) {
             if (remoteNode == null || remoteNode.equals(localNode)) {
                 // The node info is null (for defence) or already do sync action for local node.
                 continue;
@@ -154,13 +155,13 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
             template.submit(() -> {
                 boolean checked = false;
-                try (Connection conn = remoteNode.getManagerDataSource().getConnection()) {
+                try (Connection conn = remoteNode.getManagerDataSource().getConnection();
+                    Statement stmt = conn.createStatement()) {
 
                     // 先验证链接可用性
-                    conn.createStatement().execute("show @@config");
+                    stmt.execute("show @@config");
                     checked = true;
 
-                    Statement stmt = conn.createStatement();
                     stmt.execute(sql);
 
                     resultsForHandler.add(new Pair<>(remoteNode, ExecUtils.resultSetToList(stmt.getResultSet())));
@@ -186,12 +187,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
     @Override
     public List<Map<String, Object>> sync(IGmsSyncAction action, String schemaName, String serverKey) {
-
-        NodeInfo localNode =
-            GmsNodeManager.getInstance().getLocalNode();
-
-        List<NodeInfo> remoteNodes =
-            GmsNodeManager.getInstance().getRemoteNodes();
+        GmsNode localNode = GmsNodeManager.getInstance().getLocalNode();
+        List<GmsNode> remoteNodes = GmsNodeManager.getInstance().getRemoteNodes();
 
         if (GeneralUtil.isEmpty(remoteNodes) || localNode == null ||
             TStringUtil.equals(localNode.getServerKey(), serverKey)) {
@@ -202,10 +199,13 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
         final String sql = buildRequestSql(action, schemaName);
 
-        DataSource dataSource = getDataSource(serverKey, remoteNodes);
+        GmsSyncDataSource dataSource = getDataSource(serverKey, remoteNodes);
 
-        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement()) {
+
             stmt.execute(sql);
+
             return ExecUtils.resultSetToList(stmt.getResultSet());
         } catch (SQLException e) {
             String errMsg = "Failed to SYNC to '" + serverKey + "'. Caused by: " + e.getMessage();
@@ -219,8 +219,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
         return "SYNC " + schema + " " + data;
     }
 
-    private DataSource getDataSource(String serverKey, List<NodeInfo> remoteNodes) {
-        for (NodeInfo remoteNode : remoteNodes) {
+    private GmsSyncDataSource getDataSource(String serverKey, List<GmsNode> remoteNodes) {
+        for (GmsNode remoteNode : remoteNodes) {
             if (TStringUtil.equals(remoteNode.getServerKey(), serverKey)) {
                 return remoteNode.getManagerDataSource();
             }

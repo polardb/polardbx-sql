@@ -953,6 +953,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     void endVisit(DrdsShowTableGroup x);
 
+    boolean visit(DrdsShowStorage x);
+
+    void endVisit(DrdsShowStorage x);
+
     boolean visit(DrdsAlterTableSingle x);
 
     void endVisit(DrdsAlterTableSingle x);
@@ -1040,6 +1044,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(MySqlClearPartitionsHeatmapCacheStatement x);
 
     void endVisit(MySqlClearPartitionsHeatmapCacheStatement x);
+
+    boolean visit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement);
+
+    void endVisit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement);
 
     boolean visit(DrdsAlignToTableGroup x);
 

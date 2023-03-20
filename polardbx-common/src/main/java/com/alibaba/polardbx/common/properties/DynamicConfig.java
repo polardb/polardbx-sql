@@ -69,8 +69,8 @@ public class DynamicConfig {
             case ConnectionProperties.STORAGE_BUSY_THRESHOLD:
                 busyThreshold = parseValue(value, Integer.class, 100);
                 break;
-            case ConnectionProperties.KEEP_TSO_HEARTBEAT_ON_CDC_CON:
-                keepTsoBasedCDC = parseValue(value, Boolean.class, true);
+            case ConnectionProperties.USE_CDC_CON:
+                isBasedCDC = parseValue(value, Boolean.class, true);
                 break;
             case ConnectionProperties.FORCE_RECREATE_GROUP_DATASOURCE:
                 enableCreateGroupDataSource = parseValue(value, Boolean.class, false);
@@ -242,10 +242,10 @@ public class DynamicConfig {
         return busyThreshold;
     }
 
-    private volatile boolean keepTsoBasedCDC = true;
+    private volatile boolean isBasedCDC = true;
 
-    public boolean isKeepTsoBasedCDC() {
-        return keepTsoBasedCDC;
+    public boolean isBasedCDC() {
+        return isBasedCDC;
     }
 
     private volatile boolean enableTransLog = true;
@@ -266,11 +266,7 @@ public class DynamicConfig {
         return enablePlanTypeDigest;
     }
 
-    private static final long defaultPurgeHistoryMs = 600 * 1000L;
-
-    private static final long maxPurgeHistoryMs = 600 * 1000L;
-
-    private volatile long purgeHistoryMs = 36 * 24 * 60 * 60 * 1000L;
+    private volatile long purgeHistoryMs = 10 * 60 * 1000L;
 
     public long getPurgeHistoryMs() {
         return purgeHistoryMs;
@@ -329,7 +325,7 @@ public class DynamicConfig {
         return maxSessionPreparedStmtCount;
     }
 
-    private static final String DEFAULT_PASSWORD_CHECK_PATTERN_STR = "^[0-9A-Za-z@#$%^&+=]{6,20}$";
+    private static final String DEFAULT_PASSWORD_CHECK_PATTERN_STR = "^[0-9A-Za-z!@#$%^&*()_+=-]{6,32}$";
     private static final Pattern DEFAULT_PASSWORD_CHECK_PATTERN = Pattern.compile(DEFAULT_PASSWORD_CHECK_PATTERN_STR);
 
     private volatile Pattern passwordCheckPattern = DEFAULT_PASSWORD_CHECK_PATTERN;

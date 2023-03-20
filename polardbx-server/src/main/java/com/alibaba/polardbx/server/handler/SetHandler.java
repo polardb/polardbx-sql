@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -191,7 +192,7 @@ public final class SetHandler {
                     } else if (oriValue instanceof TDDLSqlSelect) {
                         String sql = RelUtils.toNativeSql(oriValue);
                         UserDefVarProcessingResult resultSet = getSelectResult(c, sql);
-                        if (checkResultSuccess(c, resultSet)) {
+                        if (checkResultSuccess(c, resultSet, inProcedureCall, true)) {
                             c.getUserDefVariables().put(lowerCaseKey, resultSet.value);
                         } else {
                             return;
@@ -211,7 +212,7 @@ public final class SetHandler {
                     } else if (oriValue instanceof SqlBasicCall) {
                         String sql = "select " + RelUtils.toNativeSql(oriValue);
                         UserDefVarProcessingResult resultSet = getSelectResult(c, sql);
-                        if (checkResultSuccess(c, resultSet)) {
+                        if (checkResultSuccess(c, resultSet, inProcedureCall, true)) {
                             c.getUserDefVariables().put(lowerCaseKey, resultSet.value);
                         } else {
                             return;
@@ -363,6 +364,8 @@ public final class SetHandler {
                         // ignore max_statement_time for 2.0
                     } else if ("MAX_STATEMENT_TIME".equalsIgnoreCase(key.getName())) {
                         // ignore max_statement_time for 2.0
+                    } else if ("PARTITION_NAME".equalsIgnoreCase(key.getName())) {
+                        c.setPartitionName(RelUtils.stringValue(oriValue));
                     } else if ("TRANSACTION POLICY".equalsIgnoreCase(key.getName())) {
                         if (!(oriValue instanceof SqlNumericLiteral) &&
                             !(oriValue instanceof SqlUserDefVar) && !(oriValue instanceof SqlSystemVar)) {
@@ -544,7 +547,7 @@ public final class SetHandler {
                                     + RelUtils.stringValue(variable.getValue()));
                             return;
                         }
-                    }  else if (TransactionAttribute.DRDS_TRANSACTION_TIMEOUT.equalsIgnoreCase(key.getName())) {
+                    } else if (TransactionAttribute.DRDS_TRANSACTION_TIMEOUT.equalsIgnoreCase(key.getName())) {
                         final String val = c.getVarStringValue(oriValue);
                         try {
                             final long lval = Long.parseLong(val); // ms -> s
@@ -723,7 +726,8 @@ public final class SetHandler {
                             c.setSqlMock(false);
                         }
                         c.getExtraServerVariables().put(key.getName().toLowerCase(), val);
-                    } else if ("tx_read_only".equalsIgnoreCase(key.getName())) {
+                    } else if ("tx_read_only".equalsIgnoreCase(key.getName())
+                        || "transaction_read_only".equalsIgnoreCase(key.getName())) {
                         boolean val = RelUtils.booleanValue(oriValue);
                         c.setReadOnly(val);
                     } else if ("polardbx_server_id".equalsIgnoreCase(key.getName())) {
@@ -766,7 +770,7 @@ public final class SetHandler {
                             if (inProcedureCall) {
                                 throw new RuntimeException(
                                     "Invalid value '" + RelUtils.stringValue(variable.getValue()) + "' for variable '"
-                                    + ConnectionProperties.SUPPORT_INSTANT_ADD_COLUMN + "'. Please use ON or OFF.");
+                                        + ConnectionProperties.SUPPORT_INSTANT_ADD_COLUMN + "'. Please use ON or OFF.");
                             }
                             c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
                                 "Invalid value '" + RelUtils.stringValue(variable.getValue()) + "' for variable '"
@@ -858,8 +862,7 @@ public final class SetHandler {
                         c.getExtraServerVariables()
                             .put(ConnectionProperties.ENABLE_STORAGE_TRIGGER, iacSupported);
                     } else if (ConnectionProperties.ENABLE_NEW_SEQ_GROUPING.equalsIgnoreCase(key.getName()) ||
-                        ConnectionProperties.ENABLE_NEW_SEQ_REQUEST_MERGING.equalsIgnoreCase(key.getName()) ||
-                        ConnectionProperties.ENABLE_DRUID_FOR_SYNC_CONN.equalsIgnoreCase(key.getName())) {
+                        ConnectionProperties.ENABLE_NEW_SEQ_REQUEST_MERGING.equalsIgnoreCase(key.getName())) {
                         String value = StringUtils.strip(c.getVarStringValue(oriValue), "'\"");
                         Boolean newSeqGroupingEnabled;
                         if ("TRUE".equalsIgnoreCase(value)) {
@@ -892,6 +895,36 @@ public final class SetHandler {
                                 "Variable '" + StringUtils.lowerCase(key.getName()) +
                                     "' can't be set to the value of " + value);
                             return;
+                        }
+                    } else if (ConnectionProperties.SQL_SELECT_LIMIT.equalsIgnoreCase(key.getName())) {
+                        String value = null;
+                        if (isDefault(oriValue)) {
+                            value = ConnectionParams.SQL_SELECT_LIMIT.getDefault();
+                        } else if (oriValue instanceof SqlBasicCall) {
+                            String sql = "select " + RelUtils.toNativeSql(oriValue);
+                            UserDefVarProcessingResult resultSet = getSelectResult(c, sql);
+                            if (checkResultSuccess(c, resultSet, inProcedureCall, false)) {
+                                value = resultSet.value.toString();
+                            } else {
+                                value = ConnectionParams.SQL_SELECT_LIMIT.getDefault();
+                            }
+                        } else {
+                            value = c.getVarStringValue(oriValue);
+                        }
+                        long sqlSelectLimit = -1L;
+                        boolean parseFail = false;
+                        try {
+                            sqlSelectLimit = Long.parseLong(value);
+                        } catch (NumberFormatException e) {
+                            parseFail = true;
+                        }
+                        if (parseFail || sqlSelectLimit <= 0L) {
+                            continue;
+                        }
+                        c.getConnectionVariables().put(key.getName().toUpperCase(Locale.ROOT), sqlSelectLimit);
+                        if (enableSetGlobal && key.getScope() == VariableScope.GLOBAL) {
+                            globalCnVariables.add(
+                                new Pair<>(key.getName().toUpperCase(Locale.ROOT), String.valueOf(sqlSelectLimit)));
                         }
                     } else if ("block_encryption_mode".equalsIgnoreCase(key.getName())) {
                         BlockEncryptionMode encryptionMode;
@@ -1365,7 +1398,7 @@ public final class SetHandler {
                 while (iterator.hasNext()) {
                     StorageInstHaContext instHaContext = iterator.next();
                     if (instHaContext != null && ServerInstIdManager.getInstance().getInstId()
-                        .equalsIgnoreCase(instHaContext.getInstId())) {
+                        .equalsIgnoreCase(instHaContext.getInstId()) && !instHaContext.isMetaDb()) {
                         try (Connection connection = DbTopologyManager.getConnectionForStorage(instHaContext)) {
                             PreparedStatement statement =
                                 connection.prepareStatement(setStatement.toString());
@@ -1445,19 +1478,40 @@ public final class SetHandler {
         return r;
     }
 
-    private static boolean checkResultSuccess(ServerConnection c, UserDefVarProcessingResult r) {
+    private static boolean checkResultSuccess(ServerConnection c, UserDefVarProcessingResult r,
+                                              boolean inProcedureCall, boolean throwException) {
         if (r == null) {
-            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "execute sql Error");
+            if (throwException) {
+                if (inProcedureCall) {
+                    throw new RuntimeException("ER_WRONG_VALUE_FOR_VAR: execute sql Error");
+                }
+                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "execute sql Error");
+            }
             return false;
         } else if (r.moreThanOneColumn) {
-            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
-                "Operand should contain 1 column(s)");
+            if (throwException) {
+                if (inProcedureCall) {
+                    throw new RuntimeException("ER_WRONG_VALUE_FOR_VAR: Operand should contain 1 column(s)");
+                }
+                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
+                    "Operand should contain 1 column(s)");
+            }
             return false;
         } else if (r.moreThanOneRow && !(ConfigDataMode.isFastMock())) {
-            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "Subquery returns more than 1 row");
+            if (throwException) {
+                if (inProcedureCall) {
+                    throw new RuntimeException("ER_WRONG_VALUE_FOR_VAR: Subquery returns more than 1 row");
+                }
+                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "Subquery returns more than 1 row");
+            }
             return false;
         } else if (r.otherError) {
-            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "execute sql Error");
+            if (throwException) {
+                if (inProcedureCall) {
+                    throw new RuntimeException("ER_WRONG_VALUE_FOR_VAR: execute sql Error");
+                }
+                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "execute sql Error");
+            }
             return false;
         } else {
             return true;
@@ -1474,7 +1528,8 @@ public final class SetHandler {
         }
 
         @Override
-        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+            throws Exception {
             result = userDefVarProcessingFunc(resultSet);
             outAffectedRows.set(1);
         }

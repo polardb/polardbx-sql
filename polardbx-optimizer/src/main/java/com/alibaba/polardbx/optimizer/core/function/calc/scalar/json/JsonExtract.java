@@ -25,7 +25,12 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.json.JSONConstants;
 import com.alibaba.polardbx.optimizer.json.JsonDocProcessor;
 import com.alibaba.polardbx.optimizer.json.JsonPathExprStatement;
+import com.alibaba.polardbx.optimizer.json.JsonUtil;
 import com.alibaba.polardbx.optimizer.json.exception.JsonParserException;
+import com.alibaba.polardbx.optimizer.json.exception.JsonPathNotFoundException;
+import com.mysql.cj.x.protobuf.PolarxDatatypes;
+
+import java.util.Arrays;
 
 import java.util.List;
 
@@ -65,6 +70,8 @@ public class JsonExtract extends JsonExtraFunction {
 
         int pathCount = args.length - 1;
         Object[] resObjs = new Object[pathCount];
+        boolean[] notFounds = new boolean[pathCount];
+        Arrays.fill(notFounds, false);
         for (int i = 0; i < pathCount; i++) {
             String jsonPathExpr = DataTypeUtil.convert(operandTypes.get(i + 1), DataTypes.StringType, args[i + 1]);
             if (null == jsonPathExpr) {
@@ -74,13 +81,15 @@ public class JsonExtract extends JsonExtraFunction {
             if (jsonPathStmt == null) {
                 return JSONConstants.NULL_VALUE;
             }
-            Object resObj = JsonDocProcessor.extract(jsonDoc, jsonPathStmt);
-            if (resObj == null) {
-                return JSONConstants.NULL_VALUE;
+            Object resObj;
+            try {
+                resObj = JsonDocProcessor.extract(jsonDoc, jsonPathStmt, true);
+            } catch (JsonPathNotFoundException e) {
+                resObj = null;
+                notFounds[i] = true;
             }
             resObjs[i] = resObj;
         }
-
-        return pathCount == 1 ? JSON.toJSONString(resObjs[0]) : JSON.toJSONString(resObjs);
+        return JsonUtil.toJSONStringSkipNull(resObjs, notFounds);
     }
 }

@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacke
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -137,13 +138,15 @@ public class AlterTableJobFactory extends DdlJobFactory {
             }
         }
 
+        // End alter column default after gsi physical ddl is finished
         DdlTask beginAlterColumnDefault = null;
-        DdlTask endAlterColumnDefault = null;
+        DdlTask beginAlterColumnDefaultSyncTask = null;
         if (!this.alterGsiTable && CollectionUtils.isNotEmpty(prepareData.getAlterDefaultColumns())) {
             beginAlterColumnDefault =
                 new AlterColumnDefaultTask(schemaName, logicalTableName, prepareData.getAlterDefaultColumns(), true);
-            endAlterColumnDefault =
-                new AlterColumnDefaultTask(schemaName, logicalTableName, prepareData.getAlterDefaultColumns(), false);
+            beginAlterColumnDefaultSyncTask = new TableSyncTask(schemaName, logicalTableName);
+            beginAlterColumnDefault.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+            beginAlterColumnDefaultSyncTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
         }
 
         DdlTask phyDdlTask = new AlterTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
@@ -225,10 +228,10 @@ public class AlterTableJobFactory extends DdlJobFactory {
             taskList = Lists.newArrayList(
                 validateTask,
                 beginAlterColumnDefault,
+                beginAlterColumnDefaultSyncTask,
                 phyDdlTask,
                 cdcDdlMarkTask,
-                updateMetaTask,
-                endAlterColumnDefault
+                updateMetaTask
             ).stream().filter(Objects::nonNull).collect(Collectors.toList());
         }
 

@@ -138,6 +138,12 @@ public final class PlanCache {
         try {
             ExecutionPlan plan =
                 getFromCache(schema, sqlParameterized, sqlParameterized.getParameters(), ec, testMode);
+
+            if (PlanManagerUtil.canOptByForcePrimary(plan, ec) && ec.isTsoTransaction()) {
+                // If this plan can be optimized, disable plan cache and re-generate it.
+                return null;
+            }
+
             boolean valid = ensureValid(plan.getCacheKey(), plan);
             return valid ? plan : null;
         } catch (Throwable e) {
@@ -172,6 +178,8 @@ public final class PlanCache {
                 Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(ast);
                 int tablesVersion = PlanManagerUtil.computeTablesVersion(tableSet, schema, ec);
                 PlannerContext plannerContext = PlannerContext.fromExecutionContext(ec);
+                // When building plan for plan cache, do not add force index for TSO trx.
+                plannerContext.setAddForcePrimary(false);
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
                 if (ec.getLoadDataContext() != null) {
                     //load data
@@ -348,6 +356,7 @@ public final class PlanCache {
             this.autoCommit = autoCommit;
             parameters = null;
         }
+
         public CacheKey(String schema, SqlParameterized sqlParameterized, String versionInfo, List<TableMeta> metas,
                         boolean testing,
                         boolean autoCommit) {

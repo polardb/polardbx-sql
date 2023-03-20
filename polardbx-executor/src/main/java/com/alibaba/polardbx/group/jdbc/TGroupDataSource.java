@@ -87,6 +87,8 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     private MasterSlave masterSlave = MasterSlave.MASTER_ONLY;
 
+    private String masterDNId = null;
+
     @Deprecated
     public TGroupDataSource() {
     }
@@ -515,5 +517,19 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             }
         }
         return instanceId;
+    }
+
+    @Override
+    public String getMasterDNId() {
+        if (masterDNId == null) {
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                Weight w = wrapper.getWeight();
+                if (w != null && w.w != 0) {
+                    masterDNId = wrapper.getWrappedDataSource().getDnId();
+                    break;
+                }
+            }
+        }
+        return masterDNId;
     }
 }

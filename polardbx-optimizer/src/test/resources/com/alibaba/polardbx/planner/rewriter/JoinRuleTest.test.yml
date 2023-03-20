@@ -372,3 +372,10 @@
         LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
         LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
 
+- sql: |
+    select * from t1,t2 where t1.a=t2.a and t1.b=t2.b 
+
+  plan: |
+    LogicalJoin(condition="a = a and b = b", type="inner")
+      LogicalView(tables="[0000-0003].t1_[0-7]", shardcount=32, sql="select `a`, `b` from `t1` as `t1`")
+      LogicalView(tables="[0000-0003].t2_[0-7]", shardcount=32, sql="select `a`, `b` from `t2` as `t2`")

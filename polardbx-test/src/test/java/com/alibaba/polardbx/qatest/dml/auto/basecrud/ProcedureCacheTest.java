@@ -29,8 +29,9 @@ public class ProcedureCacheTest extends BaseTestCase {
     private void dropAllProcedures() throws SQLException {
         try (Statement checkStmt = checkConnection.createStatement();
             Statement stmt = tddlConnection.createStatement();
-            ResultSet rs = checkStmt.executeQuery("select * from information_schema.routines where routine_type = 'procedure'")) {
-            while(rs.next()) {
+            ResultSet rs = checkStmt.executeQuery(
+                "select * from information_schema.routines where routine_type = 'procedure'")) {
+            while (rs.next()) {
                 String schema = rs.getString("ROUTINE_SCHEMA");
                 String procedureName = rs.getString("ROUTINE_NAME");
                 stmt.executeUpdate("drop procedure if exists " + schema + "." + procedureName);
@@ -41,7 +42,7 @@ public class ProcedureCacheTest extends BaseTestCase {
     @Test
     public void testCreateAndLoadProcedure() throws SQLException {
         try (Statement statement = tddlConnection.createStatement();
-        Statement checkStmt = checkConnection.createStatement()) {
+            Statement checkStmt = checkConnection.createStatement()) {
             // check empty when init
             procedureCacheCompareTo0(checkStmt, true);
             procedureUsedSizeCompareTo0(checkStmt, true);
@@ -90,7 +91,7 @@ public class ProcedureCacheTest extends BaseTestCase {
     private void procedureCacheCompareTo0(Statement statement, boolean equal) throws SQLException {
         boolean allEqual = true;
         try (ResultSet rs = statement.executeQuery("select * from information_schema.procedure_cache");) {
-            while(rs.next()) {
+            while (rs.next()) {
                 if (rs.getLong("SIZE") > 0) {
                     allEqual = false;
                     break;
@@ -109,7 +110,7 @@ public class ProcedureCacheTest extends BaseTestCase {
     private void procedureUsedSizeCompareTo0(Statement statement, boolean equal) throws SQLException {
         boolean allEqual = true;
         try (ResultSet rs = statement.executeQuery("select * from information_schema.procedure_cache_capacity");) {
-            while(rs.next()) {
+            while (rs.next()) {
                 if (rs.getLong("USED_SIZE") > 0) {
                     allEqual = false;
                     break;
@@ -127,8 +128,8 @@ public class ProcedureCacheTest extends BaseTestCase {
 
     private void cacheContainsProcedure(Statement statement, String procedure) throws SQLException {
         try (ResultSet rs = statement.executeQuery("select * from information_schema.procedure_cache");) {
-            boolean find  = false;
-            while(rs.next()) {
+            boolean find = false;
+            while (rs.next()) {
                 if (procedure.equalsIgnoreCase(rs.getString("PROCEDURE"))) {
                     find = true;
                     break;

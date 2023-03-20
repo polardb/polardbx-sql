@@ -55,7 +55,7 @@
               `extras` text DEFAULT NULL COMMENT 'reserve for extra info',
               PRIMARY KEY (`id`),
               INDEX `idx_inst_id_status` (`inst_id`,`status`),
-              UNIQUE KEY `uk_inst_id_addr` (`storage_inst_id`, `ip`, `port`, `inst_kind`)
+              UNIQUE KEY `uk_inst_id_addr` (`storage_inst_id`, `ip`, `port`,`inst_kind`, `is_vip`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
         ]]></Create>
     </SystemTable>

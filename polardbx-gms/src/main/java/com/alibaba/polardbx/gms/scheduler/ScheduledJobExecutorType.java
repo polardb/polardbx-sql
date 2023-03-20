@@ -20,7 +20,7 @@ import com.alibaba.polardbx.gms.module.Module;
 
 import static com.alibaba.polardbx.gms.module.Module.OSS;
 import static com.alibaba.polardbx.gms.module.Module.SPM;
-import static com.alibaba.polardbx.gms.module.Module.STATISTIC;
+import static com.alibaba.polardbx.gms.module.Module.STATISTICS;
 import static com.alibaba.polardbx.gms.module.Module.UNKNOWN;
 
 public enum ScheduledJobExecutorType {
@@ -29,8 +29,8 @@ public enum ScheduledJobExecutorType {
     REBALANCE(UNKNOWN),
     PARTITION_VISUALIZER(UNKNOWN),
     BASELINE_SYNC(SPM),
-    STATISTIC_SAMPLE_SKETCH(STATISTIC),
-    STATISTIC_ROWCOUNT_COLLECTION(STATISTIC),
+    STATISTIC_SAMPLE_SKETCH(STATISTICS),
+    STATISTIC_ROWCOUNT_COLLECTION(STATISTICS),
     PURGE_OSS_FILE(OSS),
     AUTO_SPLIT_TABLE_GROUP(UNKNOWN);
 

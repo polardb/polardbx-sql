@@ -26,6 +26,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
+import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
 import java.util.ArrayList;
@@ -72,7 +73,9 @@ public class RotateGlobalTxLogTask implements Runnable {
             return;
         }
 
-        boolean hasLeadership = ExecUtils.hasLeadership(asyncQueue.getSchema());
+        final String schema = asyncQueue.getSchema();
+
+        boolean hasLeadership = ExecUtils.hasLeadership(schema);
 
         if (!hasLeadership) {
             TransactionLogger.info("Skip rotate task since I am not the leader");
@@ -81,6 +84,21 @@ public class RotateGlobalTxLogTask implements Runnable {
 
         if (!isInAllowedInterval()) {
             return;
+        }
+
+        if (TransactionManager.getInstance(schema).isFirstRecover()) {
+            // Wait until XA recover task finishes handling the trx log.
+            try {
+                Thread.sleep(30 * 1000L);
+            } catch (InterruptedException e) {
+                logger.error("Interrupted when waiting XA recover task", e);
+            }
+
+            if (TransactionManager.getInstance(schema).isFirstRecover()) {
+                // Still not finished, skip rotating trx log.
+                logger.warn("Wait XA recover task timeout, skip this round of trx log rotating.");
+                return;
+            }
         }
 
         TransactionLogger.info(asyncQueue.getSchema() + ": Rotate task starts");

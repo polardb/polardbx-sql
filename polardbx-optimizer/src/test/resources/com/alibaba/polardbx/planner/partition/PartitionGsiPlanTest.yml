@@ -1,6 +1,18 @@
 -
   sql: |
 
+    SELECT * FROM login_status_cache as a where a.DEVICE_TOKEN = 'x'
+
+  plan: |
+    project(id="id", user_id="user_id", device_token="device_token", user_token="user_token")
+      bkajoin(condition="id = id and user_id = user_id", type="inner")
+        indexscan(tables="glo_login_status_cache_device_token_index[p12]", sql="select `id`, `user_id`, `device_token` from `glo_login_status_cache_device_token_index` as `glo_login_status_cache_device_token_index` where (`device_token` = 'x')")
+        gather(concurrent=true)
+          logicalview(tables="login_status_cache[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `user_id`, `user_token` from `login_status_cache` as `login_status_cache` where ((`device_token` = 'x') and (((`id`, `user_id`)) in (...)))")
+
+-
+  sql: |
+
     select t_order.id,t_order.order_snapshot from t_order where t_order.seller_id = 's1';
 
   plan: |

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.DeleteBaselineSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.IBaselineSyncController;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
@@ -39,7 +40,7 @@ public class BaselineSyncController implements IBaselineSyncController {
         List<String> baselineJson = Lists.newArrayList();
         baselineJson.add(BaselineInfo.serializeToJson(baselineInfo, false));
         baselineMap.put(schemaName, baselineJson);
-        SyncManagerHelper.sync(new BaselineUpdateSyncAction(baselineMap));
+        SyncManagerHelper.syncWithDefaultDB(new BaselineUpdateSyncAction(baselineMap));
     }
 
     @Override

@@ -1087,7 +1087,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
     /**
      * subquery is uncorrelated;
      * outer table is not a split table(by condition).
-     *
+     * <p>
      * subquery can't be pushed to logicalview, so ignore the case
      */
     @Test
@@ -1125,6 +1125,16 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             "select * from " + baseOneTableName + " where pk = (select pk from " + baseTwoTableName
                 + " where pk < (select pk from " + baseThreeTableName
                 + " where pk<100 AND PK >98 limit 1) ORDER BY PK LIMIT 1)";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testCorrelateJoin() {
+        String sql =
+            "select count(b.integer_test), ( select min(integer_test) from "
+                + baseOneTableName + " a where a.pk = c.pk group by c.pk) as name from "
+                + baseTwoTableName + " b inner join " + baseThreeTableName
+                + " c on c.pk = b.pk group by c.integer_test";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 }

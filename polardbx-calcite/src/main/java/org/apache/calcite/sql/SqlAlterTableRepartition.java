@@ -22,8 +22,6 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
     private boolean alignToTableGroup = false;
     private SqlIdentifier tableGroupName;
 
-    private String logicalSecondaryTableName;
-
     public SqlAlterTableRepartition(SqlIdentifier tableName,
                                     String sql, List<SqlAlterSpecification> alters,
                                     SqlNode sqlPartition,
@@ -103,14 +101,6 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
 
     public String getPrimaryTableName() {
         return originTableName.getComponent(1).getLastName();
-    }
-
-    public String getLogicalSecondaryTableName() {
-        return logicalSecondaryTableName;
-    }
-
-    public void setLogicalSecondaryTableName(String logicalSecondaryTableName) {
-        this.logicalSecondaryTableName = logicalSecondaryTableName;
     }
 
     @Override

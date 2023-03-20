@@ -35,7 +35,7 @@ public abstract class BaseHintPlannerTest extends BasePlannerTest {
     @Override
     protected String getPlan(String testSql) {
         SqlNodeList astList = new FastsqlParser().parse(testSql);
-        ExecutionPlan executionPlan = HintPlanner4Test.getInstance(appName).getPlan(astList.get(0));
+        ExecutionPlan executionPlan = HintPlanner4Test.getInstance(appName).getPlan(astList.get(0), appName);
         return RelUtils.toString(executionPlan.getPlan());
     }
 }

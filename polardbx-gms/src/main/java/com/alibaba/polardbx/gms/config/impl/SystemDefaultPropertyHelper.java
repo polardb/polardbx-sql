@@ -47,8 +47,9 @@ import java.util.Properties;
 public class SystemDefaultPropertyHelper {
     private final static Logger logger = LoggerFactory.getLogger(SystemDefaultPropertyHelper.class);
 
-    private final static String countContainShardingTypeLogDbSql = String.format("select count(1) from db_info where db_type=%s",
-        DbInfoRecord.DB_TYPE_PART_DB);
+    private final static String countContainShardingTypeLogDbSql =
+        String.format("select count(1) from db_info where db_type=%s",
+            DbInfoRecord.DB_TYPE_PART_DB);
 
     public static void initDefaultInstConfig() {
 
@@ -110,6 +111,9 @@ public class SystemDefaultPropertyHelper {
 
         sysDefaultProperties.put(ConnectionProperties.CDC_STARTUP_MODE,
             ConnectionParams.CDC_STARTUP_MODE.getDefault());
+
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_CDC_META_BUILD_SNAPSHOT,
+            ConnectionParams.ENABLE_CDC_META_BUILD_SNAPSHOT.getDefault());
 
         // Prepare the default logical time zone
         sysDefaultProperties.put(ConnectionProperties.LOGICAL_DB_TIME_ZONE, String.valueOf(
@@ -254,20 +258,20 @@ public class SystemDefaultPropertyHelper {
         sysDefaultProperties.put(ConnectionProperties.USE_FAST_SINGLE_POINT_INTERVAL_MERGING,
             ConnectionParams.USE_FAST_SINGLE_POINT_INTERVAL_MERGING.getDefault());
         sysDefaultProperties.put(ConnectionProperties.ENABLE_CONST_EXPR_EVAL_CACHE,
-            ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE.getDefault());;
+            ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE.getDefault());
 
     }
 
     protected static Boolean checkNeedEnableAutoPartitionMode() {
         int shardingDbCnt = 0;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection();Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery(countContainShardingTypeLogDbSql)){
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection(); Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(countContainShardingTypeLogDbSql)) {
             if (rs != null) {
                 rs.next();
                 shardingDbCnt = rs.getInt(1);
             }
         } catch (Throwable ex) {
-            logger.warn("Failed to count the sharding type logical db",ex);
+            logger.warn("Failed to count the sharding type logical db", ex);
         }
         return shardingDbCnt == 0;
     }

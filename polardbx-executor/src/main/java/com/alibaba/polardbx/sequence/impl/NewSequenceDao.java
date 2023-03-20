@@ -242,7 +242,7 @@ public class NewSequenceDao extends AbstractLifecycle implements SequenceDao {
 
             // Update the sequence value only when new value > current value.
             // Don't care about return code.
-            stmt.executeUpdate(String.format(SELECT_NEXTVAL_SKIP, phySeqName, maxValue));
+            stmt.execute(String.format(SELECT_NEXTVAL_SKIP, phySeqName, maxValue));
         } catch (SQLException e) {
             String errMsg = "Failed to update sequence value to " + maxValue + ".";
             logger.error(errMsg, e);

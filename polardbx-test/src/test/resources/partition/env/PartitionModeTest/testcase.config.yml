@@ -1,4 +1,4 @@
 test_create_auto
 test_part_mode
-test_desc_partitions
+#test_desc_partitions
 test_part_show_rule

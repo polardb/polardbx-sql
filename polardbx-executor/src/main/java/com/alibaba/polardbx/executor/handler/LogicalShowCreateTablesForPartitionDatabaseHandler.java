@@ -45,8 +45,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableInde
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -60,6 +58,7 @@ import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -75,6 +74,7 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
@@ -123,8 +123,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         }
 
         ArrayResultCursor result = new ArrayResultCursor("Create Table");
-        result.addColumn("Table", DataTypes.StringType);
-        result.addColumn("Create Table", DataTypes.StringType);
+        result.addColumn("Table", DataTypes.StringType, false);
+        result.addColumn("Create Table", DataTypes.StringType, false);
         result.initMeta();
 
         String sql = fetchShowCreateTableFromPhy(schemaName, tableName, showCreateTable, show, executionContext);
@@ -150,10 +150,7 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         // handle implicit pk
         MySqlCreateTableStatement createTable =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(sql,
-                JdbcConstants.MYSQL)
-                .get(0)
-                .clone();
+            (MySqlCreateTableStatement) SQLUtils.parseStatements(sql, JdbcConstants.MYSQL).get(0).clone();
 
         createTable.setTableName(SqlIdentifier.surroundWithBacktick(tableName));
 
@@ -175,16 +172,15 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 toRemove.add(sqlTableElement);
             }
 
-            if (sqlTableElement instanceof SQLColumnDefinition && TableColumnUtils
-                .isHiddenColumn(executionContext, schemaName, tableName,
-                    SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
-                && !showCreateTable.isFull()) {
+            if (sqlTableElement instanceof SQLColumnDefinition
+                && TableColumnUtils.isHiddenColumn(executionContext, schemaName, tableName,
+                SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
+                && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
                 toRemove.add(sqlTableElement);
             }
 
             if (sqlTableElement instanceof MySqlPrimaryKey
-                && SqlValidatorImpl
-                .isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
+                && SqlValidatorImpl.isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
                 && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
                 toRemove.add(sqlTableElement);
             }
@@ -199,9 +195,9 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             }
         }
         createTable.getTableElementList().removeAll(localIndexes);
-        if(createTable.getOptionHints() != null){
+        if (createTable.getOptionHints() != null) {
             createTable.getOptionHints().removeIf(
-                e-> StringUtils.contains(e.getText(), "PARTITION BY")
+                e -> StringUtils.contains(e.getText(), "PARTITION BY")
             );
         }
 
@@ -217,7 +213,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         Engine engine = tableMeta.getEngine();
         for (SQLAssignItem tableOption : createTable.getTableOptions()) {
             if (tableOption.getTarget().toString().equalsIgnoreCase("ENGINE")) {
-                if (tableOption.getValue() == null || !tableOption.getValue().toString().equalsIgnoreCase(engine.name())) {
+                if (tableOption.getValue() == null || !tableOption.getValue().toString()
+                    .equalsIgnoreCase(engine.name())) {
                     tableOption.setValue(new SQLCharExpr(engine.name()));
                 }
             }
@@ -227,14 +224,14 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         String tableLocality = partitionInfoManager.getPartitionInfo(tableName).getLocality();
         LocalityDesc localityDesc = LocalityDesc.parse(tableLocality);
-        if(!localityDesc.holdEmptyDnList()) {
+        if (!localityDesc.holdEmptyDnList()) {
             sql += "\n" + localityDesc.showCreate();
         }
 
         if (!tableMeta.isAutoPartition() || showCreateTable.isFull()) {
             sql = sql + partitionStr;
         }
-        if(tableMeta.getLocalPartitionDefinitionInfo() != null){
+        if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
             sql += "\n" + tableMeta.getLocalPartitionDefinitionInfo().toString();
         }
 
@@ -281,10 +278,10 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         if (row != null) {
             ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
             // | View | Create View | character_set_client | collation_connection |
-            resultCursor.addColumn("View", DataTypes.StringType);
-            resultCursor.addColumn("Create View", DataTypes.StringType);
-            resultCursor.addColumn("character_set_client", DataTypes.StringType);
-            resultCursor.addColumn("collation_connection", DataTypes.StringType);
+            resultCursor.addColumn("View", DataTypes.StringType, false);
+            resultCursor.addColumn("Create View", DataTypes.StringType, false);
+            resultCursor.addColumn("character_set_client", DataTypes.StringType, false);
+            resultCursor.addColumn("collation_connection", DataTypes.StringType, false);
             resultCursor.initMeta();
             String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :
                 "CREATE VIEW `" + tableName + "` AS " + row.getViewDefinition();

@@ -83,7 +83,6 @@
                   `source_sql` text default null,
                   `sub_task` int not null comment '0:parent task, 1:sub task',
                   primary key(`id`),
-                  KEY `k_sch_job_id` (`table_schema`,`job_id`),
                   KEY `k_sch_job_id_obj` (`table_schema`,`job_id`,`object_name`)
                 ) charset=utf8mb4
             ]]></Create>

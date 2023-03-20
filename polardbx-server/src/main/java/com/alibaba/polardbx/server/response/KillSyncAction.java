@@ -180,11 +180,28 @@ public class KillSyncAction implements ISyncAction {
     }
 
     private boolean hasAccess(FrontendConnection fc) {
+        // Case 0: Skip access validation, target can be killed.
         if (skipValidation) {
             return true;
         }
-        return TStringUtil.equals(user, fc.getUser()) || ((ServerConnection) fc).isAdministrator(user)
-            || TStringUtil.equals(PolarPrivUtil.POLAR_ROOT, user);
+
+        // Case 1: For drds, if kill.user == target.schema, target can be killed.
+        if (((ServerConnection) fc).isAdministrator(user)) {
+            return true;
+        }
+
+        // Case 2: If kill.user == target.user, target can be killed.
+        if (TStringUtil.equals(user, fc.getUser())) {
+            return true;
+        }
+
+        // Case 3: If kill.user == polardbx_root, target can be killed.
+        if (TStringUtil.equals(PolarPrivUtil.POLAR_ROOT, user)) {
+            return true;
+        }
+
+        // None of the above cases, target can not be killed.
+        return false;
     }
 
     private void pauseDdlJobIfNecessary(TConnection conn) {

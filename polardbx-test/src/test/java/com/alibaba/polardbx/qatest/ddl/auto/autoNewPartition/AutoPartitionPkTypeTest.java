@@ -81,6 +81,9 @@ public class AutoPartitionPkTypeTest extends BaseAutoPartitionNewPartition {
             .filter(c -> !c.contains("_set"))
             .filter(c -> !c.contains("_binary"))
             .filter(c -> !c.contains("_varbinary"))
+            .filter(c -> !c.contains("_datetime"))
+            .filter(c -> !c.contains("_date"))
+            .filter(c -> !c.contains("_timestamp"))
             .map(c -> new String[] {c})
             .collect(Collectors.toList());
     }

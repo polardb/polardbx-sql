@@ -42,7 +42,11 @@ public class PolarxCommandRecord implements SystemTableRecord {
         /**
          * 删除存储节点
          */
-        REMOVE_STORAGE("REMOVE_STORAGE", false);
+        REMOVE_STORAGE("REMOVE_STORAGE", false),
+        /**
+         * 触发创建一次全量镜像
+         */
+        BUILD_META_SNAPSHOT("BUILD_META_SNAPSHOT", true);
 
         COMMAND_TYPE(String value, boolean forScanner) {
             this.value = value;

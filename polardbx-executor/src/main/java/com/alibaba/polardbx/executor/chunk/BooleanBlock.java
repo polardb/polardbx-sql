@@ -27,7 +27,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Boolean Block
- *
  */
 public class BooleanBlock extends AbstractBlock {
 
@@ -38,20 +37,19 @@ public class BooleanBlock extends AbstractBlock {
     public BooleanBlock(DataType<?> dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new boolean[slotLen];
+        updateSizeInfo();
     }
 
     public BooleanBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, boolean[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Byte.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public BooleanBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, boolean[] values, boolean hasNull) {
         super(DataTypes.BooleanType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Byte.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -168,7 +166,12 @@ public class BooleanBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Byte.BYTES * positionCount;
     }
 }

@@ -258,6 +258,9 @@ public class Histogram {
         case Types.DECIMAL:
         case DataType.MEDIUMINT_SQL_TYPE:
         case DataType.YEAR_SQL_TYPE:
+            if (dataType.convertFrom(key) == null) {
+                return Double.valueOf(0);
+            }
             return Double.valueOf(dataType.convertFrom(key).toString());
         case Types.CHAR:
         case Types.VARCHAR:
@@ -265,12 +268,19 @@ public class Histogram {
         case Types.NCHAR:
         case Types.NVARCHAR:
         case Types.LONGNVARCHAR:
-            int len = commonPrefixLen(dataType.convertFrom(bucket.lower).toString(),
-                dataType.convertFrom(bucket.upper).toString());
+            Object lower = dataType.convertFrom(bucket.lower);
+            if (lower == null) {
+                lower = "";
+            }
+            Object upper = dataType.convertFrom(bucket.upper);
+            if (upper == null) {
+                upper = "";
+            }
+            int len = commonPrefixLen(lower.toString(), upper.toString());
             String stringKey = dataType.convertFrom(key).toString();
             //if key is out of bucket, set to lower bound
             if (dataType.compare(key, bucket.lower) < 0) {
-                stringKey = dataType.convertFrom(bucket.lower).toString();
+                stringKey = lower.toString();
             }
             long longValue = 0;
             final int maxStep = 8;
@@ -284,13 +294,22 @@ public class Histogram {
             }
             return new Double(longValue);
         case Types.DATE:
+            if (dataType.convertFrom(key) == null) {
+                return new Double(0);
+            }
             return Double.valueOf(Date.valueOf(dataType.convertFrom(key).toString()).getTime());
         case Types.TIME:
+            if (dataType.convertFrom(key) == null) {
+                return new Double(0);
+            }
             return Double.valueOf(Time.valueOf(dataType.convertFrom(key).toString()).getTime());
         case Types.TIMESTAMP:
         case Types.TIME_WITH_TIMEZONE:
         case Types.TIMESTAMP_WITH_TIMEZONE:
         case DataType.DATETIME_SQL_TYPE:
+            if (dataType.convertFrom(key) == null) {
+                return new Double(0);
+            }
             return Double.valueOf(Timestamp.valueOf(dataType.convertFrom(key).toString()).getTime());
         case Types.BIT:
         case Types.BLOB:

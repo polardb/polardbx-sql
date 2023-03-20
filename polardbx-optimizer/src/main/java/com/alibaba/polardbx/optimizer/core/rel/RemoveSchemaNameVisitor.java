@@ -361,7 +361,7 @@ public class RemoveSchemaNameVisitor extends SqlShuttle {
              * If schemaName equals with the logicalSchemaName, remove it.
              */
             if (schemaName.equalsIgnoreCase(logicalSchemaName)) {
-                return new SqlIdentifier(names.get(1), SqlParserPos.ZERO);
+                return new SqlIdentifier(names.get(1), SqlParserPos.ZERO, identifier.indexNode);
             }
         } else {
             // Impossible.

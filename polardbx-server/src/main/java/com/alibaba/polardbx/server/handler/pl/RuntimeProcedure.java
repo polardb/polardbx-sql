@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.server.handler.pl;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
@@ -96,14 +98,16 @@ public class RuntimeProcedure extends AbstractPl {
     public RuntimeProcedure(SQLCreateProcedureStatement createProcStmt, ServerConnection connection,
                             ProcedureResultHandler handler, PlContext plContext, int depth) {
         super(ProcedureUtils.getFullProcedureName(connection, createProcStmt.getName()), plContext,
-            ProcedureUtils.getPlInternalCacheSize(connection));
+            ProcedureUtils.getVariableValue(connection, ConnectionParams.PL_INTERNAL_CACHE_SIZE));
         this.serverConnection = connection;
         this.createProcStmt = createProcStmt;
         this.handler = handler;
         this.cachedFunctions =
-            CacheBuilder.newBuilder().weakKeys().maximumSize(ProcedureUtils.getPlInternalCacheSize(connection)).build();
+            CacheBuilder.newBuilder().weakKeys()
+                .maximumSize(ProcedureUtils.getVariableValue(connection, ConnectionParams.PL_INTERNAL_CACHE_SIZE))
+                .build();
         this.depth = depth;
-        if (depth > ProcedureUtils.getMaxSpDepth(connection)) {
+        if (depth > ProcedureUtils.getVariableValue(connection, ConnectionParams.MAX_PL_DEPTH)) {
             throw new RuntimeException("reached max sp depth: " + depth);
         }
     }
@@ -115,7 +119,8 @@ public class RuntimeProcedure extends AbstractPl {
 
     private void initMemoryPool(MemoryPool parentPool) {
         long procedureMemoryLimit =
-            Math.max(ProcedureUtils.getProcedureMemoryLimit(serverConnection), MemoryAllocatorCtx.BLOCK_SIZE);
+            Math.max(ProcedureUtils.getVariableValue(serverConnection, ConnectionParams.PL_MEMORY_LIMIT),
+                MemoryAllocatorCtx.BLOCK_SIZE);
         memoryPool = MemoryManager.getInstance().createStoredProcedureMemoryPool(
             getClass().getSimpleName() + "@" + System.identityHashCode(this) + ":" + name, procedureMemoryLimit,
             parentPool);
@@ -209,7 +214,8 @@ public class RuntimeProcedure extends AbstractPl {
             return null;
         }
         if (row.getValues() == null || row.getValues().size() != 1) {
-            throw new RuntimeException("procedure execute failed " + parameterizedStmt.getParameterString() + " should get exactly single value");
+            throw new RuntimeException("procedure execute failed " + parameterizedStmt.getParameterString()
+                + " should get exactly single value");
         } else {
             return row.getObject(0);
         }
@@ -221,7 +227,9 @@ public class RuntimeProcedure extends AbstractPl {
         ServerQueryHandler.executeSqlInProcedure(serverConnection,
             ByteString.from(parameterizedStmt.getParameterString()), parameterizedStmt.getParams(), true, handler);
         if (handler.getException() != null) {
-            throw new RuntimeException("procedure execute failed " + handler.getException().getMessage());
+            Throwable ex = handler.getException();
+            handler.clearException();
+            throw new TddlNestableRuntimeException(ex);
         }
         handler.setSelectForDeeperUse(false);
         return handler.getCurosr();
@@ -230,7 +238,9 @@ public class RuntimeProcedure extends AbstractPl {
     private void executeSql(String sql, List<Pair<Integer, ParameterContext>> params) {
         ServerQueryHandler.executeSqlInProcedure(serverConnection, ByteString.from(sql), params, true, handler);
         if (handler.getException() != null) {
-            throw new RuntimeException("procedure execute failed: " + handler.getException().getMessage());
+            Throwable ex = handler.getException();
+            handler.clearException();
+            throw new TddlNestableRuntimeException(ex);
         }
     }
 
@@ -311,7 +321,8 @@ public class RuntimeProcedure extends AbstractPl {
             funArgs[0] = getExprValue(stmt, ((SQLBinaryOpExpr) expr).getLeft());
             funArgs[1] = getExprValue(stmt, ((SQLBinaryOpExpr) expr).getRight());
         } else {
-            throw new RuntimeException("procedure execute failed: Expression type: " + expr.getClass() + " using cache not supported yet");
+            throw new RuntimeException(
+                "procedure execute failed: Expression type: " + expr.getClass() + " using cache not supported yet");
         }
         return funArgs;
     }

@@ -16,10 +16,30 @@
 
 package com.alibaba.polardbx.optimizer.partition.datatype;
 
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
+import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.cast.Binary;
 
 public class PartitionFieldBuilder {
+
+    /**
+     * Create binary partition field using given length.
+     */
+    public static CharPartitionField createBinaryField(int length) {
+        // change binary type to varchar with binary charset
+        CharType dataType = new CharType(CollationName.BINARY, length);
+        return new CharPartitionField(dataType);
+    }
+
+    public static VarcharPartitionField createVarBinaryField(int length) {
+        // change binary type to varchar with binary charset
+        VarcharType dataType = new VarcharType(CollationName.BINARY, length);
+        return new VarcharPartitionField(dataType);
+    }
 
     public static AbstractPartitionField createField(DataType<?> dataType) {
         MySQLStandardFieldType sqlType = dataType.fieldType();
@@ -47,6 +67,10 @@ public class PartitionFieldBuilder {
         case MYSQL_TYPE_STRING:
             return new CharPartitionField(dataType);
         case MYSQL_TYPE_VAR_STRING:
+            if (dataType instanceof BinaryType) {
+                // change binary type to varchar with binary charset
+                dataType = new VarcharType(CollationName.BINARY);
+            }
             return new VarcharPartitionField(dataType);
         default:
             throw new UnsupportedOperationException("unsupported field data type: " + dataType);

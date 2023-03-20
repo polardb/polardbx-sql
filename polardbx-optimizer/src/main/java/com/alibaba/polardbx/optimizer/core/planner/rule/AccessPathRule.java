@@ -140,6 +140,12 @@ public abstract class AccessPathRule extends RelOptRule {
         @Override
         public void onMatch(RelOptRuleCall call) {
             final LogicalView logicalView = call.rel(0);
+            if (logicalView.getScalarList().size() > 0) {
+                // apply node stop gsi selection, try hint PUSH_CORRELATE_MATERIALIZED_LIMIT=0
+                // to avoid pushing scalar subquery
+                return;
+            }
+
             final ExecutionContext ec = PlannerContext.getPlannerContext(call).getExecutionContext();
             final String schemaName = logicalView.getSchemaName();
             final RelOptTable primaryTable = logicalView.getTable();
@@ -164,7 +170,8 @@ public abstract class AccessPathRule extends RelOptRule {
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
                 if (isCoveringIndex(mq, logicalView, primaryTable, gsiName)
                     && (lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
-                    final IndexScanVisitor indexScanVisitor = new IndexScanVisitor(primaryTable, indexTable, call.builder());
+                    final IndexScanVisitor indexScanVisitor =
+                        new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
                         new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable, logicalView.getHints(),
                             lockMode, logicalView.getFlashback());
@@ -580,6 +587,7 @@ public abstract class AccessPathRule extends RelOptRule {
         private final RelOptTable index;
         private final Map<String, Integer> indexColumnRefMap;
         private final RelBuilder relBuilder;
+
         private IndexScanVisitor(RelOptTable primary, RelOptTable index, RelBuilder relBuilder) {
             this.primary = primary;
             this.index = index;
@@ -612,6 +620,7 @@ public abstract class AccessPathRule extends RelOptRule {
                 stack.pop();
             }
         }
+
         @Override
         public RelNode visit(TableScan scan) {
             if (!scan.getTable().equals(primary)) {

@@ -73,9 +73,6 @@ public abstract class FrontendConnection extends AbstractConnection {
 
     private static final Logger logger = LoggerFactory.getLogger(FrontendConnection.class);
 
-    private static final String SENDING = "Sending to client";
-    private static final String WAITING = "Master has sent all binlog to slave; waiting for more updates";
-
     protected String instanceId;
 
     protected long id;
@@ -119,8 +116,6 @@ public abstract class FrontendConnection extends AbstractConnection {
 
     private PolarAccountInfo matchPolarUserInfo = null;
 
-    private CdcRpcStreamingProxy proxy = null;
-    private volatile String dumpState = null;
     protected volatile boolean rescheduled;
 
     /**
@@ -540,87 +535,6 @@ public abstract class FrontendConnection extends AbstractConnection {
         }
     }
 
-    public void binlogDump(byte[] data) {
-        CountDownLatch countDownLatch = new CountDownLatch(1);
-        MySQLMessage mm = new MySQLMessage(data);
-        FrontendConnection connection = this;
-        StreamObserver<DumpStream> observer = new StreamObserver<DumpStream>() {
-            @Override
-            public void onNext(DumpStream dumpStream) {
-                PacketOutputProxyFactory.getInstance().createProxy(connection).writeArrayAsPacket(
-                    dumpStream.getPayload().toByteArray());
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                try {
-                    if (t instanceof StatusRuntimeException) {
-                        final Status status = ((StatusRuntimeException) t).getStatus();
-                        if (status.getCode() == Status.Code.CANCELLED && status.getCause() == null) {
-                            if (logger.isInfoEnabled()) {
-                                logger.info("binlog dump canceled by remote [" + host + ":" + port + "]...");
-                            }
-                            return;
-                        }
-                        logger.error("[" + host + ":" + port + "] binlog dump from cdc failed", t);
-                        if (status.getCode() == Status.Code.INVALID_ARGUMENT) {
-                            final String description = status.getDescription();
-                            JSONObject obj = JSON.parseObject(description);
-                            logger.error("[" + host + ":" + port + "] binlog dump from cdc failed with " + obj);
-                            writeErrMessage((Integer) obj.get("error_code"), (String) obj.get("error_message"));
-                        } else if (status.getCode() == Status.Code.UNAVAILABLE) {
-                            logger.error("[" + host + ":" + port
-                                + "] binlog dump from cdc failed cause of UNAVAILABLE, please try later");
-                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, "please try later...");
-                        } else {
-                            logger.error("[" + host + ":" + port
-                                + "] binlog dump from cdc failed cause of unknown, please try later");
-                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
-                        }
-                    } else {
-                        logger.error("binlog dump from cdc failed", t);
-                        writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
-                    }
-                } finally {
-                    countDownLatch.countDown();
-                }
-            }
-
-            @Override
-            public void onCompleted() {
-                setDumpState(WAITING);
-                if (logger.isInfoEnabled()) {
-                    logger.info("binlog dump finished this time");
-                }
-                countDownLatch.countDown();
-            }
-        };
-        mm.position(5);
-        int position = mm.readInt();
-        mm.position(11);
-        int serverId = mm.readInt();
-        String fileName = "";
-        if (data.length > 15) {
-            mm.position(15);
-            fileName = mm.readString().trim();
-        }
-        if (logger.isInfoEnabled()) {
-            logger.info(
-                "Slave serverId=" + serverId + " will dump from " + fileName + "@"
-                    + position);
-        }
-        proxy = new CdcRpcClient.CdcRpcStreamingProxy();
-        proxy.dump(DumpRequest.newBuilder()
-            .setFileName(fileName)
-            .setPosition(position).build(), observer);
-        setDumpState(SENDING);
-        try {
-            countDownLatch.await();
-        } catch (InterruptedException e) {
-            logger.warn("binlog dump countDownLatch.await fail ", e);
-        }
-    }
-
     public void unknown(byte[] data) {
         writeErrMessage(ErrorCode.ER_UNKNOWN_COM_ERROR, "Unknown command");
     }
@@ -759,6 +673,8 @@ public abstract class FrontendConnection extends AbstractConnection {
 
     public abstract LoadDataHandler prepareLoadInfile(String sql);
 
+    public abstract void binlogDump(byte[] data);
+
     protected int getServerCapabilities() {
         int flag = 0;
         flag |= Capabilities.CLIENT_LONG_PASSWORD;
@@ -893,16 +809,9 @@ public abstract class FrontendConnection extends AbstractConnection {
         if (super.close()) {
             this.getProcessor().getFrontends().remove(this.getId());
             this.cleanup();
-            this.releaseCdcConnection();
             return true;
         } else {
             return false;
-        }
-    }
-
-    public void releaseCdcConnection() {
-        if (proxy != null) {
-            proxy.cancel();
         }
     }
 
@@ -934,13 +843,5 @@ public abstract class FrontendConnection extends AbstractConnection {
 
     public void setInstanceId(String instanceId) {
         this.instanceId = instanceId;
-    }
-
-    public String getDumpState() {
-        return dumpState;
-    }
-
-    public void setDumpState(String dumpState) {
-        this.dumpState = dumpState;
     }
 }

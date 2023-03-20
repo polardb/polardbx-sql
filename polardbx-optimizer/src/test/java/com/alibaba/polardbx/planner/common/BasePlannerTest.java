@@ -215,6 +215,7 @@ public abstract class BasePlannerTest {
     protected boolean forceWorkloadTypeAP = false;
     protected int inValuesThread = -1;
     protected SqlType sqlType;
+    protected boolean addForcePrimary = false;
 
     private FastsqlParser parser = new FastsqlParser();
     protected RelOptCluster cluster;
@@ -664,7 +665,7 @@ public abstract class BasePlannerTest {
         logicalCreateTable.prepareData(new ExecutionContext());
 
         PartitionInfo partitionInfo =
-            buildPartitionInfoByLogCreateTbl(logicalCreateTable, plannerContext.getExecutionContext());
+            buildPartitionInfoByLogCreateTbl(appName, logicalCreateTable, plannerContext.getExecutionContext());
         tm.setPartitionInfo(partitionInfo);
 
         TableGroupInfoManager tableGroupInfoManager =
@@ -807,7 +808,7 @@ public abstract class BasePlannerTest {
                 List<ColumnMeta> pkColMetas = new ArrayList<>(primaryTbMeta.getPrimaryKey());
                 primaryTbMeta.setSchemaName(schema);
                 PartitionInfo indexPartitionInfo = PartitionInfoBuilder
-                    .buildPartitionInfoByPartDefAst(appName, indexTableName, null, null,
+                    .buildPartitionInfoByPartDefAst(schema, indexTableName, null, null,
                         (SqlPartitionBy) createGlobalIndexPreparedData.getIndexDefinition().getPartitioning(),
                         createGlobalIndexPreparedData.getPartBoundExprInfo(),
                         pkColMetas, allColMetas, PartitionTableType.GSI_TABLE,
@@ -861,11 +862,11 @@ public abstract class BasePlannerTest {
                 indexTm.setPartitionInfo(indexPartitionInfo);
 
                 TableGroupInfoManager tableGroupInfoManager =
-                    OptimizerContext.getContext(appName).getTableGroupInfoManager();
+                    OptimizerContext.getContext(schema).getTableGroupInfoManager();
                 tableGroupInfoManager.putMockEntry(indexPartitionInfo);
 
                 PartitionInfoManager partitionInfoManager =
-                    OptimizerContext.getContext(appName).getPartitionInfoManager();
+                    OptimizerContext.getContext(schema).getPartitionInfoManager();
                 partitionInfoManager.putPartInfoCtx(indexTableName.toLowerCase(),
                     new PartitionInfoManager.PartInfoCtx(partitionInfoManager, indexTableName.toLowerCase(),
                         indexPartitionInfo.getTableGroupId(),
@@ -1388,10 +1389,10 @@ public abstract class BasePlannerTest {
             .build();
     }
 
-    protected PartitionInfo buildPartitionInfoByLogCreateTbl(LogicalCreateTable logicalCreateTable,
+    protected PartitionInfo buildPartitionInfoByLogCreateTbl(String schema, LogicalCreateTable logicalCreateTable,
                                                              ExecutionContext executionContext) {
 
-        logicalCreateTable.prepareData(new ExecutionContext(appName));
+        logicalCreateTable.prepareData(new ExecutionContext(schema));
         PartitionTableType tblType = PartitionTableType.SINGLE_TABLE;
         if (logicalCreateTable.isPartitionTable()) {
             tblType = PartitionTableType.PARTITION_TABLE;
@@ -1408,7 +1409,7 @@ public abstract class BasePlannerTest {
         String tableGroupName = null;
         PartitionInfo partitionInfo = null;
         tableMeta = preparedData.getTableMeta();
-        tableMeta.setSchemaName(appName);
+        tableMeta.setSchemaName(schema);
         tbName = preparedData.getTableName();
         allColMetas = tableMeta.getAllColumns();
         pkColMetas = new ArrayList<>(tableMeta.getPrimaryKey());

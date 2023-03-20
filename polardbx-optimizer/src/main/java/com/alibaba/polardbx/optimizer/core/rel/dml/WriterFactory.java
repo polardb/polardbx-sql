@@ -20,8 +20,6 @@ import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -104,7 +102,6 @@ import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlUpdate;
-import org.apache.calcite.sql.fun.SqlAlterTypeOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -1297,11 +1294,18 @@ public class WriterFactory {
         final int offset = selectListForDuplicateCheck.size();
         final MappingBuilder updateMappingBuilder = MappingBuilder.create(updateColumnList);
 
+        /*
+         * UpdateWriter 要求输入的每行数据，右侧后补的代表新值的列，需要按照 set 子句中出现的顺序排列
+         * UPSERT 在分区键的值没有发生变化的场景下，也需要使用 UpdateWriter 更新数据，因此输入数据中代表新值的列，
+         * 也需要按照 ON DUPLICATE KEY UPDATE 中出现的顺序排列
+         * （代码位置 {@link com.alibaba.polardbx.optimizer.core.rel.dml.util.DuplicateCheckResult.updateSource}）。
+         * 在对比分区键的新老取值时，需要特别注意列的映射关系。
+         */
         final Mapping skTargetMapping =
-            updateMappingBuilder.targetOrderedSource(identifierKeyNames).buildMapping(offset);
+            updateMappingBuilder.targetOrderedSource(identifierKeyNames).buildMapping(updateSourceMapping, offset);
         final Mapping skSourceMapping =
             mappingBuilder.targetOrderedSource(identifierKeyNames).buildMapping();
-        final List<ColumnMeta> indentifierMetas =
+        final List<ColumnMeta> identifierMetas =
             mappingBuilder.targetOrderedSource(identifierKeyNames).getSource().stream()
                 .map(targetTableMeta::getColumn)
                 .collect(Collectors.toList());
@@ -1316,7 +1320,7 @@ public class WriterFactory {
                 distinctWriterWrapper,
                 relocateDeleteWriter, relocateInsertWriter, updateWriter, skTargetMapping,
                 skSourceMapping,
-                indentifierMetas,
+                identifierMetas,
                 modifySkOnly,
                 usePartFieldChecker);
         } else {
@@ -1325,7 +1329,7 @@ public class WriterFactory {
                 distinctWriterWrapper,
                 relocateDeleteWriter, relocateInsertWriter, updateWriter, skTargetMapping,
                 skSourceMapping,
-                indentifierMetas,
+                identifierMetas,
                 modifySkOnly,
                 usePartFieldChecker,
                 gsiMeta);
@@ -1602,7 +1606,6 @@ public class WriterFactory {
      * Get index columns of primary key or unique key(if pk not exists)
      *
      * @param targetMeta Table meta
-     * @param ec
      * @return Primary/Unique keys
      */
     public static String getUniqueConditionColumns(TableMeta targetMeta, List<String> outColumnNames,

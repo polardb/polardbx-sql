@@ -7,6 +7,20 @@
     LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
 
 - sql: |
+    delete a from test_hash_ta a where a.id = last_insert_id();
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0000.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
+
+- sql: |
+    delete a from test_single a where a.id = last_insert_id(1);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_single", sql="delete `a` from `test_single` as `a` where (`a`.`id` = last_insert_id(?))", params="1")
+
+- sql: |
     delete from a using test_hash_ta a where a.id = 1;
 
   plan: |

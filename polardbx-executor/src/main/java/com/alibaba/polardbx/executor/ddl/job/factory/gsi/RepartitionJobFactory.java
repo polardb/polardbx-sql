@@ -167,6 +167,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
         DropGlobalIndexPreparedData dropGlobalIndexPreparedData =
             new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
         dropGlobalIndexPreparedData.setRepartition(true);
+        dropGlobalIndexPreparedData.setRepartitionTableName(primaryTableName);
         ExecutableDdlJob dropGsiJob =
             DropGsiJobFactory.create(dropGlobalIndexPreparedData, executionContext, false, false);
         //rollback is not supported after CutOver

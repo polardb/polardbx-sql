@@ -44,6 +44,7 @@ public class SliceBlock extends AbstractCommonBlock {
     private WeakReference<SortKey>[] sortKeys;
     private int[] selection;
     private final boolean compatible;
+
     public SliceBlock(SliceType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets,
                       Slice data, boolean compatible) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
@@ -54,8 +55,7 @@ public class SliceBlock extends AbstractCommonBlock {
         this.sortKeys = new WeakReference[positionCount];
         this.selection = null;
         this.compatible = compatible;
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + data.length();
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(valueIsNull) + data.length();
+        updateSizeInfo();
     }
 
     public SliceBlock(SliceType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets,
@@ -69,9 +69,7 @@ public class SliceBlock extends AbstractCommonBlock {
         this.selection = selection;
         this.compatible = false;
         // Slice.length is the memory size in bytes.
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + data.length();
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(valueIsNull) + data.length();
-
+        updateSizeInfo();
         this.sortKeys = new WeakReference[positionCount];
     }
 
@@ -81,15 +79,19 @@ public class SliceBlock extends AbstractCommonBlock {
         }
         return selection[position];
     }
+
     public boolean[] nulls() {
         return isNull;
     }
+
     public int[] offsets() {
         return offsets;
     }
+
     public Slice data() {
         return data;
     }
+
     @Override
     public boolean isNull(int position) {
         position = realPositionOf(position);
@@ -219,7 +221,7 @@ public class SliceBlock extends AbstractCommonBlock {
         int beginOffset = beginOffset(position);
         int endOffset = endOffset(position);
         return this.data.compareTo(beginOffset, endOffset - beginOffset, that1, 0, that1.length()) == 0
-            ||  this.data.compareTo(beginOffset, endOffset - beginOffset, that2, 0, that2.length()) == 0
+            || this.data.compareTo(beginOffset, endOffset - beginOffset, that2, 0, that2.length()) == 0
             ? 1 : 0;
     }
 
@@ -376,5 +378,12 @@ public class SliceBlock extends AbstractCommonBlock {
 
     public boolean isCompatible() {
         return compatible;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        // Slice.length is the memory size in bytes.
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + data.length() + sizeOf(offsets);
+        elementUsedBytes = Byte.BYTES * positionCount + data.length() + Integer.BYTES * positionCount;
     }
 }

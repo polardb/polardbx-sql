@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
-import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
@@ -34,6 +33,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
@@ -102,7 +102,7 @@ public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTas
         this.rollbackDdlStmt = rollbackDdlStmt;
         this.subJobId = subJobId;
         this.rollbackSubJobId = rollbackSubJobId;
-        setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+        setExceptionAction(DdlExceptionAction.ROLLBACK);
     }
 
     /**
@@ -135,9 +135,14 @@ public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTas
             LOGGER.info(String.format("Execute subjob %d success: %s", subJobId, subJobDdlContext.getDdlStmt()));
             return;
         } else {
-            throw DdlHelper.logAndThrowError(LOGGER,
-                String.format("Execute subjob %d failed with state %s", subJobDdlContext.getJobId(),
-                    subJobDdlContext.getState()));
+            final String errMsg = subJobDdlContext.getErrorMessage();
+            if (errMsg != null) {
+                throw DdlHelper.logAndThrowError(LOGGER, errMsg);
+            } else {
+                throw DdlHelper.logAndThrowError(LOGGER,
+                    String.format("Execute subjob %d failed with state %s", subJobDdlContext.getJobId(),
+                        subJobDdlContext.getState()));
+            }
         }
     }
 

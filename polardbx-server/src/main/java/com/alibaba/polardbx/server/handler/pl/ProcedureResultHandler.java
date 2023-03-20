@@ -76,12 +76,13 @@ public class ProcedureResultHandler implements QueryResultHandler {
     }
 
     @Override
-    public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+    public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+        throws Exception {
         if (!selectForDeeperUse) {
             proxy =
                 ResultSetUtil.resultSetToPacket(resultSet, serverConnection.getCharset(), serverConnection,
-                    new AtomicLong(0),
-                    proxy);
+                    outAffectedRows,
+                    proxy, sqlSelectLimit);
         } else {
             cursor = PLUtils.buildCacheCursor(((TResultSet) resultSet).getResultCursor(), plContext);
         }
@@ -124,6 +125,10 @@ public class ProcedureResultHandler implements QueryResultHandler {
 
     public Throwable getException() {
         return exception;
+    }
+
+    public void clearException() {
+        exception = null;
     }
 
     public PlCacheCursor getCurosr() {

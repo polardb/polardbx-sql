@@ -32,8 +32,10 @@ import java.util.TreeSet;
 @Getter
 @TaskName(name = "PushDownUdfTask")
 public class PushDownUdfTask extends BaseDdlTask {
-    private static String EXISTS_BUILTIN_FUNCTION = "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment != '%s' AND routine_name = '%s'";
-    private static String ALREADY_DEFINED_FUNCTION = "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment = '%s' AND routine_name = '%s'";
+    private static String EXISTS_BUILTIN_FUNCTION =
+        "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment != '%s' AND routine_name = '%s'";
+    private static String ALREADY_DEFINED_FUNCTION =
+        "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment = '%s' AND routine_name = '%s'";
 
     @JSONCreator
     public PushDownUdfTask(String schemaName) {
@@ -62,14 +64,18 @@ public class PushDownUdfTask extends BaseDdlTask {
                     String functionName = record.name;
                     String createFunction = PLUtils.getCreateFunctionOnDn(record.definition);
                     String originFunction = removeMysqlPrefix(functionName);
-                    try(ResultSet rs = stmt.executeQuery(String.format(EXISTS_BUILTIN_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT, originFunction))) {
+                    try (ResultSet rs = stmt.executeQuery(
+                        String.format(EXISTS_BUILTIN_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT,
+                            originFunction))) {
                         if (rs.next()) {
                             throw new TddlRuntimeException(ErrorCode.ERR_UDF_ALREADY_EXISTS,
                                 String.format("Function %s already exists on %s, and not created from polarx",
                                     originFunction, dnId));
                         }
                     }
-                    try(ResultSet rs = stmt.executeQuery(String.format(ALREADY_DEFINED_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT, originFunction))) {
+                    try (ResultSet rs = stmt.executeQuery(
+                        String.format(ALREADY_DEFINED_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT,
+                            originFunction))) {
                         // if not found
                         if (!rs.next()) {
                             stmt.execute(createFunction);

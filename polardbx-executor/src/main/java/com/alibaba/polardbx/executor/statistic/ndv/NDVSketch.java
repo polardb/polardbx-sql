@@ -189,12 +189,11 @@ public class NDVSketch implements NDVSketchService {
         boolean hasUpdate = ndvShardSketch.updateAllShardParts();
         if (hasUpdate) {
             /** sync other nodes */
-            SyncManagerHelper.sync(
+            SyncManagerHelper.syncWithDefaultDB(
                 new UpdateStatisticSyncAction(
                     schema,
                     tableName,
-                    null),
-                schema);
+                    null));
         }
     }
 

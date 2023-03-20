@@ -65,3 +65,14 @@ dept0:
   NAME VARCHAR(10) NOT NULL
   ) DBPARTITION BY HASH(DEPTNO) TBPARTITION BY HASH(DEPTNO) TBPARTITIONS 7
 
+t1:
+  create table t1(
+  a varchar(30), 
+  b varchar(30)
+  ) dbpartition by hash(`a`) tbpartition by hash(`b`) tbpartitions 8;
+
+t2:
+  create table t2(
+  a varchar(30), 
+  b varchar(30)
+  ) dbpartition by hash(`b`) tbpartition by hash(`a`) tbpartitions 8;

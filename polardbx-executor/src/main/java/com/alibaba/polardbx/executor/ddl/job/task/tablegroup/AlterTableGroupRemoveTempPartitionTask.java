@@ -23,7 +23,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -59,9 +58,15 @@ public class AlterTableGroupRemoveTempPartitionTask extends BaseDdlTask {
         tablePartitionAccessor.setConnection(metaDbConnection);
         List<PartitionGroupRecord> partitionGroupRecords =
             partitionGroupAccessor.getTempPartitionGroupsByTableGroupIdAndNameFromDelta(tableGroupId, tempPartition);
+        List<TablePartitionRecord> tablePartitionRecords =
+            tablePartitionAccessor.getTablePartitionsByDbNameGroupId(schemaName, tableGroupId);
         for (PartitionGroupRecord record : partitionGroupRecords) {
             partitionGroupAccessor.deletePartitionGroupByIdFromDelta(record.getTg_id(), record.partition_name);
-            tablePartitionAccessor.deleteTablePartitionByGidAndPartNameFromDelta(schemaName, record.id, tempPartition);
+            for (TablePartitionRecord tablePartitionRecord : GeneralUtil.emptyIfNull(tablePartitionRecords)) {
+                tablePartitionAccessor.deleteTablePartitionByGidAndPartNameFromDelta(schemaName,
+                    tablePartitionRecord.getTableName(), record.id,
+                    tempPartition);
+            }
         }
         updateSupportedCommands(true, false, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);

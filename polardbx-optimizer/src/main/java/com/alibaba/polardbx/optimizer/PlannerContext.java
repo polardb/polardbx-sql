@@ -115,6 +115,18 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     private int pushJoinHitCount = 0;
     private Set<String> tablesInLV;
 
+    /**
+     * If true, this plan can be optimize by adding FORCE INDEX PRIMARY for TSO trx, (but we do not optimize it.)
+     * Set after building plan.
+     */
+    private boolean canOptByForcePrimary = false;
+
+    /**
+     * If true, we actually add FORCE INDEX PRIMARY when generating this plan.
+     * Set before building plan.
+     */
+    private boolean addForcePrimary = false;
+
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
     }
@@ -135,6 +147,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         }
         this.isExplain = executionContext.getExplain() != null;
         this.isAutoCommit = executionContext.isAutoCommit();
+
+        this.addForcePrimary = executionContext.isTsoTransaction() && executionContext.enableForcePrimaryForTso();
     }
 
     public PlannerContext(ExecutionContext executionContext,
@@ -153,6 +167,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.isAutoCommit = executionContext.isAutoCommit();
         this.sqlKind = sqlkind;
         this.isInSubquery = isInSubquery;
+
+        this.addForcePrimary = executionContext.isTsoTransaction() && executionContext.enableForcePrimaryForTso();
     }
 
     protected PlannerContext(ExecutionContext executionContext,
@@ -470,5 +486,21 @@ public class PlannerContext implements Context, PlannerContextWithParam {
             return tablesInLV.add(tables);
         }
         return true;
+    }
+
+    public boolean isCanOptByForcePrimary() {
+        return canOptByForcePrimary;
+    }
+
+    public boolean isAddForcePrimary() {
+        return addForcePrimary;
+    }
+
+    public void setCanOptByForcePrimary(boolean canOptByForcePrimary) {
+        this.canOptByForcePrimary = canOptByForcePrimary;
+    }
+
+    public void setAddForcePrimary(boolean addForcePrimary) {
+        this.addForcePrimary = addForcePrimary;
     }
 }

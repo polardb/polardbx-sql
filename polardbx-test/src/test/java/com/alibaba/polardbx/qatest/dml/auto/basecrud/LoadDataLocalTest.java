@@ -23,9 +23,12 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.sql.Connection;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -34,6 +37,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 
 /**
  * Prepare does not support LoadData
+ *
  * @see <a href="https://dev.mysql.com/doc/internals/en/com-stmt-prepare.html#packet-COM_STMT_PREPARE">COM_STMT_PREPARE</a>
  */
 public class LoadDataLocalTest extends BaseTestCase {
@@ -44,7 +48,7 @@ public class LoadDataLocalTest extends BaseTestCase {
     protected String baseOneTableName;
 
     public LoadDataLocalTest() {
-        this.baseOneTableName = "test_yuehan_load_data";
+        this.baseOneTableName = "test_test_load_data";
     }
 
     @Before
@@ -186,7 +190,7 @@ public class LoadDataLocalTest extends BaseTestCase {
 
         FileWriter fw = new FileWriter(path + "localdata.txt");
         for (int i = 0; i < 5; i++) {
-            String str = String.format("%d,%d,2012-%02d-%02d,2012-%02d-%02d,2012-%02d-%02d,yuehan%d,0.%d\r\n",
+            String str = String.format("%d,%d,2012-%02d-%02d,2012-%02d-%02d,2012-%02d-%02d,test%d,0.%d\r\n",
                 i,
                 i,
                 i + 1,
@@ -223,14 +227,42 @@ public class LoadDataLocalTest extends BaseTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, create_table_sql, null);
         FileWriter fw = new FileWriter(path + "localdata.txt");
         for (int i = 0; i < 5; i++) {
-            String str = String.format("越寒-yuehan%d,0.%d\r\n", i, i);
+            String str = String.format("测试-test%d,0.%d\r\n", i, i);
             fw.write(str);
         }
         fw.close();
 
         String sql =
             "load data local infile " + "'" + path + "localdata.txt' " + "into table " + baseOneTableName +
-                " fields terminated by ',' " + "lines starting by '越寒-' terminated by '\\r\\n'";
+                " fields terminated by ',' " + "lines starting by '测试-' terminated by '\\r\\n'";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+        String selectSql = "select * from " + baseOneTableName;
+        selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testLoadDataWithCharset() throws Exception {
+        if (PropertiesUtil.usePrepare()) {
+            return;
+        }
+        clearDataOnMysqlAndTddl();
+        String create_table_sql =
+            "CREATE TABLE `" + baseOneTableName + "` (" + "`varchar_test` varchar(255) NOT NULL,"
+                + "`float_test` float DEFAULT NULL," + "PRIMARY KEY (`varchar_test`)"
+                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, create_table_sql, null);
+        BufferedWriter writer =
+            new BufferedWriter(new OutputStreamWriter(new FileOutputStream(path + "localdata.txt", true), "UTF-8"));
+        for (int i = 0; i < 5; i++) {
+            String str = String.format("测试-test%d-中文,0.%d\r\n", i, i);
+            writer.write(str);
+        }
+        writer.close();
+
+        String sql =
+            "load data local infile " + "'" + path + "localdata.txt' " + "into table " + baseOneTableName
+                + " character set utf8mb4 " +
+                " fields terminated by ',' " + "lines starting by '测试-' terminated by '\\r\\n'";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
         String selectSql = "select * from " + baseOneTableName;
         selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);
@@ -352,11 +384,11 @@ public class LoadDataLocalTest extends BaseTestCase {
 
         if (usingNewPartDb()) {
             create_table_sql +=
-                "GLOBAL INDEX `g_test_yuehan_col2`(`col2_int`) partition by key(`col2_int`) partitions 3"
+                "GLOBAL INDEX `g_test_test_col2`(`col2_int`) partition by key(`col2_int`) partitions 3"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=gbk partition by key(col1_int) partitions 3";
         } else {
             create_table_sql +=
-                "GLOBAL INDEX `g_test_yuehan_col2`(`col2_int`) dbpartition by hash(`col2_int`) tbpartition by hash(`col2_int`) tbpartitions 3"
+                "GLOBAL INDEX `g_test_test_col2`(`col2_int`) dbpartition by hash(`col2_int`) tbpartition by hash(`col2_int`) tbpartitions 3"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=gbk dbpartition by hash(col1_int) tbpartition by hash(col1_int) tbpartitions 3";
         }
 

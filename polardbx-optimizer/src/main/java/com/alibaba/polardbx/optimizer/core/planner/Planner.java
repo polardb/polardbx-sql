@@ -120,6 +120,8 @@ import com.alibaba.polardbx.optimizer.core.rel.CollectorTableVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CountVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ForceIndexSingleVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ForceIndexVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -184,6 +186,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalOutFile;
+import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -205,6 +208,7 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlTruncateTable;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
@@ -229,6 +233,7 @@ import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.getRexN
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isSuitableForDirectMode;
 import static com.alibaba.polardbx.optimizer.utils.RelUtils.disableMpp;
 import static com.alibaba.polardbx.optimizer.workload.WorkloadUtil.determineWorkloadType;
 import static org.apache.calcite.sql.SqlKind.DDL;
@@ -530,14 +535,14 @@ public class Planner {
                 if (sysDefVariable.isGlobal()) {
                     v = variableManager.getGlobalVariable(name);
 
-                        Properties cnProperties =
-                            MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
-                        Map<String, Object> dnProperties =
-                            MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
-                        if (cnProperties.containsKey(name)) {
-                            v = cnProperties.getProperty(name);
-                        } else if (dnProperties.containsKey(name)) {
-                            v = dnProperties.get(name);
+                    Properties cnProperties =
+                        MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
+                    Map<String, Object> dnProperties =
+                        MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
+                    if (cnProperties.containsKey(name)) {
+                        v = cnProperties.getProperty(name);
+                    } else if (dnProperties.containsKey(name)) {
+                        v = dnProperties.get(name);
                     }
                 } else {
                     if (executionContext.getExtraServerVariables() != null
@@ -685,7 +690,7 @@ public class Planner {
         final Map<Integer, ParameterContext> param = ec.getParams().getCurrentParameter();
         ExplainResult explain = ec.getExplain();
         boolean isExplain = explain != null;
-        ExecutionPlan executionPlan;
+        ExecutionPlan executionPlan = null;
         // init HINT
         final HintPlanner hintPlanner = HintPlanner.getInstance(ec.getSchemaName(), ec);
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(ec.getSchemaName(), new HashMap<>(),
@@ -712,7 +717,10 @@ public class Planner {
             disableMpp(ec);
         }
 
-        if (hintCollection.pushdownOriginSql()) {
+        if (hintCollection.pushdownOriginSql() ||
+            (StringUtils.isNotEmpty(ec.getPartitionName()) && (ast.isA(DML) || ast.isA(QUERY))
+                && isSuitableForDirectMode(explain))
+        ) {
             executionPlan = hintPlanner.direct(ast, cmdBean, hintCollection, param, ec.getSchemaName(), ec);
         } else if (hintCollection.cmdOnly() || hintCollection.errorMessages.size() > 0) {
             //FIXME here task the illegal hint as the cmd hint.
@@ -806,6 +814,16 @@ public class Planner {
                 plannerContext.setExprMap(predicateMap);
             }
         }
+
+        // set not pushdown DML condition.
+        plannerContext.getExecutionContext().setModifyShardingColumn(toDrdsRelVisitor.isModifyShardingColumn());
+        plannerContext.getExecutionContext().setModifyGsiTable(toDrdsRelVisitor.isModifyGsiTable());
+        plannerContext.getExecutionContext()
+            .setScaleoutWritableTable(toDrdsRelVisitor.isContainScaleOutWritableTable());
+        plannerContext.getExecutionContext()
+            .setModifyOnlineColumnTable(toDrdsRelVisitor.isContainOnlineModifyColumnTable());
+        plannerContext.getExecutionContext().setModifyBroadcastTable(toDrdsRelVisitor.isModifyBroadcastTable());
+
         RelMetadataQuery mq = drdsRelNode.getCluster().getMetadataQuery();
         if (Boolean
             .parseBoolean(plannerContext.getParamManager().getProps().get(ConnectionProperties.PREPARE_OPTIMIZE))) {
@@ -829,7 +847,8 @@ public class Planner {
             directMode = ExecutionPlan.DirectMode.NONE;
         } else {
             // optimize
-            boolean directByTable = shouldDirectByTable(toDrdsRelVisitor, validatedNode, plannerContext);
+            boolean directByTable =
+                shouldDirectByTable(toDrdsRelVisitor, validatedNode, plannerContext, unoptimizedNode);
             if (directByTable) {
                 optimizedNode = unoptimizedNode;
                 directMode = ExecutionPlan.DirectMode.TABLE_DIRECT;
@@ -1466,7 +1485,7 @@ public class Planner {
      * 针对单表和广播表的direct转发
      */
     private boolean shouldDirectByTable(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode,
-                                        PlannerContext plannerContext) {
+                                        PlannerContext plannerContext, RelNode unoptimizedNode) {
         if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DIRECT_PLAN)) {
             return false;
         }
@@ -1499,6 +1518,10 @@ public class Planner {
             return false;
         }
 
+        if (RelUtils.existUnPushableLastInsertId(unoptimizedNode)) {
+            return false;
+        }
+
         final boolean onlySingleOrOnlyBroadcast = toDrdsRelVisitor.isAllTableBroadcast()
             || toDrdsRelVisitor.isAllTableSingleNoBroadcast();
         if (toDrdsRelVisitor.isDirect()
@@ -1506,7 +1529,7 @@ public class Planner {
             || onlySingleOrOnlyBroadcast)
             && (sqlNode.getKind() != SqlKind.UPDATE || ((SqlUpdate) sqlNode).singleTable()
             || onlySingleOrOnlyBroadcast)
-            && !toDrdsRelVisitor.isContainScaleOutWriableTable()
+            && !toDrdsRelVisitor.isContainScaleOutWritableTable()
             && !toDrdsRelVisitor.isContainReplicateWriableTable()) {
             return true;
         }
@@ -1526,8 +1549,10 @@ public class Planner {
 
         ExecutionPlan result = null;
         RelNode finalPlan = null;
+        boolean direct = false;
         switch (directPlanMode) {
         case TABLE_DIRECT:
+            direct = true;
             if (validatedNode.isA(DML)) {
                 cursorMeta = CalciteUtils.buildDmlCursorMeta();
             }
@@ -1536,7 +1561,9 @@ public class Planner {
             finalPlan = buildDirectPlan(toDrdsRelVisitor.getBaseLogicalView(),
                 unoptimizedNode,
                 validatedNode,
-                toDrdsRelVisitor, plannerContext);
+                toDrdsRelVisitor,
+                plannerContext,
+                converter.getValidator());
             if ((validatedNode instanceof SqlSelect && ((SqlSelect) validatedNode).getOutFileParams() != null)) {
                 optimizedNode = new LogicalOutFile(finalPlan.getCluster(), finalPlan.getTraitSet(), finalPlan,
                     ((SqlSelect) validatedNode).getOutFileParams());
@@ -1546,10 +1573,13 @@ public class Planner {
             }
             break;
         case SHARDING_KEY_DIRECT:
+            direct = true;
             optimizedNode = buildDirectShardingKeyPlan((LogicalView) optimizedNode,
                 unoptimizedNode,
                 validatedNode,
-                toDrdsRelVisitor.isShouldRemoveSchemaName(), plannerContext);
+                toDrdsRelVisitor.isShouldRemoveSchemaName(),
+                plannerContext,
+                converter.getValidator());
             break;
         case NONE:
             if (validatedNode.isA(DML) || optimizedNode instanceof LogicalOutFile) {
@@ -1586,6 +1616,10 @@ public class Planner {
             optimizedNode = optimizedNode.accept(userHintPassthroughVisitor);
         }
 
+        if (!direct) {
+            optimizedNode = optimizePlanForTso(optimizedNode, plannerContext);
+        }
+
         result = new ExecutionPlan(validatedNode, optimizedNode, cursorMeta);
         result.setDirectShardingKey(directPlanMode == ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT);
         ExplainResult explainResult = plannerContext.getExecutionContext().getExplain();
@@ -1596,7 +1630,40 @@ public class Planner {
         updatePlanProperties(result, toDrdsRelVisitor, validatedNode);
         initPlanShardInfo(result, plannerContext.getExecutionContext());
 
+        // If this plan can be optimized but not yet optimized, set this flag to true.
+        result.setCanOptByForcePrimary(plannerContext.isCanOptByForcePrimary() && !plannerContext.isAddForcePrimary());
+
         return result;
+    }
+
+    private RelNode optimizePlanForTso(RelNode optimizedNode, PlannerContext plannerContext) {
+        /* Here, we use global config value to judge whether we **try** to optimize this plan.
+           But whether we really optimize this plan depends on local config value, i.e., pc.isAddForcePrimary().
+         */
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
+            final ForceIndexVisitor forceIndexVisitor =
+                new ForceIndexVisitor(plannerContext.isAddForcePrimary(), plannerContext.getExecutionContext());
+            optimizedNode = optimizedNode.accept(forceIndexVisitor);
+            if (forceIndexVisitor.isCanOptByForcePrimary()) {
+                plannerContext.setCanOptByForcePrimary(true);
+            }
+        }
+        return optimizedNode;
+    }
+
+    private SqlNode optimizeAstForTso(SqlNode sqlNode, PlannerContext pc, SqlValidatorImpl validator) {
+        /* Here, we use global config value to judge whether we **try** to optimize this plan.
+           But whether we really optimize this plan depends on local config value, i.e., pc.isAddForcePrimary().
+         */
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
+            final ForceIndexSingleVisitor forceIndexSingleVisitor = new ForceIndexSingleVisitor(
+                validator, pc.isAddForcePrimary(), pc.getExecutionContext());
+            sqlNode = sqlNode.accept(forceIndexSingleVisitor);
+            if (forceIndexSingleVisitor.isCanOptByForcePrimary()) {
+                pc.setCanOptByForcePrimary(true);
+            }
+        }
+        return sqlNode;
     }
 
     private boolean needSkipInitPlanShardInfo(RelNode input) {
@@ -1703,6 +1770,12 @@ public class Planner {
         if (sqlNode.isA(DDL)) {
             plan.getPlanProperties().set(ExecutionPlanProperties.DDL);
         }
+        if (visitor.isContainScaleOutWritableTable()) {
+            plan.getPlanProperties().set(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+        }
+        if (visitor.isContainScaleOutWritableTable()) {
+            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+        }
 
         return plan;
     }
@@ -1711,7 +1784,7 @@ public class Planner {
      * 查询的所有表都是单表,直接填充一个 LogicalView 返回即可
      */
     private RelNode buildDirectPlan(LogicalView logicalView, RelNode relNode, SqlNode sqlNode,
-                                    ToDrdsRelVisitor toDrdsRelVisitor, PlannerContext pc) {
+                                    ToDrdsRelVisitor toDrdsRelVisitor, PlannerContext pc, SqlValidatorImpl validator) {
         boolean shouldRemoveSchema = toDrdsRelVisitor.isShouldRemoveSchemaName();
         if (sqlNode instanceof SqlInsert) {
             SqlInsert insert = (SqlInsert) sqlNode;
@@ -1731,6 +1804,8 @@ public class Planner {
                 insert.setOperand(3, sqlNodeList);
             }
         }
+
+        sqlNode = optimizeAstForTso(sqlNode, pc, validator);
 
         // Remove SchemaName
         if (shouldRemoveSchema) {
@@ -1866,7 +1941,9 @@ public class Planner {
      * 分片键点查,直接填充 LogicalView
      */
     private RelNode buildDirectShardingKeyPlan(LogicalView logicalView, RelNode relNode, SqlNode sqlNode,
-                                               boolean shouldRemoveSchema, PlannerContext pc) {
+                                               boolean shouldRemoveSchema, PlannerContext pc,
+                                               SqlValidatorImpl validator) {
+        sqlNode = optimizeAstForTso(sqlNode, pc, validator);
         // Remove SchemaName
         String schemaName = logicalView.getSchemaName();
         if (shouldRemoveSchema) {

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.utils.GroupKey;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
@@ -65,8 +66,6 @@ import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDynamicParam;
-import org.apache.calcite.sql.SqlFunction;
-import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlInsert;
@@ -82,9 +81,6 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.InferTypes;
-import org.apache.calcite.sql.type.OperandTypes;
-import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
@@ -488,91 +484,6 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     public List<RelNode> buildSelect(TableMeta baseTableMeta, List<RelNode> oldPhysicalPlans, List<String> selectKeys,
                                      List<List<String>> conditionKeys) {
         return buildSelectUnion(baseTableMeta, oldPhysicalPlans, selectKeys, conditionKeys);
-    }
-
-    /**
-     * Create a physical SELECT that corresponds to the physical INSERT, to find
-     * conflicting data to the INSERT. Format: SELECT PRIMARY_KEY FROM
-     * PHYSICAL_TABLE WHERE (UNIQUE_KEY1 IN VALUE_LIST) OR (UNIQUE_KEY2 IN
-     * VALUE_LIST). Why not create a logical SELECT: no need to shard again. Why
-     * not use (SELECT 1, PK FROM TB WHERE UK1 = X1 OR UK2 = X2) UNION (SELECT
-     * 2, PK FROM TB WHERE UK1 = X3 OR UK2 = X4) to find the duplicate value
-     * indexes: the SQL may exceed the MAX_PACKET_SIZE, and then it should be
-     * split into several SQLs, which increases RTs.
-     *
-     * @param oldPhysicalPlans old physical INSERT plan on the base table
-     * @param selectKeys the columns to be queried
-     * @param conditionKeys ((key1, key2) IN ((xx, xx)) OR (key3, key4) IN ((xx,
-     * xx)))
-     * @return the physical SELECT corresponding to the physical INSERT
-     */
-    private List<RelNode> buildSelectIn(TableMeta baseTableMeta, List<RelNode> oldPhysicalPlans,
-                                        List<String> selectKeys, List<List<String>> conditionKeys) {
-        // build select list
-        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
-        RelDataType rowType = buildRowTypeForSelect(selectKeys, baseTableMeta, selectList);
-
-        // build target table
-        buildTargetTable();
-
-        // keyNameNode, [(key1, key2), (key3, key4)]
-        List<SqlNode> keyNameNodeList = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
-
-        // to implement concurrent query, gather all selects and apply once.
-        List<RelNode> selects = new ArrayList<>(oldPhysicalPlans.size());
-
-        for (RelNode oldPhysicalPlan : oldPhysicalPlans) {
-            PhyTableOperation insertPlan = (PhyTableOperation) oldPhysicalPlan;
-            SqlInsert sqlInsert = (SqlInsert) insertPlan.getNativeSqlNode();
-
-            initParams(0);
-            buildTargetTableParams(insertPlan.getTableNames().get(0).get(0));
-
-            // build condition
-            List<SqlNode> inClauses = new ArrayList<>(conditionKeys.size());
-            for (int i = 0; i < conditionKeys.size(); i++) {
-                List<String> conditionKey = conditionKeys.get(i);
-                SqlNode keyNameNode = keyNameNodeList.get(i);
-
-                List<List<Object>> keyValues = BuildPlanUtils.pickValuesFromInsert(sqlInsert,
-                    conditionKey,
-                    new Parameters(insertPlan.getParam(), false),
-                    false, new ArrayList<>());
-
-                inClauses.add(buildInCondition(keyValues, keyNameNode));
-            }
-
-            // if there are more than one unique keys, construct OR
-            SqlNode condition = PlannerUtils.buildOrTree(inClauses);
-
-            SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                null,
-                selectList,
-                targetTableNode,
-                condition,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
-            sqlSelect.setLockMode(LockMode.EXCLUSIVE_LOCK);
-
-            PhyTableOperation select = buildPhyTableOperation(sqlSelect,
-                insertPlan,
-                insertPlan.getDbIndex(),
-                insertPlan.getTableNames(),
-                rowType,
-                currentParams,
-                LockMode.EXCLUSIVE_LOCK,
-                baseTableMeta);
-
-            selects.add(select);
-        }
-
-        return selects;
     }
 
     /**
@@ -1871,7 +1782,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                              List<Integer> tableParamIndexes, String sql, LockMode lockMode,
                                              TableMeta tableMeta) {
         List<RelNode> results = new ArrayList<>();
-        for (Map.Entry<String, Set<String>> entry: topology.entrySet()) {
+        for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
             String dbIndex = entry.getKey();
             for (String phyTbName : entry.getValue()) {
                 final List<String> targetTables = IntStream.range(0, sqlUnionCount).mapToObj(j -> {

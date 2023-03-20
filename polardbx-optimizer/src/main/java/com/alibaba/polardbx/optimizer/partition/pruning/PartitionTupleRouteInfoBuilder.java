@@ -88,7 +88,7 @@ public class PartitionTupleRouteInfoBuilder {
         PartClauseExprExec[] epxrExecArr = partPredRouteFunc.getSearchExprInfo().getExprExecArr();
         List<PartClauseInfo> partClauseInfos = new ArrayList<>();
         for (int i = 0; i < epxrExecArr.length; i++) {
-            if (epxrExecArr[i].getValueKind() != PartitionBoundValueKind.DATUM_NORMAL_VALUE ) {
+            if (epxrExecArr[i].getValueKind() != PartitionBoundValueKind.DATUM_NORMAL_VALUE) {
                 return null;
             }
             partClauseInfos.add(epxrExecArr[i].getClauseInfo());
@@ -97,7 +97,8 @@ public class PartitionTupleRouteInfoBuilder {
         String logTbName = partInfo.getTableName();
         List<List<PartClauseInfo>> partClauseInfosOfAllTuples = new ArrayList<>();
         partClauseInfosOfAllTuples.add(partClauseInfos);
-        PartitionTupleRouteInfo tupleRouteInfo = genPartTupleRoutingInfoByPartClauseInfos(schemaName, logTbName, partClauseInfosOfAllTuples, partInfo);
+        PartitionTupleRouteInfo tupleRouteInfo =
+            genPartTupleRoutingInfoByPartClauseInfos(schemaName, logTbName, partClauseInfosOfAllTuples, partInfo);
         return tupleRouteInfo;
     }
 
@@ -418,12 +419,14 @@ public class PartitionTupleRouteInfoBuilder {
 
             // Get the drds return type for partColumn
             DataType partColDataType = querySpaceComp.getDatumDrdsDataTypes()[keyIdx];
+            ColumnMeta partColMeta = null;
 
             // Build the rexnode by wapping the tuple value with part expr
             // Get the sql operator of part expr
             SqlOperator sqlOperator = null;
             if (level == PartKeyLevel.PARTITION_KEY) {
                 SqlNode partExpr = partInfo.getPartitionBy().getPartitionExprList().get(keyIdx);
+                partColMeta = partInfo.getPartitionBy().getPartitionFieldList().get(keyIdx);
                 if (partExpr instanceof SqlCall) {
                     sqlOperator = ((SqlCall) partExpr).getOperator();
                 }
@@ -450,6 +453,7 @@ public class PartitionTupleRouteInfoBuilder {
             targetExprExecInfo.setPartIntFunc(partIntFunc);
             targetExprExecInfo.setClauseInfo(partClauseInfo);
             targetExprExecInfo.setPartColDataType(partColDataType);
+            targetExprExecInfo.setPartColMeta(partColMeta);
             targetExprExecInfo.setPredExprReturnType(tupleExprReturnDataType);
             targetExprExecInfo.setPartFldAccessType(PartFieldAccessType.DML_PRUNING);
             targetExprExecInfo.setAlwaysNullValue(isAlwaysNull);

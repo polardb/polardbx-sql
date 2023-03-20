@@ -38,29 +38,25 @@ public class ULongBlock extends AbstractBlock {
     public ULongBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new long[slotLen];
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ULongBlock(DataType dataType, long[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ULongBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ULongBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values, boolean hasNull) {
         super(DataTypes.ULongType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -202,7 +198,12 @@ public class ULongBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
     }
 }

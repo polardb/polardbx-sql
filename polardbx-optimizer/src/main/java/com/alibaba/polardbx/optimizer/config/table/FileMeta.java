@@ -57,7 +57,9 @@ public class FileMeta {
         switch (engine) {
         case OSS:
         case S3:
-        case LOCAL_DISK: {
+        case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS: {
             String logicalSchemaName = filesRecord.getLogicalSchemaName();
             String logicalTableName = filesRecord.getLogicalTableName();
             String physicalTableSchema = filesRecord.getTableSchema();

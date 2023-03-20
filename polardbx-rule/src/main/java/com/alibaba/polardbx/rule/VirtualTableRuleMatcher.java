@@ -314,13 +314,24 @@ public class VirtualTableRuleMatcher {
 
                 }
             } else {
-                topology = crossNoSourceKey1(dbRule,
-                    dbRuleArgs,
-                    tbRule,
-                    tbRuleArgs,
-                    commonColumn,
-                    outerCtx,
-                    calcParams);
+                // 有交集
+                if (!InstConfUtil.getBool(IS_CROSS_RULE)) {
+                    topology = crossNoSourceKey1(dbRule,
+                        dbRuleArgs,
+                        tbRule,
+                        tbRuleArgs,
+                        commonColumn,
+                        outerCtx,
+                        calcParams);
+                } else {
+                    topology = crossNoSourceKey2(dbRule,
+                        dbRuleArgs,
+                        tbRule,
+                        tbRuleArgs,
+                        commonSet,
+                        outerCtx,
+                        calcParams);
+                }
             }
         }
 
@@ -458,13 +469,23 @@ public class VirtualTableRuleMatcher {
 
                 }
             } else { // 有交集
-                topology = crossWithSourceKey1(dbRule,
-                    dbRuleArgs,
-                    tbRule,
-                    tbRuleArgs,
-                    commonColumn,
-                    outerCtx,
-                    calcParams);
+                if (!InstConfUtil.getBool(IS_CROSS_RULE)) {
+                    topology = crossWithSourceKey1(dbRule,
+                        dbRuleArgs,
+                        tbRule,
+                        tbRuleArgs,
+                        commonColumn,
+                        outerCtx,
+                        calcParams);
+                } else {
+                    topology = crossWithSourceKey2(dbRule,
+                        dbRuleArgs,
+                        tbRule,
+                        tbRuleArgs,
+                        commonSet,
+                        outerCtx,
+                        calcParams);
+                }
             }
         }
 

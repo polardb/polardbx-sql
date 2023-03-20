@@ -63,7 +63,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.utils.ExceptionUtils;
-import com.alibaba.polardbx.matrix.jdbc.utils.MergeHashMap;
+import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
@@ -86,10 +86,12 @@ import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
@@ -580,6 +582,15 @@ public class TConnection implements ITConnection {
                     ((SqlCreateTable) ast).setOriginalSql(sql.toString());
                 } else if (ast instanceof SqlCreateIndex) {
                     ((SqlCreateIndex) ast).setOriginalSql(sql.toString());
+                    RelNode relNode = plan.getPlan();
+                    if (relNode != null && relNode instanceof LogicalCreateIndex) {
+                        if (((LogicalCreateIndex) relNode).relDdl != null) {
+                            SqlNode createIndex = ((LogicalCreateIndex) relNode).relDdl.sqlNode;
+                            if (createIndex != null) {
+                                ((SqlCreateIndex) createIndex).setOriginalSql(sql.toString());
+                            }
+                        }
+                    }
                 } else if (ast instanceof SqlAlterTable) {
                     ((SqlAlterTable) ast).setOriginalSql(sql.toString());
                 }
@@ -614,6 +625,10 @@ public class TConnection implements ITConnection {
         // of table with global secondary index
         if (trxPolicyModified != null) {
             trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
+            if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext) && executionContext.isTsoTransaction()) {
+                // If this plan can be optimized, rebuild plan.
+                plan = Planner.getInstance().plan(sql, executionContext);
+            }
         }
 
         final boolean enableMdl = executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MDL);
@@ -649,6 +664,11 @@ public class TConnection implements ITConnection {
                 // of table with global secondary index
                 if (trxPolicyModified != null) {
                     trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
+                    if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext)
+                        && executionContext.isTsoTransaction()) {
+                        // If this plan can be optimized, rebuild plan.
+                        plan = Planner.getInstance().plan(sql, executionContext);
+                    }
                 }
             }
         }
@@ -1084,9 +1104,11 @@ public class TConnection implements ITConnection {
         boolean testMode = false;
         Long phySqlId = 0L;
         boolean rescheduled = false;
-        DdlContext ddlContext = null;
         boolean isExecutingPreparedStmt = false;
         PreparedStmtCache preparedStmtCache = null;
+        DdlContext ddlContext = null;
+        boolean usingHint = false;
+        String partitionName = null;
 
         if (this.executionContext != null) {
             privilegeContext = this.executionContext.getPrivilegeContext();
@@ -1097,9 +1119,11 @@ public class TConnection implements ITConnection {
             testMode = this.executionContext.isTestMode();
             phySqlId = this.executionContext.getPhySqlId();
             rescheduled = this.executionContext.isRescheduled();
-            ddlContext = this.executionContext.getDdlContext();
             isExecutingPreparedStmt = this.executionContext.isExecutingPreparedStmt();
             preparedStmtCache = this.executionContext.getPreparedStmtCache();
+            ddlContext = this.executionContext.getDdlContext();
+            usingHint = this.executionContext.isUseHint();
+            partitionName = this.executionContext.getPartitionName();
         }
         if (privilegeContext == null) {
             privilegeContext = new PrivilegeContext();
@@ -1146,6 +1170,8 @@ public class TConnection implements ITConnection {
         this.executionContext.setReturning(null);
         this.executionContext.setOptimizedWithReturning(false);
         this.executionContext.setClientFoundRows(isClientFoundRows());
+        this.executionContext.setUseHint(usingHint);
+        this.executionContext.setPartitionName(partitionName);
 
         this.executionContext.setIsExecutingPreparedStmt(isExecutingPreparedStmt);
         this.executionContext.setPreparedStmtCache(preparedStmtCache);
@@ -2034,5 +2060,10 @@ public class TConnection implements ITConnection {
 
     public void setClientFoundRows(boolean clientFoundRows) {
         this.clientFoundRows = clientFoundRows;
+    }
+
+    @Override
+    public boolean isMppConnection() {
+        return false;
     }
 }

@@ -139,6 +139,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStat
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemGetConfigStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemRefreshStorageStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemReloadStorageStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemSetConfigStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
@@ -5194,6 +5196,39 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
+    public boolean visit(SQLAlterSystemRefreshStorageStatement x) {
+        print0(ucase ? "ALTER SYSTEM REFRESH STORAGE " : "alter system refresh storage ");
+        x.getTargetStorage().accept(this);
+
+        print0(ucase ? " SET " : " set ");
+        List<SQLAssignItem> assignItems = x.getAssignItems();
+        int i = 0;
+        for (SQLAssignItem assignItem : assignItems) {
+            if (i > 0) {
+                print0(", ");
+            }
+            assignItem.accept(this);
+            i++;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterSystemReloadStorageStatement x) {
+        print0(ucase ? "ALTER SYSTEM RELOAD STORAGE " : "alter system reload storage ");
+        List<SQLExpr> dnIdList = x.getStorageList();
+        int i = 0;
+        for (SQLExpr dnId : dnIdList) {
+            if (i > 0) {
+                print0(", ");
+            }
+            dnId.accept(this);
+            i++;
+        }
+        return false;
+    }
+
+    @Override
     public boolean visit(DrdsMovePartition x) {
         print0(ucase ? "MOVE PARTITIONS " : "move partitions ");
         int instCount = 0;
@@ -5435,7 +5470,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
         String sqlSecurity = x.getSqlSecurity();
         if (sqlSecurity != null && sqlSecurity.length() > 0) {
-            print0(ucase ? "SQL SECURITY = " : "sql security = ");
+            print0(ucase ? "SQL SECURITY " : "sql security ");
             print0(sqlSecurity);
             println();
         }
@@ -7019,6 +7054,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         SQLName name = sqlPartitionDef.getName();
         SQLPartitionValue values = sqlPartitionDef.getValues();
         boolean isAdd = x.isAdd();
+
+        print0(ucase ? " MODIFY PARTITION " : " modify partition ");
 
         name.accept(this);
 

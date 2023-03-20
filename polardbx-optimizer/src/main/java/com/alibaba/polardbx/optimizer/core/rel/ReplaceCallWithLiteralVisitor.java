@@ -298,7 +298,7 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
         boolean updated = false;
         final List<RexNode> newProjects = new ArrayList<>(projects.size());
         for (RexNode rex : projects) {
-            if (rex instanceof RexCall) {
+            if (rex instanceof RexCall && !notReplaceWhenProject((RexCall) rex)) {
                 final RexNode newRex = rexVisitor.mayCompute(rex);
 
                 newProjects.add(newRex);
@@ -314,6 +314,12 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             return visited;
         }
 
+    }
+
+    private boolean notReplaceWhenProject(RexCall call) {
+        String functionName = call.getOperator().getName();
+        return TddlOperatorTable.UUID.getName().equalsIgnoreCase(functionName)
+            || TddlOperatorTable.UUID_SHORT.getName().equalsIgnoreCase(functionName);
     }
 
     /**
@@ -492,6 +498,5 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
     public void setReplaceRexCallParam(boolean replaceRexCallParam) {
         this.replaceRexCallParam = replaceRexCallParam;
     }
-
 
 }

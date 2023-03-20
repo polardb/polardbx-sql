@@ -30,6 +30,7 @@ import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import com.google.common.collect.ImmutableList;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
@@ -50,6 +51,7 @@ import static com.alibaba.polardbx.druid.sql.parser.SQLParserUtils.createSQLStat
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+@NotThreadSafe
 public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());
@@ -69,15 +71,18 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
         "alter table %s change column b bb bigint",
         "alter table %s change column c cc bigint first",
         "alter table %s change column d dd bigint after e",
+        "alter table %s change column e `3` bigint after dd",
+        "alter table %s change column `3` `\"f\"` int first",
+        "alter table %s change column `dd` `UNIQUE` int unique after `\"f\"`",
     };
 
     private static final String MODIFY_COLUMNS = "a,b,c,d,e";
 
-    private static final String CHANGE_COLUMNS = "a,bb,cc,dd,e";
+    private static final String CHANGE_COLUMNS = "a,bb,cc,`UNIQUE`,`\"f\"`";
 
     private static final String[] MODIFY_GSI_COLUMNS = {"a", "e", "b", "c", "d"};
 
-    private static final String[] CHANGE_GSI_COLUMNS = {"a", "e", "bb", "cc", "dd"};
+    private static final String[] CHANGE_GSI_COLUMNS = {"a", "bb", "cc", "\"f\"", "UNIQUE"};
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC ";
     private static final String OMC_ALTER_TABLE_WITH_GSI = "OMC_ALTER_TABLE_WITH_GSI=TRUE";
@@ -103,16 +108,15 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
     @Test
     public void testModifyColumnOrdinal() throws SQLException {
         setGlobalSupportInstantAddColumn(useInstantAddColumn);
-        String tableName = "omc_modify_column_ordinal_test_tbl" + RandomUtils.getStringBetween(1, 5);
+        String tableName = "omc_modify_column_ordinal_test_tbl";
         testColumnOrdinalInternal(tableName, MODIFY_PARAMS, MODIFY_COLUMNS, MODIFY_GSI_COLUMNS, true);
-        testColumnOrdinalInternal(tableName, CHANGE_PARAMS, CHANGE_COLUMNS, MODIFY_GSI_COLUMNS, false);
+        testColumnOrdinalInternal(tableName, MODIFY_PARAMS, MODIFY_COLUMNS, MODIFY_GSI_COLUMNS, false);
     }
 
     @Test
     public void testChangeColumnOrdinal() throws SQLException {
         setGlobalSupportInstantAddColumn(useInstantAddColumn);
-        String tableName = "omc_change_column_ordinal_test_tbl" + RandomUtils.getStringBetween(1, 5);
-
+        String tableName = "omc_change_column_ordinal_test_tbl";
         testColumnOrdinalInternal(tableName, CHANGE_PARAMS, CHANGE_COLUMNS, CHANGE_GSI_COLUMNS, true);
         testColumnOrdinalInternal(tableName, CHANGE_PARAMS, CHANGE_COLUMNS, CHANGE_GSI_COLUMNS, false);
     }
@@ -120,6 +124,7 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
     private void testColumnOrdinalInternal(String tableName, String[] params, String columns, String[] gsiColumns,
                                            boolean withGsi)
         throws SQLException {
+        tableName = tableName + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
         dropTableIfExistsInMySql(tableName);
 
@@ -153,7 +158,7 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
         String hint = buildCmdExtra(OMC_ALTER_TABLE_WITH_GSI);
         for (int i = 0; i < params.length; i++) {
             String alterSql = hint + String.format(params[i], tableName);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -170,7 +175,7 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, insert, null, false);
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
-        insert = String.format("insert into %s values (4,5,6,7,8),(8,9,10,11,12)", tableName);
+        insert = String.format("insert into %s values (4,5,6,7,8),(8,29,10,11,12)", tableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, insert, null, false);
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -210,7 +215,7 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
         SQLCreateTableStatement stmt1 = (SQLCreateTableStatement) schemaObject.getStatement();
         Set<String> originColumns =
             stmt1.getColumnDefinitions().stream()
-                .map(c -> normalize(c.getColumnName() + "." + c.getDataType().getName())
+                .map(c -> normalize(c.getColumnName()) + "." + c.getDataType().getName()
                     .toLowerCase()).collect(Collectors.toSet());
 
         //target

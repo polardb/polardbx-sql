@@ -23,18 +23,22 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.mpp.metadata.DefinedJsonSerde;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.collect.Sets;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -47,9 +51,11 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 
 import static com.alibaba.polardbx.common.utils.hash.HashMethodInfo.XXHASH_METHOD;
@@ -68,6 +74,43 @@ public class ParameterContextJSONTest {
         module1.addDeserializer(RawString.class, new DefinedJsonSerde.RawStringDeserializer());
 
         objectMapper.registerModule(module1);
+        objectMapper.registerModule(new JavaTimeModule());
+    }
+
+    @Test
+    public void testSession() throws Exception {
+        SessionRepresentation sessionRepresentation = new SessionRepresentation(
+            "traceId",
+            "catalog",
+            "scheam",
+            "user",
+            "host",
+            "encoding",
+            "connstring",
+            "sqlMode",
+            4,
+            1000,
+            true,
+            1000,
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashSet<>(),
+            new HashMap<>(),
+            false,
+            -1,
+            new InternalTimeZone(TimeZone.getDefault(), "test"),
+            1,
+            new HashMap<>(),
+            false,
+            false,
+            WorkloadType.TP);
+
+        String json = objectMapper.writeValueAsString(sessionRepresentation);
+        System.out.println(json);
+        SessionRepresentation target = objectMapper.readValue(json, sessionRepresentation.getClass());
+        Assert.assertTrue(target.getDnLsnMap() != null);
     }
 
     @Test

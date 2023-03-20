@@ -155,6 +155,9 @@ public class TopN {
     }
 
     public static String serializeToJson(TopN topN) {
+        if (topN == null) {
+            return null;
+        }
         String type = StatisticUtils.encodeDataType(topN.dataType);
 
         JSONObject topNJson = new JSONObject();

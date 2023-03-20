@@ -56,7 +56,8 @@ public class BinaryResultSetUtil {
      * Return both header packet and data packet.
      */
     public static IPacketOutputProxy resultSetToPacket(ResultSet rs, String charset, ServerConnection c,
-                                                       AtomicLong affectRow, PreparedStmtCache preparedStmtCache)
+                                                       AtomicLong affectRow, PreparedStmtCache preparedStmtCache,
+                                                       long sqlSelectLimit)
         throws SQLException, IllegalAccessException {
         // 先执行一次next，因为存在lazy-init处理，可能写了packet head包出去，但实际获取数据时出错导致客户端出现lost
         // connection，没有任何其他异常
@@ -69,7 +70,7 @@ public class BinaryResultSetUtil {
         processHeader(rs, c, headerPacket, undecidedTypeIndexes, preparedStmtCache);
 
         // Process data packet.
-        return processData(rs, c, charset, affectRow, headerPacket, undecidedTypeIndexes, existNext);
+        return processData(rs, c, charset, affectRow, headerPacket, undecidedTypeIndexes, existNext, sqlSelectLimit);
     }
 
     /**
@@ -121,7 +122,6 @@ public class BinaryResultSetUtil {
         List<BinaryRowDataPacket> lazyRows = new ArrayList<>();
         while (fetchRows > 0) {
             fetchRows--;
-
             // For the first row, the rs.next() is already called when the header packet is sent.
             // So do not call it again or we will miss the first row of data.
             if (!resultSetCachedObj.isFirstRow()) {
@@ -275,7 +275,8 @@ public class BinaryResultSetUtil {
      */
     private static IPacketOutputProxy processData(ResultSet rs, ServerConnection c, String charset,
                                                   AtomicLong affectRow, MysqlBinaryResultSetPacket headerPacket,
-                                                  Set<Integer> undecidedTypeIndexes, boolean existNext)
+                                                  Set<Integer> undecidedTypeIndexes, boolean existNext,
+                                                  long sqlSelectLimit)
         throws SQLException {
         boolean existUndecidedType = !undecidedTypeIndexes.isEmpty();
 
@@ -288,6 +289,11 @@ public class BinaryResultSetUtil {
         List<BinaryRowDataPacket> lazyRows = new ArrayList<>();
         if (existNext) {
             do {
+                if (sqlSelectLimit != ResultSetUtil.NO_SQL_SELECT_LIMIT
+                    && sqlSelectLimit < ResultSetUtil.MAX_SQL_SELECT_LIMIT && sqlSelectLimit-- <= 0L) {
+                    rs.close();
+                    break;
+                }
                 final BinaryRowDataPacket row =
                     getRowDataPacket(rs, charset, headerPacket, undecidedTypeIndexes, existUndecidedType);
 

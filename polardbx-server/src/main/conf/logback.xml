@@ -788,12 +788,11 @@
             <DefaultValue>tddl</DefaultValue>
         </discriminator>
         <sift>
-            <appender name="SPM-{app}"
-                      class="ch.qos.logback.core.rolling.RollingFileAppender">
-                <File>${loggerRoot:-..}/logs/${app}/spm.log</File>
+            <appender name="SPM" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/tddl/spm.log</File>
                 <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
                     <!-- rollover daily -->
-                    <fileNamePattern>${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/spm-%d{yyyy-MM-dd}-%i.log.gz
+                    <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/spm-%d{yyyy-MM-dd}-%i.log.gz
                     </fileNamePattern>
                     <timeBasedFileNamingAndTriggeringPolicy
                             class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
@@ -812,18 +811,17 @@
         </sift>
     </appender>
 
-    <appender name="STATISTICS" class="ch.qos.logback.classic.sift.SiftingAppender">
+    <appender name="STATISTIC" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
             <DefaultValue>tddl</DefaultValue>
         </discriminator>
         <sift>
-            <appender name="STATISTICS-{app}"
-                      class="ch.qos.logback.core.rolling.RollingFileAppender">
-                <File>${loggerRoot:-..}/logs/${app}/statistics.log</File>
+            <appender name="STATISTICS" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/tddl/statistics.log</File>
                 <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
                     <!-- rollover daily -->
-                    <fileNamePattern>${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/statistics-%d{yyyy-MM-dd}-%i.log.gz
+                    <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/statistic-%d{yyyy-MM-dd}-%i.log.gz
                     </fileNamePattern>
                     <timeBasedFileNamingAndTriggeringPolicy
                             class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
@@ -841,6 +839,7 @@
             </appender>
         </sift>
     </appender>
+
     <appender name="OSS" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
@@ -1036,17 +1035,17 @@
         <level value="INFO"/>
         <appender-ref ref="SPM"/>
     </logger>
-    <logger name="statistics" additivity="false">
+    <logger name="STATISTICS" additivity="false">
         <level value="INFO"/>
-        <appender-ref ref="STATISTICS"/>
+        <appender-ref ref="STATISTIC"/>
     </logger>
     <logger name="com.alibaba.polardbx.executor.whatIf" additivity="false">
         <level value="info"/>
-        <appender-ref ref="STATISTICS"/>
+        <appender-ref ref="STATISTIC"/>
     </logger>
     <logger name="com.alibaba.polardbx.optimizer.sharding.advisor" additivity="false">
         <level value="info"/>
-        <appender-ref ref="STATISTICS"/>
+        <appender-ref ref="STATISTIC"/>
     </logger>
     <logger name="oss" additivity="false">
         <level value="info"/>

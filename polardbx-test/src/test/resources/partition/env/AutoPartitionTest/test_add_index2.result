@@ -1,0 +1,127 @@
+DROP TABLE IF EXISTS `tbl`;
+CREATE TABLE `tbl` (
+	`a` int NOT NULL AUTO_INCREMENT,
+	`b` TIMESTAMP,
+	`c` DATETIME,
+	`d` DATE,
+	`e` YEAR,
+	PRIMARY KEY (a)
+);
+ALTER TABLE tbl
+	ADD INDEX `idx1` (b);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+CREATE INDEX `idx2` ON tbl (c);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+CREATE INDEX `idx3` ON tbl (d, b);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`),
+	LOCAL KEY `idx3` (`d`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`),
+	LOCAL KEY `idx3` (`d`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE tbl
+	ADD INDEX `idx4` (e, b);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`),
+	LOCAL KEY `idx3` (`d`, `b`),
+	LOCAL KEY `idx4` (`e`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` datetime DEFAULT NULL,
+	`d` date DEFAULT NULL,
+	`e` year(4) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	LOCAL KEY `idx1` (`b`),
+	LOCAL KEY `idx2` (`c`),
+	LOCAL KEY `idx3` (`d`, `b`),
+	LOCAL KEY `idx4` (`e`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */

@@ -58,7 +58,6 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
 
         SqlNode ast = astList.get(0);
 
-
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
         executionContext.setUsingPhySqlCache(true);

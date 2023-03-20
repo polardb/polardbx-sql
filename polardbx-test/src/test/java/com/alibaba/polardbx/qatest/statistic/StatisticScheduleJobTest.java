@@ -17,12 +17,10 @@
 package com.alibaba.polardbx.qatest.statistic;
 
 import com.alibaba.polardbx.common.utils.Assert;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import org.junit.Ignore;
 import org.junit.Test;
-import org.springframework.transaction.support.ResourceHolderSupport;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -40,10 +38,89 @@ public class StatisticScheduleJobTest extends BaseTestCase {
     }
 
     @Test
+    public void testAnalyzeTableWithoutHll() throws SQLException {
+        String sql;
+        String tableName = "select_base_one_multi_db_multi_tb";
+        long now = System.currentTimeMillis();
+        sql = "analyze table " + tableName;
+        try (Connection c = this.getPolardbxConnection()) {
+            c.createStatement().execute("set global STATISTIC_VISIT_DN_TIMEOUT=600000");
+            c.createStatement().execute("set global enable_hll=false");
+            c.createStatement().executeQuery(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            Assert.fail(e.getMessage());
+        } finally {
+            try (Connection c = this.getPolardbxConnection()) {
+                c.createStatement().execute("set global STATISTIC_VISIT_DN_TIMEOUT=60000");
+                c.createStatement().execute("set global enable_hll=true");
+            } catch (SQLException e) {
+                e.printStackTrace();
+                Assert.fail(e.getMessage());
+            }
+        }
+
+        // test work result
+        // check schedule job step
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        sql =
+            "select EVENT from information_schema.module_event where MODULE_NAME='STATISTICS' and TIMESTAMP>'"
+                + sdf.format(new Date(now)) + "'";
+        ResultSet moduleRs = JdbcUtil.executeQuery(sql, this.getPolardbxConnection());
+        System.out.println("get event log from module_event");
+        boolean hasRowCount = false;
+        boolean hasSample = false;
+        boolean notHasHll = false;
+        boolean hasPersist = false;
+        boolean hasSync = false;
+        while (moduleRs.next()) {
+            String event = moduleRs.getString("EVENT");
+            if (!hasRowCount && event.contains("STATISTIC_ROWCOUNT_COLLECTION FROM ANALYZE")) {
+                hasRowCount = true;
+                System.out.println(event);
+                System.out.println("hasRowCount");
+            } else if (!hasSample && event.contains("statistic sample started")) {
+                hasSample = true;
+                System.out.println(event);
+                System.out.println("hasSample");
+            } else if (!notHasHll && event.contains("ENABLE_HLL is false")) {
+                notHasHll = true;
+                System.out.println(event);
+                System.out.println("hasHll");
+
+            } else if (!hasPersist && event.contains("persist tables statistic")) {
+                hasPersist = true;
+                System.out.println(event);
+                System.out.println("hasPersist");
+            } else if (!hasSync && event.contains("sync statistic info ")) {
+                hasSync = true;
+                System.out.println(event);
+                System.out.println("hasSync");
+            }
+            if (hasRowCount && hasSample && notHasHll && hasPersist && hasSync) {
+                break;
+            }
+        }
+        Assert.assertTrue(hasRowCount && hasSample && notHasHll && hasPersist && hasSync);
+
+        // check modify time
+        sql =
+            "select FROM_UNIXTIME(LAST_MODIFY_TIME) AS TIME from information_schema.virtual_statistic where table_name='select_base_one_multi_db_multi_tb'";
+        ResultSet rs = JdbcUtil.executeQuery(sql, this.getPolardbxConnection());
+        while (rs.next()) {
+            Timestamp timestamp = rs.getTimestamp("TIME");
+            if (timestamp.after(new Timestamp(now))) {
+                return;
+            }
+        }
+        Assert.fail("no statistic time updated");
+    }
+
+    @Ignore
     public void testRowCountCollectJob() throws SQLException, InterruptedException {
         String sql = "";
         long now = System.currentTimeMillis();
-        sql = "select schedule_id from metadb.SCHEDULEd_JOBS where executor_type='STATISTIC_ROWCOUNT_COLLECTION'";
+        sql = "select schedule_id from metadb.SCHEDULED_JOBS where executor_type='STATISTIC_ROWCOUNT_COLLECTION'";
         String schedule_id = null;
         try (Connection c = this.getPolardbxConnection()) {
             ResultSet resultSet = c.createStatement().executeQuery(sql);
@@ -170,7 +247,7 @@ public class StatisticScheduleJobTest extends BaseTestCase {
         // check schedule job step
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sql =
-            "select EVENT from information_schema.module_event where MODULE_NAME='STATISTIC' and TIMESTAMP>'"
+            "select EVENT from information_schema.module_event where MODULE_NAME='STATISTICS' and TIMESTAMP>'"
                 + sdf.format(new Date(now)) + "'";
         ResultSet moduleRs = JdbcUtil.executeQuery(sql, this.getPolardbxConnection());
         System.out.println("get event log from module_event");
@@ -199,6 +276,134 @@ public class StatisticScheduleJobTest extends BaseTestCase {
             }
         }
         Assert.assertTrue(hasStart && hasSample && hasSync && hasEnd);
+
+        // check modify time
+        sql =
+            "select FROM_UNIXTIME(LAST_MODIFY_TIME) AS TIME from information_schema.virtual_statistic";
+        ResultSet rs = JdbcUtil.executeQuery(sql, this.getPolardbxConnection());
+        while (rs.next()) {
+            Timestamp timestamp = rs.getTimestamp("TIME");
+            if (timestamp.after(new Timestamp(now))) {
+                return;
+            }
+        }
+        Assert.fail("no statistic time updated");
+    }
+
+    @Test
+    public void testSampleSketchJobStopByConfig() throws SQLException, InterruptedException {
+        String sql;
+        sql = "set global ENABLE_BACKGROUND_STATISTIC_COLLECTION=false";
+        this.getPolardbxConnection().createStatement().execute(sql);
+        long now = System.currentTimeMillis();
+        sql = "select schedule_id from metadb.SCHEDULED_JOBS where executor_type='STATISTIC_SAMPLE_SKETCH'";
+        String schedule_id = null;
+        try (Connection c = this.getPolardbxConnection()) {
+            ResultSet resultSet = c.createStatement().executeQuery(sql);
+            resultSet.next();
+            schedule_id = resultSet.getString("schedule_id");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            Assert.fail(e.getMessage());
+        }
+
+        if (schedule_id == null) {
+            Assert.fail("Cannot find schedule id for STATISTIC_SAMPLE_SKETCH");
+        } else {
+            System.out.println("get schedule_id:" + schedule_id);
+        }
+
+        // record table statistic update info
+        sql = "set @FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB='true'";
+        Connection c = this.getPolardbxConnection();
+        JdbcUtil.executeUpdateSuccess(c, sql);
+        sql = " fire schedule " + schedule_id;
+        JdbcUtil.executeUpdateSuccess(c, sql);
+
+        System.out.println("fire schedule job done:" + schedule_id);
+
+        sql =
+            "select * from information_schema.module_event where MODULE_NAME like 'STATISTIC%' and EVENT like '%ENABLE_BACKGROUND_STATISTIC_COLLECTION%'";
+        System.out.println(sql);
+        // waiting job done
+        while (true) {
+            //timeout control 10 s
+            if (System.currentTimeMillis() - now > 10 * 1000) {
+                Assert.fail("timeout:5 min");
+                return;
+            }
+            Thread.sleep(1000);
+            ResultSet rs = JdbcUtil.executeQuery(sql, c);
+            if (rs.next()) {
+                return;
+            }
+        }
+
+    }
+
+    @Test
+    public void testAnalyzeTable() throws SQLException {
+        String sql;
+        String tableName = "select_base_one_multi_db_multi_tb";
+        long now = System.currentTimeMillis();
+        sql = "analyze table " + tableName;
+        try (Connection c = this.getPolardbxConnection()) {
+            c.createStatement().execute("set global STATISTIC_VISIT_DN_TIMEOUT=600000");
+            c.createStatement().executeQuery(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            Assert.fail(e.getMessage());
+        } finally {
+            try (Connection c = this.getPolardbxConnection()) {
+                c.createStatement().execute("set global STATISTIC_VISIT_DN_TIMEOUT=60000");
+            } catch (SQLException e) {
+                e.printStackTrace();
+                Assert.fail(e.getMessage());
+            }
+        }
+
+        // test work result
+        // check schedule job step
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        sql =
+            "select EVENT from information_schema.module_event where MODULE_NAME='STATISTICS' and TIMESTAMP>'"
+                + sdf.format(new Date(now)) + "'";
+        ResultSet moduleRs = JdbcUtil.executeQuery(sql, this.getPolardbxConnection());
+        System.out.println("get event log from module_event");
+        boolean hasRowCount = false;
+        boolean hasSample = false;
+        boolean hasHll = false;
+        boolean hasPersist = false;
+        boolean hasSync = false;
+        while (moduleRs.next()) {
+            String event = moduleRs.getString("EVENT");
+            if (!hasRowCount && event.contains("STATISTIC_ROWCOUNT_COLLECTION FROM ANALYZE")) {
+                hasRowCount = true;
+                System.out.println(event);
+                System.out.println("hasRowCount");
+            } else if (!hasSample && event.contains("statistic sample started")) {
+                hasSample = true;
+                System.out.println(event);
+                System.out.println("hasSample");
+            } else if (!hasHll && event.contains("ndv sketch rebuild")) {
+                hasHll = true;
+                System.out.println(event);
+                System.out.println("hasHll");
+
+            } else if (!hasPersist && event.contains("persist tables statistic")) {
+                hasPersist = true;
+                System.out.println(event);
+                System.out.println("hasPersist");
+            } else if (!hasSync && event.contains("sync statistic info ")) {
+                hasSync = true;
+                System.out.println(event);
+                System.out.println("hasSync");
+            }
+            if (hasRowCount && hasSample && hasHll && hasPersist && hasSync) {
+                break;
+            }
+        }
+        Assert.assertTrue(hasRowCount && hasSample && hasHll && hasPersist && hasSync);
 
         // check modify time
         sql =

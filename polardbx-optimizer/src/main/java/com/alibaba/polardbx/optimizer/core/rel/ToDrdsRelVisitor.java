@@ -57,6 +57,8 @@ import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemRefreshStorage;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemReloadStorage;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalBaseline;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalCcl;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
@@ -303,7 +305,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean modifyShardingColumn = false;
     private boolean containUncertainValue = false;
     private boolean containComplexExpression = false;
-    private boolean containScaleOutWriableTable = false;
+    private boolean containScaleOutWritableTable = false;
     private boolean containReplicateWriableTable = false;
     private boolean containOnlineModifyColumnTable = false;
 
@@ -683,10 +685,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 modifyGsiTable = true;
             }
 
-            if (!containScaleOutWriableTable && RelUtils
+            if (!containScaleOutWritableTable && RelUtils
                 .containScaleOutWriableTable(targetTableProperties, modifyingTableNames,
                     this.plannerContext.getExecutionContext())) {
-                containScaleOutWriableTable = true;
+                containScaleOutWritableTable = true;
             }
 
             if (!containReplicateWriableTable && RelUtils
@@ -840,6 +842,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 case CLEAR_CCL_TRIGGERS:
                 case SLOW_SQL_CCL:
                     return LogicalCcl.create(dalNode);
+                case ALTER_SYSTEM_REFRESH_STORAGE:
+                    return LogicalAlterSystemRefreshStorage.create(dalNode);
+                case ALTER_SYSTEM_RELOAD_STORAGE:
+                    return LogicalAlterSystemReloadStorage.create(dalNode);
                 default:
                     return LogicalDal.create(dalNode, dbIndex, phyTable, null);
                 }
@@ -1378,8 +1384,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return containComplexExpression;
     }
 
-    public boolean isContainScaleOutWriableTable() {
-        return containScaleOutWriableTable;
+    public boolean isContainScaleOutWritableTable() {
+        return containScaleOutWritableTable;
     }
 
     public boolean isContainReplicateWriableTable() {

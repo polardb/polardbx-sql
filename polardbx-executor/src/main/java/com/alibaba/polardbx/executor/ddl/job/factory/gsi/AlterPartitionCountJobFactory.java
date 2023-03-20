@@ -127,10 +127,12 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
 
         // drop gsi
         List<ExecutableDdlJob> dropGsiJobs = new ArrayList<>();
-        for (String indexTableName : tableNameMap.values()) {
+        for (Map.Entry<String, String> entries : tableNameMap.entrySet()) {
+            String newIndexTableName = entries.getValue();
             DropGlobalIndexPreparedData dropGlobalIndexPreparedData =
-                new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
+                new DropGlobalIndexPreparedData(schemaName, primaryTableName, newIndexTableName, false);
             dropGlobalIndexPreparedData.setRepartition(true);
+            dropGlobalIndexPreparedData.setRepartitionTableName(entries.getKey());
             ExecutableDdlJob dropGsiJob =
                 DropGsiJobFactory.create(dropGlobalIndexPreparedData, executionContext, false, false);
             // rollback is not supported after CutOver

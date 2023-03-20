@@ -87,13 +87,27 @@ public class HumanReadableRule {
                 dbPartitionPolicy = funcName;
             } else {
                 String dbRule = table.getDbRuleStrs()[0];
-                if (TStringUtil.containsIgnoreCase(dbRule, "hashCode")) {
+
+                if (TStringUtil.containsIgnoreCase(dbRule, "yyyymm")) {
+                    dbPartitionPolicy = "yyyymm";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "yyyyweek")) {
+                    dbPartitionPolicy = "yyyyweek";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "yyyydd")) {
+                    dbPartitionPolicy = "yyyydd";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "mmdd")) {
+                    dbPartitionPolicy = "mmdd";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "mm")) {
+                    dbPartitionPolicy = "mm";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "dd")) {
+                    dbPartitionPolicy = "dd";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "week")) {
+                    dbPartitionPolicy = "week";
+                } else if (TStringUtil.containsIgnoreCase(dbRule, "hashCode")) {
                     dbPartitionPolicy = "hash";
                 } else if (TStringUtil.containsIgnoreCase(dbRule, "longValue")) {
                     dbPartitionPolicy = "hash";
                 }
             }
-
         }
 
         if (!GeneralUtil.isEmpty(table.getTbRulesStrs())) {
@@ -107,6 +121,8 @@ public class HumanReadableRule {
 
                 if (TStringUtil.containsIgnoreCase(tbRule, "yyyymm")) {
                     tbPartitionPolicy = "yyyymm";
+                } else if (TStringUtil.containsIgnoreCase(tbRule, "yyyyweek")) {
+                    tbPartitionPolicy = "yyyyweek";
                 } else if (TStringUtil.containsIgnoreCase(tbRule, "yyyydd")) {
                     tbPartitionPolicy = "yyyydd";
                 } else if (TStringUtil.containsIgnoreCase(tbRule, "mmdd")) {

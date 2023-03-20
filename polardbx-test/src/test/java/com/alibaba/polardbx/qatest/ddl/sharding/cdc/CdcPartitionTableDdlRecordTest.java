@@ -20,7 +20,6 @@ import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.ResultSet;
@@ -28,6 +27,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -282,6 +282,9 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             testMoveTablePartition(stmt, PartitionType.Hash);
             testMoveTablePartition(stmt, PartitionType.HashKey);
 
+            //oss archive table
+            testMoveTablePartitionWithOss(stmt);
+
             tokenHints = buildTokenHints();
             sql = tokenHints + "drop database " + dbName;
             stmt.execute(sql);
@@ -477,6 +480,74 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         } else {
             throw new RuntimeException("not supported partition type : " + partitionType);
         }
+    }
+
+    private void testMoveTablePartitionWithOss(Statement stmt) throws SQLException {
+        //prepare base resource
+        String baseTableName1 = "t_hash_table_innodb_" + System.currentTimeMillis();
+        String baseTableCreateSql1 = String.format("CREATE TABLE `%s` (\n"
+            + "\t`id` bigint(20) DEFAULT NULL,\n"
+            + "\t`gmt_modified` datetime NOT NULL,\n"
+            + "\tPRIMARY KEY (`gmt_modified`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+            + "PARTITION BY KEY(`gmt_modified`)\n"
+            + "PARTITIONS 8\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "STARTWITH '%s-01-01'\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 12\n"
+            + "PRE ALLOCATE 6\n"
+            + "PIVOTDATE NOW()\n", baseTableName1, Calendar.getInstance().get(Calendar.YEAR) - 1);
+        createTable(stmt, baseTableCreateSql1);
+
+        String baseTableName2 = "t_hash_table_innodb_" + System.currentTimeMillis();
+        String baseTableCreateSql2 = String.format("CREATE TABLE `%s` (\n"
+            + "\t`id` bigint(20) DEFAULT NULL,\n"
+            + "\t`gmt_modified` datetime NOT NULL,\n"
+            + "\tPRIMARY KEY (`gmt_modified`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+            + "PARTITION BY KEY(`gmt_modified`)\n"
+            + "PARTITIONS 8\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "STARTWITH '%s-01-01'\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 12\n"
+            + "PRE ALLOCATE 6\n"
+            + "PIVOTDATE NOW()\n", baseTableName2, Calendar.getInstance().get(Calendar.YEAR) - 1);
+        createTable(stmt, baseTableCreateSql2);
+
+        try {
+            String fileStoragePath = "'file_uri' ='file:///tmp/orc_" + System.currentTimeMillis() + "/'";
+            String createDataSourceSql = "create filestorage local_disk with (" + fileStoragePath + ");";
+            stmt.execute(createDataSourceSql);
+        } catch (SQLException t) {
+            if (!StringUtils.contains(t.getMessage(), "FileStorage LOCAL_DISK already exists ")) {
+                throw t;
+            }
+        }
+
+        // test alter table move partition
+        String ossTableName0 = "oss_0";
+        String ossTableCreateSql0 = "create table " + ossTableName0 + " like `" + baseTableName1 +
+            "` engine = 'local_disk' archive_mode = 'TTL'";
+        stmt.execute(ossTableCreateSql0);
+
+        String tokenHints = buildTokenHints();
+        String sql = tokenHints + getMovePartitionSql4Table(ossTableName0);
+        stmt.execute(sql);
+        Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
+
+        // test alter tablegroup move partiton
+        String ossTableName1 = "oss_1";
+        String ossTableCreateSql1 = "create table " + ossTableName1 + " like `" + baseTableName2 +
+            "` engine = 'local_disk' archive_mode = 'TTL'";
+        stmt.execute(ossTableCreateSql1);
+
+        String tableGroup = queryTableGroup(ossTableName1);
+        tokenHints = buildTokenHints();
+        sql = tokenHints + getMovePartitionSql(tableGroup, ossTableName1, PartitionType.Hash);
+        stmt.execute(sql);
+        Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
     }
 
     private void testMoveTablePartition(Statement stmt, PartitionType partitionType) throws SQLException {

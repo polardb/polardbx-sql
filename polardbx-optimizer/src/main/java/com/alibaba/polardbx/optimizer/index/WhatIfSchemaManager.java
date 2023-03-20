@@ -301,7 +301,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
 
         List<CandidateIndex> candidateGsiSet = candidateIndexSet.stream()
             .map(candidateIndex -> tableMeta.isAutoPartition() ? candidateIndex.copyAsGsi() : candidateIndex)
-            .filter(candidateIndex -> candidateIndex.isGsi())
+            .filter(candidateIndex -> candidateIndex != null && candidateIndex.isGsi())
             .filter(candidateIndex -> candidateIndex.getSchemaName().equalsIgnoreCase(tableMeta.getSchemaName()) &&
                 candidateIndex.getTableName().equals(tableMeta.getTableName()))
             .collect(Collectors.toList());

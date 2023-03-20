@@ -16,8 +16,9 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Set;
 
-public class InformationSchemaPushedFunctionHandler extends BaseVirtualViewSubClassHandler{
-    private static final String FIND_PUSHED_FUNCTIONS = String.format("SELECT ROUTINE_NAME FROM information_schema.routines WHERE ROUTINE_SCHEMA = '%s' AND ROUTINE_TYPE = '%s' AND ROUTINE_COMMENT = '%s'",
+public class InformationSchemaPushedFunctionHandler extends BaseVirtualViewSubClassHandler {
+    private static final String FIND_PUSHED_FUNCTIONS = String.format(
+        "SELECT ROUTINE_NAME FROM information_schema.routines WHERE ROUTINE_SCHEMA = '%s' AND ROUTINE_TYPE = '%s' AND ROUTINE_COMMENT = '%s'",
         PlConstants.MYSQL, PlConstants.FUNCTION, PlConstants.POLARX_COMMENT);
 
     public InformationSchemaPushedFunctionHandler(VirtualViewHandler virtualViewHandler) {
@@ -36,7 +37,7 @@ public class InformationSchemaPushedFunctionHandler extends BaseVirtualViewSubCl
             try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
                 Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(FIND_PUSHED_FUNCTIONS)) {
-                while(rs.next()) {
+                while (rs.next()) {
                     cursor.addRow(new Object[] {
                         dnId,
                         DataTypes.StringType.convertFrom(rs.getString("ROUTINE_NAME"))

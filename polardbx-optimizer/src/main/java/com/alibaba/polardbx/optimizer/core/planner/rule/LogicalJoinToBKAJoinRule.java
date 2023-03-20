@@ -16,19 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.hint.operator.HintType;
+import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptRule;
@@ -64,7 +64,8 @@ public class LogicalJoinToBKAJoinRule extends RelOptRule {
     public static final LogicalJoinToBKAJoinRule LOGICALVIEW_NOT_RIGHT = new LogicalJoinToBKAJoinRule(
         operand(LogicalJoin.class, null, JOIN_NOT_RIGHT,
             operand(RelSubset.class, any()),
-            operand(LogicalView.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())), "LOGICALVIEW:NOT_RIGHT");
+            operand(LogicalView.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+        "LOGICALVIEW:NOT_RIGHT");
 
     public static final LogicalJoinToBKAJoinRule LOGICALVIEW_RIGHT = new LogicalJoinToBKAJoinRule(
         operand(LogicalJoin.class, null, JOIN_RIGHT,
@@ -131,6 +132,22 @@ public class LogicalJoinToBKAJoinRule extends RelOptRule {
         final LogicalJoin join = (LogicalJoin) rel;
         final LogicalTableLookup logicalTableLookup;
         final LogicalIndexScan logicalIndexScan;
+        //    Join
+        //   /    \
+        //  rel   LookUp
+        //          \
+        //          IndexScan
+        //
+        //-------------------
+        //
+        //   BKA Join
+        //   /    \
+        //  rel   LookUp
+        //          \
+        //          IndexScan(join=rel)
+        //
+        // lookup will be transformed to another BKA join in optimizeByExpandTableLookup() after CBO
+
         if (join.getJoinType() == JoinRelType.RIGHT) {
             logicalTableLookup = call.rel(1);
             logicalIndexScan = call.rel(2);
@@ -139,6 +156,19 @@ public class LogicalJoinToBKAJoinRule extends RelOptRule {
             logicalIndexScan = call.rel(3);
         }
 
+        //     Right Join
+        //     /      \
+        //   LookUp   rel
+        //    /
+        // IndexScan
+        //
+        // -----------------
+        //
+        //  BKA Right Join
+        //     /      \
+        //   LookUp   rel
+        //    /
+        // IndexScan(join=rel)
         RexUtils.RestrictType restrictType;
         switch (join.getJoinType()) {
         case LEFT:

@@ -24,15 +24,15 @@ public class FunctionCacheTest extends BaseTestCase {
     public void init() throws SQLException {
         this.tddlConnection = getPolardbxConnection();
         this.checkConnection = getPolardbxConnection();
-        JdbcUtil.executeSuccess(tddlConnection, "SET ENABLE_UDF = true");
         dropAllfunctions();
     }
 
     private void dropAllfunctions() throws SQLException {
         try (Statement checkStmt = checkConnection.createStatement();
             Statement stmt = tddlConnection.createStatement();
-            ResultSet rs = checkStmt.executeQuery("select * from information_schema.routines where routine_type = 'function'")) {
-            while(rs.next()) {
+            ResultSet rs = checkStmt.executeQuery(
+                "select * from information_schema.routines where routine_type = 'function'")) {
+            while (rs.next()) {
                 String functionName = rs.getString("ROUTINE_NAME");
                 stmt.executeUpdate("drop function if exists " + functionName);
             }
@@ -91,7 +91,7 @@ public class FunctionCacheTest extends BaseTestCase {
     private void functionCacheCompareTo0(Statement statement, boolean equal) throws SQLException {
         boolean allEqual = true;
         try (ResultSet rs = statement.executeQuery("select * from information_schema.function_cache");) {
-            while(rs.next()) {
+            while (rs.next()) {
                 if (rs.getLong("SIZE") > 0) {
                     allEqual = false;
                     break;
@@ -111,7 +111,7 @@ public class FunctionCacheTest extends BaseTestCase {
     private void functionUsedSizeCompareTo0(Statement statement, boolean equal) throws SQLException {
         boolean allEqual = true;
         try (ResultSet rs = statement.executeQuery("select * from information_schema.function_cache_capacity");) {
-            while(rs.next()) {
+            while (rs.next()) {
                 if (rs.getLong("USED_SIZE") > 0) {
                     allEqual = false;
                     break;
@@ -129,8 +129,8 @@ public class FunctionCacheTest extends BaseTestCase {
 
     private void cacheContainsfunction(Statement statement, String function) throws SQLException {
         try (ResultSet rs = statement.executeQuery("select * from information_schema.function_cache");) {
-            boolean find  = false;
-            while(rs.next()) {
+            boolean find = false;
+            while (rs.next()) {
                 if (function.equalsIgnoreCase(rs.getString("function"))) {
                     find = true;
                     break;

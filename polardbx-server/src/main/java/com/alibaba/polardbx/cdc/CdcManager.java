@@ -82,7 +82,6 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.Partitioner;
-import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.VirtualTableRuleMatcher;
 import com.alibaba.polardbx.rule.gms.TddlRuleGmsConfig;
@@ -119,9 +118,9 @@ import static com.alibaba.polardbx.cdc.CdcDbLock.releaseCdcDbLockByCommit;
 import static com.alibaba.polardbx.cdc.CdcStorageUtil.isStorageContainsGroup;
 import static com.alibaba.polardbx.cdc.MetaBuilder.checkLogicDbMeta;
 import static com.alibaba.polardbx.cdc.MetaBuilder.checkLogicTableMeta;
-import static com.alibaba.polardbx.cdc.SQLHelper.FEATURES;
 import static com.alibaba.polardbx.cdc.SQLHelper.filterColumns;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.InstructionType.StorageInstChange;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_INITIAL;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_SUCCESS;
@@ -457,7 +456,8 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             String phyCreateSql = MetaBuilder.getPhyCreateSql(schema, tableMeta);
 
             List<SQLStatement> phyStatementList =
-                SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, FEATURES).parseStatementList();
+                SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, SQL_PARSE_FEATURES)
+                    .parseStatementList();
             MySqlCreateTableStatement phyCreateStmt = (MySqlCreateTableStatement) phyStatementList.get(0);
             phyCreateStmt.setTableName("`" + MetaBuilder.escape(tableName) + "`");
             filterColumns(phyCreateStmt, schema, tableName);

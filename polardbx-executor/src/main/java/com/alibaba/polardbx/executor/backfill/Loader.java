@@ -93,7 +93,7 @@ public abstract class Loader extends PhyOperationBuilderCommon {
      * Insert into index table
      */
     public int fillIntoIndex(List<Map<Integer, ParameterContext>> batchParams,
-                             Pair<ExecutionContext, Pair<String,String>> baseEcAndIndexPair,
+                             Pair<ExecutionContext, Pair<String, String>> baseEcAndIndexPair,
                              Supplier<Boolean> checker) {
         if (batchParams.isEmpty()) {
             return 0;
@@ -105,17 +105,19 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                 int result = -1;
                 try {
                     // Batch insert
-                    result = applyBatch(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(), baseEcAndIndexPair.getValue().getValue());
+                    result = applyBatch(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
+                        baseEcAndIndexPair.getValue().getValue());
 
                     // Batch insert success, check lock exists
                     return checkBeforeCommit(checker, insertEc, result);
                 } catch (TddlNestableRuntimeException e) {
                     // Batch insert failed
                     SQLRecorderLogger.ddlLogger
-                        .warn(MessageFormat.format("[{0}] Batch insert failed first row: {1} cause: {2}",
+                        .warn(MessageFormat.format(
+                            "[{0}] Batch insert failed first row: {1} cause: {2}, phyTableName: {3}",
                             baseEcAndIndexPair.getKey().getTraceId(),
                             GsiUtils.rowToString(batchParams.get(0)),
-                            e.getMessage()));
+                            e.getMessage(), baseEcAndIndexPair.getValue().getValue()));
 
                     if (GsiUtils.vendorErrorIs(e, SQLSTATE_DUP_ENTRY, ER_DUP_ENTRY)) {
                         // Duplicated key exception
@@ -136,7 +138,8 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                 int result = 0;
 
                 for (Map<Integer, ParameterContext> param : batchParams) {
-                    int single = applyRow(param, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(), baseEcAndIndexPair.getValue().getValue(), true);
+                    int single = applyRow(param, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
+                        baseEcAndIndexPair.getValue().getValue(), true);
 
                     if (single < 1) {
                         // Compare row
@@ -254,7 +257,8 @@ public abstract class Loader extends PhyOperationBuilderCommon {
 
         newEc.setParams(parameters);
 
-        return executeInsert(ignore ? sqlInsertIgnore : sqlInsert, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
+        return executeInsert(ignore ? sqlInsertIgnore : sqlInsert, schemaName, tableName, newEc, sourceDbIndex,
+            phyTableName);
     }
 
     public abstract int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,

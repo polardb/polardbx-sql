@@ -28,7 +28,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Byte Block
- *
  */
 public class ByteBlock extends AbstractBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(ByteBlock.class).instanceSize();
@@ -38,13 +37,13 @@ public class ByteBlock extends AbstractBlock {
     public ByteBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new byte[slotLen];
+        updateSizeInfo();
     }
 
     ByteBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, byte[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = 2 * Byte.BYTES * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -177,7 +176,12 @@ public class ByteBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Byte.BYTES * positionCount;
     }
 }

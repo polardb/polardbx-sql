@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.druid.mock.MockBlob;
 import com.alibaba.druid.mock.MockClob;
+import com.alibaba.polardbx.optimizer.core.datatype.LongType;
+import org.junit.Assert;
 import com.alibaba.polardbx.executor.chunk.BlobBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
@@ -35,6 +37,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ReferenceBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        ReferenceBlock<Long> block = new ReferenceBlock<>(new LongType(), 1024);
+        Assert.assertEquals(5136, block.getElementUsedBytes());
+    }
 
     @Test
     public void test() {

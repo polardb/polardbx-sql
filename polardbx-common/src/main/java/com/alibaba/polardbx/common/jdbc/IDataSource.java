@@ -21,8 +21,12 @@ import java.sql.SQLException;
 
 public interface IDataSource extends DataSource {
 
+    String EMPTY = "empty";
+
     @Override
     IConnection getConnection() throws SQLException;
 
     IConnection getConnection(MasterSlave masterSlave) throws SQLException;
+
+    String getMasterDNId();
 }

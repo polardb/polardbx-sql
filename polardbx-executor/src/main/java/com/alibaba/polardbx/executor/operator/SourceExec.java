@@ -49,7 +49,7 @@ public abstract class SourceExec extends AbstractExecutor {
     public Chunk doNextChunk() {
         Chunk ret = doSourceNextChunk();
         if (ret != null) {
-            inputDataSizeUpdater.addAndGet(this, ret.getSizeInBytes());
+            inputDataSizeUpdater.addAndGet(this, ret.getElementUsedBytes());
             inputPositionsUpdater.addAndGet(this, ret.getPositionCount());
         }
         return ret;

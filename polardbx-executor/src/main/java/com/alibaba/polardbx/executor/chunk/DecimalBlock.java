@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.RawBytesDecimalUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
@@ -32,80 +33,69 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.FRACTIONS_OFF
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.INTEGERS_OFFSET;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.IS_NEG_OFFSET;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.roundUp;
+import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
+import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * An implement of Decimal block mixed with fixed and variable length
  */
 public class DecimalBlock extends AbstractBlock {
-    private static final long NULL_VALUE = 0L;
+    private static final int NULL_VALUE = 0;
+
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(DecimalBlock.class).instanceSize();
 
     private static final int UNSET = -1;
-    protected Slice memorySegments;
 
+    /**
+     * Allocate the memory of decimal vector
+     */
+    protected Slice memorySegments;
     protected int[] selection;
+
     /**
      * A Decimal Block is simple only if all non-null decimal values are in format of
      * (a2 * 10^(9*-1) + a1 * 10^(9*0) + b * 10^(9*-1)).
      * In other word, the int word and frac word is 0 or 1.
      */
-    private boolean isSimple;
-    private int int1Pos;
-    private int int2Pos;
-    private int fracPos;
+    private DecimalBlockState state;
 
     /**
-     * Allocate the memory of decimal vector
+     * For Vectorized expression result vector.
      */
     public DecimalBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.memorySegments = Slices.allocate(slotLen * DECIMAL_MEMORY_SIZE);
-
-        estimatedSize = INSTANCE_SIZE + memorySegments.length();
-        sizeInBytes = (DECIMAL_MEMORY_SIZE + Byte.BYTES) * positionCount;
         this.selection = null;
-        this.isSimple = false;
-        this.int1Pos = UNSET;
-        this.int2Pos = UNSET;
-        this.fracPos = UNSET;
+
+        this.state = DecimalBlockState.UNSET_STATE;
+        updateSizeInfo();
     }
 
     /**
      * For Delay Materialization.
      */
     public DecimalBlock(DataType dataType, Slice memorySegments, boolean[] nulls, boolean hasNull, int length,
-                        int[] selection, boolean isSimple, int int1Pos, int int2Pos, int fracPos) {
+                        int[] selection, DecimalBlockState state) {
         super(dataType, length, nulls, hasNull);
         this.memorySegments = memorySegments;
-
-        estimatedSize = INSTANCE_SIZE + memorySegments.length();
-        sizeInBytes = (DECIMAL_MEMORY_SIZE + Byte.BYTES) * positionCount;
         this.selection = selection;
-        this.isSimple = isSimple;
-        this.int1Pos = isSimple ? int1Pos : UNSET;
-        this.int2Pos = isSimple ? int2Pos : UNSET;
-        this.fracPos = isSimple ? fracPos : UNSET;
+
+        this.state = state;
+        updateSizeInfo();
     }
 
     /**
      * Normal
      */
     public DecimalBlock(int positionCount, boolean[] valueIsNull,
-                        Slice memorySegments, boolean isSimple, int int1Pos, int int2Pos, int fracPos) {
+                        Slice memorySegments, DecimalBlockState state) {
         super(0, positionCount, valueIsNull);
         this.memorySegments = memorySegments;
         this.selection = null;
 
-        estimatedSize = INSTANCE_SIZE + memorySegments.length();
-        sizeInBytes = (DECIMAL_MEMORY_SIZE + Byte.BYTES) * positionCount;
-
-        this.isSimple = isSimple;
-        this.int1Pos = isSimple ? int1Pos : UNSET;
-        this.int2Pos = isSimple ? int2Pos : UNSET;
-        this.fracPos = isSimple ? fracPos : UNSET;
-
+        this.state = state;
+        updateSizeInfo();
     }
-
 
     public int realPositionOf(int position) {
         return selection == null ? position : selection[position];
@@ -146,14 +136,10 @@ public class DecimalBlock extends AbstractBlock {
             // write to decimal memory segments
             b.sliceOutput.writeBytes(memorySegments, position * DECIMAL_MEMORY_SIZE, DECIMAL_MEMORY_SIZE);
             b.valueIsNull.add(false);
+
             // update decimal info
-            if (isSimple) {
-                b.setSimple(true);
-                b.setFracWord(1);
-                b.setIntWord(int2Pos != UNSET ? 2 : (int1Pos != UNSET ? 1 : 0));
-            } else {
-                b.setSimple(false);
-            }
+            DecimalBlockState elementState = DecimalBlockState.stateOf(memorySegments, position);
+            b.state = b.state.merge(elementState);
         }
     }
 
@@ -200,9 +186,9 @@ public class DecimalBlock extends AbstractBlock {
     @Override
     public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putLong(NULL_VALUE);
+            sink.putInt(NULL_VALUE);
         } else {
-            sink.putLong(hashCode(position));
+            sink.putInt(hashCode(position));
         }
     }
 
@@ -268,6 +254,7 @@ public class DecimalBlock extends AbstractBlock {
                 int j = selection[i];
                 sliceOutput.appendBytes(this.memorySegments.slice(j * DECIMAL_MEMORY_SIZE, DECIMAL_MEMORY_SIZE));
             }
+
         } else {
             sliceOutput.appendBytes(this.memorySegments);
         }
@@ -278,7 +265,7 @@ public class DecimalBlock extends AbstractBlock {
      */
     @Deprecated
     public Slice getMemorySegments() {
-        return memorySegments;
+        return this.memorySegments;
     }
 
     public Slice getRegion(int position) {
@@ -306,66 +293,35 @@ public class DecimalBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
-        estimatedSize = INSTANCE_SIZE + memorySegments.length();
-        sizeInBytes = (Long.BYTES + Integer.BYTES + Integer.BYTES + Byte.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + memorySegments.length();
+        elementUsedBytes = Byte.BYTES * positionCount + DECIMAL_MEMORY_SIZE * positionCount;
     }
 
     public void collectDecimalInfo() {
-        if (isSimple) {
+        // recollect decimal state info util state is not UNSET_STATE anymore.
+        if (this.state != DecimalBlockState.UNSET_STATE) {
             return;
         }
-        boolean unset = true;
-        int lastIntWord = 0, lastFracWord = 0;
+        DecimalBlockState resultState = DecimalBlockState.UNSET_STATE;
         for (int position = 0; position < positionCount; position++) {
             position = realPositionOf(position);
             if (!isNull(position)) {
-                int integers = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + INTEGERS_OFFSET) & 0xFF;
-                int fractions = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + FRACTIONS_OFFSET) & 0xFF;
-                int isNeg = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + IS_NEG_OFFSET) & 0xFF;
+                // get state of block element and merge with result state
+                DecimalBlockState elementState = DecimalBlockState.stateOf(memorySegments, position);
+                resultState = resultState.merge(elementState);
+            }
+        }
 
-                int intWord = roundUp(integers);
-                int fracWord = roundUp(fractions);
-                if (isNeg == 1 || !((intWord == 0 || intWord == 1 || intWord == 2) && fracWord == 1)) {
-                    isSimple = false;
-                    int1Pos = UNSET;
-                    int2Pos = UNSET;
-                    fracPos = UNSET;
-                    return;
-                }
-                if (unset) {
-                    lastIntWord = intWord;
-                    lastFracWord = fracWord;
-                    unset = false;
-                } else if (lastIntWord != intWord || lastFracWord != fracWord) {
-                    isSimple = false;
-                    int1Pos = UNSET;
-                    int2Pos = UNSET;
-                    fracPos = UNSET;
-                    return;
-                }
-            }
-        }
-        if (!unset) {
-            isSimple = true;
-            if (lastIntWord == 0) {
-                int2Pos = UNSET;
-                int1Pos = UNSET;
-                fracPos = 0;
-            } else if (lastIntWord == 1) {
-                int2Pos = UNSET;
-                int1Pos = 0;
-                fracPos = 1;
-            } else if (lastIntWord == 2) {
-                int2Pos = 0;
-                int1Pos = 1;
-                fracPos = 2;
-            } else {
-                isSimple = false;
-                int1Pos = UNSET;
-                int2Pos = UNSET;
-                fracPos = UNSET;
-            }
-        }
+        this.state = resultState;
+    }
+
+    public DecimalBlockState getState() {
+        return state;
     }
 
     public int[] getSelection() {
@@ -373,50 +329,34 @@ public class DecimalBlock extends AbstractBlock {
     }
 
     public int fastInt1(int position) {
-        return (!isSimple || int1Pos == UNSET) ? 0 :
-            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + int1Pos * 4);
+        return (!state.isSimple() || state.getInt1Pos() == UNSET) ? 0 :
+            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + state.getInt1Pos() * 4);
     }
 
     public int fastInt2(int position) {
-        return (!isSimple || int2Pos == UNSET) ? 0 :
-            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + int2Pos * 4);
+        return (!state.isSimple() || state.getInt2Pos() == UNSET) ? 0 :
+            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + state.getInt2Pos() * 4);
     }
 
     public int fastFrac(int position) {
-        return !isSimple ? 0 :
-            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + fracPos * 4);
+        return (!state.isSimple() || state.getFracPos() == UNSET) ? 0 :
+            memorySegments.getInt(realPositionOf(position) * DECIMAL_MEMORY_SIZE + state.getFracPos() * 4);
     }
 
     public boolean isSimple() {
-        return isSimple;
-    }
-
-    public void setSimple(boolean simple) {
-        isSimple = simple;
+        return state.isSimple();
     }
 
     public int getInt1Pos() {
-        return int1Pos;
-    }
-
-    public void setInt1Pos(int int1Pos) {
-        this.int1Pos = int1Pos;
+        return state.getInt1Pos();
     }
 
     public int getInt2Pos() {
-        return int2Pos;
-    }
-
-    public void setInt2Pos(int in2Pos) {
-        this.int2Pos = int2Pos;
+        return state.getInt2Pos();
     }
 
     public int getFracPos() {
-        return fracPos;
-    }
-
-    public void setFracPos(int fracPos) {
-        this.fracPos = fracPos;
+        return state.getFracPos();
     }
 
     // note: dangerous!
@@ -511,5 +451,117 @@ public class DecimalBlock extends AbstractBlock {
         memorySegments.setByte(index + FRACTIONS_OFFSET, 9);
         memorySegments.setByte(index + DERIVED_FRACTIONS_OFFSET, 9);
         memorySegments.setByte(index + IS_NEG_OFFSET, 0);
+    }
+
+    /**
+     * State of decimal block
+     */
+    enum DecimalBlockState {
+        UNSET_STATE(false, UNSET, UNSET, UNSET),
+
+        NOT_SIMPLE(false, UNSET, UNSET, UNSET),
+
+        // frac * 10^-9
+        SIMPLE_MODE_1(true, UNSET, UNSET, 0),
+
+        // int1 + frac * 10^-9
+        SIMPLE_MODE_2(true, UNSET, 0, 1),
+
+        // int2 * 10^9 + int1 + frac * 10^-9
+        SIMPLE_MODE_3(true, 0, 1, 2);
+
+        private final boolean isSimple;
+        private final int int2Pos;
+        private final int int1Pos;
+        private final int fracPos;
+
+        DecimalBlockState(boolean isSimple, int int2Pos, int int1Pos, int fracPos) {
+            this.isSimple = isSimple;
+            this.int2Pos = int2Pos;
+            this.int1Pos = int1Pos;
+            this.fracPos = fracPos;
+        }
+
+        public DecimalBlockState merge(DecimalBlockState that) {
+            if (this == UNSET_STATE) {
+                return that;
+            }
+
+            if (that == UNSET_STATE) {
+                return this;
+            }
+
+            if (this == that && this != NOT_SIMPLE) {
+                return this;
+            }
+            return NOT_SIMPLE;
+        }
+
+        public static DecimalBlockState stateOf(Slice memorySegments, int position) {
+            int isNeg = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + IS_NEG_OFFSET) & 0xFF;
+            if (isNeg == 1) {
+                return NOT_SIMPLE;
+            }
+
+            int integers = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + INTEGERS_OFFSET) & 0xFF;
+            int fractions = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + FRACTIONS_OFFSET) & 0xFF;
+
+            int intWord = roundUp(integers);
+            int fracWord = roundUp(fractions);
+
+            if (intWord == 0 && fracWord == 1) {
+                // frac * 10^-9
+                return SIMPLE_MODE_1;
+            } else if (intWord == 1 && fracWord == 1) {
+                // int1 + frac * 10^-9
+                return SIMPLE_MODE_2;
+            } else if (intWord == 2 && fracWord == 1) {
+                // int2 * 10^9 + int1 + frac * 10^-9
+                return SIMPLE_MODE_3;
+            }
+
+            return NOT_SIMPLE;
+        }
+
+        public static DecimalBlockState stateOf(DecimalStructure decimalStructure) {
+            if (decimalStructure == null || decimalStructure.isNeg()) {
+                return NOT_SIMPLE;
+            }
+
+            int integers = decimalStructure.getIntegers();
+            int fractions = decimalStructure.getFractions();
+
+            int intWord = roundUp(integers);
+            int fracWord = roundUp(fractions);
+
+            if (intWord == 0 && fracWord == 1) {
+                // frac * 10^-9
+                return SIMPLE_MODE_1;
+            } else if (intWord == 1 && fracWord == 1) {
+                // int1 + frac * 10^-9
+                return SIMPLE_MODE_2;
+            } else if (intWord == 2 && fracWord == 1) {
+                // int2 * 10^9 + int1 + frac * 10^-9
+                return SIMPLE_MODE_3;
+            }
+
+            return NOT_SIMPLE;
+        }
+
+        public boolean isSimple() {
+            return isSimple;
+        }
+
+        public int getInt2Pos() {
+            return int2Pos;
+        }
+
+        public int getInt1Pos() {
+            return int1Pos;
+        }
+
+        public int getFracPos() {
+            return fracPos;
+        }
     }
 }

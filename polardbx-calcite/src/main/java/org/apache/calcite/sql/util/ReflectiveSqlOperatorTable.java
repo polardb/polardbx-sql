@@ -37,7 +37,7 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
 
   //~ Instance fields --------------------------------------------------------
 
-  private final Multimap<Key, SqlOperator> operators = HashMultimap.create();
+  private Multimap<Key, SqlOperator> operators = HashMultimap.create();
 
   //~ Constructors -----------------------------------------------------------
 
@@ -132,8 +132,13 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
         operators.put(new Key(op.getName(), op.getSyntax()), op);
     }
 
-    public void unregister(String name, SqlSyntax sqlSyntax) {
-        operators.removeAll(new Key(name, sqlSyntax));
+    public Multimap<Key, SqlOperator> getOperators() {
+        return operators;
+    }
+
+    public void setOperators(
+        Multimap<Key, SqlOperator> operators) {
+        this.operators = operators;
     }
 
     public List<SqlOperator> getOperatorList() {
@@ -144,8 +149,8 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
      * Key for looking up operators. The name is stored in upper-case because we
      * store case-insensitively, even in a case-sensitive session.
      */
-    private static class Key extends Pair<String, SqlSyntax> {
-        Key(String name, SqlSyntax syntax) {
+    public static class Key extends Pair<String, SqlSyntax> {
+        public Key(String name, SqlSyntax syntax) {
             super(name.toUpperCase(Locale.ROOT), normalize(syntax));
         }
 

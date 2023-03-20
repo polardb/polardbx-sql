@@ -18,7 +18,6 @@ package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -29,7 +28,6 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -94,7 +92,7 @@ public class StorageInfoAccessor extends AbstractAccessor {
             + ") VALUES (null, now(), now(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     private static final String DELETE_STORAGE_INFO_BY_INST_ID_IP_PORT =
-        "delete from storage_info where storage_inst_id=? and ip=? and port=?;";
+        "delete from storage_info where storage_inst_id=? and ip=? and port=? and is_vip=0;";
 
     private static final String GET_MASTER_INST_ID_FOR_SERVER =
         "select distinct inst_id, inst_kind from storage_info where status!=2 and inst_kind=0 limit 1";

@@ -534,4 +534,31 @@ public class CreateTableTest extends PartitionTestBase {
         sql = "alter table largeCol add global index g1(id) covering(c1) partition by key(id) partitions 1";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
+
+    @Test
+    public void testGeneratedColumnsForbidden() {
+        final String tableName = "test_generated_columns";
+        final String createTable = "create table " + tableName + " (c1 int, c2 int %s)";
+        final String expectedErrMsg = "Do not support generated columns";
+
+        dropTableIfExists(tableName);
+
+        String sql = String.format(createTable, "as (c1+1)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(createTable, "generated always as (c1+4)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(createTable, "generated always as (c1+5) virtual");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(createTable, "as (c1+3) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(createTable, "generated always as (c1+6) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        dropTableIfExists(tableName);
+    }
+
 }

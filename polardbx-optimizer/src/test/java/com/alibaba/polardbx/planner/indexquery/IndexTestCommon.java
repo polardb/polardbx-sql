@@ -54,6 +54,7 @@ public abstract class IndexTestCommon extends PlanTestCommon {
             executionContext.getGroupHint());
         hintPlanner.collectAndPreExecute(ast, cmdBean, false, executionContext);
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+        plannerContext.setSchemaName(appName);
 
         ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
         final RelNode relNode = executionPlan.getPlan();

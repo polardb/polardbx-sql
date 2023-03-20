@@ -46,7 +46,9 @@ import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
+import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -55,6 +57,7 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.ccl.common.CclContext;
@@ -94,6 +97,7 @@ import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.commons.lang.StringUtils;
+import org.checkerframework.checker.units.qual.K;
 
 import java.io.InputStream;
 import java.sql.Connection;
@@ -105,7 +109,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
 
 /**
  * 一次执行过程中的上下文 All queries in the same transaction will only share single
@@ -393,6 +400,8 @@ public class ExecutionContext {
     }
 
     private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace;
+
+    private String partitionName;
 
     public ExecutionContext() {
     }
@@ -786,7 +795,6 @@ public class ExecutionContext {
         return finalPlan.getDbIndexAndTableName();
     }
 
-
     public Object getScalarSubqueryVal(int paramKey) {
         if (paramKey < 0) {
             return null;
@@ -826,6 +834,38 @@ public class ExecutionContext {
             return null;
         }
         return pruneRawStringMap.get(pair).getCurrentParameter();
+    }
+
+    /**
+     * for union sql
+     */
+    public Map<Integer, ParameterContext> getPruneParamsForUnion(String dbIndex, List<List<String>> tableNames) {
+        Map<Integer, ParameterContext> rs = Maps.newHashMap();
+        for (List<String> phyTables : tableNames) {
+            Pair<String, List<String>> pair = new Pair<>(dbIndex, phyTables);
+            Map<Integer, ParameterContext> currentParams = pruneRawStringMap.get(pair).getCurrentParameter();
+            if (rs.size() == 0) {
+                rs.putAll(currentParams);
+            } else {
+                for (Map.Entry<Integer, ParameterContext> entry : currentParams.entrySet()) {
+                    if (entry.getValue() != null && entry.getValue().getValue() instanceof PruneRawString) {
+                        ParameterContext parameterContext = rs.get(entry.getKey());
+                        PruneRawString rawString = (PruneRawString) parameterContext.getValue();
+                        PruneRawString rawString1 = (PruneRawString) entry.getValue().getValue();
+                        rawString.merge(rawString1);
+                    }
+                }
+            }
+        }
+        return rs;
+    }
+
+    public String getPartitionName() {
+        return partitionName;
+    }
+
+    public void setPartitionName(String partitionName) {
+        this.partitionName = partitionName;
     }
 
     public static class ErrorMessage {
@@ -941,6 +981,22 @@ public class ExecutionContext {
 
     public void setModifyGsiTable(boolean modifyGsiTable) {
         getPlanProperties().set(ExecutionPlanProperties.MODIFY_GSI_TABLE, modifyGsiTable);
+    }
+
+    public boolean isScaleoutWritableTable() {
+        return getPlanProperties().get(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+    }
+
+    public void setScaleoutWritableTable(boolean modifyScaleoutTable) {
+        getPlanProperties().set(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE, modifyScaleoutTable);
+    }
+
+    public boolean isModifyOnlineColumnTable() {
+        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+    }
+
+    public void setModifyOnlineColumnTable(boolean modifyOnlineColumnTable) {
+        getPlanProperties().set(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE, modifyOnlineColumnTable);
     }
 
     public boolean isModifyReplicateTable() {
@@ -1093,7 +1149,7 @@ public class ExecutionContext {
     public ExecutionContext copy(CopyOption option) {
         ExecutionContext ec = new ExecutionContext();
         ec.transaction = getTransaction();
-        ec.extraCmds = Maps.newHashMap(getExtraCmds());
+        ec.extraCmds = deepCopyExtraCmds(this.extraCmds);
         ec.paramManager = new ParamManager(ec.extraCmds);
         ec.params = option.getParams().getOrElse(() -> this.params);
         ec.concurrentService = getExecutorService();
@@ -1523,6 +1579,20 @@ public class ExecutionContext {
 
     }
 
+    public static Map<String, Object> deepCopyExtraCmds(Map<String, Object> extraCmds) {
+        if (extraCmds == null) {
+            return null;
+        } else if (extraCmds instanceof MergeHashMap) {
+            return ((MergeHashMap) extraCmds).deepCopy();
+        } else if (extraCmds instanceof TreeMap) {
+            TreeMap newTreeMap = Maps.newTreeMap(((TreeMap) extraCmds).comparator());
+            newTreeMap.putAll(extraCmds);
+            return newTreeMap;
+        } else {
+            return Maps.newHashMap(extraCmds);
+        }
+    }
+
     public RelNode getUnOptimizedPlan() {
         return unOptimizedPlan;
     }
@@ -1829,7 +1899,8 @@ public class ExecutionContext {
 
     public boolean isEnableOssDelayMaterializationOnExchange() {
         if (enableOssDelayMaterializationOnExchange == null) {
-            enableOssDelayMaterializationOnExchange = paramManager.getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
+            enableOssDelayMaterializationOnExchange =
+                paramManager.getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
         }
         return enableOssDelayMaterializationOnExchange;
     }
@@ -1849,6 +1920,7 @@ public class ExecutionContext {
         executionContext.planProperties = planProperties;
         return executionContext;
     }
+
     public boolean isSupportAutoSavepoint() {
         // First, try to return session config value.
         if (null != extraServerVariables
@@ -1860,15 +1932,24 @@ public class ExecutionContext {
     }
 
     public boolean isSuperUser() {
-        final List<String> grants = PolarPrivManager.getInstance().showGrants(
-            this.getPrivilegeContext().getPolarUserInfo(),
-            this.getPrivilegeContext().getActiveRoles(),
-            this.getPrivilegeContext().getPolarUserInfo().getAccount(),
-            Collections.emptyList());
-        for (String grant : grants) {
-            if (StringUtils.startsWithIgnoreCase(grant, "GRANT ALL PRIVILEGES ON *.*")) {
+        try {
+            final AccountType accountType = this.getPrivilegeContext().getPolarUserInfo().getAccountType();
+            if (accountType.isGod() || accountType.isDBA()) {
                 return true;
             }
+
+            final List<String> grants = PolarPrivManager.getInstance().showGrants(
+                this.getPrivilegeContext().getPolarUserInfo(),
+                this.getPrivilegeContext().getActiveRoles(),
+                this.getPrivilegeContext().getPolarUserInfo().getAccount(),
+                Collections.emptyList());
+            for (String grant : grants) {
+                if (StringUtils.startsWithIgnoreCase(grant, "GRANT ALL PRIVILEGES ON *.*")) {
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            logger.error("Check super privilege error: ", t);
         }
         return false;
     }
@@ -1885,4 +1966,27 @@ public class ExecutionContext {
     public void setCalcitePlanOptimizerTrace(CalcitePlanOptimizerTrace calcitePlanOptimizerTrace) {
         this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
     }
+
+    public boolean isTsoTransaction() {
+        return null != transaction && transaction.getTransactionClass().isA(TSO_TRANSACTION);
+    }
+
+    public boolean enableForcePrimaryForTso() {
+        // Return false by default.
+        return null != this.getParamManager() && this.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO);
+    }
+
+    public boolean enableForcePrimaryForFilter() {
+        // Return false by default.
+        return null != this.getParamManager() && this.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_FILTER);
+    }
+
+    public boolean enableForcePrimaryForGroupBy() {
+        // Return false by default.
+        return null != this.getParamManager() && this.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_GROUP_BY);
+    }
+
 }

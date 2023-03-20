@@ -100,7 +100,13 @@ public class TableRule extends VirtualTableSupport implements VirtualTableRule {
 
     protected List<Rule<String>> dbShardRules;
     protected List<Rule<String>> tbShardRules;
-    protected List<String> shardColumns;                           // 分库分表字段
+    /**
+     * {@link TableRule#shardColumns} will be used in {@link PushJoinRule#getShardColumnRef} for join pushdown,
+     * so that we MUST keep the order of names in {@link TableRule#shardColumns}
+     * following the law that db partition key in front of tb partition key.
+     * Anyone who is modifying {@link TableRule#buildShardColumns()} should keep this in mind
+     */
+    protected List<String> shardColumns;                           // 分库分表字段, 对顺序有要求，分库键在前，分表键在后
     protected List<String> upperShardColumns;                      // 大写的分库分表字段
 
     protected List<String> dbPartitionKeys;
@@ -911,8 +917,13 @@ public class TableRule extends VirtualTableSupport implements VirtualTableRule {
         return ep.toString();
     }
 
+    /**
+     * 收集表的分区键，join 下推规则要求生成的 shardColumns 保持分库键在前分表键在后
+     * 如果分库键有多个，保持它们在规则定义中的顺序
+     * 如果分表键有多个，也要保持它们在规则定义中的顺序
+     */
     private void buildShardColumns() {
-        Set<String> shardColumns = new TreeSet<String>();
+        List<String> shardColumns = new ArrayList<>();
         Set<String> dbPartitionKeys = new TreeSet<String>();
         Set<String> tbPartitionKeys = new TreeSet<String>();
 

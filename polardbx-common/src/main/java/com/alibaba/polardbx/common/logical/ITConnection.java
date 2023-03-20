@@ -76,4 +76,6 @@ public interface ITConnection extends AutoCloseable {
         return 0L;
     }
 
+    boolean isMppConnection();
+
 }

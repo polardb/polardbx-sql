@@ -30,7 +30,8 @@ import java.util.List;
 public class MySqlCreateViewTest1 extends MysqlTest {
 
     public void test_0() throws Exception {
-        String sql = "CREATE ALGORITHM=UNDEFINED DEFINER=root@localhost SQL SECURITY DEFINER VIEW view_audit_enroll AS " +
+        String sql =
+            "CREATE ALGORITHM=UNDEFINED DEFINER=root@localhost SQL SECURITY DEFINER VIEW view_audit_enroll AS " +
                 "SELECT a.enroll_id AS 'enrollId', case when ((SELECT audit FROM actvty_audit WHERE enroll_id = a.enroll_id AND rankjurisdiction = 1) > 0) then \"县站已审核\" else NULL end AS 'countyAudit', case when ((SELECT audit FROM actvty_audit WHERE enroll_id = a.enroll_id AND rankjurisdiction = 2) > 0) then \"市馆已审核\" else NULL end AS 'cityAudit', case when ((SELECT audit FROM actvty_audit WHERE enroll_id = a.enroll_id AND rankjurisdiction = 3) > 0) then \"省馆已审核\" else NULL end AS 'provinceAudit' FROM actvty_audit a GROUP BY a.enroll_id";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
@@ -44,84 +45,84 @@ public class MySqlCreateViewTest1 extends MysqlTest {
         stmt.accept(visitor);
 
         assertEquals("CREATE ALGORITHM = UNDEFINED\n" +
-                        "\tDEFINER = 'root'@'localhost'\n" +
-                        "\tSQL SECURITY = DEFINER\n" +
-                        "\tVIEW view_audit_enroll\n" +
-                        "AS\n" +
-                        "SELECT a.enroll_id AS \"enrollId\"\n" +
-                        "\t, CASE \n" +
-                        "\t\tWHEN (\n" +
-                        "\t\t\t\tSELECT audit\n" +
-                        "\t\t\t\tFROM actvty_audit\n" +
-                        "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tAND rankjurisdiction = 1\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tTHEN '县站已审核'\n" +
-                        "\t\tELSE NULL\n" +
-                        "\tEND AS \"countyAudit\"\n" +
-                        "\t, CASE \n" +
-                        "\t\tWHEN (\n" +
-                        "\t\t\t\tSELECT audit\n" +
-                        "\t\t\t\tFROM actvty_audit\n" +
-                        "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tAND rankjurisdiction = 2\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tTHEN '市馆已审核'\n" +
-                        "\t\tELSE NULL\n" +
-                        "\tEND AS \"cityAudit\"\n" +
-                        "\t, CASE \n" +
-                        "\t\tWHEN (\n" +
-                        "\t\t\t\tSELECT audit\n" +
-                        "\t\t\t\tFROM actvty_audit\n" +
-                        "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tAND rankjurisdiction = 3\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tTHEN '省馆已审核'\n" +
-                        "\t\tELSE NULL\n" +
-                        "\tEND AS \"provinceAudit\"\n" +
-                        "FROM actvty_audit a\n" +
-                        "GROUP BY a.enroll_id", //
-                SQLUtils.toMySqlString(stmt));
+                "\tDEFINER = 'root'@'localhost'\n" +
+                "\tSQL SECURITY DEFINER\n" +
+                "\tVIEW view_audit_enroll\n" +
+                "AS\n" +
+                "SELECT a.enroll_id AS \"enrollId\"\n" +
+                "\t, CASE \n" +
+                "\t\tWHEN (\n" +
+                "\t\t\t\tSELECT audit\n" +
+                "\t\t\t\tFROM actvty_audit\n" +
+                "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tAND rankjurisdiction = 1\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tTHEN '县站已审核'\n" +
+                "\t\tELSE NULL\n" +
+                "\tEND AS \"countyAudit\"\n" +
+                "\t, CASE \n" +
+                "\t\tWHEN (\n" +
+                "\t\t\t\tSELECT audit\n" +
+                "\t\t\t\tFROM actvty_audit\n" +
+                "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tAND rankjurisdiction = 2\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tTHEN '市馆已审核'\n" +
+                "\t\tELSE NULL\n" +
+                "\tEND AS \"cityAudit\"\n" +
+                "\t, CASE \n" +
+                "\t\tWHEN (\n" +
+                "\t\t\t\tSELECT audit\n" +
+                "\t\t\t\tFROM actvty_audit\n" +
+                "\t\t\t\tWHERE enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tAND rankjurisdiction = 3\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tTHEN '省馆已审核'\n" +
+                "\t\tELSE NULL\n" +
+                "\tEND AS \"provinceAudit\"\n" +
+                "FROM actvty_audit a\n" +
+                "GROUP BY a.enroll_id", //
+            SQLUtils.toMySqlString(stmt));
 
         Assert.assertEquals("create algorithm = UNDEFINED\n" +
-                        "\tdefiner = 'root'@'localhost'\n" +
-                        "\tsql security = DEFINER\n" +
-                        "\tview view_audit_enroll\n" +
-                        "as\n" +
-                        "select a.enroll_id as \"enrollId\"\n" +
-                        "\t, case \n" +
-                        "\t\twhen (\n" +
-                        "\t\t\t\tselect audit\n" +
-                        "\t\t\t\tfrom actvty_audit\n" +
-                        "\t\t\t\twhere enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tand rankjurisdiction = 1\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tthen '县站已审核'\n" +
-                        "\t\telse null\n" +
-                        "\tend as \"countyAudit\"\n" +
-                        "\t, case \n" +
-                        "\t\twhen (\n" +
-                        "\t\t\t\tselect audit\n" +
-                        "\t\t\t\tfrom actvty_audit\n" +
-                        "\t\t\t\twhere enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tand rankjurisdiction = 2\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tthen '市馆已审核'\n" +
-                        "\t\telse null\n" +
-                        "\tend as \"cityAudit\"\n" +
-                        "\t, case \n" +
-                        "\t\twhen (\n" +
-                        "\t\t\t\tselect audit\n" +
-                        "\t\t\t\tfrom actvty_audit\n" +
-                        "\t\t\t\twhere enroll_id = a.enroll_id\n" +
-                        "\t\t\t\t\tand rankjurisdiction = 3\n" +
-                        "\t\t\t) > 0\n" +
-                        "\t\tthen '省馆已审核'\n" +
-                        "\t\telse null\n" +
-                        "\tend as \"provinceAudit\"\n" +
-                        "from actvty_audit a\n" +
-                        "group by a.enroll_id", //
-                SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+                "\tdefiner = 'root'@'localhost'\n" +
+                "\tsql security DEFINER\n" +
+                "\tview view_audit_enroll\n" +
+                "as\n" +
+                "select a.enroll_id as \"enrollId\"\n" +
+                "\t, case \n" +
+                "\t\twhen (\n" +
+                "\t\t\t\tselect audit\n" +
+                "\t\t\t\tfrom actvty_audit\n" +
+                "\t\t\t\twhere enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tand rankjurisdiction = 1\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tthen '县站已审核'\n" +
+                "\t\telse null\n" +
+                "\tend as \"countyAudit\"\n" +
+                "\t, case \n" +
+                "\t\twhen (\n" +
+                "\t\t\t\tselect audit\n" +
+                "\t\t\t\tfrom actvty_audit\n" +
+                "\t\t\t\twhere enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tand rankjurisdiction = 2\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tthen '市馆已审核'\n" +
+                "\t\telse null\n" +
+                "\tend as \"cityAudit\"\n" +
+                "\t, case \n" +
+                "\t\twhen (\n" +
+                "\t\t\t\tselect audit\n" +
+                "\t\t\t\tfrom actvty_audit\n" +
+                "\t\t\t\twhere enroll_id = a.enroll_id\n" +
+                "\t\t\t\t\tand rankjurisdiction = 3\n" +
+                "\t\t\t) > 0\n" +
+                "\t\tthen '省馆已审核'\n" +
+                "\t\telse null\n" +
+                "\tend as \"provinceAudit\"\n" +
+                "from actvty_audit a\n" +
+                "group by a.enroll_id", //
+            SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
 //        System.out.println("Tables : " + visitor.getTables());
 //        System.out.println("fields : " + visitor.getColumns());

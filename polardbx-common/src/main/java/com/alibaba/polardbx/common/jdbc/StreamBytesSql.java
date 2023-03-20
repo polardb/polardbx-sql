@@ -65,6 +65,9 @@ public class StreamBytesSql extends UnionBytesSql {
 
     @Override
     public byte[] getBytes(List<ParameterContext> parameterContexts) {
+        if (!containRawString(parameterContexts)) {
+            return getBytes();
+        }
         byte[] temp = super.getBytes(parameterContexts);
         if (isContainSelect) {
             return Arrays.concatenate(UNION_HEAD, temp, PARENTHESES_END,

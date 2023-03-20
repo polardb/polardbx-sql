@@ -35,31 +35,25 @@ public class DoubleBlock extends AbstractBlock {
     public DoubleBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new double[slotLen];
-
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public DoubleBlock(DataType dataType, double[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
-
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values, boolean hasNull) {
         super(DataTypes.DoubleType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -205,7 +199,12 @@ public class DoubleBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Double.BYTES * positionCount;
     }
 }

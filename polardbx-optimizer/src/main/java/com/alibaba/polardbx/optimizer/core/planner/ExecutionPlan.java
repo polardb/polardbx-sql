@@ -41,6 +41,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @author lingce.ldm 2017-09-08 15:23
@@ -119,6 +121,12 @@ public class ExecutionPlan {
      */
     private Pair<String, String> dbIndexAndTableName = null;
 
+    /**
+     * If true, this plan can be optimize by adding FORCE INDEX PRIMARY for TSO trx,
+     * (but yet we may not have optimized it.)
+     */
+    private boolean canOptByForcePrimary = false;
+
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
         this(ast, plan, columnMeta);
         this.planProperties = planProperties;
@@ -188,6 +196,7 @@ public class ExecutionPlan {
         newExecutionPlan.hitCount = this.hitCount;
         newExecutionPlan.isDirectShardingKey = this.isDirectShardingKey;
         newExecutionPlan.dbIndexAndTableName = this.dbIndexAndTableName;
+        newExecutionPlan.canOptByForcePrimary = this.canOptByForcePrimary;
         return newExecutionPlan;
     }
 
@@ -327,6 +336,15 @@ public class ExecutionPlan {
     public void setDirectShardingKey(boolean directShardingKey) {
         isDirectShardingKey = directShardingKey;
     }
+
+    public boolean isCanOptByForcePrimary() {
+        return canOptByForcePrimary;
+    }
+
+    public void setCanOptByForcePrimary(boolean canOptByForcePrimary) {
+        this.canOptByForcePrimary = canOptByForcePrimary;
+    }
+
 }
 
 

@@ -71,7 +71,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -88,7 +88,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -104,7 +104,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_3";
             String colDef = "int not null";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint not null";
@@ -121,7 +121,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_4";
             String colDef = "int not null";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint not null";
@@ -138,7 +138,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_5";
             String colDef = "int not null default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint not null default 4";
@@ -154,7 +154,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default null";
@@ -170,7 +170,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_7" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_7";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -188,7 +188,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_8" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_8";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -224,7 +224,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         buildSelectTable(selectTableName);
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -241,7 +241,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -259,7 +259,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_3";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -291,7 +291,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -308,7 +308,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -325,7 +325,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_3";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -342,7 +342,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_4";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -359,7 +359,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_5";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -375,7 +375,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -407,7 +407,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_replace_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -424,7 +424,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_replace_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_2";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -441,7 +441,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_replace_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_3";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -472,7 +472,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -490,7 +490,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -508,7 +508,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_3";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -526,7 +526,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_4";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -544,7 +544,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_5";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -562,7 +562,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -595,7 +595,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_ignore_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_ignore_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -613,7 +613,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
         // 2
         tasks.add(() -> {
-            String tableName = "omc_with_insert_ignore_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_ignore_2";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -645,7 +645,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -664,7 +664,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -681,7 +681,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_3";
             String colDef = "int not null";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint not null";
@@ -700,7 +700,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_4";
             String colDef = "int not null";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint not null";
@@ -719,7 +719,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_5";
             String colDef = "int not null default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint not null default 4";
@@ -736,7 +736,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint default null";
@@ -753,7 +753,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_7" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_7";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -774,7 +774,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_8" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_8";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -813,7 +813,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         buildSelectTable(selectTableName);
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b e bigint";
@@ -832,7 +832,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -853,7 +853,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_select_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_select_3";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint";
@@ -887,7 +887,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -906,7 +906,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -925,7 +925,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_3";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint default 4";
@@ -944,7 +944,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_4";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint default 4";
@@ -963,7 +963,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_5";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -980,7 +980,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_update_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_update_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -1013,7 +1013,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
-            String tableName = "omc_with_replace_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1030,7 +1030,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_replace_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_2";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1047,7 +1047,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_replace_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_replace_3";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint default 4";
@@ -1077,7 +1077,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1098,7 +1098,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_2";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1119,7 +1119,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_3" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_3";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1140,7 +1140,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_4" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_4";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1161,7 +1161,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_5" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_5";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint default 4";
@@ -1182,7 +1182,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_upsert_6" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_upsert_6";
             String colDef = "int default 3";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s modify column b bigint default 4";
@@ -1217,7 +1217,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
-            String tableName = "omc_with_insert_ignore_1" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_ignore_1";
             String colDef = "int";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1234,7 +1234,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         });
 
         tasks.add(() -> {
-            String tableName = "omc_with_insert_ignore_2" + RandomUtils.getStringBetween(1, 5);
+            String tableName = "omc_with_insert_ignore_2";
             String colDef = "int unique key";
             String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
                 + " alter table %s change column b c bigint";
@@ -1281,10 +1281,12 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                        BiFunction<Integer, Integer, Boolean> checker, boolean fillData, boolean withGsi,
                                        int batchSize)
         throws Exception {
+        tableName = tableName + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
         String indexName1 = tableName + "_idx_1";
         String indexName2 = tableName + "_idx_2";
         String indexName3 = tableName + "_idx_3";
+        String finalTableName = tableName;
         Connection conn = getPolardbxConnection();
 
         try {
@@ -1329,7 +1331,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                             Function<Integer, String> generator = generator1;
                             boolean changed = false;
                             while ((!shouldStop.get() || fillData) && totalCount.get() < FILL_COUNT) {
-                                String sql = String.format(generator.apply(totalCount.get()), tableName);
+                                String sql = String.format(generator.apply(totalCount.get()), finalTableName);
                                 try {
                                     JdbcUtil.executeUpdateSuccess(connection, sql);
                                 } catch (AssertionError e) {
@@ -1358,9 +1360,9 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                     public Void apply(AtomicBoolean shouldStop, AtomicInteger totalCount) {
                         Connection connection = getPolardbxConnection();
                         Thread.sleep(1000);
-                        String sql = String.format(alterSql, tableName) + USE_OMC_ALGORITHM;
+                        String sql = String.format(alterSql, finalTableName) + USE_OMC_ALGORITHM;
                         try {
-                            JdbcUtil.executeUpdateSuccess(connection, sql);
+                            execDdlWithRetry(tddlDatabase1, finalTableName, sql, connection);
                         } finally {
                             shouldStop.set(true);
                             connection.close();
@@ -1390,7 +1392,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                             while ((!shouldStop.get() || fillData) && totalCount.get() < FILL_COUNT) {
                                 int tot = totalCount.get();
                                 ResultSet rs = JdbcUtil.executeQuerySuccess(connection,
-                                    String.format(selectSql, tableName + index.get(cnt % index.size())));
+                                    String.format(selectSql, finalTableName + index.get(cnt % index.size())));
                                 cnt++;
                                 ResultSetMetaData rsmd = rs.getMetaData();
                                 assertEquals(2, rsmd.getColumnCount());
@@ -1408,7 +1410,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
                             Thread.sleep(500); // sleep to wait dmlTask
                             ResultSet rs =
-                                JdbcUtil.executeQuerySuccess(connection, String.format(selectSql, tableName));
+                                JdbcUtil.executeQuerySuccess(connection, String.format(selectSql, finalTableName));
                             ResultSetMetaData rsmd = rs.getMetaData();
                             assertEquals(2, rsmd.getColumnCount());
                             int actualCount = 0;

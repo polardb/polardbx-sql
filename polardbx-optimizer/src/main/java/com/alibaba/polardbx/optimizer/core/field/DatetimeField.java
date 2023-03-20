@@ -350,11 +350,13 @@ public class DatetimeField extends AbstractTemporalField {
     private TypeConversionStatus storeInteger(long value, SessionProperties sessionProperties) {
         if (value < 0) {
             // out of range
+            reset();
             return TypeConversionStatus.TYPE_WARN_OUT_OF_RANGE;
         }
         MysqlDateTime mysqlDateTime = NumericTimeParser.parseDatetimeFromInteger(value, dateFlags(sessionProperties));
         if (mysqlDateTime == null) {
             // bad value
+            reset();
             return TypeConversionStatus.TYPE_ERR_BAD_VALUE;
         }
 

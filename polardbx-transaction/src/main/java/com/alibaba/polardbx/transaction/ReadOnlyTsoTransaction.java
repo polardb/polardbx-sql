@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.rpc.pool.XConnection;
@@ -36,8 +37,7 @@ import org.apache.commons.lang.StringUtils;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
 
@@ -49,7 +49,7 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     private final boolean consistentReplicaRead;
 
     private long snapshotTimestamp = -1;
-    private final Map<String, Long> lsnMap = new HashMap<>();
+    private final ConcurrentHashMap<String, Long> dnLsnMap = new ConcurrentHashMap<>();
 
     public ReadOnlyTsoTransaction(ExecutionContext executionContext,
                                   TransactionManager manager) {
@@ -104,9 +104,10 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
                     topology = ((com.alibaba.polardbx.transaction.TransactionManager) manager).getTransactionExecutor()
                         .getTopology();
                 }
-                ExecUtils.getLsn(topology, group, lsnMap);
-                Long masterLsn = lsnMap.get(group);
-                conn.executeLater("SET read_lsn = " + masterLsn.toString());
+
+                long masterLsn = GroupingFetchLSN.getInstance().getLsn(topology, group, dnLsnMap);
+
+                conn.executeLater(String.format("SET read_lsn = %d", masterLsn));
             }
             conn = new DeferredConnection(conn, ec.getParamManager().getBoolean(
                 ConnectionParams.USING_RDS_RESULT_SKIP));

@@ -27,6 +27,7 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
     private String primaryTableName;
     private boolean ifExists;
     private boolean repartition;
+    private String repartitionTableName;
 
     public DropGlobalIndexPreparedData(final String schemaName,
                                        final String primaryTableName,
@@ -82,5 +83,13 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setRepartition(boolean repartition) {
         this.repartition = repartition;
+    }
+
+    public void setRepartitionTableName(String repartitionTableName) {
+        this.repartitionTableName = repartitionTableName;
+    }
+
+    public String getRepartitionTableName() {
+        return repartitionTableName;
     }
 }

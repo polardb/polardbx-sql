@@ -25,7 +25,7 @@ public interface QueryResultHandler {
 
     void sendUpdateResult(long affectedRows);
 
-    void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception;
+    void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit) throws Exception;
 
     void sendPacketEnd(boolean hasMoreResults);
 

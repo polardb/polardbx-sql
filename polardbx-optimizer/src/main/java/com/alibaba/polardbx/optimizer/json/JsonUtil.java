@@ -20,16 +20,21 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.mysql.jdbc.StringUtils;
 import com.alibaba.polardbx.optimizer.json.exception.JsonTooLargeException;
 import org.apache.commons.lang3.StringEscapeUtils;
 
+import javax.annotation.Nonnull;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author arnkore 2017-07-14 11:20
@@ -160,5 +165,25 @@ public class JsonUtil {
     public static long getStorageSize(Object target, String jsonDoc) throws JsonTooLargeException {
         byte[] buffer = JsonBinaryUtil.toBytes(target, jsonDoc.length());
         return buffer.length;
+    }
+
+    /**
+     * json_extract 结果序列化
+     */
+    public static String toJSONStringSkipNull(@Nonnull Object[] jsonResults, @Nonnull boolean[] notFounds) {
+        Preconditions.checkArgument(jsonResults.length == notFounds.length);
+        List<Object> resObjs = new ArrayList<>(jsonResults.length);
+        for (int i = 0; i < jsonResults.length; i++) {
+            if (!notFounds[i]) {
+                resObjs.add(jsonResults[i]);
+            }
+        }
+        if (resObjs.size() == 0) {
+            return null;
+        }
+        if (jsonResults.length == 1) {
+            return JSON.toJSONString(resObjs.get(0));
+        }
+        return JSON.toJSONString(resObjs.toArray());
     }
 }

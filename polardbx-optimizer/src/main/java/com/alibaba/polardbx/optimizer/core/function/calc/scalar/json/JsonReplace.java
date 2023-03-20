@@ -61,20 +61,15 @@ public class JsonReplace extends JsonExtraFunction {
      */
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
-        // Returns NULL if any argument is NULL
-        for (Object arg : args) {
-            if (arg == null) {
-                return JSONConstants.NULL_VALUE;
-            }
-        }
-
         // 如果参数不是奇数个，报错。
-        if (args.length % 2 != 1) {
+        if (args.length % 2 != 1 || args.length == 1) {
             throw JsonParserException.wrongParamCount(getFunctionNames()[0]);
         }
 
         String jsonDoc = DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]);
-
+        if (jsonDoc == null) {
+            return null;
+        }
         try {
             JsonUtil.parse(jsonDoc);
         } catch (Exception e) {
@@ -83,13 +78,15 @@ public class JsonReplace extends JsonExtraFunction {
 
         List<Pair<JsonPathExprStatement, Object>> pathValPairList = Lists.newArrayList();
         JsonPathExprStatement nextStmt = null;
-        String nextVal = null;
+        Object nextVal = null;
 
         // any path argument is not a valid path expression or contains a * or ** wildcard.
         for (int i = 1; i < args.length; i++) {
             if (i % 2 == 1) { // 奇数参数是json path expression
                 String jsonPathExpr = DataTypeUtil.convert(operandTypes.get(i), DataTypes.StringType, args[i]);
-                ;
+                if (jsonPathExpr == null) {
+                    return null;
+                }
                 if (jsonPathExpr.contains(JSONConstants.WILDCARD)) {
                     throw JsonParserException.illegalAsterisk();
                 }
@@ -100,8 +97,8 @@ public class JsonReplace extends JsonExtraFunction {
                     throw new JsonParserException(e, "Invalid JSON path expression.");
                 }
             } else {
-                nextVal = DataTypeUtil.convert(operandTypes.get(i), DataTypes.StringType, args[i]);
-                pathValPairList.add(new Pair(nextStmt, nextVal));
+                nextVal = args[i];
+                pathValPairList.add(new Pair<>(nextStmt, nextVal));
             }
         }
 

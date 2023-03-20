@@ -64,7 +64,7 @@ public class SessionRepresentation {
     private long lastInsertId;
     private InternalTimeZone logicalTimeZone;
     private long tsoTimeStamp;
-    private Map<String, Long> lsnMap = new HashMap<>();
+    private Map<String, Long> dnLsnMap = new HashMap<>();
     private WorkloadType workloadType;
     private boolean omitTso;
     private boolean lizard1PC;
@@ -93,7 +93,7 @@ public class SessionRepresentation {
         @JsonProperty("lastInsertId") long lastInsertId,
         @JsonProperty("logicalTimeZone") InternalTimeZone logicalTimeZone,
         @JsonProperty("tsoTimeStamp") long tsoTimeStamp,
-        @JsonProperty("lsnMap") Map<String, Long> lsnMap,
+        @JsonProperty("dnLsnMap") Map<String, Long> dnLsnMap,
         @JsonProperty("omitTso") boolean omitTso,
         @JsonProperty("lizard1PC") boolean lizard1PC,
         @JsonProperty("workloadType") WorkloadType workloadType) {
@@ -119,7 +119,7 @@ public class SessionRepresentation {
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
         this.tsoTimeStamp = tsoTimeStamp;
-        this.lsnMap = lsnMap;
+        this.dnLsnMap = dnLsnMap;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
         this.workloadType = workloadType;
@@ -148,7 +148,7 @@ public class SessionRepresentation {
         long lastInsertId,
         InternalTimeZone logicalTimeZone,
         long tsoTimeStamp,
-        Map<String, Long> lsnMap,
+        Map<String, Long> dnLsnMap,
         boolean omitTso,
         boolean lizard1PC,
         WorkloadType workloadType) {
@@ -174,7 +174,7 @@ public class SessionRepresentation {
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
         this.tsoTimeStamp = tsoTimeStamp;
-        this.lsnMap = lsnMap;
+        this.dnLsnMap = dnLsnMap;
         this.workloadType = workloadType;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
@@ -291,8 +291,8 @@ public class SessionRepresentation {
     }
 
     @JsonProperty
-    public Map<String, Long> getLsnMap() {
-        return lsnMap;
+    public Map<String, Long> getDnLsnMap() {
+        return dnLsnMap;
     }
 
     @JsonProperty
@@ -331,7 +331,7 @@ public class SessionRepresentation {
             IMppReadOnlyTransaction transaction =
                 (IMppReadOnlyTransaction) ExecutorContext.getContext(schema).getTransactionManager().createTransaction(
                     ITransactionPolicy.TransactionClass.MPP_READ_ONLY_TRANSACTION, ec);
-            transaction.setLsnMap(lsnMap);
+            transaction.setDnLsnMap(dnLsnMap);
             transaction.setTsoTimestamp(tsoTimeStamp);
             transaction.enableOmitTso(omitTso, lizard1PC);
             ec.setTransaction(transaction);

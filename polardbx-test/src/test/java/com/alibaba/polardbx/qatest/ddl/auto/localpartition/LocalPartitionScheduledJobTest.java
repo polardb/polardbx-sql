@@ -24,6 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -49,7 +50,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
     public void testCreateDrop1() throws SQLException {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key)", tddlDatabase1,
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2))", tddlDatabase1,
                 primaryTableName)
         );
 
@@ -85,8 +86,8 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
         //test pause
         {
             int count =
-                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
-                            "PAUSE SCHEDULE " + resultSet.getLong("schedule_id"));
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "PAUSE SCHEDULE " + resultSet.getLong("schedule_id"));
             Assert.assertEquals(count, 1);
             validateScheduledJob(tddlConnection, true, false, tddlDatabase1, primaryTableName);
         }
@@ -94,20 +95,86 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
         //test continue
         {
             int count =
-                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
-                            "CONTINUE SCHEDULE " + resultSet.getLong("schedule_id"));
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "CONTINUE SCHEDULE " + resultSet.getLong("schedule_id"));
             Assert.assertEquals(count, 1);
             validateScheduledJob(tddlConnection, true, true, tddlDatabase1, primaryTableName);
         }
 
+        //test drop
+        {
+            int count =
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "DROP SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, false, tddlDatabase1, primaryTableName);
+        }
+    }
+
+    @Test
+    public void testCreateDrop4Rename() throws SQLException {
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2))", tddlDatabase1,
+                primaryTableName)
+        );
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format("alter table %s.%s local partition by range(c2) interval 1 month DISABLE SCHEDULE",
+                tddlDatabase1, primaryTableName)
+        );
+
+        String newName = primaryTableName + "_wumu";
+        String sql = String.format("rename table %s to %s", primaryTableName, newName);
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "CREATE SCHEDULE "
+            + "FOR LOCAL_PARTITION "
+            + "ON `" + tddlDatabase1 + "`.`" + newName + "`  "
+            + "CRON '0 0 12 1/5 * ?'  "
+            + "TIMEZONE '+00:00'";
+
+        validateScheduledJob(tddlConnection, false, tddlDatabase1, newName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        validateScheduledJob(tddlConnection, true, tddlDatabase1, newName);
+        ResultSet resultSet = JdbcUtil.executeQuery(
+            String.format(
+                "select * from metadb.scheduled_jobs where table_schema='%s' and table_name='%s'",
+                tddlDatabase1, newName
+            ),
+            tddlConnection
+        );
+
+        Assert.assertTrue(resultSet.next());
+        Assert.assertEquals(resultSet.getString("schedule_expr"), "0 0 12 1/5 * ?");
+        Assert.assertEquals(resultSet.getString("time_zone"), "+00:00");
+
+        //test pause
+        {
+            int count =
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "PAUSE SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, true, false, tddlDatabase1, newName);
+        }
+
+        //test continue
+        {
+            int count =
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "CONTINUE SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, true, true, tddlDatabase1, newName);
+        }
 
         //test drop
         {
             int count =
-                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
-                            "DROP SCHEDULE " + resultSet.getLong("schedule_id"));
+                JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                    "DROP SCHEDULE " + resultSet.getLong("schedule_id"));
             Assert.assertEquals(count, 1);
-            validateScheduledJob(tddlConnection, false, tddlDatabase1, primaryTableName);
+            validateScheduledJob(tddlConnection, false, tddlDatabase1, newName);
         }
     }
 
@@ -115,7 +182,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
     public void testCreateDrop2() throws SQLException {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key) \n"
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2)) \n"
                 + "local partition by range(c2) interval 1 month", tddlDatabase1, primaryTableName)
         );
 
@@ -138,7 +205,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
     @Test
     public void testCreateDrop3() throws SQLException {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key) \n"
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2)) \n"
                 + "local partition by range(c2) interval 1 month", tddlDatabase1, primaryTableName)
         );
 
@@ -156,7 +223,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
     @Test
     public void testCreateDrop4() throws SQLException {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key) \n"
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2)) \n"
                     + "local partition by range(c2) interval 1 month DISABLE SCHEDULE", tddlDatabase1,
                 primaryTableName)
         );
@@ -174,7 +241,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
     @Test
     public void testCreateDrop5() throws SQLException {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key) \n"
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2)) \n"
                 + "local partition by range(c2) interval 1 month", tddlDatabase1, primaryTableName)
         );
 

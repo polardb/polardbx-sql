@@ -16,6 +16,12 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
+import io.airlift.slice.DynamicSliceOutput;
+import io.airlift.slice.SliceInput;
+import io.airlift.slice.SliceOutput;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigInteger;
@@ -25,6 +31,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ULongBlockTest extends BaseBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        ULongBlock block = new ULongBlock(new ULongType(), 1024);
+        Assert.assertEquals(9216, block.getElementUsedBytes());
+    }
 
     @Test
     public void testNullValues() {
@@ -82,6 +93,30 @@ public class ULongBlockTest extends BaseBlockTest {
             }
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
+        }
+    }
+
+    @Test
+    public void testEncoding() {
+        final int size = 5;
+        ULongBlockBuilder blockBuilder = new ULongBlockBuilder(size);
+        blockBuilder.writeUInt64(UInt64.MAX_UINT64);
+        blockBuilder.writeObject(null);
+        blockBuilder.writeUInt64(UInt64.UINT64_ZERO);
+        blockBuilder.writeUInt64(UInt64.fromLong(-2L));
+        blockBuilder.writeObject(null);
+
+        ULongBlock block = (ULongBlock) blockBuilder.build();
+        ULongBlockEncoding encoding = new ULongBlockEncoding();
+        SliceOutput output = new DynamicSliceOutput(size);
+
+        encoding.writeBlock(output, block);
+
+        SliceInput input = output.slice().getInput();
+        ULongBlock block1 = (ULongBlock) encoding.readBlock(input);
+
+        for (int i = 0; i < size; i++) {
+            Assert.assertEquals(block.getObject(i), block1.getObject(i));
         }
     }
 }

@@ -284,7 +284,7 @@ public class AsyncPageFileChannelReader {
             if (e == null) {
                 try {
                     //已读取的readChunks超过maxChunkNum时，nextRound=false，不再读取下一个
-                    if (maxChunkNum <= 0 || readChunks < maxChunkNum){
+                    if (maxChunkNum <= 0 || readChunks < maxChunkNum) {
                         nextRound = pageIterator.hasNext();
                     }
                 } catch (Exception ioe) {
@@ -292,7 +292,7 @@ public class AsyncPageFileChannelReader {
                 }
             }
 
-            handleFinish(e, page, this, nextRound, page != null ? page.estimateSize() : 0L, false);
+            handleFinish(e, page, this, nextRound, page != null ? page.getElementUsedBytes() : 0L, false);
         }
 
         @Override
@@ -305,7 +305,7 @@ public class AsyncPageFileChannelReader {
             if (pageIterator.hasNext()) {
                 page = pageIterator.next();
                 readChunks++;
-                return page.getSizeInBytes();
+                return page.getElementUsedBytes();
             }
             return 0;
         }
@@ -321,7 +321,7 @@ public class AsyncPageFileChannelReader {
 
                             if (!pageBuffers.isEmpty()) {
                                 Chunk retPage = pageBuffers.remove(0);
-                                long pageBytes = retPage.getSizeInBytes();
+                                long pageBytes = retPage.getElementUsedBytes();
                                 AsyncPageFileChannelReader.this.pendingBytes.addAndGet(-pageBytes);
                                 boolean pending = requetsQueue.onRead(pageBytes);
                                 if (blocked && (!pending || pageBuffers.isEmpty())) {
@@ -439,7 +439,7 @@ public class AsyncPageFileChannelReader {
             page = null;
             if (pageIterator.hasNext()) {
                 page = pageIterator.next();
-                return page.getSizeInBytes();
+                return page.getElementUsedBytes();
             }
             return 0;
         }

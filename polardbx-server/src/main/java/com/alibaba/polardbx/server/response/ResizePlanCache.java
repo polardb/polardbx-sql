@@ -22,6 +22,7 @@ import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -104,7 +105,8 @@ public final class ResizePlanCache {
         byte packetId = EOF_PACKET.packetId;
         String charset = c.getCharset();
 
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(newSize));
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(newSize),
+            SystemDbHelper.INFO_SCHEMA_DB_NAME);
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {
                 continue;

@@ -25,7 +25,6 @@ import com.alibaba.polardbx.executor.planmanagement.BaselineSyncController;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.BaselineLoadSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselinePersistSyncAction;
-import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -40,8 +39,6 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
-import com.clearspring.analytics.util.Lists;
-import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
@@ -244,10 +241,10 @@ public class LogicalBaselineHandler extends HandlerCommon {
             for (Long id : idList) {
                 switch (operation.toUpperCase()) {
                 case "LOAD":
-                    SyncManagerHelper.sync(new BaselineLoadSyncAction(), schemaName);
+                    SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
                     break;
                 case "PERSIST":
-                    SyncManagerHelper.sync(new BaselinePersistSyncAction(), schemaName);
+                    SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction());
                     break;
                 case "DELETE": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
@@ -279,10 +276,10 @@ public class LogicalBaselineHandler extends HandlerCommon {
         } else {
             switch (operation.toUpperCase()) {
             case "LOAD":
-                SyncManagerHelper.sync(new BaselineLoadSyncAction(), schemaName);
+                SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
                 break;
             case "PERSIST":
-                SyncManagerHelper.sync(new BaselinePersistSyncAction(), schemaName);
+                SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction());
                 break;
             case "DELETE_ALL": {
                 BaselineSyncController baselineSyncController = new BaselineSyncController();

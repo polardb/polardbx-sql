@@ -1,0 +1,45 @@
+## DISABLE_FAST_SQL_PARSER
+desc information_schema.storage;
+Field,Type,Null,Key,Default,Extra
+STORAGE_INST_ID,varchar,YES,,NULL,
+LEADER_NODE,varchar,YES,,NULL,
+IS_HEALTHY,varchar,YES,,NULL,
+INST_KIND,varchar,YES,,NULL,
+DB_COUNT,varchar,YES,,NULL,
+GROUP_COUNT,varchar,YES,,NULL,
+STATUS,varchar,YES,,NULL,
+DELETABLE,varchar,YES,,NULL,
+DELAY,varchar,YES,,NULL,
+ACTIVE,varchar,YES,,NULL,
+desc information_schema.storage_replicas;
+Field,Type,Null,Key,Default,Extra
+STORAGE_INST_ID,varchar,YES,,NULL,
+LEADER_NODE,varchar,YES,,NULL,
+IS_HEALTHY,varchar,YES,,NULL,
+INST_KIND,varchar,YES,,NULL,
+DB_COUNT,varchar,YES,,NULL,
+GROUP_COUNT,varchar,YES,,NULL,
+STATUS,varchar,YES,,NULL,
+DELETABLE,varchar,YES,,NULL,
+DELAY,varchar,YES,,NULL,
+ACTIVE,varchar,YES,,NULL,
+REPLICAS,varchar,YES,,NULL,
+STORAGE_RW_INST_ID,varchar,YES,,NULL,
+desc information_schema.full_storage;
+Field,Type,Null,Key,Default,Extra
+DN,varchar,YES,,NULL,
+RW_DN,varchar,YES,,NULL,
+KIND,varchar,YES,,NULL,
+NODE,varchar,YES,,NULL,
+USER,varchar,YES,,NULL,
+PASSWD_ENC,varchar,YES,,NULL,
+XPORT,varchar,YES,,NULL,
+ROLE,varchar,YES,,NULL,
+IS_HEALTHY,varchar,YES,,NULL,
+IS_VIP,varchar,YES,,NULL,
+INFO_FROM,varchar,YES,,NULL,
+#select distinct storage_inst_id from information_schema.storage order by storage_inst_id;
+#select distinct storage_inst_id,replicas from information_schema.storage_replicas order by storage_inst_id,replicas;
+#select distinct dn,node from information_schema.full_storage where info_from='MetaDB' order by dn,node;
+#alter system refresh storage 'polardbx-storage-meta' set `vip_port`='127.0.0.1:3306';
+#select distinct dn,node from information_schema.full_storage where info_from='MetaDB' order by dn,node;

@@ -319,7 +319,7 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
             this.parameterized = false;
         }
 
-        if (parameterized && LastInsertId.NAME.equalsIgnoreCase(function)) {
+        if (parameterized && LastInsertId.NAME.equalsIgnoreCase(function) && x.getArguments().size() == 0) {
             print('?');
             incrementReplaceCunt();
 

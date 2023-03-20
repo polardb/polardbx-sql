@@ -16,16 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.view.ViewPlan;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.utils.TreeMaps;
-import com.alibaba.polardbx.optimizer.view.ViewPlan;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.hep.HepRelVertex;
@@ -37,6 +37,7 @@ import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.SetOp;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableFunctionScan;
@@ -211,6 +212,11 @@ public class DrdsRelMdCoveringIndex implements MetadataHandler<CoveringIndex> {
      * isCoveringIndex for Join means a shard table join with multi broadcast table
      */
     public List<Set<RelColumnOrigin>> isCoveringIndex(Join rel, RelMetadataQuery mq, RelOptTable table, String index) {
+        // ignore subquery
+        if (rel instanceof SemiJoin) {
+            return null;
+        }
+
         final int nLeftColumns = rel.getLeft().getRowType().getFieldList().size();
 
         final List<Set<RelColumnOrigin>> leftOrigins = mq.isCoveringIndex(rel.getLeft(), table, index);

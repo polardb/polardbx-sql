@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.common;
 
-
 public class TddlConstants {
 
     public static final long DEFAULT_TABLE_META_EXPIRE_TIME = 300 * 1000;
@@ -62,7 +61,7 @@ public class TddlConstants {
 
     public static final long DML_SELECT_BATCH_SIZE_DEFAULT = 1000L;
 
-    public static final long DML_SELECT_LIMIT_DEFAULT = 1000000L;
+    public static final long DML_SELECT_LIMIT_DEFAULT = 10000L;
 
     public static final String IMPLICIT_COL_NAME = "_drds_implicit_id_";
     public static final String IMPLICIT_KEY_NAME = "_drds_implicit_pk_";

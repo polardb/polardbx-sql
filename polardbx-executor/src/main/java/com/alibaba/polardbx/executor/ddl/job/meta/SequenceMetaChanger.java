@@ -50,17 +50,17 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.UPPER_LIMI
 
 public class SequenceMetaChanger {
 
-    public static SequenceBean createSequenceIfExists(String schemaName, String logicalTableName,
-                                                      SequenceBean sequence, TablesExtRecord tablesExtRecord,
-                                                      boolean isPartitioned, boolean ifNotExists, SqlKind sqlKind,
-                                                      ExecutionContext executionContext) {
+    public static boolean createSequenceIfExists(String schemaName, String logicalTableName,
+                                                 SequenceBean sequence, TablesExtRecord tablesExtRecord,
+                                                 boolean isPartitioned, boolean ifNotExists, SqlKind sqlKind,
+                                                 ExecutionContext executionContext) {
         if (sequence == null || !sequence.isNew()) {
-            return null;
+            return false;
         }
 
         boolean isNewPartitionTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
 
-        // Check if need default sequence type.
+        // Check if it needs default sequence type.
         if (sequence.getType() == Type.NA) {
             if (!isNewPartitionTable) {
                 TableRule tableRule;
@@ -72,7 +72,7 @@ public class SequenceMetaChanger {
                 if (tableRule != null && (isPartitioned || tableRule.isBroadcast())) {
                     sequence.setType(AutoIncrementType.GROUP);
                 } else {
-                    return null;
+                    return false;
                 }
             } else {
                 sequence.setType(AutoIncrementType.NEW);
@@ -86,12 +86,12 @@ public class SequenceMetaChanger {
             boolean allowForCreateTable = sqlKind == SqlKind.CREATE_TABLE && ifNotExists;
             boolean allowForAlterTable = sqlKind == SqlKind.ALTER_TABLE;
             if (allowForCreateTable || allowForAlterTable) {
-                return null;
+                return false;
             }
 
             if (compareSequence(schemaName, seqName, sequence)) {
                 // The sequence has been created, so ignore it.
-                return null;
+                return false;
             }
 
             // Warn user since the sequence already exists.
@@ -114,7 +114,7 @@ public class SequenceMetaChanger {
 
         SequenceValidator.validate(sequence, executionContext);
 
-        return sequence;
+        return true;
     }
 
     private static boolean compareSequence(String schemaName, String seqName, SequenceBean sequence) {
@@ -199,14 +199,12 @@ public class SequenceMetaChanger {
                                                         ExecutionContext executionContext) {
         // Check if any new AUTO_INCREMENT column exists and create
         // the corresponding sequence if any.
-        createSequenceIfExists(schemaName, logicalTableName, sequence, tablesExtRecord, isPartitioned, ifNotExists,
-            sqlKind, executionContext);
+        boolean needToCreate =
+            createSequenceIfExists(schemaName, logicalTableName, sequence, tablesExtRecord, isPartitioned, ifNotExists,
+                sqlKind, executionContext);
 
-        String seqName = AUTO_SEQ_PREFIX + logicalTableName;
-
-        if (sequence != null && sequence.isNew()) {
+        if (needToCreate) {
             if (sequence.getKind() == null && sqlKind == SqlKind.ALTER_TABLE) {
-                sequence.setName(seqName);
                 sequence.setKind(SqlKind.ALTER_SEQUENCE);
             }
             return sequence;
@@ -215,6 +213,8 @@ public class SequenceMetaChanger {
         // If no AUTO_INCREMENT column added and table options
         // exist, then check if table option AUTO_INCREMENT exists
         // and alter the existing sequence accordingly.
+
+        String seqName = AUTO_SEQ_PREFIX + logicalTableName;
 
         Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
         boolean seqTypeIgnored = existingType == Type.NA || existingType == Type.TIME;

@@ -243,10 +243,19 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaGlobalIndexes(cluster, traitSet);
         case METADATA_LOCK:
             return new InformationSchemaMetadataLock(cluster, traitSet);
+
+        case STORAGE:
+            return new InformationSchemaStorage(cluster, traitSet);
+        case STORAGE_REPLICAS:
+            return new InformationSchemaStorageReplicas(cluster, traitSet);
+        case FULL_STORAGE:
+            return new InformationSchemaFullStorage(cluster, traitSet);
+
         case TABLE_GROUP:
             return new InformationSchemaTableGroup(cluster, traitSet);
         case FULL_TABLE_GROUP:
             return new InformationSchemaFullTableGroup(cluster, traitSet);
+
         case TABLE_DETAIL:
             return new InformationSchemaTableDetail(cluster, traitSet);
         case LOCALITY_INFO:

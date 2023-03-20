@@ -31,13 +31,13 @@ import com.google.common.collect.Maps;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.Map;
 import java.util.Set;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 @TaskName(name = "CdcTruncateTableWithGsiMarkTask")
 @Getter
@@ -48,12 +48,11 @@ public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
     private String truncateSql;
 
     @JSONCreator
-    public CdcTruncateTableWithGsiMarkTask(String schemaName, String logicalTableName, String tmpTableName,
-                                           String truncateSql) {
+    public CdcTruncateTableWithGsiMarkTask(String schemaName, String logicalTableName, String tmpTableName) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.tmpTableName = tmpTableName;
-        this.truncateSql = truncateSql;
+        this.truncateSql = String.format("truncate table %s", surroundWithBacktick(logicalTableName));
     }
 
     @Override
@@ -70,19 +69,17 @@ public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
-        String sql = StringUtils.isNotBlank(truncateSql) ? truncateSql : ddlContext.getDdlStmt();
-
         if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             String tmpTbNamePattern = TruncateUtil.getTmpTbNamePattern(schemaName, tmpTableName);
             params.put(ICdcManager.TABLE_NEW_PATTERN, tmpTbNamePattern);
             CdcManagerHelper.getInstance()
-                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), sql,
+                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), truncateSql,
                     ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, params,
                     true, Maps.newHashMap());
         } else {
             Map<String, Set<String>> tmpTableTopology = TruncateUtil.getTmpTableTopology(schemaName, tmpTableName);
             CdcManagerHelper.getInstance()
-                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), sql,
+                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), truncateSql,
                     ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public,
                     buildExtendParameter(executionContext), true, tmpTableTopology);
         }

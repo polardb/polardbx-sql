@@ -65,4 +65,29 @@ public class LocalPartitionCheckTest extends LocalPartitionBaseTest {
         Assert.assertEquals(resultSet.getString("PARTITION_DETAIL"), "Not a local partition table");
     }
 
+    @Test
+    public void checkWithLocalPartitionRename() throws SQLException {
+        String createTableSql = String.format("CREATE TABLE %s (\n"
+            + "    c1 bigint,\n"
+            + "    c2 bigint,\n"
+            + "    c3 bigint,\n"
+            + "    gmt_modified DATE PRIMARY KEY NOT NULL\n"
+            + ")\n"
+            + "PARTITION BY HASH(c1)\n"
+            + "PARTITIONS 4\n"
+            + ";", primaryTableName);
+        JdbcUtil.executeSuccess(tddlConnection, createTableSql);
+
+        String newName = primaryTableName + "_wumu";
+        String sql = String.format("rename table %s to %s", primaryTableName, newName);
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        ResultSet resultSet = JdbcUtil.executeQuery(
+            String.format("check table %s with local partition", newName),
+            tddlConnection
+        );
+        Assert.assertTrue(resultSet.next());
+        Assert.assertEquals(resultSet.getString("PARTITION_DETAIL"), "Not a local partition table");
+    }
+
 }

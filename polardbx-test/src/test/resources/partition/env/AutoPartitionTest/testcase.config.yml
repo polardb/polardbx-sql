@@ -9,6 +9,7 @@ test_create_single
 test_create_broadcast
 test_create_with_ugsi
 test_add_index
+test_add_index2
 test_add_clustered
 test_drop_index
 test_create_drop_index
@@ -23,3 +24,6 @@ test_invalid_repartition_auto
 test_missing_implicit_pk_bug
 test_alter_partition_count
 test_alter_table_remove_partitioning
+test_create_table
+test_alter_remove_partitioning2
+test_alter_partitions

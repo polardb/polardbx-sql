@@ -14,7 +14,7 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import java.util.List;
 import java.util.Map;
 
-public class InformationSchemaFunctionCacheHandler extends BaseVirtualViewSubClassHandler{
+public class InformationSchemaFunctionCacheHandler extends BaseVirtualViewSubClassHandler {
     public InformationSchemaFunctionCacheHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }

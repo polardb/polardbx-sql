@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
@@ -74,8 +74,11 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
         partClauseExec.setExprExec(exprExec);
         partClauseExec.setPartIntFunc(partFunc);
         partClauseExec.setPredExprReturnType(isNull ? null : DataTypeUtil.calciteToDrdsType(partPredExpr.getType()));
-        partClauseExec.setPartColDataType(
-            partInfo.getPartitionBy().getPartitionFieldList().get(partKeyIndex).getField().getDataType());
+
+        ColumnMeta partFldColMeta = partInfo.getPartitionBy().getPartitionFieldList().get(partKeyIndex);
+        partClauseExec.setPartColDataType(partFldColMeta.getField().getDataType());
+        partClauseExec.setPartColMeta(partFldColMeta);
+
         partClauseExec.setValueKind(PartitionBoundValueKind.DATUM_NORMAL_VALUE);
         partClauseExec.setAlwaysNullValue(isNull);
         partClauseExec.setClauseInfo(partPredClause);

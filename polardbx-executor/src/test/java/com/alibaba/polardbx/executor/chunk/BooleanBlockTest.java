@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -23,6 +25,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class BooleanBlockTest extends BaseBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        BooleanBlock block = new BooleanBlock(new BooleanType(), 1024);
+        Assert.assertEquals(2048, block.getElementUsedBytes());
+    }
 
     @Test
     public void test() {

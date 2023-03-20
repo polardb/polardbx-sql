@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -889,9 +890,27 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     tableElementList.remove(i);
                     return true;
                 }
+            } else if (e instanceof SQLColumnDefinition) {
+                SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                dropUniqueInColumnDefinition(columnDefinition, x.getIndexName());
             }
         }
         return false;
+    }
+
+    private void dropUniqueInColumnDefinition(SQLColumnDefinition columnDefinition, SQLName indexName) {
+        List<SQLColumnConstraint> constraints = columnDefinition.getConstraints();
+        if (constraints != null) {
+            Iterator<SQLColumnConstraint> iterator = constraints.iterator();
+            while (iterator.hasNext()) {
+                SQLColumnConstraint constraint = iterator.next();
+                if (constraint instanceof SQLColumnUniqueKey) {
+                    if (SQLUtils.nameEquals(columnDefinition.getName(), indexName)) {
+                        iterator.remove();
+                    }
+                }
+            }
+        }
     }
 
     public boolean apply(SQLCommentStatement x) {
@@ -980,7 +999,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
         } else if (item instanceof SQLAlterTableRenameIndex) {
             return apply((SQLAlterTableRenameIndex) item);
-            
+
         }
 
         return false;
@@ -1112,6 +1131,9 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     tableElementList.remove(i);
                     return true;
                 }
+            } else if (e instanceof SQLColumnDefinition) {
+                SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                dropUniqueInColumnDefinition(columnDefinition, item.getIndexName());
             }
         }
         return false;

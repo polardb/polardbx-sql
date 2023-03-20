@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.net.packet.CommandPacket;
@@ -25,10 +28,6 @@ import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
 import com.alibaba.polardbx.server.QueryResultHandler;
 import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.druid.sql.ast.SQLExpr;
-import com.alibaba.druid.sql.ast.expr.SQLTextLiteralExpr;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
-import com.alibaba.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
@@ -567,7 +566,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
 
         MySqlLoadDataInFileStatement statement;
         try {
-            statement = (MySqlLoadDataInFileStatement) new MySqlStatementParser(strSql).parseStatement();
+            statement = (MySqlLoadDataInFileStatement) FastsqlUtils.parseSql(ByteString.from(strSql)).get(0);
             tableName = statement.getTableName().getSimpleName();
         } catch (Exception e) {
             throw new TddlNestableRuntimeException(e);
@@ -775,7 +774,8 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
         }
 
         @Override
-        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+            throws Exception {
             throw new UnsupportedOperationException();
         }
 

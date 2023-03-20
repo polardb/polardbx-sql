@@ -410,7 +410,8 @@ public class BuildPlanUtils {
                                                                                 TableMeta indexMeta,
                                                                                 ExecutionContext executionContext,
                                                                                 String schemaName,
-                                                                                PartitionInfo newPartitionInfo, String partName) {
+                                                                                PartitionInfo newPartitionInfo,
+                                                                                String partName) {
         String logTbName = indexMeta.getTableName();
         PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         boolean isPartitionedTable = partitionInfoManager.isNewPartDbTable(logTbName);
@@ -421,11 +422,13 @@ public class BuildPlanUtils {
                 sqlInsert, indexMeta, newPartitionInfo, executionContext, schemaName, partName);
         }
     }
-    protected static Map<String, Map<String, List<Integer>>> shardValuesForPartitionedTableByPartName(SqlInsert sqlInsert,
-                                                                                                      TableMeta tableMeta,
-                                                                                                      PartitionInfo partInfo,
-                                                                                                      ExecutionContext executionContext,
-                                                                                                      String schemaName, String partName) {
+
+    protected static Map<String, Map<String, List<Integer>>> shardValuesForPartitionedTableByPartName(
+        SqlInsert sqlInsert,
+        TableMeta tableMeta,
+        PartitionInfo partInfo,
+        ExecutionContext executionContext,
+        String schemaName, String partName) {
         String logTbName = tableMeta.getTableName();
         List<ColumnMeta> rowColMeta = new ArrayList<>();
         SqlNodeList rowColsAst = sqlInsert.getTargetColumnList();

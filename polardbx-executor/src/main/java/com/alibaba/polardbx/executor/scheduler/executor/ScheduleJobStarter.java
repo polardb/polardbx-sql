@@ -37,7 +37,6 @@ public class ScheduleJobStarter {
         initBaselineSyncJob();
         initPartitionsHeatmapJob();
         initStatisticSampleSketchJob();
-        initStatisticRowCountCollectJob();
     }
 
     private static void initBaselineSyncJob() {
@@ -67,35 +66,6 @@ public class ScheduleJobStarter {
             }
         }.execute();
         logger.info(String.format("Init BASELINE_SYNC Success %s", count));
-    }
-
-    private static void initStatisticRowCountCollectJob() {
-        String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
-        String tableName = VisualConstants.DUAL_TABLE_NAME;
-        String cronExpr = "0 0 * * * ?";
-        String timeZone = "+08:00";
-        ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
-            tableSchema,
-            null,
-            tableName,
-            ScheduledJobExecutorType.STATISTIC_ROWCOUNT_COLLECTION,
-            cronExpr,
-            timeZone,
-            SchedulePolicy.SKIP
-        );
-        int count = new ScheduledJobsAccessorDelegate<Integer>() {
-            @Override
-            protected Integer invoke() {
-                List<ScheduledJobsRecord> list =
-                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
-                if (list.size() > 0) {
-                    logger.warn("Scheduled Job For STATISTIC_ROWCOUNT_COLLECTION Has Exist");
-                    return 0;
-                }
-                return scheduledJobsAccessor.insert(scheduledJobsRecord);
-            }
-        }.execute();
-        logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
     }
 
     private static void initStatisticSampleSketchJob() {
@@ -145,7 +115,7 @@ public class ScheduleJobStarter {
             @Override
             protected Integer invoke() {
                 List<ScheduledJobsRecord> list =
-                    scheduledJobsAccessor.queryByScheduleType(scheduledJobsRecord.getScheduleType());
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
                 if (list.size() > 0) {
                     logger.warn("Scheduled Job For Partition Visualizer Table Has Exist");
                     return 0;

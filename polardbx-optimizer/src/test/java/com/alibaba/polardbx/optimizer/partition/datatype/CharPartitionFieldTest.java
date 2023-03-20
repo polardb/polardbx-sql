@@ -21,6 +21,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.LongType;
 import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
+import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
+import io.airlift.slice.Slices;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -131,16 +133,27 @@ public class CharPartitionFieldTest {
     @Test
     public void testLongToChar() {
         final int precision = 10;
-        DataType type = new CharType(CollationName.UTF8MB4_GENERAL_CI, precision);
+        DataType type = new VarcharType(CollationName.UTF8MB4_GENERAL_CI, precision);
 
         PartitionField f = PartitionFieldBuilder.createField(type);
 
         new Random().longs(1 << 10).forEach(
             l -> {
+                // 1. test input and output equality
                 f.reset();
                 f.store(l, new LongType());
                 long x = f.longValue();
                 Assert.assertEquals(l, x);
+
+                // 2. test hash results equality
+                long[] hash1 = new long[] {1L, 4L};
+                f.hash(hash1);
+                long[] hash2 = new long[] {1L, 4L};
+                f.reset();
+                f.store(Slices.utf8Slice(String.valueOf(l)), new VarcharType());
+                f.hash(hash2);
+                Assert.assertEquals("l = " + l, hash1[0], hash2[0]);
+                Assert.assertEquals("l = " + l, hash1[1], hash2[1]);
             }
         );
     }

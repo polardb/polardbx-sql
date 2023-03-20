@@ -69,6 +69,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
     // e.g. insert into t1(a,b,c) values (1,2,3) on duplicate key update a=values(a),b=values(b),c=values(c)
     private final boolean allUpdatedSkRefValue;
 
+    private final boolean hasJsonColumn;
+
     public LogicalUpsert(LogicalInsert insert,
                          InsertWriter primaryInsertWriter,
                          UpsertWriter primaryUpsertWriter,
@@ -82,7 +84,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          boolean modifyPartitionKey,
                          boolean modifyUniqueKey,
                          boolean withBeforeValueRef,
-                         boolean allUpdatedSkRefValue) {
+                         boolean allUpdatedSkRefValue,
+                         boolean hasJsonColumn) {
         super(insert, selectListForDuplicateCheck);
         this.beforeUpdateMapping = beforeUpdateMapping;
         this.rowNumberColumnIndex = rowNumberColumnIndex;
@@ -97,6 +100,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiInsertWriters = gsiInsertWriters;
         this.allUpdatedSkRefValue = allUpdatedSkRefValue;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     public LogicalUpsert(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -121,7 +125,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          List<InsertWriter> gsiInsertIgnoreWriters, DistinctWriter primaryDeleteWriter,
                          List<DistinctWriter> gsiDeleteWriters, boolean allUpdatedSkRefValue,
                          boolean usePartFieldChecker,
-                         Map<String, ColumnMeta> columnMetaMap) {
+                         Map<String, ColumnMeta> columnMetaMap, boolean hasJsonColumn) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
@@ -140,6 +144,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.modifyUniqueKey = modifyUniqueKey;
         this.withBeforeValueRef = withBeforeValueRef;
         this.allUpdatedSkRefValue = allUpdatedSkRefValue;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     @Override
@@ -195,7 +200,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getGsiDeleteWriters(),
             isAllUpdatedSkRefValue(),
             isUsePartFieldChecker(),
-            getColumnMetaMap());
+            getColumnMetaMap(),
+            isHasJsonColumn());
         return newLogicalUpsert;
     }
 
@@ -264,5 +270,9 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         } else {
             return this.primaryRelocateWriter.unwrap(UpsertRelocateWriter.class).getSimpleInsertWriter();
         }
+    }
+
+    public boolean isHasJsonColumn() {
+        return hasJsonColumn;
     }
 }

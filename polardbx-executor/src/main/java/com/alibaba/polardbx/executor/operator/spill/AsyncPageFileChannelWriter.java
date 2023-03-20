@@ -135,7 +135,7 @@ public class AsyncPageFileChannelWriter {
     }
 
     public ListenableFuture<?> writePage(Chunk page) throws IOException {
-        return addRequest(new PageWriteRequest(page), page.estimateSize());
+        return addRequest(new PageWriteRequest(page), page.getElementUsedBytes());
     }
 
     public ListenableFuture<?> writePages(Iterator<Chunk> pages) throws IOException {
@@ -265,7 +265,7 @@ public class AsyncPageFileChannelWriter {
 
         @Override
         public long getBytes() {
-            return this.page.estimateSize();
+            return this.page.getElementUsedBytes();
         }
 
         public SliceOutput getOutput() {

@@ -1,19 +1,3 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.cdc;
 
 import com.alibaba.fastjson.JSONObject;
@@ -41,6 +25,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -61,8 +46,20 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.CDC_DB_NAME;
  **/
 @Slf4j
 public class CdcStorageUtil {
-    private static final String STORAGE_HISTORY_QUERY_SQL =
+    private static final String SELECT_STORAGE_HISTORY =
         "select status from `binlog_storage_history` where instruction_id='%s'";
+    private static final String SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID =
+        "select status from `binlog_storage_history` where instruction_id='%s' and cluster_id = '%s'";
+    private static final String SELECT_STORAGE_HISTORY_DETAIL =
+        "select stream_name from `binlog_storage_history_detail` where instruction_id='%s' and cluster_id = '%s' and status = 0";
+    private static final String SELECT_STREAM_GROUP_FROM_STORAGE_HISTORY =
+        "select group_name from `binlog_storage_history` where instruction_id= '%s' and cluster_id = '%s'";
+    private static final String SELECT_STREAM_BY_GROUP_NAME =
+        "select stream_name from `binlog_x_stream` where group_name = '%s'";
+    private static final String SELECT_BINLOG_CLUSTER_ID =
+        "select distinct cluster_id from `binlog_node_info` where cluster_type='BINLOG'";
+    private static final String SELECT_BINLOG_X_CLUSTER_ID =
+        "select distinct cluster_id from `binlog_node_info` where cluster_type='BINLOG_X'";
 
     // 要保证幂等
     public static void checkCdcBeforeStorageRemove(Set<String> storageInstIds, String identifier) {
@@ -149,6 +146,20 @@ public class CdcStorageUtil {
         }
     }
 
+    private static boolean isCdcStreamGroupExists(Connection connection) {
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery("SHOW COLUMNS FROM binlog_x_stream_group")) {
+                return true;
+            }
+        } catch (SQLException ex) {
+            if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_NO_SUCH_TABLE) {
+                return false;
+            } else {
+                throw new TddlNestableRuntimeException("", ex);
+            }
+        }
+    }
+
     private static void checkCommandStatus(PolarxCommandAccessor commandAccessor, PolarxCommandRecord commandRecord) {
         long startTime = System.currentTimeMillis();
         while (true) {
@@ -178,15 +189,138 @@ public class CdcStorageUtil {
             return;
         }
 
+        boolean supportBinlogX = isCdcStreamGroupExists(connection);
+        check4GlobalBinlog(connection, instructionId, supportBinlogX);
+        if (supportBinlogX) {
+            check4BinlogX(connection, instructionId);
+        }
+    }
+
+    private static void check4GlobalBinlog(Connection connection, String instructionId, boolean supportBinlogX) {
+        String checkSql;
+        if (supportBinlogX) {
+            String clusterId = null;
+            try (Statement stmt = connection.createStatement()) {
+                try (ResultSet rs = stmt.executeQuery(SELECT_BINLOG_CLUSTER_ID)) {
+                    if (rs.next()) {
+                        clusterId = rs.getString(1);
+                    }
+                }
+            } catch (SQLException e) {
+                throw new TddlNestableRuntimeException("select binlog cluster id failed. ", e);
+            }
+
+            //开通多流的情况下，单流有可能是不存在的
+            if (StringUtils.isNotBlank(clusterId)) {
+                checkSql = String.format(SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID, instructionId, clusterId);
+            } else {
+                log.warn("Global binlog cluster is not existing, skip checking storage history.");
+                return;
+            }
+        } else {
+            //cdc未支持多流的情况下，binlog_storage_history表中没有cluster_id列，仍然使用之前的判断方式
+            checkSql = String.format(SELECT_STORAGE_HISTORY, instructionId);
+        }
+
+        waitAndCheckStorageHistory(connection, instructionId, checkSql);
+    }
+
+    private static void check4BinlogX(Connection connection, String instructionId) {
+        Set<String> clusters = new HashSet<>();
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(SELECT_BINLOG_X_CLUSTER_ID)) {
+                while (rs.next()) {
+                    clusters.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+
+        for (String clusterId : clusters) {
+            String checkSql = String.format(SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID, instructionId, clusterId);
+            waitAndCheckStorageHistory(connection, instructionId, checkSql);
+            waitAndCheckStorageHistoryDetail(connection, instructionId, clusterId);
+        }
+    }
+
+    private static String getStreamGroup(Connection connection, String instructionId, String clusterId) {
+        String queryStreamGroupSql = String.format(SELECT_STREAM_GROUP_FROM_STORAGE_HISTORY, instructionId, clusterId);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(queryStreamGroupSql)) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+        return null;
+    }
+
+    private static Set<String> getStreamSetByGroup(Connection connection, String groupName) {
+        Set<String> streams = new HashSet<>();
+        String querySql = String.format(SELECT_STREAM_BY_GROUP_NAME, groupName);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(querySql)) {
+                while (rs.next()) {
+                    streams.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+        return streams;
+    }
+
+    private static Set<String> getStreamSetFromStorageHistoryDetail(Connection connection, String instructionId,
+                                                                    String clusterId) {
+        Set<String> streams = new HashSet<>();
+        String querySql = String.format(SELECT_STORAGE_HISTORY_DETAIL, instructionId, clusterId);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(querySql)) {
+                while (rs.next()) {
+                    streams.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("get streams from storage history detail failed. ", e);
+        }
+        return streams;
+    }
+
+    private static void waitAndCheckStorageHistoryDetail(Connection connection, String instructionId,
+                                                         String clusterId) {
+        String streamGroup = getStreamGroup(connection, instructionId, clusterId);
+        Set<String> expectedStreams = getStreamSetByGroup(connection, streamGroup);
+
         long startTime = System.currentTimeMillis();
         while (true) {
             if (System.currentTimeMillis() - startTime > 60 * 1000) {
                 throw new TddlNestableRuntimeException(
-                    "Wait for storage instruction to complete time out, instruction id :" + instructionId);
+                    "[Time out] Wait for storage instruction to complete by storage history detail , "
+                        + "instruction id :" + instructionId);
+            }
+            Set<String> storageStreams = getStreamSetFromStorageHistoryDetail(connection, instructionId, clusterId);
+            if (expectedStreams.equals(storageStreams)) {
+                return;
+            }
+
+            sleep();
+        }
+    }
+
+    private static void waitAndCheckStorageHistory(Connection connection, String instructionId, String checkSql) {
+        long startTime = System.currentTimeMillis();
+        while (true) {
+            if (System.currentTimeMillis() - startTime > 60 * 1000) {
+                throw new TddlNestableRuntimeException(
+                    "[Time out] Wait for storage instruction to complete by storage history , instruction id :"
+                        + instructionId);
             }
 
             try (Statement stmt = connection.createStatement()) {
-                try (ResultSet rs = stmt.executeQuery(String.format(STORAGE_HISTORY_QUERY_SQL, instructionId))) {
+                try (ResultSet rs = stmt.executeQuery(checkSql)) {
                     while (rs.next()) {
                         long status = rs.getLong(1);
                         if (status == 0) {
@@ -198,7 +332,7 @@ public class CdcStorageUtil {
                     }
                 }
             } catch (SQLException e) {
-                throw new TddlNestableRuntimeException("wait ");
+                throw new TddlNestableRuntimeException("wait and check storage history failed.", e);
             }
 
             sleep();
@@ -245,7 +379,7 @@ public class CdcStorageUtil {
                 groupsForDelete =
                     detailInfoAccessor.getGroupDetailInfoByDbNameAndStorageInstId(dbName, storageInstId).stream()
                         .map(d -> d.groupName).collect(
-                        Collectors.toList());
+                            Collectors.toList());
 
             } catch (Throwable ex) {
                 throw GeneralUtil.nestedException(ex);

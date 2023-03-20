@@ -539,51 +539,51 @@ public class InformationSchemaViewManager extends ViewManager {
                 + "and C.COLUMN_NAME = S.COLUMN_NAME");
 
         defineView("FILES", new String[] {
-            "FILE_ID",
-            "FILE_NAME",
-            "FILE_TYPE",
-            "TABLESPACE_NAME",
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "LOGFILE_GROUP_NAME",
-            "LOGFILE_GROUP_NUMBER",
-            "ENGINE",
-            "FULLTEXT_KEYS",
-            "DELETED_ROWS",
-            "UPDATE_COUNT",
-            "FREE_EXTENTS",
-            "TOTAL_EXTENTS",
-            "EXTENT_SIZE",
-            "INITIAL_SIZE",
-            "MAXIMUM_SIZE",
-            "AUTOEXTEND_SIZE",
-            "CREATION_TIME",
-            "LAST_UPDATE_TIME",
-            "LAST_ACCESS_TIME",
-            "RECOVER_TIME",
-            "TRANSACTION_COUNTER",
-            "VERSION",
-            "ROW_FORMAT",
-            "TABLE_ROWS",
-            "AVG_ROW_LENGTH",
-            "DATA_LENGTH",
-            "MAX_DATA_LENGTH",
-            "INDEX_LENGTH",
-            "DATA_FREE",
-            "CREATE_TIME",
-            "UPDATE_TIME",
-            "CHECK_TIME",
-            "CHECKSUM",
-            "STATUS",
-            "EXTRA",
-            "TASK_ID",
-            "LIFE_CYCLE",
-            "LOCAL_PATH",
-            "LOGICAL_SCHEMA_NAME",
-            "LOGICAL_TABLE_NAME",
-            "COMMIT_TS",
-            "REMOVE_TS"
+                "FILE_ID",
+                "FILE_NAME",
+                "FILE_TYPE",
+                "TABLESPACE_NAME",
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "LOGFILE_GROUP_NAME",
+                "LOGFILE_GROUP_NUMBER",
+                "ENGINE",
+                "FULLTEXT_KEYS",
+                "DELETED_ROWS",
+                "UPDATE_COUNT",
+                "FREE_EXTENTS",
+                "TOTAL_EXTENTS",
+                "EXTENT_SIZE",
+                "INITIAL_SIZE",
+                "MAXIMUM_SIZE",
+                "AUTOEXTEND_SIZE",
+                "CREATION_TIME",
+                "LAST_UPDATE_TIME",
+                "LAST_ACCESS_TIME",
+                "RECOVER_TIME",
+                "TRANSACTION_COUNTER",
+                "VERSION",
+                "ROW_FORMAT",
+                "TABLE_ROWS",
+                "AVG_ROW_LENGTH",
+                "DATA_LENGTH",
+                "MAX_DATA_LENGTH",
+                "INDEX_LENGTH",
+                "DATA_FREE",
+                "CREATE_TIME",
+                "UPDATE_TIME",
+                "CHECK_TIME",
+                "CHECKSUM",
+                "STATUS",
+                "EXTRA",
+                "TASK_ID",
+                "LIFE_CYCLE",
+                "LOCAL_PATH",
+                "LOGICAL_SCHEMA_NAME",
+                "LOGICAL_TABLE_NAME",
+                "COMMIT_TS",
+                "REMOVE_TS"
             },
             "select FILE_ID, FILE_NAME, FILE_TYPE, TABLESPACE_NAME, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, LOGFILE_GROUP_NAME, LOGFILE_GROUP_NUMBER, ENGINE, FULLTEXT_KEYS, DELETED_ROWS, UPDATE_COUNT, FREE_EXTENTS, TOTAL_EXTENTS, EXTENT_SIZE, INITIAL_SIZE, MAXIMUM_SIZE, AUTOEXTEND_SIZE, CREATION_TIME, LAST_UPDATE_TIME, LAST_ACCESS_TIME, RECOVER_TIME, TRANSACTION_COUNTER, VERSION, ROW_FORMAT, TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, CREATE_TIME, UPDATE_TIME, CHECK_TIME, CHECKSUM, STATUS, EXTRA, task_id, life_cycle, local_path, logical_schema_name, logical_table_name, commit_ts, remove_ts from "
                 + MetaDbSchema.NAME + ".files where life_cycle != 2");
@@ -1347,6 +1347,48 @@ public class InformationSchemaViewManager extends ViewManager {
                 , MetaDbSchema.NAME)
         );
 
+        defineVirtualView(VirtualViewType.FULL_STORAGE, new String[] {
+            "DN",
+            "RW_DN",
+            "KIND",
+            "NODE",
+            "USER",
+            "PASSWD_ENC",
+            "XPORT",
+            "ROLE",
+            "IS_HEALTHY",
+            "IS_VIP",
+            "INFO_FROM"
+        });
+
+        defineVirtualView(VirtualViewType.STORAGE, new String[] {
+            "STORAGE_INST_ID",
+            "LEADER_NODE",
+            "IS_HEALTHY",
+            "INST_KIND",
+            "DB_COUNT",
+            "GROUP_COUNT",
+            "STATUS",
+            "DELETABLE",
+            "DELAY",
+            "ACTIVE"
+        });
+
+        defineVirtualView(VirtualViewType.STORAGE_REPLICAS, new String[] {
+            "STORAGE_INST_ID",
+            "LEADER_NODE",
+            "IS_HEALTHY",
+            "INST_KIND",
+            "DB_COUNT",
+            "GROUP_COUNT",
+            "STATUS",
+            "DELETABLE",
+            "DELAY",
+            "ACTIVE",
+            "REPLICAS",
+            "STORAGE_RW_INST_ID"
+        });
+
         defineVirtualView(VirtualViewType.TABLE_GROUP, new String[] {
             "TABLE_SCHEMA",
             "TABLE_GROUP_ID",
@@ -1673,187 +1715,187 @@ public class InformationSchemaViewManager extends ViewManager {
 
             "QUEUED_REQUEST_DEPTH",
 
-                "TRACE_ID",
-                "SQL",
-                "EXTRA",
-                "TYPE",
-                "REQUEST_STATUS",
-                "FETCH_COUNT",
-                "TOKEN_COUNT",
-                "TIME_SINCE_REQUEST",
-                "DATA_PKT_RESPONSE_TIME",
-                "RESPONSE_TIME",
-                "FINISH_TIME",
-                "TOKEN_DONE_COUNT",
-                "ACTIVE_OFFER_TOKEN_COUNT",
-                "START_TIME",
-                "RESULT_CHUNK",
-                "RETRANSMIT",
-                "USE_CACHE"
-            });
+            "TRACE_ID",
+            "SQL",
+            "EXTRA",
+            "TYPE",
+            "REQUEST_STATUS",
+            "FETCH_COUNT",
+            "TOKEN_COUNT",
+            "TIME_SINCE_REQUEST",
+            "DATA_PKT_RESPONSE_TIME",
+            "RESPONSE_TIME",
+            "FINISH_TIME",
+            "TOKEN_DONE_COUNT",
+            "ACTIVE_OFFER_TOKEN_COUNT",
+            "START_TIME",
+            "RESULT_CHUNK",
+            "RETRANSMIT",
+            "USE_CACHE"
+        });
 
-            defineVirtualView(VirtualViewType.FILES, new String[] {
-                "FILE_ID",
-                "FILE_NAME",
-                "FILE_TYPE",
-                "TABLESPACE_NAME",
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "LOGFILE_GROUP_NAME",
-                "LOGFILE_GROUP_NUMBER",
-                "ENGINE",
-                "FULLTEXT_KEYS",
-                "DELETED_ROWS",
-                "UPDATE_COUNT",
-                "FREE_EXTENTS",
-                "TOTAL_EXTENTS",
-                "EXTENT_SIZE",
-                "INITIAL_SIZE",
-                "MAXIMUM_SIZE",
-                "AUTOEXTEND_SIZE",
-                "CREATION_TIME",
-                "LAST_UPDATE_TIME",
-                "LAST_ACCESS_TIME",
-                "RECOVER_TIME",
-                "TRANSACTION_COUNTER",
-                "VERSION",
-                "ROW_FORMAT",
-                "TABLE_ROWS",
-                "AVG_ROW_LENGTH",
-                "DATA_LENGTH",
-                "MAX_DATA_LENGTH",
-                "INDEX_LENGTH",
-                "DATA_FREE",
-                "CREATE_TIME",
-                "UPDATE_TIME",
-                "CHECK_TIME",
-                "CHECKSUM",
-                "STATUS",
-                "EXTRA"
+        defineVirtualView(VirtualViewType.FILES, new String[] {
+            "FILE_ID",
+            "FILE_NAME",
+            "FILE_TYPE",
+            "TABLESPACE_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "LOGFILE_GROUP_NAME",
+            "LOGFILE_GROUP_NUMBER",
+            "ENGINE",
+            "FULLTEXT_KEYS",
+            "DELETED_ROWS",
+            "UPDATE_COUNT",
+            "FREE_EXTENTS",
+            "TOTAL_EXTENTS",
+            "EXTENT_SIZE",
+            "INITIAL_SIZE",
+            "MAXIMUM_SIZE",
+            "AUTOEXTEND_SIZE",
+            "CREATION_TIME",
+            "LAST_UPDATE_TIME",
+            "LAST_ACCESS_TIME",
+            "RECOVER_TIME",
+            "TRANSACTION_COUNTER",
+            "VERSION",
+            "ROW_FORMAT",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "CHECKSUM",
+            "STATUS",
+            "EXTRA"
             ,
-                "resource"
-            });
+            "resource"
+        });
 
         defineVirtualView(VirtualViewType.REBALANCE_BACKFILL, new String[] {
-                "DDL_JOB_ID",
-                "BACKFILL_ID",
-                "TABLE_SCHEMA",
-                "START_TIME",
-                "STATUS",
-                "CURRENT_SPEED(ROWS/SEC)",
-                "FINISHED_ROWS",
-                "APPROXIMATE_TOTAL_ROWS"
-            });
+            "DDL_JOB_ID",
+            "BACKFILL_ID",
+            "TABLE_SCHEMA",
+            "START_TIME",
+            "STATUS",
+            "CURRENT_SPEED(ROWS/SEC)",
+            "FINISHED_ROWS",
+            "APPROXIMATE_TOTAL_ROWS"
+        });
 
-            defineVirtualView(VirtualViewType.STATEMENTS_SUMMARY, new String[] {
-                "BEGIN_TIME",
-                "SCHEMA",
-                "SQL_TYPE",
-                "TEMPLATE_ID",
-                "PLAN_HASH",
-                "SQL_TEMPLATE",
-                "COUNT",
-                "ERROR_COUNT",
-                //response time
-                "SUM_RESPONSE_TIME_MS",
-                "AVG_RESPONSE_TIME_MS",
-                "MAX_RESPONSE_TIME_MS",
-                //affected rows
-                "SUM_AFFECTED_ROWS",
-                "AVG_AFFECTED_ROWS",
-                "MAX_AFFECTED_ROWS",
-                //transaction time
-                "SUM_TRANSACTION_TIME_MS",
-                "AVG_TRANSACTION_TIME_MS",
-                "MAX_TRANSACTION_TIME_MS",
-                //build plan time
-                "SUM_BUILD_PLAN_CPU_TIME_MS",
-                "AVG_BUILD_PLAN_CPU_TIME_MS",
-                "MAX_BUILD_PLAN_CPU_TIME_MS",
-                //exec plan time
-                "SUM_EXEC_PLAN_CPU_TIME_MS",
-                "AVG_EXEC_PLAN_CPU_TIME_MS",
-                "MAX_EXEC_PLAN_CPU_TIME_MS",
-                //physical time
-                "SUM_PHYSICAL_TIME_MS",
-                "AVG_PHYSICAL_TIME_MS",
-                "MAX_PHYSICAL_TIME_MS",
-                //physical exec count
-                "SUM_PHYSICAL_EXEC_COUNT",
-                "AVG_PHYSICAL_EXEC_COUNT",
-                "MAX_PHYSICAL_EXEC_COUNT",
-                //physical fetch rows
-                "SUM_PHYSICAL_FETCH_ROWS",
-                "AVG_PHYSICAL_FETCH_ROWS",
-                "MAX_PHYSICAL_FETCH_ROWS",
-                //first seen
-                "FIRST_SEEN",
-                //last seen
-                "LAST_SEEN",
-                "SQL_SAMPLE",
-                "PREV_TEMPLATE_ID",
-                "PREV_SAMPLE_SQL",
-                "SAMPLE_TRACE_ID",
-                "WORKLOAD_TYPE",
-                "EXECUTE_MODE"
+        defineVirtualView(VirtualViewType.STATEMENTS_SUMMARY, new String[] {
+            "BEGIN_TIME",
+            "SCHEMA",
+            "SQL_TYPE",
+            "TEMPLATE_ID",
+            "PLAN_HASH",
+            "SQL_TEMPLATE",
+            "COUNT",
+            "ERROR_COUNT",
+            //response time
+            "SUM_RESPONSE_TIME_MS",
+            "AVG_RESPONSE_TIME_MS",
+            "MAX_RESPONSE_TIME_MS",
+            //affected rows
+            "SUM_AFFECTED_ROWS",
+            "AVG_AFFECTED_ROWS",
+            "MAX_AFFECTED_ROWS",
+            //transaction time
+            "SUM_TRANSACTION_TIME_MS",
+            "AVG_TRANSACTION_TIME_MS",
+            "MAX_TRANSACTION_TIME_MS",
+            //build plan time
+            "SUM_BUILD_PLAN_CPU_TIME_MS",
+            "AVG_BUILD_PLAN_CPU_TIME_MS",
+            "MAX_BUILD_PLAN_CPU_TIME_MS",
+            //exec plan time
+            "SUM_EXEC_PLAN_CPU_TIME_MS",
+            "AVG_EXEC_PLAN_CPU_TIME_MS",
+            "MAX_EXEC_PLAN_CPU_TIME_MS",
+            //physical time
+            "SUM_PHYSICAL_TIME_MS",
+            "AVG_PHYSICAL_TIME_MS",
+            "MAX_PHYSICAL_TIME_MS",
+            //physical exec count
+            "SUM_PHYSICAL_EXEC_COUNT",
+            "AVG_PHYSICAL_EXEC_COUNT",
+            "MAX_PHYSICAL_EXEC_COUNT",
+            //physical fetch rows
+            "SUM_PHYSICAL_FETCH_ROWS",
+            "AVG_PHYSICAL_FETCH_ROWS",
+            "MAX_PHYSICAL_FETCH_ROWS",
+            //first seen
+            "FIRST_SEEN",
+            //last seen
+            "LAST_SEEN",
+            "SQL_SAMPLE",
+            "PREV_TEMPLATE_ID",
+            "PREV_SAMPLE_SQL",
+            "SAMPLE_TRACE_ID",
+            "WORKLOAD_TYPE",
+            "EXECUTE_MODE"
 
         });
 
         defineVirtualView(VirtualViewType.STATEMENTS_SUMMARY_HISTORY, new String[] {
-                "BEGIN_TIME",
-                "SCHEMA",
-                "SQL_TYPE",
-                "TEMPLATE_ID",
-                "PLAN_HASH",
-                "SQL_TEMPLATE",
-                "COUNT",
-                "ERROR_COUNT",
-                //response time
-                "SUM_RESPONSE_TIME_MS",
-                "AVG_RESPONSE_TIME_MS",
-                "MAX_RESPONSE_TIME_MS",
-                //affected rows
-                "SUM_AFFECTED_ROWS",
-                "AVG_AFFECTED_ROWS",
-                "MAX_AFFECTED_ROWS",
-                //transaction time
-                "SUM_TRANSACTION_TIME_MS",
-                "AVG_TRANSACTION_TIME_MS",
-                "MAX_TRANSACTION_TIME_MS",
-                //build plan time
-                "SUM_BUILD_PLAN_CPU_TIME_MS",
-                "AVG_BUILD_PLAN_CPU_TIME_MS",
-                "MAX_BUILD_PLAN_CPU_TIME_MS",
-                //exec plan time
-                "SUM_EXEC_PLAN_CPU_TIME_MS",
-                "AVG_EXEC_PLAN_CPU_TIME_MS",
-                "MAX_EXEC_PLAN_CPU_TIME_MS",
-                //physical time
-                "SUM_PHYSICAL_TIME_MS",
-                "AVG_PHYSICAL_TIME_MS",
-                "MAX_PHYSICAL_TIME_MS",
-                //physical exec count
-                "SUM_PHYSICAL_EXEC_COUNT",
-                "AVG_PHYSICAL_EXEC_COUNT",
-                "MAX_PHYSICAL_EXEC_COUNT",
-                //physical fetch rows
-                "SUM_PHYSICAL_FETCH_ROWS",
-                "AVG_PHYSICAL_FETCH_ROWS",
-                "MAX_PHYSICAL_FETCH_ROWS",
-                //first seen
-                "FIRST_SEEN",
-                //last seen
-                "LAST_SEEN",
-                "SQL_SAMPLE",
-                "PREV_TEMPLATE_ID",
-                "PREV_SAMPLE_SQL",
-                "SAMPLE_TRACE_ID",
-                "WORKLOAD_TYPE",
-                "EXECUTE_MODE"
+            "BEGIN_TIME",
+            "SCHEMA",
+            "SQL_TYPE",
+            "TEMPLATE_ID",
+            "PLAN_HASH",
+            "SQL_TEMPLATE",
+            "COUNT",
+            "ERROR_COUNT",
+            //response time
+            "SUM_RESPONSE_TIME_MS",
+            "AVG_RESPONSE_TIME_MS",
+            "MAX_RESPONSE_TIME_MS",
+            //affected rows
+            "SUM_AFFECTED_ROWS",
+            "AVG_AFFECTED_ROWS",
+            "MAX_AFFECTED_ROWS",
+            //transaction time
+            "SUM_TRANSACTION_TIME_MS",
+            "AVG_TRANSACTION_TIME_MS",
+            "MAX_TRANSACTION_TIME_MS",
+            //build plan time
+            "SUM_BUILD_PLAN_CPU_TIME_MS",
+            "AVG_BUILD_PLAN_CPU_TIME_MS",
+            "MAX_BUILD_PLAN_CPU_TIME_MS",
+            //exec plan time
+            "SUM_EXEC_PLAN_CPU_TIME_MS",
+            "AVG_EXEC_PLAN_CPU_TIME_MS",
+            "MAX_EXEC_PLAN_CPU_TIME_MS",
+            //physical time
+            "SUM_PHYSICAL_TIME_MS",
+            "AVG_PHYSICAL_TIME_MS",
+            "MAX_PHYSICAL_TIME_MS",
+            //physical exec count
+            "SUM_PHYSICAL_EXEC_COUNT",
+            "AVG_PHYSICAL_EXEC_COUNT",
+            "MAX_PHYSICAL_EXEC_COUNT",
+            //physical fetch rows
+            "SUM_PHYSICAL_FETCH_ROWS",
+            "AVG_PHYSICAL_FETCH_ROWS",
+            "MAX_PHYSICAL_FETCH_ROWS",
+            //first seen
+            "FIRST_SEEN",
+            //last seen
+            "LAST_SEEN",
+            "SQL_SAMPLE",
+            "PREV_TEMPLATE_ID",
+            "PREV_SAMPLE_SQL",
+            "SAMPLE_TRACE_ID",
+            "WORKLOAD_TYPE",
+            "EXECUTE_MODE"
         });
 
-    defineVirtualView(VirtualViewType.DDL_PLAN, new String[] {
+        defineVirtualView(VirtualViewType.DDL_PLAN, new String[] {
             "ID",
             "PLAN_ID",
             "JOB_ID",
@@ -1867,53 +1909,54 @@ public class InformationSchemaViewManager extends ViewManager {
             "extras",
             "gmt_created",
             "gmt_modified"
-        });        defineVirtualView(VirtualViewType.JOIN_GROUP, new String[] {
-                "TABLE_SCHEMA",
-                "JOIN_GROUP_ID",
-                "JOIN_GROUP_NAME",
-                "LOCALITY",
-                "TABLE_NAME"
-            });
+        });
+        defineVirtualView(VirtualViewType.JOIN_GROUP, new String[] {
+            "TABLE_SCHEMA",
+            "JOIN_GROUP_ID",
+            "JOIN_GROUP_NAME",
+            "LOCALITY",
+            "TABLE_NAME"
+        });
 
-            defineVirtualView(VirtualViewType.AFFINITY_TABLES, new String[] {
-                "SCHEMA_NAME",
-                "PHYSICAL_NAME",
-                "GROUP_NAME",
-                "USER",
-                "PASSWD",
-                "IP",
-                "PORT",
-                "DN_ADDRESS"
-            });
+        defineVirtualView(VirtualViewType.AFFINITY_TABLES, new String[] {
+            "SCHEMA_NAME",
+            "PHYSICAL_NAME",
+            "GROUP_NAME",
+            "USER",
+            "PASSWD",
+            "IP",
+            "PORT",
+            "DN_ADDRESS"
+        });
 
-            defineVirtualView(VirtualViewType.PROCEDURE_CACHE, new String[] {
-                "ID",
-                "SCHEMA",
-                "PROCEDURE",
-                "SIZE"
-            });
+        defineVirtualView(VirtualViewType.PROCEDURE_CACHE, new String[] {
+            "ID",
+            "SCHEMA",
+            "PROCEDURE",
+            "SIZE"
+        });
 
-            defineVirtualView(VirtualViewType.PROCEDURE_CACHE_CAPACITY, new String[] {
-                "ID",
-                "USED_SIZE",
-                "TOTAL_SIZE"
-            });
+        defineVirtualView(VirtualViewType.PROCEDURE_CACHE_CAPACITY, new String[] {
+            "ID",
+            "USED_SIZE",
+            "TOTAL_SIZE"
+        });
 
-            defineVirtualView(VirtualViewType.FUNCTION_CACHE, new String[] {
-                "ID",
-                "FUNCTION",
-                "SIZE"
-            });
+        defineVirtualView(VirtualViewType.FUNCTION_CACHE, new String[] {
+            "ID",
+            "FUNCTION",
+            "SIZE"
+        });
 
-            defineVirtualView(VirtualViewType.FUNCTION_CACHE_CAPACITY, new String[] {
-                "ID",
-                "USED_SIZE",
-                "TOTAL_SIZE"
-            });
+        defineVirtualView(VirtualViewType.FUNCTION_CACHE_CAPACITY, new String[] {
+            "ID",
+            "USED_SIZE",
+            "TOTAL_SIZE"
+        });
 
-            defineVirtualView(VirtualViewType.PUSHED_FUNCTION, new String[] {
-                "ID",
-                "FUNCTION"
-            });
-        }
+        defineVirtualView(VirtualViewType.PUSHED_FUNCTION, new String[] {
+            "ID",
+            "FUNCTION"
+        });
     }
+}

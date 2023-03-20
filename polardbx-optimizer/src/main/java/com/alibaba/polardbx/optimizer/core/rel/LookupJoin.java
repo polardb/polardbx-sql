@@ -25,6 +25,7 @@ import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.util.Util;
@@ -36,18 +37,35 @@ public interface LookupJoin {
     // cost for join from TableLookup and TableLookup as lookup side of join
     static RelOptCost getCostIfJoinFromTableLookup(RelMetadataQuery mq, Join joinOfTableLookup) {
 
-        RelNode left = joinOfTableLookup.getLeft();
-
-        if (left instanceof RelSubset) {
-            left = Util.first(((RelSubset) left).getBest(), ((RelSubset) left).getOriginal());
+        // get the index scan side of look up join
+        //     Right Join
+        //     /      \
+        //   LookUp   rel
+        //    /
+        // IndexScan
+        //
+        // ---------------------------
+        //
+        //                BKA Right Join
+        //                  /      \
+        //   IndexScan(join=rel)    rel
+        //
+        // note that in the case, the cost of BKA Right Join can't be ignored
+        RelNode node = joinOfTableLookup.getLeft();
+        if (joinOfTableLookup.getJoinType() == JoinRelType.RIGHT) {
+            node = joinOfTableLookup.getRight();
         }
 
-        if (left instanceof Gather) {
-            left = ((Gather) left).getInput();
+        if (node instanceof RelSubset) {
+            node = Util.first(((RelSubset) node).getBest(), ((RelSubset) node).getOriginal());
         }
 
-        if (left instanceof LogicalIndexScan) {
-            LogicalIndexScan logicalIndexScan = (LogicalIndexScan) left;
+        if (node instanceof Gather) {
+            node = ((Gather) node).getInput();
+        }
+
+        if (node instanceof LogicalIndexScan) {
+            LogicalIndexScan logicalIndexScan = (LogicalIndexScan) node;
             Join join = logicalIndexScan.getJoin();
             if (join != null) {
                 // This TableLookup is lookup side of lookup join such as (BKA, Materialized Semi Join)

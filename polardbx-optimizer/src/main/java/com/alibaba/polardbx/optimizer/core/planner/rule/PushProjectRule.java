@@ -16,7 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
+import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
@@ -36,7 +40,9 @@ import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.rules.PushProjector;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexUtil;
@@ -62,15 +68,17 @@ public class PushProjectRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         Project project = (Project) call.rels[0];
         LogicalView logicalView = (LogicalView) call.rels[1];
+        PlannerContext context = call.getPlanner().getContext().unwrap(PlannerContext.class);
 
         if (logicalView instanceof OSSTableScan) {
-            if (!((OSSTableScan)logicalView).canPushFilterProject()) {
+            if (!((OSSTableScan) logicalView).canPushFilterProject()) {
                 return;
             }
             // only push column ref
             PushProjector pushProjector =
                 new PushProjector(
-                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView, PushProjector.ExprCondition.FALSE, call.builder());
+                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView,
+                    PushProjector.ExprCondition.FALSE, call.builder());
             RelNode pushProjectorResult = pushProjector.convertProject(null);
             if (pushProjectorResult == null || !(pushProjectorResult instanceof Project)) {
                 return;
@@ -104,7 +112,7 @@ public class PushProjectRule extends RelOptRule {
         }
 
         // 判断是否有需要特殊处理的Project
-        if (remainProject(project)) {
+        if (remainProject(project) || RelUtils.isNotPushLastInsertId(context, project)) {
             // 不下压或者构造新的project下压，保留原先的project
 
             // if project has subquery with single table && logicalview only possess single table,

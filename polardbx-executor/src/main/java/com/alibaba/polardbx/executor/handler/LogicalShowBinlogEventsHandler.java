@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.cdc.BinlogEvent;
-import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceBlockingStub;
-import com.alibaba.polardbx.rpc.cdc.ShowBinlogEventsRequest;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.CdcResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -27,6 +23,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rpc.CdcRpcClient;
+import com.alibaba.polardbx.rpc.cdc.BinlogEvent;
+import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceBlockingStub;
+import com.alibaba.polardbx.rpc.cdc.ShowBinlogEventsRequest;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -34,9 +34,6 @@ import org.apache.calcite.sql.SqlShowBinlogEvents;
 
 import java.util.Iterator;
 
-/**
- *
- */
 public class LogicalShowBinlogEventsHandler extends HandlerCommon {
     public LogicalShowBinlogEventsHandler(IRepository repo) {
         super(repo);
@@ -51,7 +48,11 @@ public class LogicalShowBinlogEventsHandler extends HandlerCommon {
             offset = ((SqlNodeList) sqlShowBinlogEvents.getLimit()).get(0);
             rowCount = ((SqlNodeList) sqlShowBinlogEvents.getLimit()).get(1);
         }
-        CdcServiceBlockingStub cdcServiceBlockingStub = CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
+        SqlNode with = sqlShowBinlogEvents.getWith();
+        String streamName = with == null ? "" : RelUtils.lastStringValue(with);
+        CdcServiceBlockingStub cdcServiceBlockingStub =
+            with == null ? CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub() :
+                CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub(streamName);
         Iterator<BinlogEvent> binlogEvents = cdcServiceBlockingStub.showBinlogEvents(
             ShowBinlogEventsRequest.newBuilder()
                 .setLogName(sqlShowBinlogEvents.getLogName() == null ? ""
@@ -60,6 +61,7 @@ public class LogicalShowBinlogEventsHandler extends HandlerCommon {
                     : RelUtils.longValue(sqlShowBinlogEvents.getPos()).intValue())
                 .setOffset(offset == null ? -1 : RelUtils.longValue(offset).intValue())
                 .setRowCount(rowCount == null ? -1 : RelUtils.longValue(rowCount).intValue())
+                .setStreamName(streamName)
                 .build());
         CdcResultCursor result = new CdcResultCursor("SHOW BINLOG EVENTS", binlogEvents,
             cdcServiceBlockingStub.getChannel());

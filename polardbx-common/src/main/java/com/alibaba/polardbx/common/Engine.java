@@ -29,8 +29,10 @@ public enum Engine {
     PERFORMANCE_SCHEMA,
     FEDERATED,
     LOCAL_DISK,
+    EXTERNAL_DISK,
     S3,
-    OSS;
+    OSS,
+    NFS;
 
     public static Engine of(String engineName) {
         if (TStringUtil.isEmpty(engineName)) {
@@ -50,7 +52,9 @@ public enum Engine {
         switch (engine) {
         case OSS:
         case LOCAL_DISK:
+        case EXTERNAL_DISK:
         case S3:
+        case NFS:
             return true;
         default:
             return false;

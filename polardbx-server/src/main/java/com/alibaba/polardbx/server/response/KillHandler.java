@@ -84,7 +84,8 @@ public final class KillHandler {
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
 
         List<List<Map<String, Object>>> results = SyncManagerHelper
-            .sync(new KillSyncAction(c.getUser(), Long.parseLong(id), killQuery), c.getSchema());
+            .sync(new KillSyncAction(c.getUser(), Long.parseLong(id), killQuery, c.isSuperUser(),
+                com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_USER_CANCELED), c.getSchema());
 
         for (List<Map<String, Object>> result : results) {
             if (result != null) {
@@ -92,14 +93,19 @@ public final class KillHandler {
             }
         }
 
-        OkPacket packet = new OkPacket();
-        packet.packetId = 1;
-        packet.affectedRows = count;
-        packet.serverStatus = 2;
-        if (hasMore) {
-            packet.serverStatus |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
+        if (count > 0) {
+            OkPacket packet = new OkPacket();
+            packet.packetId = 1;
+            packet.affectedRows = count;
+            packet.serverStatus = 2;
+            if (hasMore) {
+                packet.serverStatus |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
+            }
+            packet.write(PacketOutputProxyFactory.getInstance().createProxy(c));
+        } else {
+            c.writeErrMessage(ErrorCode.ER_NO_SUCH_THREAD,
+                "Unknown thread id: " + id + ", or you are not owner of thread " + id);
         }
-        packet.write(PacketOutputProxyFactory.getInstance().createProxy(c));
     }
 
     private static List<FrontendConnection> getList(String stmt, int offset, ServerConnection sc) {

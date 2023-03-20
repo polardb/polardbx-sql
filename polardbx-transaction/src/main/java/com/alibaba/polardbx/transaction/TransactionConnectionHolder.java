@@ -30,11 +30,12 @@ import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction.RW;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
@@ -50,6 +51,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -206,11 +208,11 @@ public class TransactionConnectionHolder implements IConnectionHolder {
 
     private final static Logger logger = LoggerFactory.getLogger(TransactionConnectionHolder.class);
 
-     /**
+    /**
      * 物理库的写连接集合
      */
     //private final Map<String, HeldConnection> groupHeldWriteConn = new HashMap<>();
-     private final Map<String, List<HeldConnection>> groupHeldWriteConn = new HashMap<>();
+    private final Map<String, List<HeldConnection>> groupHeldWriteConn = new HashMap<>();
     /**
      * key: grp
      * val: {
@@ -224,7 +226,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
      * 物理库的读连接集合
      */
     private final Map<String, List<HeldConnection>> groupHeldReadConns = new HashMap<>();
-    private final Map<String, Long> lsnMap = new HashMap<>();
+    private final ConcurrentHashMap<String, Long> dnLsnMap = new ConcurrentHashMap<>();
     private final Set<IConnection> connections = new HashSet<>();
 
     private final ReentrantLock lock;
@@ -293,6 +295,11 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             return false;
         }
 
+        if (schema != null && schema.equalsIgnoreCase("information_schema")) {
+            //information_schema走的是metadb, 访问无需获取Lsn
+            return false;
+        }
+
         if (!consistentReplicaRead) {
             return false;
         }
@@ -324,14 +331,10 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             topology = executor.getTopology();
         }
 
-        Long masterLsn = lsnMap.get(group);
-        if (masterLsn == null) {
-            ExecUtils.getLsn(topology, group, lsnMap);
-            masterLsn = lsnMap.get(group);
-        }
+        long masterLsn = GroupingFetchLSN.getInstance().getLsn(topology, group, dnLsnMap);
         IConnection slaveConn = new DeferredConnection(ds.getConnection(masterSlave),
             executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP));
-        slaveConn.executeLater("SET read_lsn = " + masterLsn.toString());
+        slaveConn.executeLater(String.format("SET read_lsn = %d", masterLsn));
         return slaveConn;
     }
 

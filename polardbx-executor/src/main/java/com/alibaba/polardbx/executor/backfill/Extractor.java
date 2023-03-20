@@ -873,11 +873,11 @@ public class Extractor extends PhyOperationBuilderCommon {
                     // 3. Trx1 commit, if (success) {trx2 commit} else {trx2 rollback}
                     () -> GsiUtils.wrapWithSingleDbTrx(tm, ec,
                         (selectEc) -> extract(dbIndex, physicalTableName, selectPlan, selectEc, loader, finalLastPk,
-                        upperBoundParam)),
-                e -> (GsiUtils.vendorErrorIs(e, SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)
-                    || GsiUtils.vendorErrorIs(e, SQLSTATE_LOCK_TIMEOUT, ER_LOCK_WAIT_TIMEOUT))
-                    || e.getMessage().contains("Loader check error."),
-                (e, retryCount) -> deadlockErrConsumer(selectPlan, ec, e, retryCount));
+                            upperBoundParam)),
+                    e -> (GsiUtils.vendorErrorIs(e, SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)
+                        || GsiUtils.vendorErrorIs(e, SQLSTATE_LOCK_TIMEOUT, ER_LOCK_WAIT_TIMEOUT))
+                        || e.getMessage().contains("Loader check error."),
+                    (e, retryCount) -> deadlockErrConsumer(selectPlan, ec, e, retryCount));
 
                 // For status recording
                 List<ParameterContext> beforeLastPk = lastPk;
@@ -906,7 +906,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                 }
 
                 // Check DDL is ongoing.
-                if (CrossEngineValidator.isJobInterrupted(ec)) {
+                if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()) {
                     long jobId = ec.getDdlJobId();
                     throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                         "The job '" + jobId + "' has been cancelled");
@@ -966,7 +966,6 @@ public class Extractor extends PhyOperationBuilderCommon {
             && isNotEmpty(backfillObjects.get(0).extra)) {
             // 估算一下剩余的行数，行数大于多少时，才能分裂
             long rowCount = Long.parseLong(backfillObjects.get(0).extra.getApproximateRowCount());
-            int progress = Integer.parseInt(backfillObjects.get(0).extra.getProgress());
             long remainingRows = rowCount - successRowCount;
             if (remainingRows > ec.getParamManager().getLong(ConnectionParams.PHYSICAL_TABLE_START_SPLIT_SIZE)) {
                 // gen backfill objects

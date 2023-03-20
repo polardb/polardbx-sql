@@ -84,6 +84,7 @@ import com.alibaba.polardbx.util.RexMemoryLimitHelper;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.lang3.StringUtils;
@@ -600,6 +601,8 @@ public abstract class HandlerCommon implements PlanHandler {
             (writer, selectedRows, result) -> writer.classify(skComparator, selectedRows, executionContext, result),
             deletePlans, insertPlans, updatePlans, replicateDeletePlans, replicateInsertPlans, replicateUpdatePlans);
 
+        long oldLastInsertId = executionContext.getConnection().getLastInsertId();
+
         // Execute update
         updatePlans.addAll(replicateUpdatePlans);
         executePhysicalPlan(updatePlans, executionContext, schemaName, false);
@@ -625,6 +628,10 @@ public abstract class HandlerCommon implements PlanHandler {
 
         // Update physical sql id for next physical sql group
         executionContext.setPhySqlId(phySqlId);
+
+        if (relocateWriter.getOperation() == TableModify.Operation.UPDATE && updatePlans.size() == 0) {
+            executionContext.getConnection().setLastInsertId(oldLastInsertId);
+        }
 
         ExecUtils.getAffectRowsByCursors(inputCursors, false);
 

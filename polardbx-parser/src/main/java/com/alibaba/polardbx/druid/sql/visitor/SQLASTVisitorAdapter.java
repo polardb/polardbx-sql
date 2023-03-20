@@ -126,6 +126,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemGetConfigStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemRefreshStorageStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemReloadStorageStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemSetConfigStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddClusteringKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
@@ -354,6 +356,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowStorage;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeMasterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeReplicationFilterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlKillStatement;
@@ -709,6 +712,20 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     public void endVisit(SQLAlterSystemSetConfigStatement x) {
+    }
+
+    public boolean visit(SQLAlterSystemRefreshStorageStatement x) {
+        return true;
+    }
+
+    public void endVisit(SQLAlterSystemRefreshStorageStatement x) {
+    }
+
+    public boolean visit(SQLAlterSystemReloadStorageStatement x) {
+        return true;
+    }
+
+    public void endVisit(SQLAlterSystemReloadStorageStatement x) {
     }
 
     @Override
@@ -2687,6 +2704,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public boolean visit(SQLShowDatabasesStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowStorage x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowStorage x) {
         return true;
     }
 

@@ -209,9 +209,9 @@ public final class ServerParseShow {
                     case 'a':
                     case 'A':
                         return statisticCheck(stmt, offset);
-                    case 'o':
-                    case 'O':
-                        return storageCheck(stmt, offset);
+                    default:
+                        return OTHER;
+                    //return storageCheck(stmt, offset);
                     }
                 } else {
                     return OTHER;
@@ -537,8 +537,7 @@ public final class ServerParseShow {
                     case '\n':
                         continue;
                     case 'D':
-                    case 'd':
-                    {
+                    case 'd': {
                         int res = dataCheck(stmt, offset);
                         if (res == DATABASES) {
                             return FULL_DATABASES;

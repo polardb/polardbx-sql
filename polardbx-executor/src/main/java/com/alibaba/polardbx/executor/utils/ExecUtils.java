@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
@@ -40,7 +41,6 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
@@ -81,6 +81,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
@@ -1745,28 +1746,34 @@ public class ExecUtils {
         return MetricLevel.isOperatorMetricEnabled(context.getParamManager().getInt(ConnectionParams.MPP_METRIC_LEVEL));
     }
 
-    public static void getLsn(
-        TopologyHandler topologyHandler, String group, Map<String, Long> lsnMap)
-        throws SQLException {
-        try (IConnection masterConn = topologyHandler.get(group).getDataSource().getConnection(
-            MasterSlave.MASTER_ONLY);
+    public static long getLsn(IDataSource dataSource) throws SQLException {
+        try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
             Statement stmt = masterConn.createStatement()) {
             ResultSet result =
                 stmt.executeQuery("SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL");
             if (result.next()) {
                 long masterLsn = Long.parseLong(result.getString(1));
-                lsnMap.put(group, masterLsn);
+                return masterLsn;
             } else {
                 throw new SQLException("Empty result while getting Applied_index");
             }
         }
     }
 
-    public static void getLsn(
-        Map.Entry<String, String> group, Map<String, Long> lsnMap) throws SQLException {
-        getLsn(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
-            group.getKey(), lsnMap);
-    }
+    //FIXME optimize get LSN by Xprotocol way.
+//    public static long getLsn(IDataSource dataSource) throws SQLException {
+//        try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
+//            Statement stmt = masterConn.createStatement()) {
+//            ResultSet result =
+//                stmt.executeQuery("call dbms_consensus.show_cluster_local()");
+//            if (result.next()) {
+//                long masterLsn = Long.parseLong(result.getString(9));
+//                return masterLsn;
+//            } else {
+//                throw new SQLException("Empty result while getting Applied_index");
+//            }
+//        }
+//    }
 
     public static void checkException(ListenableFuture<?> future) {
         Object ret = getFutureValue(future);

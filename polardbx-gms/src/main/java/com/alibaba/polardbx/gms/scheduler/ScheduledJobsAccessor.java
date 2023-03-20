@@ -80,6 +80,9 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_GROUP_NAME =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_group_name=?";
 
+    private static final String RENAME_TABLE_BY_TABLE_NAME =
+        "update " + SCHEDULED_JOBS + " set table_name = ?, schedule_name = ? where table_schema=? and table_name=?";
+
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_EXECUTOR_TYPE =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where executor_type=?";
 
@@ -112,6 +115,19 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             return MetaDbUtil.insert(REPLACE_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to insert into " + SCHEDULED_JOBS, "insert into", e);
+        }
+    }
+
+    public int rename(String newTableName, String newScheduleName, String schemaName, String tableName) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newTableName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, newScheduleName);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableName);
+            return MetaDbUtil.update(RENAME_TABLE_BY_TABLE_NAME, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "rename", e);
         }
     }
 

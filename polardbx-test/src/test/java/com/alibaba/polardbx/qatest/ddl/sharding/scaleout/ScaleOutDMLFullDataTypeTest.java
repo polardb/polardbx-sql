@@ -30,6 +30,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.text.MessageFormat;
@@ -132,13 +133,13 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
                 }
             }
         }
-        String tddlSql = "use " + logicalDatabase;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
-        String sqlMode =
-            "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
+        String sqlMode = "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
         if (isMySQL80()) {
             sqlMode = "NO_ENGINE_SUBSTITUTION";
         }
+
+        String tddlSql = "use " + logicalDatabase;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
         try {
             setSqlMode(sqlMode, tddlConnection);
         } catch (Exception e) {
@@ -158,7 +159,7 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         if (indexSk.equalsIgnoreCase(C_INT_32)) {
             System.out.println(LocalTime.now().toString() + ":" + "start to run the testcase");
         }
-        final String sqlMode ;
+        final String sqlMode;
         if (isMySQL80()) {
             sqlMode = "NO_ENGINE_SUBSTITUTION";
         } else {

@@ -45,7 +45,7 @@ public class AutoSplitScheduledJobTest extends LocalPartitionBaseTest {
     public void testCreateDrop1() throws SQLException {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("create table %s.%s (c1 int, c2 datetime primary key)", tddlDatabase1,
+            String.format("create table %s.%s (c1 int, c2 datetime, primary key(c1, c2))", tddlDatabase1,
                 primaryTableName)
         );
 

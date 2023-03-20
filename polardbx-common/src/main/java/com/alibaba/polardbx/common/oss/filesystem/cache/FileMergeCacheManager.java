@@ -30,10 +30,15 @@
 
 package com.alibaba.polardbx.common.oss.filesystem.cache;
 
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
@@ -55,6 +60,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.math.BigInteger;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -73,16 +79,20 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.oss.filesystem.cache.CacheQuotaScope.GLOBAL;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterators.getOnlyElement;
+import static io.airlift.slice.DataSize.Unit.GIGABYTE;
 import static io.airlift.slice.DataSize.Unit.MEGABYTE;
 import static java.lang.StrictMath.toIntExact;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class FileMergeCacheManager implements CacheManager {
     private static final Logger log = LoggerFactory.getLogger(FileMergeCacheManager.class);
@@ -118,6 +128,11 @@ public class FileMergeCacheManager implements CacheManager {
 
     private final CacheConfig cacheConfig;
     private final FileMergeCacheConfig fileMergeCacheConfig;
+
+    private static final String CACHE_FILE_PREFIX = "cache";
+    private static final String OSS_CACHE_FLUSHER_THREAD_NAME_FORMAT = "%s-cache-flusher";
+    private static final String OSS_CACHE_REMOVER_THREAD_NAME_FORMAT = "%s-cache-remover";
+    private static final String OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME_FORMAT = "%s-cache-size-calculator";
 
     public FileMergeCacheManager(
         CacheConfig cacheConfig,
@@ -302,7 +317,6 @@ public class FileMergeCacheManager implements CacheManager {
         this.cache.invalidateAll();
         this.hotCache.invalidateAll();
     }
-
 
     public void rebuildCache(Map<String, Long> configs) {
         // clear old cache.
@@ -560,7 +574,7 @@ public class FileMergeCacheManager implements CacheManager {
 
     public synchronized BigInteger calcCacheSize() {
         BigInteger sum = BigInteger.valueOf(0L);
-        for(long sizeInBytes : cacheScopeSizeInBytes.values()) {
+        for (long sizeInBytes : cacheScopeSizeInBytes.values()) {
             sum = sum.add(BigInteger.valueOf(sizeInBytes));
         }
         return sum;
@@ -671,5 +685,53 @@ public class FileMergeCacheManager implements CacheManager {
                 }
             });
         }
+    }
+
+    public synchronized static CacheManager createMergeCacheManager(Map<String, Long> globalVariables, Engine engine)
+        throws IOException {
+        CacheConfig cacheConfig = new CacheConfig();
+        FileMergeCacheConfig fileMergeCacheConfig = new FileMergeCacheConfig();
+        CacheStats cacheStats = new CacheStats();
+
+        Long cacheTTL = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_CACHE_TTL))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_CACHE_TTL.getDefault()));
+        Long maxCacheEntries = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES.getDefault()));
+
+        cacheConfig.setBaseDirectory(
+            Files.createTempDirectory(Paths.get("../spill/temp"), CACHE_FILE_PREFIX).toUri());
+        cacheConfig.setCacheQuotaScope(GLOBAL);
+        cacheConfig.setCacheType(CacheType.FILE_MERGE);
+
+        cacheConfig.setCachingEnabled(true);
+        cacheConfig.setValidationEnabled(false);
+
+        fileMergeCacheConfig.setCacheTtl(new Duration(cacheTTL, DAYS));
+        fileMergeCacheConfig.setMaxCachedEntries(maxCacheEntries.intValue());
+        fileMergeCacheConfig.setMaxInMemoryCacheSize(new DataSize(2, GIGABYTE));
+
+        fileMergeCacheConfig.setHotCacheTtl(new Duration(3, SECONDS));
+        fileMergeCacheConfig.setMaxHotCachedEntries(1000);
+
+        final int cores = ThreadCpuStatUtil.NUM_CORES;
+        ScheduledExecutorService cacheFlushExecutor =
+            newScheduledThreadPool(cores,
+                new NamedThreadFactory(String.format(OSS_CACHE_FLUSHER_THREAD_NAME_FORMAT, engine)));
+        ScheduledExecutorService cacheRemovalExecutor =
+            newScheduledThreadPool(cores,
+                new NamedThreadFactory(String.format(OSS_CACHE_REMOVER_THREAD_NAME_FORMAT, engine)));
+        ScheduledExecutorService cacheSizeCalculateExecutor =
+            newScheduledThreadPool(cores,
+                new NamedThreadFactory(String.format(OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME_FORMAT, engine)));
+
+        CacheManager cacheManager = new FileMergeCacheManager(
+            cacheConfig,
+            fileMergeCacheConfig,
+            cacheStats,
+            cacheFlushExecutor,
+            cacheRemovalExecutor,
+            cacheSizeCalculateExecutor
+        );
+        return cacheManager;
     }
 }

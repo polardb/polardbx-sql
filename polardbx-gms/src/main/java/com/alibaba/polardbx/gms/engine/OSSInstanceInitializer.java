@@ -16,57 +16,39 @@
 
 package com.alibaba.polardbx.gms.engine;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.oss.filesystem.FetchPolicy;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheType;
-import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
-import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import io.airlift.slice.DataSize;
-import io.airlift.slice.Duration;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ScheduledExecutorService;
 
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ACCESS_KEY_ID;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ACCESS_KEY_SECRET;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ENDPOINT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.OSS_FETCH_POLICY;
-import static com.alibaba.polardbx.common.oss.filesystem.cache.CacheQuotaScope.GLOBAL;
 import static com.google.common.base.Preconditions.checkState;
-import static io.airlift.slice.DataSize.Unit.GIGABYTE;
-import static java.util.concurrent.Executors.newScheduledThreadPool;
-import static java.util.concurrent.TimeUnit.DAYS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class OSSInstanceInitializer {
     /**
      * oss://[accessKeyId:accessKeySecret@]bucket[.endpoint]/object/path
      */
     public static final String URI_FORMAT = "oss://%s/%s";
-    public static final String CACHE_FILE_PREFIX = "cache";
-    public static final String OSS_CACHE_FLUSHER_THREAD_NAME = "oss-cache-flusher";
-    public static final String OSS_CACHE_REMOVER_THREAD_NAME = "oss-cache-remover";
-    public static final String OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME = "oss-cache-size-calculator";
 
     public String accessKeyIdValue;
     public String accessKeySecretValue;
@@ -114,7 +96,7 @@ public class OSSInstanceInitializer {
                 ConnectionParams.OSS_FS_CACHE_TTL,
                 ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES
             );
-            cacheManager = createCacheManger(globalVariables);
+            cacheManager = FileMergeCacheManager.createMergeCacheManager(globalVariables, Engine.OSS);
         } catch (IOException e) {
             throw GeneralUtil.nestedException("Fail to create cache manager!");
         }
@@ -176,50 +158,6 @@ public class OSSInstanceInitializer {
         OSS_FILE_SYSTEM.initialize(ossFileUri, fsConf);
         return OSS_FILE_SYSTEM;
 
-    }
-
-    private synchronized CacheManager createCacheManger(Map<String, Long> globalVariables) throws IOException {
-
-        CacheConfig cacheConfig = new CacheConfig();
-        FileMergeCacheConfig fileMergeCacheConfig = new FileMergeCacheConfig();
-        CacheStats cacheStats = new CacheStats();
-
-        Long cacheTTL = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_CACHE_TTL))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_CACHE_TTL.getDefault()));
-        Long maxCacheEntries = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES.getDefault()));
-
-        cacheConfig.setBaseDirectory(Files.createTempDirectory(Paths.get("../spill/temp"), CACHE_FILE_PREFIX).toUri());
-        cacheConfig.setCacheQuotaScope(GLOBAL);
-        cacheConfig.setCacheType(CacheType.FILE_MERGE);
-
-        cacheConfig.setCachingEnabled(true);
-        cacheConfig.setValidationEnabled(false);
-
-        fileMergeCacheConfig.setCacheTtl(new Duration(cacheTTL, DAYS));
-        fileMergeCacheConfig.setMaxCachedEntries(maxCacheEntries.intValue());
-        fileMergeCacheConfig.setMaxInMemoryCacheSize(new DataSize(2, GIGABYTE));
-
-        fileMergeCacheConfig.setHotCacheTtl(new Duration(3, SECONDS));
-        fileMergeCacheConfig.setMaxHotCachedEntries(1000);
-
-        final int cores = ThreadCpuStatUtil.NUM_CORES;
-        ScheduledExecutorService cacheFlushExecutor =
-            newScheduledThreadPool(cores, new NamedThreadFactory(OSS_CACHE_FLUSHER_THREAD_NAME));
-        ScheduledExecutorService cacheRemovalExecutor =
-            newScheduledThreadPool(cores, new NamedThreadFactory(OSS_CACHE_REMOVER_THREAD_NAME));
-        ScheduledExecutorService cacheSizeCalculateExecutor =
-            newScheduledThreadPool(cores, new NamedThreadFactory(OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME));
-
-        CacheManager cacheManager = new FileMergeCacheManager(
-            cacheConfig,
-            fileMergeCacheConfig,
-            cacheStats,
-            cacheFlushExecutor,
-            cacheRemovalExecutor,
-            cacheSizeCalculateExecutor
-        );
-        return cacheManager;
     }
 
 }

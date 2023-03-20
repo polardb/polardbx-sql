@@ -167,6 +167,12 @@ public enum VirtualViewType {
 
     METADATA_LOCK,
 
+    STORAGE,
+
+    STORAGE_REPLICAS,
+
+    FULL_STORAGE,
+
     TABLE_GROUP,
 
     FULL_TABLE_GROUP,

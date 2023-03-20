@@ -167,6 +167,16 @@ public class ConnectionProperties {
     public static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER";
 
     /**
+     * 在 REPLACE、UPSERT 的时候是否跳过相同行比较（将导致 affected rows 不正确）
+     */
+    public static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK";
+
+    /**
+     * 在 REPLACE、UPSERT 的时候是否跳过含有 JSON 的相同行比较（因为 CN 不支持 JSON 比较）
+     */
+    public static final String DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK";
+
+    /**
      * 是否强制使用 Online Modify Column，即使列类型没有改变，或者不是支持的类型
      */
     public static final String OMC_FORCE_TYPE_CONVERSION = "OMC_FORCE_TYPE_CONVERSION";
@@ -439,6 +449,8 @@ public class ConnectionProperties {
      * MODIFY_SELECT_MULTI策略时 内存buffer大小，
      */
     public static final String MODIFY_SELECT_BUFFER_SIZE = "MODIFY_SELECT_BUFFER_SIZE";
+
+    public static final String SQL_SELECT_LIMIT = "SQL_SELECT_LIMIT";
 
     /**
      * Batch size for select size for update or delete.
@@ -1492,7 +1504,7 @@ public class ConnectionProperties {
 
     public static final String KEEP_DELAY_EXECUTION_STRATEGY = "KEEP_DELAY_EXECUTION_STRATEGY";
 
-    public static final String KEEP_TSO_HEARTBEAT_ON_CDC_CON = "KEEP_TSO_HEARTBEAT_ON_CDC_CON";
+    public static final String USE_CDC_CON = "USE_CDC_CON";
 
     /**
      * top record size
@@ -1603,6 +1615,10 @@ public class ConnectionProperties {
     public static final String AUTO_COLLECT_NDV_SKETCH = "AUTO_COLLECT_NDV_SKETCH";
 
     public static final String CDC_STARTUP_MODE = "CDC_STARTUP_MODE";
+    /**
+     * CDC模块是否开启metadata snapshot 能力
+     */
+    public static final String ENABLE_CDC_META_BUILD_SNAPSHOT = "ENABLE_CDC_META_BUILD_SNAPSHOT";
 
     public static final String SHARE_STORAGE_MODE = "SHARE_STORAGE_MODE";
 
@@ -1828,13 +1844,15 @@ public class ConnectionProperties {
 
     public static final String SKIP_MOVE_DATABASE_VALIDATOR = "SKIP_MOVE_DATABASE_VALIDATOR";
 
+    public static final String PARTITION_NAME = "PARTITION_NAME";
+
+    public static final String FORBID_REMOTE_DDL_TASK = "FORBID_REMOTE_DDL_TASK";
+
     public static final String PHYSICAL_DDL_IGNORED_ERROR_CODE = "PHYSICAL_DDL_IGNORED_ERROR_CODE";
 
     public static final String DDL_PAUSE_DURING_EXCEPTION = "DDL_PAUSE_DURING_EXCEPTION";
 
     public static final String BACKUP_OSS_PERIOD = "BACKUP_OSS_PERIOD";
-
-    public static final String FORBID_REMOTE_DDL_TASK = "FORBID_REMOTE_DDL_TASK";
 
     public static final String ENBALE_BIND_PARAM_TYPE = "ENBALE_BIND_PARAM_TYPE";
 
@@ -1911,4 +1929,17 @@ public class ConnectionProperties {
     public static final String USE_PARAMETER_DELEGATE = "USE_PARAMETER_DELEGATE";
 
     public static final String USE_JDK_DEFAULT_SER = "USE_JDK_DEFAULT_SER";
+
+    public static final String ENABLE_FORCE_PRIMARY_FOR_TSO = "ENABLE_FORCE_PRIMARY_FOR_TSO";
+
+    public static final String ENABLE_FORCE_PRIMARY_FOR_FILTER = "ENABLE_FORCE_PRIMARY_FOR_FILTER";
+
+    public static final String ENABLE_FORCE_PRIMARY_FOR_GROUP_BY = "ENABLE_FORCE_PRIMARY_FOR_GROUP_BY";
+
+    /**
+     * Whether rollback a branch of XA trx if its primary group is unknown.
+     */
+    public static final String ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX = "ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX";
+
+    public static final String ENABLE_REPLICA = "ENABLE_REPLICA";
 }

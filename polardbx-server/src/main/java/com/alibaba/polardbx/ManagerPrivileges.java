@@ -17,7 +17,7 @@
 package com.alibaba.polardbx;
 
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
@@ -39,9 +39,9 @@ public class ManagerPrivileges extends CobarPrivileges {
             return true;
         }
 
-        List<NodeInfo> nodeInfos = GmsNodeManager.getInstance().getAllTrustedNodes();
+        List<GmsNode> gmsNodes = GmsNodeManager.getInstance().getAllTrustedNodes();
 
-        for (NodeInfo node : nodeInfos) {
+        for (GmsNode node : gmsNodes) {
             if (node != null && node.getHost().equals(host)) {
                 // 严格校验非信任ip的user
                 String instanceId = CobarServer.getInstance().getConfig().getSystem().getInstanceId();

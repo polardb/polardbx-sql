@@ -78,10 +78,11 @@ public class UpdateStatisticSyncAction implements ISyncAction {
 
         // refresh plancache
         PlanCache.getInstance().invalidate(logicalTableName);
+        // reload ndv sketch
         StatisticManager.getInstance().reloadNDVbyTableName(schemaName, logicalTableName);
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_END,
                 new String[] {
                     "sync statistic info " + schemaName + ", " + logicalTableName,

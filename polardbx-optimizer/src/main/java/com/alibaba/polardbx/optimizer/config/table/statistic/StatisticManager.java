@@ -24,9 +24,11 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.module.LogLevel;
@@ -63,6 +65,7 @@ import com.google.common.collect.Sets;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -137,8 +140,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             new ThreadPoolExecutor.DiscardPolicy());
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
-                LogPattern.START_OVER, new String[] {Module.STATISTIC.name()},
+                Module.STATISTICS,
+                LogPattern.START_OVER, new String[] {Module.STATISTICS.name()},
                 LogLevel.NORMAL);
         long end = System.currentTimeMillis();
         logger.info("StatisticManager init consuming " + (end - start) / 1000.0 + " seconds");
@@ -170,7 +173,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         cardinalitySketch.putAll(getSds().loadAllCardinality());
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 LogPattern.LOAD_DATA,
                 new String[] {
                     "row count:" + tableRowList.size() + ",column:" + columnRowList.size() + ",ndv:"
@@ -274,7 +277,6 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         long currTime = unixTimeStamp();
         CacheLine cacheLine = getCacheLine(schema, logicalTableName);
         cacheLine.setRowCount(rowCount);
-        cacheLine.setLastModifyTime(currTime);
     }
 
     /**
@@ -342,8 +344,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
                 }
             }
             CacheLine cacheLine = getCacheLine(schema, logicalTableName);
-            if (cacheLine.getTopNMap() != null && cacheLine.getTopNMap().get(columnName) != null) {
-                TopN topN = cacheLine.getTopNMap().get(columnName);
+            TopN topN = cacheLine.getTopN(columnName);
+            if (topN != null) {
                 long topNCount = topN.rangeCount(value, true, value, true);
                 if (topNCount != 0 && cacheLine.getSampleRate() > 0) {
                     return StatisticResult.build(TOP_N).setValue(topNCount / cacheLine.getSampleRate());
@@ -452,12 +454,10 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             Histogram histogram = histogramMap.get(columnName.toLowerCase());
             if (histogram != null) {
                 long rangeCountInHistogram = histogram.rangeCount(lower, lowerInclusive, upper, upperInclusive);
-                if (cacheLine.getTopNMap() != null) {
-                    TopN topN = cacheLine.getTopNMap().get(columnName.toLowerCase());
-                    if (topN != null) {
-                        long rangeCountInTopN = topN.rangeCount(lower, lowerInclusive, upper, upperInclusive);
-                        rangeCountInHistogram += rangeCountInTopN;
-                    }
+                TopN topN = cacheLine.getTopN(columnName);
+                if (topN != null) {
+                    long rangeCountInTopN = topN.rangeCount(lower, lowerInclusive, upper, upperInclusive);
+                    rangeCountInHistogram += rangeCountInTopN;
                 }
 
                 long rangeCount = (long) (rangeCountInHistogram / cacheLine.getSampleRate());
@@ -483,7 +483,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             // TODO move this job to schedule job
             executor.execute(() -> {
                 if (InstConfUtil.getBool(ConnectionParams.ENABLE_STATISTIC_FEEDBACK)) {
-                    ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_START,
+                    ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_START,
                         new String[] {
                             "statistic feedback rowcount:" + schema + "," + logicalTableName,
                             "old " + originRowCount + ", new " + updateRowCount}, LogLevel.NORMAL);
@@ -491,7 +491,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
                     sds.sampleColumns(schema, logicalTableName);
                     // column statistic
                     long end = System.currentTimeMillis();
-                    ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_END,
+                    ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_END,
                         new String[] {
                             "statistic feedback rowcount:" + schema + "," + logicalTableName,
                             "consuming " + (end - start) / 1000.0 + " seconds"}, LogLevel.NORMAL);
@@ -843,10 +843,33 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
 
         public void setTopN(String columnName, TopN topN) {
+            if (StringUtils.isEmpty(columnName)) {
+                return;
+            }
             if (this.topNMap == null) {
                 this.topNMap = new HashMap<>();
             }
-            this.topNMap.put(columnName.toLowerCase(), topN);
+            if (topN == null) {
+                this.topNMap.remove(columnName.toLowerCase());
+            } else {
+                this.topNMap.put(columnName.toLowerCase(), topN);
+            }
+        }
+
+        public TopN getTopN(String columnName) {
+            if (StringUtils.isEmpty(columnName) || topNMap == null) {
+                return null;
+            }
+
+            columnName = columnName.toLowerCase(Locale.ROOT);
+            return topNMap.get(columnName);
+        }
+
+        public Set<String> getTopNColumns() {
+            if (topNMap == null) {
+                return Collections.emptySet();
+            }
+            return topNMap.keySet();
         }
 
         public float getSampleRate() {
@@ -874,7 +897,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
 
         public boolean hasExpire() {
-            return (getLastAccessTime() - getLastModifyTime()) > InstConfUtil.getInt(
+            return (unixTimeStamp() - getLastModifyTime()) > InstConfUtil.getInt(
                 ConnectionParams.BACKGROUND_STATISTIC_COLLECTION_EXPIRE_TIME);
         }
 
@@ -893,13 +916,13 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             cacheLineJson.put("histogramMap", histogramMap);
 
             Map<String, String> topNMap = new HashMap<>();
-            for (String columnName : cacheLine.getTopNMap().keySet()) {
+            for (String columnName : cacheLine.getTopNColumns()) {
                 columnName = columnName.toLowerCase(Locale.ROOT);
-                TopN topN = cacheLine.getTopNMap().get(columnName);
+                TopN topN = cacheLine.getTopN(columnName);
                 if (topN == null) {
                     continue;
                 }
-                topNMap.put(columnName, TopN.serializeToJson(cacheLine.getTopNMap().get(columnName)));
+                topNMap.put(columnName, TopN.serializeToJson(topN));
             }
             cacheLineJson.put("topNMap", topNMap);
 
@@ -948,11 +971,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             return cacheLine;
         }
 
-        public Map<String, TopN> getTopNMap() {
-            return topNMap;
-        }
-
-        public void setTopNMap(Map<String, TopN> topNMap) {
+        private void setTopNMap(Map<String, TopN> topNMap) {
             this.topNMap = topNMap;
         }
     }

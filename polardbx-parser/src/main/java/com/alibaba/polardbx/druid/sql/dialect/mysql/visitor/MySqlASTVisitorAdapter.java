@@ -2282,6 +2282,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
+    public boolean visit(DrdsShowStorage x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowStorage x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsShowTableGroup x) {
         return true;
     }
@@ -2453,6 +2463,7 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     @Override
     public void endVisit(DrdsUnArchiveStatement x) {
     }
+
     @Override
     public boolean visit(DrdsUnArchiveStatement x) {
         return true;
@@ -2502,6 +2513,7 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     @Override
     public void endVisit(DrdsDropFileStorageStatement x) {
     }
+
     @Override
     public boolean visit(SQLShowPartitionsHeatmapStatement x) {
         return false;
@@ -2515,6 +2527,15 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     @Override
     public void endVisit(MySqlClearPartitionsHeatmapCacheStatement x) {
 
+    }
+
+    @Override
+    public boolean visit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
     }
 
     @Override

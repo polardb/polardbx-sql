@@ -22,14 +22,13 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.commons.collections.CollectionUtils;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -59,7 +58,7 @@ public class DdlEngineShowDdlStatsHandler extends DdlEngineJobsHandler {
                 return;
             }
 
-            for (Pair<NodeInfo, List<Map<String, Object>>> result : results) {
+            for (Pair<GmsNode, List<Map<String, Object>>> result : results) {
                 if (CollectionUtils.isEmpty(result.getValue())) {
                     continue;
                 }

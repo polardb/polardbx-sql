@@ -71,7 +71,7 @@ public class JsonUnquote extends JsonExtraFunction {
         Object quotedStr = args[0];
 
         if (quotedStr == null) {
-            return JSONConstants.NULL_VALUE;
+            return null;
         }
 
         String unquotedStr =

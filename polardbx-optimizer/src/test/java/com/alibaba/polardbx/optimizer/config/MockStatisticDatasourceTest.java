@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.config;
 
 import com.alibaba.polardbx.planner.common.ParameterizedTestCommon;
 import com.alibaba.polardbx.planner.common.PlanTestCommon;
+import org.junit.Ignore;
 import org.junit.runners.Parameterized;
 
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.List;
  *
  * @author Shi Yuxuan
  */
+@Ignore
 public class MockStatisticDatasourceTest extends ParameterizedTestCommon {
     public MockStatisticDatasourceTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);

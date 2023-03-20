@@ -427,6 +427,11 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             buildDuplicateCheckersWithNewGroupKey(selectedRows, beforeUkMapping, ukColumnMetas, checkerRows,
                 executionContext) : buildDuplicateCheckers(selectedRows, beforeUkMapping, ukColumnMetas, checkerRows);
 
+        final boolean skipIdenticalRowCheck =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_ROW_CHECK) || (
+                replace.isHasJsonColumn() && executionContext.getParamManager()
+                    .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK));
+
         // 2. Check each insert row
         Ord.zip(currentBatchParameters).forEach(o -> {
             final Integer rowIndex = o.getKey();
@@ -493,7 +498,8 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
                     final DuplicateCheckRow duplicatedRow = checkerRows.get(i);
 
                     // Compare entire row
-                    if (multiUk || !identicalRow(duplicatedRow.after, newCheckRow.after, rowColumnMetas)) {
+                    if (skipIdenticalRowCheck || multiUk || !identicalRow(duplicatedRow.after, newCheckRow.after,
+                        rowColumnMetas)) {
                         duplicatedRow.affectedRows++;
                     }
 

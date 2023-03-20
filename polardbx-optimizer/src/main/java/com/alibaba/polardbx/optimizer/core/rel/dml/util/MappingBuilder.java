@@ -80,6 +80,17 @@ public abstract class MappingBuilder {
             .source(mapping.stream().map(i -> i + offset).collect(Collectors.toList()), getTargetSize() + offset);
     }
 
+    public Mapping buildMapping(List<Integer> project, int offset) {
+        final int[] targetSize = {getTargetSize()};
+        return Mappings.source(mapping.stream().map(i -> {
+            final int target = project.get(i) + offset;
+            if (target >= targetSize[0]) {
+                targetSize[0] = target + 1;
+            }
+            return target;
+        }).collect(Collectors.toList()), targetSize[0]);
+    }
+
     public List<String> getSource() {
         return this.mapping.stream().map(this.target::get).collect(Collectors.toList());
     }

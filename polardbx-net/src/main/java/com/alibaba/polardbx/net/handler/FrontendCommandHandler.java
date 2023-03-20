@@ -123,6 +123,7 @@ public class FrontendCommandHandler implements NIOHandler {
             PacketOutputProxyFactory.getInstance().createProxy(source).writeArrayAsPacket(OkPacket.OK);
             break;
         case Commands.COM_REGISTER_SLAVE:
+            source.setRegisterSlave(true);
             PacketOutputProxyFactory.getInstance().createProxy(source).writeArrayAsPacket(OkPacket.OK);
             break;
         case Commands.COM_BINLOG_DUMP:

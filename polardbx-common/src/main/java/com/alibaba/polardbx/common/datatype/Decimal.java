@@ -20,6 +20,8 @@ import io.airlift.slice.Slice;
 
 import java.math.BigDecimal;
 
+import static com.alibaba.polardbx.common.datatype.DecimalRoundMod.HALF_UP;
+
 /**
  * Wrap a decimal structure.
  */
@@ -64,6 +66,8 @@ public class Decimal extends Number implements Comparable<Decimal> {
         DecimalConverter.longToDecimal(longVal, this.decimalStructure);
         // shift by scale value.
         FastDecimalUtils.shift(this.decimalStructure, this.decimalStructure, -scale);
+
+        FastDecimalUtils.round(this.decimalStructure, this.decimalStructure, scale, HALF_UP);
     }
 
     public static Decimal fromBigDecimal(BigDecimal bd) {

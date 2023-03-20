@@ -53,4 +53,9 @@ public class MetaDbLogUtil {
      */
     public static final Logger META_DB_LOG = LoggerFactory.getLogger("META_DB_LOG");
 
+    /**
+     * Print all the check ha result of ha checker
+     */
+    public static final Logger CHECK_HA_LOG = LoggerFactory.getLogger("CHECK_HA_LOG");
+
 }

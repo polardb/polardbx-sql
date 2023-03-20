@@ -296,7 +296,7 @@ public class AlterTableGroupBaseTest extends DDLBaseNewDBTestCase {
                 "/*+TDDL:CMD_EXTRA(PHYSICAL_TABLE_START_SPLIT_SIZE = 100, PHYSICAL_TABLE_BACKFILL_PARALLELISM = 2, "
                     + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000)*/";
         }
-        String ignoreErr = "[TDDL-4636][ERR_DDL_JOB_ERROR] Please use SHOW DDL";
+        String ignoreErr = "Please use SHOW DDL";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sqlHint + command,

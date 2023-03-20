@@ -1,25 +1,14 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -42,6 +31,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
 /**
  * Created by ziyang.lb
@@ -92,6 +82,10 @@ public class CdcDdlMarkTask extends BaseDdlTask {
 
     private void mark4CreateTable(ExecutionContext executionContext) {
         DdlContext ddlContext = executionContext.getDdlContext();
+        if (isCreateMaterializedView(ddlContext.getDdlStmt())) {
+            //物化视图不打标
+            return;
+        }
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 physicalPlanData.getCreateTablePhysicalSql(), ddlContext.getDdlType(), ddlContext.getJobId(),
@@ -102,6 +96,10 @@ public class CdcDdlMarkTask extends BaseDdlTask {
     private void mark4DropTable(ExecutionContext executionContext) {
         // CdcDdlMarkTask执行前，表已经对外不可见，进入此方法时所有物理表也已经删除成功
         DdlContext ddlContext = executionContext.getDdlContext();
+        if (isDropMaterializedView(ddlContext.getDdlStmt())) {
+            //物化视图不打标
+            return;
+        }
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
@@ -209,5 +207,15 @@ public class CdcDdlMarkTask extends BaseDdlTask {
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                 DdlVisibility.Private,
                 buildExtendParameter(executionContext));
+    }
+
+    private boolean isCreateMaterializedView(String sql) {
+        List<SQLStatement> list = SQLUtils.parseStatements(sql, DbType.mysql, SQL_PARSE_FEATURES);
+        return !list.isEmpty() && list.get(0) instanceof SQLCreateMaterializedViewStatement;
+    }
+
+    private boolean isDropMaterializedView(String sql) {
+        List<SQLStatement> list = SQLUtils.parseStatements(sql, DbType.mysql, SQL_PARSE_FEATURES);
+        return !list.isEmpty() && list.get(0) instanceof SQLDropMaterializedViewStatement;
     }
 }

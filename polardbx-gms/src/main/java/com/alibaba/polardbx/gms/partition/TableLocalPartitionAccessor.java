@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SCHEDULED_JOBS;
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.TABLE_LOCAL_PARTITIONS;
 
 public class TableLocalPartitionAccessor extends AbstractAccessor {
@@ -64,8 +65,8 @@ public class TableLocalPartitionAccessor extends AbstractAccessor {
             + " from table_local_partitions where table_schema=? and table_name=?";
 
     private static final String GET_TABLE_LOCAL_PARTITIONS_BY_ARCHIVE_SCHEMA_TABLE =
-            "select " + ALL_COLUMNS
-                    + " from table_local_partitions where archive_table_schema=? and archive_table_name=?";
+        "select " + ALL_COLUMNS
+            + " from table_local_partitions where archive_table_schema=? and archive_table_name=?";
 
     private static final String DELETE_SQL =
         "delete from " + SYS_TABLE_NAME + " where table_schema=? and table_name=?";
@@ -78,13 +79,15 @@ public class TableLocalPartitionAccessor extends AbstractAccessor {
             + "where table_schema = ? and table_name = ?";
 
     private static final String UNBINDING_BY_ARCHIVE_TABLE_NAME =
-            "update " + SYS_TABLE_NAME + " set archive_table_schema = null, archive_table_name = null "
-                    + "where archive_table_schema = ? and archive_table_name = ?";
+        "update " + SYS_TABLE_NAME + " set archive_table_schema = null, archive_table_name = null "
+            + "where archive_table_schema = ? and archive_table_name = ?";
 
     private static final String UNBINDING_BY_ARCHIVE_SCHEMA_NAME =
         "update " + SYS_TABLE_NAME + " set archive_table_schema = null, archive_table_name = null "
             + "where archive_table_schema = ? ";
 
+    private static final String RENAME_TABLE_BY_SCHEMA =
+        "update " + SYS_TABLE_NAME + " set table_name = ? where table_schema = ? and table_name = ?";
 
     public int insert(TableLocalPartitionRecord record) {
         try {
@@ -92,6 +95,18 @@ public class TableLocalPartitionAccessor extends AbstractAccessor {
             return MetaDbUtil.insert(INSERT_TABLE_LOCAL_PARTITIONS, record.buildParams(), connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to insert a new record into table_local_partitions", "insert into", e);
+        }
+    }
+
+    public int rename(String newTableName, String schemaName, String tableName) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newTableName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
+            return MetaDbUtil.update(RENAME_TABLE_BY_SCHEMA, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to update " + SYS_TABLE_NAME, "rename", e);
         }
     }
 
@@ -121,22 +136,22 @@ public class TableLocalPartitionAccessor extends AbstractAccessor {
             schemaName,
             tableName
         );
-        return CollectionUtils.isNotEmpty(list)? list.get(0): null;
+        return CollectionUtils.isNotEmpty(list) ? list.get(0) : null;
     }
 
     public TableLocalPartitionRecord queryByArchiveTableName(String archiveSchemaName, String archiveTableName) {
         List<TableLocalPartitionRecord> list = query(
-                GET_TABLE_LOCAL_PARTITIONS_BY_ARCHIVE_SCHEMA_TABLE,
-                SYS_TABLE_NAME,
-                TableLocalPartitionRecord.class,
-                archiveSchemaName,
-                archiveTableName
+            GET_TABLE_LOCAL_PARTITIONS_BY_ARCHIVE_SCHEMA_TABLE,
+            SYS_TABLE_NAME,
+            TableLocalPartitionRecord.class,
+            archiveSchemaName,
+            archiveTableName
         );
-        return CollectionUtils.isNotEmpty(list)? list.get(0): null;
+        return CollectionUtils.isNotEmpty(list) ? list.get(0) : null;
     }
 
-
-    public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema, String archiveTableName) {
+    public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema,
+                                   String archiveTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(4);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, archiveTableSchema);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, archiveTableName);
@@ -176,14 +191,13 @@ public class TableLocalPartitionAccessor extends AbstractAccessor {
         }
     }
 
-    public int delete(String schemaName, String tableName){
+    public int delete(String schemaName, String tableName) {
         return delete(DELETE_SQL, SYS_TABLE_NAME, schemaName, tableName);
     }
 
-    public int deleteAll(String schemaName){
+    public int deleteAll(String schemaName) {
         return delete(DELETE_ALL_SQL, SYS_TABLE_NAME, schemaName);
     }
-
 
     private TddlRuntimeException logAndThrow(String errMsg, String action, Exception e) {
         logger.error(errMsg, e);

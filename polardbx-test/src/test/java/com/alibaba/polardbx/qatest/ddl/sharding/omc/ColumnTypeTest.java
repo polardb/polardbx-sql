@@ -131,7 +131,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
                 String.format("alter table %s modify column b varchar(20) character set %s collate %s", tableName,
                     CHARSET_PARAMS[i][0], CHARSET_PARAMS[i][1]);
             System.out.println(CHARSET_PARAMS[i][0] + " " + CHARSET_PARAMS[i][1]);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }
@@ -157,7 +157,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
 
             System.out.println(columnType);
             String alterSql = String.format("alter table %s modify column b %s", tableName, columnType);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, hint + alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, hint + alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }

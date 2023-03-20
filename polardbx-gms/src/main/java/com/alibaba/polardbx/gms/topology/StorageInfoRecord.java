@@ -211,4 +211,17 @@ public class StorageInfoRecord implements SystemTableRecord {
             ", status=" + status +
             '}';
     }
+
+    public static String getInstKind(int instKind) {
+        switch (instKind) {
+        case StorageInfoRecord.INST_KIND_MASTER:
+            return "MASTER";
+        case StorageInfoRecord.INST_KIND_SLAVE:
+            return "SLAVE";
+        case StorageInfoRecord.INST_KIND_META_DB:
+            return "META_DB";
+        default:
+            return "NA";
+        }
+    }
 }

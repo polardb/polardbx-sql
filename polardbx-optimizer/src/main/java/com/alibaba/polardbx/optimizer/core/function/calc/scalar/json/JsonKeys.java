@@ -63,7 +63,7 @@ public class JsonKeys extends JsonExtraFunction {
         // Returns NULL if any argument is NULL
         for (Object arg : args) {
             if (arg == null) {
-                return JSONConstants.NULL_VALUE;
+                return null;
             }
         }
 
@@ -73,7 +73,7 @@ public class JsonKeys extends JsonExtraFunction {
             jsonObj = JSON.parse(str);
             // Returns NULL if the json_doc argument is not an object
             if (!JsonUtil.isJsonObject(jsonObj)) {
-                return JSONConstants.NULL_VALUE;
+                return null;
             }
         } catch (Exception e) {
             throw JsonParserException.invalidArgInFunc(1, getFunctionNames()[0]);

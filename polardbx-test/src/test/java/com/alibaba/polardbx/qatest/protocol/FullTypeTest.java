@@ -23,15 +23,18 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.util.Pair;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLSyntaxErrorException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_ID;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_PARTITIONING_DEFINITION;
@@ -135,6 +138,43 @@ public class FullTypeTest extends ReadBaseTestCase {
             }
         }
         return result;
+    }
+
+    @Test
+    public void testDecimalChunk() throws Exception {
+        if (usingNewPartDb()) {
+            return;
+        }
+        final String tbName = PRIMARY_TABLE_NAME + "_dc";
+        final String tb = "CREATE TABLE `" + tbName + "` (\n"
+            + "  `id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+            + "  `c_decimal` decimal(10,2) DEFAULT NULL,\n"
+            + "  `c_decimal_pr` decimal(65,10) DEFAULT NULL,\n"
+            + "  PRIMARY KEY (`id`)\n"
+            + ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COMMENT=\"10000000\" ";
+        // Create customized full type table.
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, "DROP TABLE IF EXISTS `" + tbName + "`");
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, tb);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS `" + tbName + "`");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, tb + DEFAULT_PARTITIONING_DEFINITION);
+
+        final String sql = "insert into `" + tbName
+            + "` values (1, 10.00, 100000000000000.0000000000), (2, 20.00, 20000000000000.0000000000)";
+        Assert.assertTrue("must success", sameResult(tddlConnection, mysqlConnection, sql) > 0);
+        final String testSql = "select * from `" + tbName + "` limit 10";
+        final ResultSet myResult = JdbcUtil.executeQuery(testSql, mysqlConnection);
+        final String myStr =
+            JdbcUtil.getStringResult(myResult, false).stream().map(l -> String.join(",", l)).collect(
+                Collectors.joining(";"));
+        final ResultSet xResult = JdbcUtil.executeQuery(testSql, tddlConnection);
+        final String xStr =
+            JdbcUtil.getStringResult(xResult, false).stream().map(l -> String.join(",", l)).collect(
+                Collectors.joining(";"));
+        Assert.assertEquals(myStr, xStr);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS `" + tbName + "`");
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, "DROP TABLE IF EXISTS `" + tbName + "`");
     }
 
     @Test

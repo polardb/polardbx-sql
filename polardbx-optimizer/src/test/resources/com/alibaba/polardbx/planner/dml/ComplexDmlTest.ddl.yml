@@ -16,6 +16,15 @@ test_hash_ta:
   KEY `auto_shard_key_ID` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
 
+test_hash_tc:
+  CREATE TABLE `test_hash_tc` (
+  `id` int(11) NOT NULL,
+  `key` int(11) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
 test_single:
   CREATE TABLE `test_single` (
   `id` int(11) NOT NULL,

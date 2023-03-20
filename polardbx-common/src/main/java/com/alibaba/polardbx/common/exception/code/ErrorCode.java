@@ -18,7 +18,6 @@ package com.alibaba.polardbx.common.exception.code;
 
 import java.util.regex.Pattern;
 
-
 public enum ErrorCode {
 
     ERR_CONFIG(ErrorType.Config, 4000),
@@ -65,7 +64,6 @@ public enum ErrorCode {
 
     ERR_ATOM_GET_CONNECTION_FAILED_KNOWN_REASON(ErrorType.Atom, 4102),
 
-
     ERR_ATOM_CONNECTION_POOL_FULL(ErrorType.Atom, 4103),
 
     ERR_ATOM_CREATE_CONNECTION_TOO_SLOW(ErrorType.Atom, 4104),
@@ -108,9 +106,7 @@ public enum ErrorCode {
 
     ERR_MISS_SEQUENCE(ErrorType.Sequence, 4401),
 
-
     ERR_MISS_SEQUENCE_DEFAULT_DB(ErrorType.Sequence, 4402),
-
 
     ERR_MISS_SEQUENCE_TABLE_ON_DEFAULT_DB(ErrorType.Sequence, 4403),
 
@@ -165,7 +161,6 @@ public enum ErrorCode {
     ERR_VALIDATE(ErrorType.Optimizer, 4518),
 
     ERR_MORE_AGG_WITH_DISTINCT(ErrorType.Optimizer, 4519),
-
 
     ERR_DML_WITH_SUBQUERY(ErrorType.Optimizer, 4520),
 
@@ -237,9 +232,7 @@ public enum ErrorCode {
 
     ERR_EXECUTE_ON_MYSQL_UNKNOWN_COLUMN(ErrorType.Executor, 4619),
 
-
     ERR_FORBID_EXECUTE_DML_ALL(ErrorType.Executor, 4620),
-
 
     ERR_REPLACE_SELECT(ErrorType.Executor, 4621),
 
@@ -253,15 +246,11 @@ public enum ErrorCode {
 
     ERR_TARGET_STMT_ERROR(ErrorType.Executor, 4629),
 
-
     ERR_RECYCLEBIN_EXECUTE(ErrorType.Executor, 4630),
-
 
     ERR_INSERT_SELECT_LIMIT_EXCEEDED(ErrorType.Executor, 4631),
 
-
     ERR_DB_STATUS_EXECUTE(ErrorType.Executor, 4632),
-
 
     ERR_DB_STATUS_READ_ONLY(ErrorType.Executor, 4633),
 
@@ -313,12 +302,9 @@ public enum ErrorCode {
 
     ERR_DROP_DB_ILLEGAL_STATE(ErrorType.Executor, 4649),
 
-
     ERR_USER_LOCK_DEADLOCK(ErrorType.Executor, 4650),
 
-
     ERR_UPDATE_DELETE_SELECT_LIMIT_EXCEEDED(ErrorType.Executor, 4650),
-
 
     ERR_UPDATE_DELETE_NO_PRIMARY_KEY(ErrorType.Executor, 4651),
 
@@ -379,20 +365,13 @@ public enum ErrorCode {
 
     ERR_OTHER(ErrorType.Other, 4999),
 
-
-
-
     ERR_TRANS(ErrorType.Transaction, 5001),
-
 
     ERR_TRANS_UNSUPPORTED(ErrorType.Transaction, 5002),
 
-
     ERR_TRANS_LOG(ErrorType.Transaction, 5003),
 
-
     ERR_TRANS_NOT_FOUND(ErrorType.Transaction, 5004),
-
 
     ERR_TRANS_FINISHED(ErrorType.Transaction, 5005),
 
@@ -698,7 +677,10 @@ public enum ErrorCode {
 
     ERR_REPLICATION_RESULT(ErrorType.CDC, 9204),
 
+    ERR_REPLICA_NOT_SUPPORT(ErrorType.CDC, 9205),
+
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),
+
     ERR_DUPLICATED_PARTITION_NAME(ErrorType.Executor, 9301),
     ERR_ADD_PARTITION(ErrorType.Executor, 9302),
     ERR_DROP_PARTITION(ErrorType.Executor, 9303),
@@ -722,7 +704,7 @@ public enum ErrorCode {
     ERR_JOIN_GROUP_NOT_MATCH(ErrorType.Executor, 9320),
     ERR_TABLE_GROUP_IS_EMPTY(ErrorType.Executor, 9321),
     ERR_TABLE_NAME_TOO_MANY_HIERARCHY(ErrorType.Executor, 9322),
-ERR_TABLE_GROUP_IS_AUTO_CREATED(ErrorType.Executor, 9323),
+    ERR_TABLE_GROUP_IS_AUTO_CREATED(ErrorType.Executor, 9323),
     ERR_RENAME_BROADCAST_OR_SINGLE_TABLE(ErrorType.Executor, 9324),
     ERR_CHANGE_TABLEGROUP_FOR_BROADCAST_TABLE(ErrorType.Executor, 9325),
     ERR_PARTITION_COLUMN_IS_NOT_MATCH(ErrorType.Executor, 9326),

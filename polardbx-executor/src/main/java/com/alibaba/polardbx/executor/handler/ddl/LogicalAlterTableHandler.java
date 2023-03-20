@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -44,6 +45,9 @@ import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTableAsOfTimeStamp
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTableDropOssFileJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTablePurgeBeforeTimeStampJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.MoveOSSDataJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterColumnDefaultTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
@@ -52,7 +56,9 @@ import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
@@ -114,6 +120,7 @@ import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
@@ -363,6 +370,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             case S3:
             case OSS:
             case LOCAL_DISK:
+            case EXTERNAL_DISK:
+            case NFS:
                 // innodb -> file store
                 return new LogicalAlterTableEngineHandler(repo, sourceEngine, targetEngine)
                     .buildDdlJob(logicalDdlPlan, executionContext);
@@ -373,7 +382,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         }
         case S3:
         case OSS:
-        case LOCAL_DISK: {
+        case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS: {
             switch (targetEngine) {
             case INNODB:
                 // file store -> innodb
@@ -470,6 +481,15 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             }
 
             SQLColumnDefinition colDef = createTableStmt.getColumn(alterTablePreparedData.getModifyColumnName());
+            if (colDef == null) {
+                for (SQLColumnDefinition columnDefinition : createTableStmt.getColumnDefinitions()) {
+                    String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getColumnName());
+                    if (columnName.equalsIgnoreCase(alterTablePreparedData.getModifyColumnName())) {
+                        colDef = columnDefinition;
+                        break;
+                    }
+                }
+            }
 
             final boolean forceTypeConversion =
                 executionContext.getParamManager().getBoolean(ConnectionParams.OMC_FORCE_TYPE_CONVERSION);
@@ -478,9 +498,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     String.format("Converting from %s is not supported", colDef.getDataType().getName()));
             }
 
-            alterTablePreparedData.setModifyColumnType(
-                TableColumnUtils.getDataDefFromColumnDef(alterTablePreparedData.getModifyColumnName(),
-                    colDef.toString()));
+            alterTablePreparedData.setModifyColumnType(TableColumnUtils.getDataDefFromColumnDef(colDef));
+            alterTablePreparedData.setModifyColumnTypeNullable(
+                TableColumnUtils.getDataDefFromColumnDefWithoutUniqueNullable(colDef));
         }
 
         List<PhysicalPlanData> gsiPhysicalPlanData = new ArrayList<>();
@@ -608,6 +628,22 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             }
         }
 
+        if (CollectionUtils.isNotEmpty(alterTablePreparedData.getAlterDefaultColumns())) {
+            String schemaName = physicalPlanData.getSchemaName();
+            String logicalTableName = physicalPlanData.getLogicalTableName();
+
+            DdlTask endAlterColumnDefault = new AlterColumnDefaultTask(schemaName, logicalTableName,
+                alterTablePreparedData.getAlterDefaultColumns(), false);
+            DdlTask endAlterColumnDefaultSyncTask = new TableSyncTask(schemaName, logicalTableName);
+
+            // Append to tail
+            alterTableJob.addTask(endAlterColumnDefault);
+            alterTableJob.addTask(endAlterColumnDefaultSyncTask);
+            alterTableJob.addTaskRelationship(endAlterColumnDefault, endAlterColumnDefaultSyncTask);
+            alterTableJob.addTaskRelationship(alterTableJob.getTail(), endAlterColumnDefault);
+            alterTableJob.labelAsTail(endAlterColumnDefaultSyncTask);
+        }
+
         tableVersions.put(alterTablePreparedData.getTableName(),
             alterTablePreparedData.getTableVersion());
         ValidateTableVersionTask validateTableVersionTask =
@@ -620,8 +656,6 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
     }
 
     private DdlJob buildRepartitionJob(LogicalAlterTable logicalAlterTable, ExecutionContext executionContext) {
-        initPrimaryTableDefinition(logicalAlterTable, executionContext);
-
         SqlAlterTablePartitionKey ast = (SqlAlterTablePartitionKey) logicalAlterTable.relDdl.sqlNode;
 
         //validate

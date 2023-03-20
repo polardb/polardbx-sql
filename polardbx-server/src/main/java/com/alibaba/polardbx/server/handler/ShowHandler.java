@@ -33,7 +33,6 @@ import com.alibaba.polardbx.server.response.ShowMemoryPool;
 import com.alibaba.polardbx.server.response.ShowNode;
 import com.alibaba.polardbx.server.response.ShowParametric;
 import com.alibaba.polardbx.server.response.ShowStatistic;
-import com.alibaba.polardbx.server.response.ShowStorage;
 import com.alibaba.polardbx.server.response.ShowWarnings;
 import com.alibaba.polardbx.server.response.ShowWorkload;
 import com.alibaba.polardbx.server.util.LogUtils;
@@ -77,12 +76,12 @@ public final class ShowHandler {
             case ServerParseShow.MEMORYPOOL:
                 ShowMemoryPool.execute(c);
                 break;
-            case ServerParseShow.STORAGE_REPLICAS:
-                ShowStorage.execute(c, true);
-                break;
-            case ServerParseShow.STORAGE:
-                ShowStorage.execute(c);
-                break;
+//            case ServerParseShow.STORAGE_REPLICAS:
+//                ShowStorage.execute(c, true);
+//                break;
+//            case ServerParseShow.STORAGE:
+//                ShowStorage.execute(c);
+//                break;
             case ServerParseShow.MDL_DEADLOCK_DETECTION:
                 ShowMdlDeadlockDetectionStatus.response(c);
                 break;

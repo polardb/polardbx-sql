@@ -267,11 +267,12 @@ public class HintPlanner extends TddlSqlToRelConverter {
     /**
      * !!!!!FOR TEST ONLY!!!!
      */
-    public ExecutionPlan getPlan(SqlNode ast) {
+    public ExecutionPlan getPlan(SqlNode ast, String schemaName) {
         // FIXME: support plan cache
         Map<Integer, ParameterContext> param = null;
         PlannerContext plannerContext = new PlannerContext();
         plannerContext.setExecutionContext(new ExecutionContext());
+        plannerContext.setSchemaName(schemaName);
         return getPlan(ast, plannerContext, plannerContext.getExecutionContext());
     }
 
@@ -571,6 +572,17 @@ public class HintPlanner extends TddlSqlToRelConverter {
                     }
                 }
             }
+            // change suffix for node hint of select
+            ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec);
+            ast = ast.accept(visitor);
+            if (visitor.getUniqGroupName() != null) {
+                finalGroups.add(visitor.getUniqGroupName());
+            } else {
+                if (finalGroups.size() == 0) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
+                }
+            }
             for (String group : finalGroups) {
                 PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
                     cluster, RelTraitSet.createEmpty(),
@@ -668,9 +680,9 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
             tables = tables.stream().filter(rule ->
                 rule.isBroadcast()
-                        || schemaManager.getTable(rule.getVirtualTbName()).isGsi()
-                        || schemaManager.getTable(rule.getVirtualTbName()).withGsi()
-                ).collect(Collectors.toSet());
+                    || schemaManager.getTable(rule.getVirtualTbName()).isGsi()
+                    || schemaManager.getTable(rule.getVirtualTbName()).withGsi()
+            ).collect(Collectors.toSet());
 
             Map<String, Set<String>> logicalTableMap = buildLogicalTableMap(tables);
 

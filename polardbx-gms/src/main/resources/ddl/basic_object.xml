@@ -411,7 +411,7 @@
             `logical_table_name` varchar(255) not null,
             key `table_index`(`table_schema`, `table_name`),
             key `task_id` (`task_id`),
-            key `column_meta_index`(`table_file_name`, `column_index`, `stripe_index`),
+            key `column_meta_index`(`table_file_name`(255), `column_index`, `stripe_index`),
             primary key (`column_meta_id`)
         ) charset=utf8
         ]]></Create>

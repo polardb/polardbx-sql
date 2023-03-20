@@ -29,6 +29,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.LogPattern;
@@ -60,8 +61,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
-import org.apache.commons.lang3.StringUtils;
-import org.eclipse.jetty.util.StringUtil;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -70,7 +69,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_BASELINE_SYNC_BYTE_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_BASELINE_SYNC_PLAN_SIZE;
@@ -214,9 +212,11 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         String schema = executionContext.getSchemaName();
         String parameterizedSql = sqlParameterized.getSql();
         String traceId = executionContext.getTraceId();
-        if (plan == null || ast == null || parameterizedSql == null || traceId == null) {
+        if (plan == null || ast == null || parameterizedSql == null || traceId == null || StringUtils.isEmpty(schema)) {
             return plan;
         }
+
+        schema = schema.toLowerCase(Locale.ROOT);
 
         final int maxBaselineInfoSqlLength = InstConfUtil.getInt(ConnectionParams.SPM_MAX_BASELINE_INFO_SQL_LENGTH);
         if (parameterizedSql.length() > maxBaselineInfoSqlLength) {
@@ -236,7 +236,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         PlannerContext.getPlannerContext(cluster).setAutoCommit(executionContext.isAutoCommit());
         PlannerContext.getPlannerContext(cluster).setExecutionContext(executionContext);
         PlannerContext.getPlannerContext(cluster).setExtraCmds(PlannerContext.getPlannerContext(plan).getExtraCmds());
-        PlannerContext.getPlannerContext(cluster).setSkipPostOpt(PlannerContext.getPlannerContext(plan).isSkipPostOpt());
+        PlannerContext.getPlannerContext(cluster)
+            .setSkipPostOpt(PlannerContext.getPlannerContext(plan).isSkipPostOpt());
 
         /*
            change plan context parameters with current sql parameters.
@@ -255,7 +256,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 // If the plan is too much complex, refuse capture it.
                 return plan;
             }
-            result = capturePlan(schema, plan, sqlParameterized, ast, planJsonString, traceId, isExplain, executionContext);
+            result =
+                capturePlan(schema, plan, sqlParameterized, ast, planJsonString, traceId, isExplain, executionContext);
         }
 
         if (result.source != null) {
@@ -298,7 +300,11 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     public void persistBaseline() {
         for (Map.Entry<String, Map<String, BaselineInfo>> e : baselineMap.entrySet()) {
             String schema = e.getKey();
-            e.getValue().values().forEach(b -> PolarDbXSystemTableBaselineInfo.persist(schema, b));
+            if (StringUtils.isEmpty(schema)) {
+                continue;
+            }
+            String lowercaseSchema = schema.toLowerCase(Locale.ROOT);
+            e.getValue().values().forEach(b -> PolarDbXSystemTableBaselineInfo.persist(lowercaseSchema, b));
         }
     }
 
@@ -315,6 +321,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                          ExecutionContext executionContext) {
         PlanCache.getInstance().feedBack(executionPlan, ex);
         String schema = executionContext.getSchemaName();
+        if (StringUtils.isEmpty(schema)) {
+            return;
+        }
+        schema = schema.toLowerCase(Locale.ROOT);
         RelNode plan = executionPlan.getPlan();
         PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
         if (ex == null) {
@@ -420,7 +430,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     }
 
     public Map<String, BaselineInfo> getBaselineMap(String schema) {
-        if (StringUtil.isEmpty(schema)) {
+        if (StringUtils.isEmpty(schema)) {
             throw GeneralUtil.nestedException("empty schema name");
         }
         schema = schema.toLowerCase(Locale.ROOT);
@@ -495,9 +505,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     }
 
     private boolean baselineSizeCheck(String schema) {
-        if (schema == null) {
+        if (StringUtils.isEmpty(schema)) {
             return false;
         }
+        schema = schema.toLowerCase(Locale.ROOT);
         Map<String, BaselineInfo> baselineInfoMap = baselineMap.get(schema);
 
         if (baselineInfoMap != null) {
@@ -559,7 +570,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             PlanInfo fixPlan = findMinCostPlan(cluster, relOptSchema, fixPlans, ec, null, cHashCode);
             PLAN_SOURCE planSource = SPM_FIX;
             if (fixPlan.getTablesHashCode() != cHashCode &&
-                StringUtils.isNotEmpty(fixPlan.getFixHint())) {
+                !StringUtils.isEmpty(fixPlan.getFixHint())) {
                 // in case of repeated updates
                 synchronized (fixPlan) {
                     planSource = tryUpdatePlan(fixPlan, sqlParameterized, cluster, relOptSchema, cHashCode, ec);
@@ -772,14 +783,13 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     /**
      * judge if a plan executed recently.(default one week)
      */
-    private boolean isRecentlyExecuted(PlanInfo planInfo) {
+    public static boolean isRecentlyExecuted(PlanInfo planInfo) {
         if (planInfo.getLastExecuteTime() == null) {
             return false;
         }
-        long recentTimePeriod =
-            InstConfUtil.getLong(SPM_RECENTLY_EXECUTED_PERIOD);
+        long recentTimePeriod = InstConfUtil.getLong(SPM_RECENTLY_EXECUTED_PERIOD);
 
-        return System.currentTimeMillis() - planInfo.getLastExecuteTime() <= recentTimePeriod;
+        return System.currentTimeMillis() - planInfo.getLastExecuteTime() * 1000 <= recentTimePeriod;
     }
 
     public PlanInfo findMinCostPlan(RelOptCluster cluster, RelOptSchema relOptSchema, Collection<PlanInfo> plans,
@@ -830,6 +840,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     @Override
     public void doEvolution(String schema, BaselineInfo baselineInfo, PlanInfo planInfo, long lastExecuteUnixTime,
                             double executionTimeInSeconds, ExecutionContext ec, Throwable ex) {
+        if (StringUtils.isEmpty(schema)) {
+            return;
+        }
+        schema = schema.toLowerCase(Locale.ROOT);
         Map<String, BaselineInfo> baselineInfoMap = baselineMap.get(schema);
         if (ex != null) {
             // something error, maybe: user kill the sql or plan externalization is not compatible or bug
@@ -907,6 +921,11 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     public void updateBaseline(Map<String, List<String>> bMap) {
         for (Map.Entry<String, List<String>> entry : bMap.entrySet()) {
             String schema = entry.getKey();
+
+            if (StringUtils.isEmpty(schema)) {
+                continue;
+            }
+            schema = schema.toLowerCase(Locale.ROOT);
             Map<String, BaselineInfo> baselineInfoMap =
                 baselineMap.computeIfAbsent(schema, k -> Maps.newConcurrentMap());
             for (String bJson : entry.getValue()) {
@@ -1039,6 +1058,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
      */
     @Override
     public void deleteBaseline(String schema, String parameterSql) {
+        if (StringUtils.isEmpty(schema)) {
+            return;
+        }
+        schema = schema.toLowerCase(Locale.ROOT);
         if (baselineMap.get(schema) == null) {
             return;
         }
@@ -1058,6 +1081,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
      */
     @Override
     public void deleteBaseline(String schema, String parameterSql, int planInfoId) {
+        if (StringUtils.isEmpty(schema)) {
+            return;
+        }
+        schema = schema.toLowerCase(Locale.ROOT);
         if (baselineMap.get(schema) == null) {
             return;
         }

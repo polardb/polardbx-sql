@@ -38,18 +38,22 @@ import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PushModifyRule;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
@@ -85,6 +89,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.hep.HepRelVertex;
 import org.apache.calcite.prepare.CalciteCatalogReader;
+import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
@@ -94,8 +99,10 @@ import org.apache.calcite.rel.core.Correlate;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.core.DynamicValues;
+import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableModify.TableInfoNode;
@@ -119,8 +126,10 @@ import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexCorrelVariable;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexSubQuery;
@@ -1337,12 +1346,23 @@ public class RelUtils {
             .map(cmList -> cmList.stream().map(ColumnMeta::getName).map(x -> x.toLowerCase())
                 .collect(Collectors.toList()))
             .orElse(ImmutableList.of());
-        final List<String> skList = OptimizerContext.getContext(primary.getSchemaName())
+
+        final List<String> notNullableSkList = OptimizerContext.getContext(primary.getSchemaName())
             .getRuleManager()
             .getSharedColumns(primaryTableName)
             .stream()
             .map(x -> x.toLowerCase())
             .filter(sk -> !pkList.contains(sk))
+            .filter(sk -> !primaryTable.getColumn(sk).isNullable())
+            .collect(Collectors.toList());
+
+        final List<String> nullableSkList = OptimizerContext.getContext(primary.getSchemaName())
+            .getRuleManager()
+            .getSharedColumns(primaryTableName)
+            .stream()
+            .map(x -> x.toLowerCase())
+            .filter(sk -> !pkList.contains(sk))
+            .filter(sk -> primaryTable.getColumn(sk).isNullable())
             .collect(Collectors.toList());
 
         final int leftCount = indexRowType.getFieldCount();
@@ -1372,7 +1392,17 @@ public class RelUtils {
             condition,
             SqlStdOperatorTable.EQUALS);
 
-        buildEqCondition(skList,
+        buildEqCondition(notNullableSkList,
+            indexRowType,
+            primaryRowType,
+            leftCount,
+            indexColumnRefMap,
+            primaryColumnRefMap,
+            rexBuilder,
+            condition,
+            SqlStdOperatorTable.EQUALS);
+
+        buildEqCondition(nullableSkList,
             indexRowType,
             primaryRowType,
             leftCount,
@@ -1611,6 +1641,87 @@ public class RelUtils {
         return true;
     }
 
+    public static boolean existUnPushableLastInsertId(RelNode node) {
+        class CheckUnPushableRelVisitor extends RelVisitor {
+            private boolean exists = false;
+            private final PlannerContext context = PlannerContext.getPlannerContext(node);
+
+            @Override
+            public void visit(RelNode relNode, int ordinal, RelNode parent) {
+
+                if (relNode instanceof Project) {
+                    exists = isNotPushLastInsertId(context, (Project) relNode) || exists;
+                } else if (relNode instanceof Filter) {
+                    exists = isNotPushLastInsertId(context, (Filter) relNode) || exists;
+                }
+
+                super.visit(relNode, ordinal, parent);
+            }
+
+            public boolean exists() {
+                return exists;
+            }
+        }
+
+        final CheckUnPushableRelVisitor checkUnPushableRelVisitor = new CheckUnPushableRelVisitor();
+        checkUnPushableRelVisitor.go(node);
+        return checkUnPushableRelVisitor.exists();
+    }
+
+    // select 中 last_insert_id 不可下推
+    // 不可下推的 DML 中，last_insert_id 不可下推 (带有GSI，Scale-out，拆分键变更（DDL），修改分区键，广播表)
+    public static boolean isNotPushLastInsertId(PlannerContext context, Project project) {
+        return isNotPushLastInertIdExps(context, project.getChildExps());
+    }
+
+    public static boolean isNotPushLastInsertId(PlannerContext context, Filter filter) {
+        return isNotPushLastInertIdExps(context, filter.getChildExps());
+    }
+
+    private static boolean isNotPushLastInertIdExps(PlannerContext context, List<RexNode> childExps) {
+        final boolean isModifyShardingColumn = context.getExecutionContext().isModifyShardingColumn();
+        final boolean modifyGsiTable = context.getExecutionContext().isModifyGsiTable();
+        final boolean modifyScaleoutTable = context.getExecutionContext().isScaleoutWritableTable();
+        final boolean modifyOnlineColumnTable = context.getExecutionContext().isModifyOnlineColumnTable();
+        final boolean modifyBroadcastTable = context.getExecutionContext().isModifyBroadcastTable();
+
+        boolean operands = false;
+        boolean isLastInsertId = false;
+        for (RexNode node : childExps) {
+            if (node instanceof RexCall) {
+                operands |= !verifyOperands((RexCall) node);
+                isLastInsertId |= node.toString().contains("LAST_INSERT_ID");
+            }
+        }
+        /**
+         * Non push down dml rule by
+         * {@link PushModifyRule#matches}.
+         */
+        final boolean notPushLastInsertId = operands && isLastInsertId &&
+            (isModifyShardingColumn ||
+                modifyGsiTable ||
+                modifyScaleoutTable ||
+                modifyBroadcastTable ||
+                (context.getSqlKind() == SqlKind.UPDATE && modifyOnlineColumnTable) ||
+                context.getSqlKind() == SqlKind.SELECT
+            );
+        return notPushLastInsertId;
+    }
+
+    public static boolean verifyOperands(final RexCall call) {
+        for (RexNode node : call.operands) {
+            if (node instanceof RexCall) {
+                if (!verifyOperands((RexCall) node)) {
+                    return false;
+                }
+            } else if (node instanceof RexDynamicParam) {
+            } else if (!(node instanceof RexLiteral)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean isSimpleQueryPlan(RelNode plan) {
         if (plan instanceof LogicalProject) {
             return isSimpleQueryPlan(plan.getInput(0));
@@ -1798,5 +1909,67 @@ public class RelUtils {
             }
         }
         return false;
+    }
+
+    public static TableMeta getTableMeta(TableScan tableScan) {
+        if (null != tableScan.getTable()
+            && tableScan.getTable() instanceof RelOptTableImpl
+            && null != ((RelOptTableImpl) tableScan.getTable()).getImplTable()
+            && ((RelOptTableImpl) tableScan.getTable()).getImplTable() instanceof TableMeta) {
+            return (TableMeta) ((RelOptTableImpl) tableScan.getTable()).getImplTable();
+        }
+        return null;
+    }
+
+    public static GsiMetaManager.GsiIndexMetaBean getGsiIndexMetaBean(LogicalIndexScan indexScan) {
+        TableMeta tableMeta = RelUtils.getTableMeta(indexScan);
+        if (null != tableMeta && null != tableMeta.getGsiTableMetaBean()) {
+            return tableMeta.getGsiTableMetaBean().gsiMetaBean;
+        }
+        return null;
+    }
+
+    public static TableMeta getTableMeta(SqlIdentifier tableIdentifier, ExecutionContext ec) {
+        String schemaName = ec.getSchemaName();
+        if (tableIdentifier.names.size() == 2) {
+            schemaName = tableIdentifier.names.get(0);
+        }
+        TableMeta tableMeta = null;
+        try {
+            tableMeta = ec.getSchemaManager(schemaName).getTable(tableIdentifier.getLastName());
+        } catch (Throwable ignored) {
+            // Ignore NPE.
+        }
+        return tableMeta;
+    }
+
+    /**
+     * Whether we can optimize min/max(col) by adding FORCE INDEX (PRIMARY).
+     * Return TRUE if the column is not the first column of any index.
+     */
+    public static boolean canOptMinMax(TableMeta tableMeta, String columnName) {
+        if (null == tableMeta) {
+            return false;
+        }
+        final ColumnMeta columnMeta = tableMeta.getColumn(columnName);
+        if (null == columnMeta) {
+            return false;
+        }
+
+        // Check if this column is the first column of any index.
+        boolean firstColumnOfIndex = false;
+        for (final IndexMeta indexMeta : tableMeta.getIndexes()) {
+            if (indexMeta.getKeyColumns().size() == 0) {
+                return false;
+            }
+            // Compare address of object.
+            if (indexMeta.getKeyColumns().get(0) == columnMeta) {
+                firstColumnOfIndex = true;
+                break;
+            }
+        }
+
+        // Add force index if this column is not the first column of any index.
+        return !firstColumnOfIndex;
     }
 }

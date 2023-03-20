@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.scheduler.FiredScheduledJobState;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.ddl.auto.localpartition.LocalPartitionBaseTest;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
@@ -155,6 +154,7 @@ public class FileStorageExpireTest extends BaseTestCase {
                     Assert.assertTrue(resultSet.next());
                     String jobId = resultSet.getString("JOB_ID");
                     JdbcUtil.executeUpdateSuccess(conn, String.format("rollback ddl %s", jobId));
+                    resultSet.close();
                 }
             }
             assertWithMessage("rollback number is not equal to test cases").that(rollbacks).isEqualTo(tests);
@@ -188,7 +188,7 @@ public class FileStorageExpireTest extends BaseTestCase {
             String innodbTestTableName = "testSchedulePause";
             String ossTestTableName = "oss_" + innodbTestTableName;
             //prepare table
-            FullTypeTestUtil.prepareInnoTable(conn, innodbTestTableName,7000);
+            FullTypeTestUtil.prepareInnoTable(conn, innodbTestTableName, 7000);
             FullTypeTestUtil.prepareTTLTable(conn, testDataBase, ossTestTableName, innodbTestTableName, engine);
 
             long totalCount = FullTypeTestUtil.count(conn, innodbTestTableName);
@@ -205,24 +205,24 @@ public class FileStorageExpireTest extends BaseTestCase {
             FullTypeTestUtil.continueSchedule(conn, testDataBase, innodbTestTableName);
 
             // note that the ttl_pause may be too short or too long, which will cause the test fail
-            long[] ttl_pause = new long[]{5, 5, 20, 100};
+            long[] ttl_pause = new long[] {5, 5, 20, 100};
             for (long pause : ttl_pause) {
                 JdbcUtil.executeSuccess(conn, String.format("set @FP_TTL_PAUSE='%d'", pause));
 
                 int beforeCnt = countScheduleResult(conn, id);
                 JdbcUtil.executeQuery(fireTTL, conn);
                 // sleep to wait for the schedule job finish
-                Thread.sleep((pause + 5)  * 1000L);
+                Thread.sleep((pause + 5) * 1000L);
                 Assert.assertTrue(countScheduleResult(conn, id) > beforeCnt);
 
                 // wait until the job is finished
                 int waitCnt = 0;
-                while(!checkScheduleResultState(conn, id,
-                    new String[]{FiredScheduledJobState.SUCCESS.name(), FiredScheduledJobState.FAILED.name()})) {
+                while (!checkScheduleResultState(conn, id,
+                    new String[] {FiredScheduledJobState.SUCCESS.name(), FiredScheduledJobState.FAILED.name()})) {
                     waitCnt++;
                     assertWithMessage("TTL job is unfinished, schedule_id is: " + id)
                         .that(waitCnt).isLessThan(10);
-                    Thread.sleep(5  * 1000L);
+                    Thread.sleep(5 * 1000L);
                 }
 
                 int afterCnt = countScheduleResult(conn, id);
@@ -232,7 +232,7 @@ public class FileStorageExpireTest extends BaseTestCase {
                     JdbcUtil.executeQuery(fireTTL, conn);
                     return;
                 }
-                if (checkScheduleResultState(conn, id, new String[]{FiredScheduledJobState.FAILED.name()})) {
+                if (checkScheduleResultState(conn, id, new String[] {FiredScheduledJobState.FAILED.name()})) {
                     failCnt++;
                 } else {
                     break;
@@ -251,16 +251,14 @@ public class FileStorageExpireTest extends BaseTestCase {
         }
     }
 
-
-
-    private void continueDDL(Connection conn, String expireSql) throws SQLException{
+    private void continueDDL(Connection conn, String expireSql) throws SQLException {
         int cnt = 0;
         try {
             JdbcUtil.executeUpdate(conn, expireSql);
         } catch (Throwable t) {
             ResultSet resultSet = JdbcUtil.executeQuery("show full ddl", conn);
             String jobId = null;
-            while(resultSet.next()) {
+            while (resultSet.next()) {
                 if (expireSql.equalsIgnoreCase(resultSet.getString("DDL_STMT"))) {
                     jobId = resultSet.getString("JOB_ID");
                 }
@@ -279,8 +277,6 @@ public class FileStorageExpireTest extends BaseTestCase {
         }
         assertWithMessage(expireSql + " \nshould pause for a few time").that(cnt).isGreaterThan(0);
     }
-
-
 
     public boolean checkScheduleResultState(Connection conn, long id, String[] states) throws SQLException {
         ResultSet resultSet = JdbcUtil.executeQuery("show schedule result " + id, conn);

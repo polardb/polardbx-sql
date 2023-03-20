@@ -95,10 +95,19 @@ public class RelocateGsiWriter extends RelocateWriter implements GsiWriter {
                     Collectors.toList()));
         } else if (GlobalIndexMeta.canDelete(ec, gsiMeta)) {
             // DELETE_ONLY
-            outDeletePlans.addAll(getDeleteWriter().getInput(ec, (w) -> modifyRows));
-            outDeletePlans.addAll(getDeleteWriter().getInput(ec, (w) -> relocateRows));
-            replicateOutDeletePlans.addAll(getDeleteWriter().getInput(ec, (w) -> modifyRows));
-            replicateOutDeletePlans.addAll(getDeleteWriter().getInput(ec, (w) -> relocateRows));
+            List<RelNode> inputs = getDeleteWriter().getInput(ec, (w) -> modifyRows);
+            outDeletePlans.addAll(inputs.stream().filter(o -> !((BaseQueryOperation) o).isReplicateRelNode()).collect(
+                Collectors.toList()));
+            replicateOutDeletePlans.addAll(
+                inputs.stream().filter(o -> ((BaseQueryOperation) o).isReplicateRelNode()).collect(
+                    Collectors.toList()));
+
+            inputs = getDeleteWriter().getInput(ec, (w) -> relocateRows);
+            outDeletePlans.addAll(inputs.stream().filter(o -> !((BaseQueryOperation) o).isReplicateRelNode()).collect(
+                Collectors.toList()));
+            replicateOutDeletePlans.addAll(
+                inputs.stream().filter(o -> ((BaseQueryOperation) o).isReplicateRelNode()).collect(
+                    Collectors.toList()));
         }
 
         return distinctRows;

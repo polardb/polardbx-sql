@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.partition;
 
-import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -28,7 +27,6 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import lombok.SneakyThrows;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -178,9 +176,12 @@ public class TablePartitionAccessor extends AbstractAccessor {
     private static final String UPDATE_TABLES_RENAME =
         "update table_partitions set `table_name` = ? where table_schema=? and table_name=? ";
 
-    private static final String GET_TABLE_PARTITIONS_BY_GID_AND_PART_FROM_DELTA_TABLE =
+    private static final String UPDATE_RENAME_PHYSICAL_TABLE =
+        "update table_partitions set `phy_table` = ? where id = ? ";
+
+    private static final String GET_TABLE_PARTITIONS_BY_SCH_TB_GID_AND_PART_FROM_DELTA_TABLE =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.TABLE_PARTITIONS_DELTA
-            + " where table_schema=? and group_id=? and part_name=? and part_level<>0";
+            + " where table_schema=? and table_name=? and group_id=? and part_name=? and part_level<>0";
 
     private static final String DELETE_TABLE_PARTITIONS_BY_PK_FROM_DELTA_TABLE =
         "delete from " + GmsSystemTables.TABLE_PARTITIONS_DELTA
@@ -1182,6 +1183,20 @@ public class TablePartitionAccessor extends AbstractAccessor {
         }
     }
 
+    public void renamePhyTableName(Long id, String newPhyTableName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newPhyTableName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
+            MetaDbUtil.update(UPDATE_RENAME_PHYSICAL_TABLE, params, connection);
+            return;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
     private TablePartitionConfig getTablePartitionConfigInner(String dbName, String tbName, Connection metaDbConn,
                                                               boolean fromDeltaTable, boolean publicOnly) {
 
@@ -1267,7 +1282,8 @@ public class TablePartitionAccessor extends AbstractAccessor {
         return partitionConfig;
     }
 
-    public List<TablePartitionRecord> getTablePartitionByGidAndPartNameFromDelta(String tableSchema, Long groupId,
+    public List<TablePartitionRecord> getTablePartitionByGidAndPartNameFromDelta(String tableSchema, String tableName,
+                                                                                 Long groupId,
                                                                                  String partName) {
         try {
 
@@ -1275,11 +1291,13 @@ public class TablePartitionAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
 
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, tableSchema);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
-            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, partName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, groupId);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, partName);
             records =
                 MetaDbUtil
-                    .query(GET_TABLE_PARTITIONS_BY_GID_AND_PART_FROM_DELTA_TABLE, params, TablePartitionRecord.class,
+                    .query(GET_TABLE_PARTITIONS_BY_SCH_TB_GID_AND_PART_FROM_DELTA_TABLE, params,
+                        TablePartitionRecord.class,
                         connection);
 
             return records;
@@ -1290,10 +1308,11 @@ public class TablePartitionAccessor extends AbstractAccessor {
         }
     }
 
-    public void deleteTablePartitionByGidAndPartNameFromDelta(String tableSchema, Long groupId, String partName) {
+    public void deleteTablePartitionByGidAndPartNameFromDelta(String tableSchema, String tableName, Long groupId,
+                                                              String partName) {
         try {
             List<TablePartitionRecord> tablePartitionRecords =
-                getTablePartitionByGidAndPartNameFromDelta(tableSchema, groupId, partName);
+                getTablePartitionByGidAndPartNameFromDelta(tableSchema, tableName, groupId, partName);
             List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
             for (TablePartitionRecord tablePartitionRecord : GeneralUtil.emptyIfNull(tablePartitionRecords)) {
                 Map<Integer, ParameterContext> params = new HashMap<>();

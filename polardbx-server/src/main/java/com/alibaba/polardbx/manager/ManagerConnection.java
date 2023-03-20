@@ -128,6 +128,12 @@ public final class ManagerConnection extends FrontendConnection {
     }
 
     @Override
+    public void binlogDump(byte[] data) {
+        writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG,
+            "handle load file is not supported in ManagerConnection");
+    }
+
+    @Override
     public void fieldList(byte[] data) {
         writeErrMessage(ErrorCode.ER_UNKNOWN_COM_ERROR, "field list is not supported in ManagerConnection");
 

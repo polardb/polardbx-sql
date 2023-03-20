@@ -124,6 +124,7 @@ import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
@@ -131,6 +132,7 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.Sort;
+import org.apache.calcite.rel.core.Union;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.rel.logical.LogicalFilter;
@@ -981,10 +983,25 @@ public class LocalExecutionPlanner {
     }
 
     private ExecutorFactory visitBKAJoin(Join current, PipelineFragment pipelineFragment) {
-        forbidMultipleReadConn = this.forbidMultipleReadConn ||
-            !ExecUtils.allowMultipleReadConns(context, null);
-        if (defaultParallelism != 1 && forbidMultipleReadConn) {
-            //FIXME 本来这里应该根据forbidMultipleReadConn来设置并发度的，这里投机取巧下知识使用useTransaction
+        new RelVisitor() {
+            @Override
+            public void visit(RelNode node, int ordinal, RelNode parent) {
+                if (node instanceof LogicalView) {
+                    forbidMultipleReadConn = forbidMultipleReadConn ||
+                        !ExecUtils.allowMultipleReadConns(context, (LogicalView) node);
+                }
+                if (node instanceof Filter ||
+                    node instanceof Project ||
+                    node instanceof Exchange ||
+                    node instanceof Union ||
+                    node instanceof BKAJoin) {
+                    super.visit(node, ordinal, parent);
+                }
+            }
+        }.go(current);
+
+        boolean forbidMultipleConn = this.forbidMultipleReadConn;
+        if (defaultParallelism != 1 && forbidMultipleConn) {
             //事务下并发度必须为1,并且当前并发度需要被保持
             pipelineFragment.holdSingleTonParallelism();
         }
@@ -996,7 +1013,7 @@ public class LocalExecutionPlanner {
         try {
             expandView = true;
             innerExecutorFactory = visit(current, current.getInner(), pipelineFragment);
-            if (forbidMultipleReadConn) {
+            if (forbidMultipleConn) {
                 Preconditions.checkArgument(pipelineFragment.getParallelism() == 1,
                     "The LookupJoinExec's parallelism must be 1!");
             }

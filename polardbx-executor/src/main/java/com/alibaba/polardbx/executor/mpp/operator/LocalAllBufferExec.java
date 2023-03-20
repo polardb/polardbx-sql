@@ -106,8 +106,8 @@ public class LocalAllBufferExec extends LocalBufferExec {
                 // buffered bytes must be updated before adding to the buffer to assure
                 // the count does not go negative
                 buffer.put(chunk);
-                usedBufferSize += chunk.getSizeInBytes();
-                bufferMemoryManager.updateMemoryUsage(chunk.getSizeInBytes());
+                usedBufferSize += chunk.estimateSize();
+                bufferMemoryManager.updateMemoryUsage(chunk.estimateSize());
                 if (bufferMemoryManager.isFull() && supportSpill) {
                     if (spillFuture != null) {
                         //等待上一次的写完，才能继续spill
@@ -176,8 +176,8 @@ public class LocalAllBufferExec extends LocalBufferExec {
         } else if (spiller == null) {
             Chunk ret = buffer.poll();
             if (ret != null) {
-                usedBufferSize -= ret.getSizeInBytes();
-                bufferMemoryManager.updateMemoryUsage(-ret.getSizeInBytes());
+                usedBufferSize -= ret.estimateSize();
+                bufferMemoryManager.updateMemoryUsage(-ret.estimateSize());
             }
             return ret;
         } else {

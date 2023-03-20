@@ -213,7 +213,7 @@ public class Chunk implements Iterable<Row> {
         @Override
         public long estimateSize() {
             if (positionCount > 0) {
-                return getSizeInBytes() / positionCount;
+                return getElementUsedBytes() / positionCount;
             } else {
                 return 0;
             }
@@ -234,12 +234,12 @@ public class Chunk implements Iterable<Row> {
     /**
      * Returns the logical size of this block in memory.
      */
-    public long getSizeInBytes() {
+    public long getElementUsedBytes() {
         long sizeInBytes = sizeInBytesUpdater.get(this);
         if (sizeInBytes < 0) {
             sizeInBytes = 0;
             for (Block block : blocks) {
-                sizeInBytes += block.getSizeInBytes();
+                sizeInBytes += block.getElementUsedBytes();
             }
             sizeInBytesUpdater.set(this, sizeInBytes);
         }

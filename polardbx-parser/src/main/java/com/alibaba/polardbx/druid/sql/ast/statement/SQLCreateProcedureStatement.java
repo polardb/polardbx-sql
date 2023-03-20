@@ -149,7 +149,6 @@ public class SQLCreateProcedureStatement extends SQLStatementImpl implements SQL
         this.deterministic = deterministic;
     }
 
-
     public SQLParameter findParameter(long hash) {
         for (SQLParameter param : this.parameters) {
             if (param.getName().nameHashCode64() == hash) {

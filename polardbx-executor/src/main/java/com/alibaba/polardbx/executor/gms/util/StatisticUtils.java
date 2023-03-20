@@ -77,8 +77,9 @@ import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.clearspring.analytics.stream.cardinality.HyperLogLog;
 import com.clearspring.analytics.stream.membership.BloomFilter;
-import com.google.common.collect.Lists;
+import com.clearspring.analytics.stream.membership.BloomFilter;
 import com.google.common.collect.Maps;
+import io.airlift.slice.Slice;
 import io.airlift.slice.Slice;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rex.RexBuilder;
@@ -86,6 +87,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.commons.collections.CollectionUtils;
 import org.glassfish.jersey.internal.guava.Sets;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -126,12 +128,6 @@ public class StatisticUtils {
 
     private static final Logger logger = LoggerFactory.getLogger("statistics");
 
-    /**
-     * select table rows sql, need to concat with where filter
-     */
-    static final String SELECT_TABLE_ROWS_SQL =
-        "SELECT table_schema, table_name, table_rows FROM information_schema.tables";
-
     private static String PRESENT_SQL = "select sum(extent_size) as size from files where "
         + "logical_schema_name = '%s' and logical_table_name = '%s' and remove_ts is null and " +
         "life_cycle = " + OSSMetaLifeCycle.READY.ordinal();
@@ -140,11 +136,17 @@ public class StatisticUtils {
         + "logical_schema_name = '%s' and logical_table_name = '%s' and remove_ts is not null and " +
         "life_cycle = " + OSSMetaLifeCycle.READY.ordinal();
 
+    /**
+     * select table rows sql, need to concat with where filter
+     */
+    static final String SELECT_TABLE_ROWS_SQL =
+        "SELECT table_schema, table_name, table_rows FROM information_schema.tables";
+
     public static boolean forceAnalyzeColumns(String schema, String logicalTableName) {
         try {
             collectRowCount(schema, logicalTableName);
             sampleTable(schema, logicalTableName);
-            //sketchTable(schema, logicalTableName, true);
+//            sketchTable(schema, logicalTableName, true);
 
             /** persist */
             persistStatistic(schema, logicalTableName, true);
@@ -162,10 +164,10 @@ public class StatisticUtils {
         return true;
     }
 
-    private static void collectRowCount(String schema, String logicalTableName) throws SQLException {
+    public static void collectRowCount(String schema, String logicalTableName) throws SQLException {
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_START,
                 new String[] {
                     STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
@@ -181,7 +183,7 @@ public class StatisticUtils {
                 String remark = "file storage statistic collection rowcount error: " + e.getMessage();
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         UNEXPECTED,
                         new String[] {
                             STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
@@ -195,7 +197,7 @@ public class StatisticUtils {
             if (topologyMap == null) {
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         UNEXPECTED,
                         new String[] {
                             STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
@@ -210,10 +212,11 @@ public class StatisticUtils {
                 StorageHaManager.getInstance().getMasterStorageList().stream().filter(s -> !s.isMetaDb())
                     .map(StorageInstHaContext::getStorageInstId).collect(
                         Collectors.toSet());
+
             Map<String, Map<String, Long>> rowCountMap = Maps.newHashMap();
             for (String dnId : dnIds) {
                 try {
-                    Map<String, Map<String, Long>> rowRs = collectRowCount(dnId, tbls);
+                    Map<String, Map<String, Long>> rowRs = collectRowCountAll(dnId, tbls);
                     if (rowRs != null) {
                         rowCountMap.putAll(rowRs);
                     }
@@ -221,7 +224,7 @@ public class StatisticUtils {
                     String remark = "statistic collection rowcount error: " + e.getMessage();
                     ModuleLogInfo.getInstance()
                         .logRecord(
-                            Module.STATISTIC,
+                            Module.STATISTICS,
                             UNEXPECTED,
                             new String[] {
                                 STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
@@ -236,10 +239,9 @@ public class StatisticUtils {
         }
         StatisticManager.CacheLine cacheLine = StatisticManager.getInstance().getCacheLine(schema, logicalTableName);
         cacheLine.setRowCount(sum);
-        cacheLine.setLastModifyTime(unixTimeStamp());
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_END,
                 new String[] {
                     STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
@@ -250,6 +252,7 @@ public class StatisticUtils {
 
     public static boolean sampleColumns(String schema, String logicalTableName) {
         try {
+            collectRowCount(schema, logicalTableName);
             sampleTable(schema, logicalTableName);
 
             /** persist */
@@ -286,7 +289,7 @@ public class StatisticUtils {
                     columnName,
                     cacheLine.getCardinalityMap().get(columnName),
                     cacheLine.getHistogramMap().get(columnName),
-                    cacheLine.getTopNMap().get(columnName),
+                    cacheLine.getTopN(columnName),
                     cacheLine.getNullCountMap().get(columnName),
                     cacheLine.getSampleRate(),
                     cacheLine.getLastModifyTime()));
@@ -297,7 +300,7 @@ public class StatisticUtils {
         updateMetaDbInformationSchemaTables(schema, logicalTableName);
 
         long end = System.currentTimeMillis();
-        ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_END,
+        ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_END,
             new String[] {
                 "persist tables statistic:" + schema + "," + logicalTableName + "," + withColumnStatistic,
                 "consuming " + (end - start) / 1000.0 + " seconds"
@@ -375,7 +378,7 @@ public class StatisticUtils {
         List<ColumnMeta> columnMetaList = getColumnMetas(false, schema, logicalTableName);
 
         if (columnMetaList == null || columnMetaList.isEmpty()) {
-            ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, UNEXPECTED,
+            ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, UNEXPECTED,
                 new String[] {
                     "statistic sketch",
                     "column meta is empty :" + schema + "," + logicalTableName
@@ -384,6 +387,10 @@ public class StatisticUtils {
         }
 
         Map<String, Set<String>> colMap = PlanManager.getInstance().columnsInvolvedByPlan().get(schema);
+
+        if (colMap == null) {
+            colMap = Maps.newHashMap();
+        }
 
         Set<String> colSet = colMap.get(logicalTableName);
         Set<String> colDoneSet = Sets.newHashSet();
@@ -451,7 +458,7 @@ public class StatisticUtils {
             }
         }
 
-        ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_END,
+        ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_END,
             new String[] {
                 "statistic sketch table ",
                 schema + "," + logicalTableName + ",is force:" + needRebuild + ",cols:" + String.join(";", colDoneSet)
@@ -460,7 +467,7 @@ public class StatisticUtils {
     }
 
     public static void sampleTable(String schemaName, String logicalTableName) {
-        ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_START,
+        ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_START,
             new String[] {
                 "statistic sample",
                 schemaName + "," + logicalTableName
@@ -469,7 +476,7 @@ public class StatisticUtils {
         StatisticManager.CacheLine cacheLine =
             StatisticManager.getInstance().getCacheLine(schemaName, logicalTableName);
         if (analyzeColumnList == null || analyzeColumnList.isEmpty()) {
-            ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, UNEXPECTED,
+            ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, UNEXPECTED,
                 new String[] {
                     "statistic sample",
                     "column meta is empty :" + schemaName + "," + logicalTableName
@@ -494,7 +501,7 @@ public class StatisticUtils {
         }
 
         if (sampleRate * rowCount >= Integer.MAX_VALUE) {
-            ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, UNEXPECTED,
+            ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, UNEXPECTED,
                 new String[] {
                     "statistic sample",
                     "Size of sampling is too large :" + schemaName + "," + logicalTableName + "," + rowCount
@@ -594,9 +601,9 @@ public class StatisticUtils {
 
             boolean isReady = topN.build(topNSize, topNMinNum);
             if (isReady) {
-                cacheLine.getTopNMap().put(colName, topN);
+                cacheLine.setTopN(colName, topN);
             } else {
-                cacheLine.getTopNMap().remove(colName);
+                cacheLine.setTopN(colName, null);
             }
             Histogram h = new Histogram(histogramBucketSize, dataType, (float) sampleRateUp);
             h.buildFromData(objs.stream().filter(d -> isReady ? topN.get(d) == 0 : true).toArray());
@@ -606,7 +613,7 @@ public class StatisticUtils {
         cacheLine.setSampleRate(sampleRate);
         cacheLine.setLastModifyTime(unixTimeStamp());
 
-        ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, PROCESS_END,
+        ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_END,
             new String[] {
                 "statistic sample",
                 schemaName + "," + logicalTableName
@@ -651,7 +658,9 @@ public class StatisticUtils {
         ITransaction trx = null;
         ExecutionContext ec = null;
         try {
-            String sql = constructRandomScanSamplingSql(logicalTableName, columnMetaList, sampleRate);
+            String sql = StatisticUtils.isFileStore(schema, logicalTableName) ?
+                constructRandomScanSamplingSql(logicalTableName, columnMetaList, sampleRate)
+                : constructScanSamplingSql(logicalTableName, columnMetaList, sampleRate);
             ec = new ExecutionContext(schema);
             ec.setTraceId("statistic");
             ec.setParams(new Parameters());
@@ -700,6 +709,28 @@ public class StatisticUtils {
         }
     }
 
+    private static String constructScanSamplingSql(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                                   float sampleRate) {
+        StringBuilder sql = new StringBuilder();
+
+        String cmdExtraSamplePercentage = "";
+        cmdExtraSamplePercentage = ",sample_percentage=" + sampleRate * 100;
+        sql.append("/*+TDDL:cmd_extra(merge_union=false,ENABLE_DIRECT_PLAN=false" + cmdExtraSamplePercentage + ") */ "
+            + "select ");
+        boolean first = true;
+        for (ColumnMeta columnMeta : columnMetaList) {
+            if (first) {
+                first = false;
+            } else {
+                sql.append(",");
+            }
+            sql.append("`" + columnMeta.getName() + "`");
+        }
+        sql.append(" from ");
+        sql.append("`" + logicalTableName + "`");
+        return sql.toString();
+    }
+
     private static String constructRandomScanSamplingSql(String logicalTableName, List<ColumnMeta> columnMetaList,
                                                          float sampleRate) {
         StringBuilder sql = new StringBuilder();
@@ -727,7 +758,7 @@ public class StatisticUtils {
     /**
      * @return phy schema-> phy table name -> rows num
      */
-    public static Map<String, Map<String, Long>> collectRowCount(String dnId, Collection<String> tblNames)
+    public static Map<String, Map<String, Long>> collectRowCountAll(String dnId, Collection<String> tblNames)
         throws SQLException {
         Map<String, Map<String, Long>> rowCountsMap = Maps.newHashMap();
         Connection conn = null;
@@ -757,7 +788,7 @@ public class StatisticUtils {
         } catch (Throwable e) {
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     UNEXPECTED,
                     new String[] {"collectRowCount table statistic from dn:" + dnId, e.getMessage()},
                     CRITICAL,
@@ -769,123 +800,6 @@ public class StatisticUtils {
             JdbcUtils.close(stmt);
             JdbcUtils.close(conn);
         }
-    }
-
-    /**
-     * build dn sql to collect rowcount, tbl names is null or empty meaning collect all table info
-     *
-     * @param tblNames target tables
-     * @return collect rowcount sql
-     */
-    public static String buildCollectRowCountSql(Collection<String> tblNames) {
-        String sql;
-        if (tblNames == null || tblNames.isEmpty()) {
-            sql = SELECT_TABLE_ROWS_SQL;
-        } else {
-            sql = SELECT_TABLE_ROWS_SQL + " WHERE TABLE_NAME IN ('" + String.join("','", tblNames) + "')";
-        }
-        return sql;
-    }
-
-    private static void avoidInformationSchemaCache(Connection conn) throws SQLException {
-        // avoid mysql 8.0 cache information_schema
-        Statement setVarStmt = conn.createStatement();
-        try {
-            setVarStmt.execute("set information_schema_stats_expiry = 0");
-        } catch (Throwable t) {
-            // pass
-        } finally {
-            JdbcUtils.close(setVarStmt);
-        }
-    }
-
-    /**
-     * logicalTableName
-     * whereFilter for query informationSchema
-     * informationSchemaCache dbName -> {physicalTableName -> RowCount}
-     */
-    public static Map<String, Set<String>> getTopology(String schema, String tableName) {
-        OptimizerContext op = OptimizerContext.getContext(schema);
-        if (op == null) {
-            return null;
-        }
-        PartitionInfoManager partitionInfoManager = op.getPartitionInfoManager();
-
-        /*
-          build topology for one logical table
-         */
-        Map<String, Set<String>> topology;
-        if (partitionInfoManager.isNewPartDbTable(tableName)) {
-            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
-            if (partitionInfo.getSubPartitionBy() != null) {
-                throw new AssertionError("do not support subpartition for statistic collector");
-            } else {
-                List<PartitionSpec> partitionSpecs = partitionInfo.getPartitionBy().getPartitions();
-                topology = new HashMap<>();
-                for (PartitionSpec partitionSpec : partitionSpecs) {
-                    String groupKey = partitionSpec.getLocation().getGroupKey();
-                    String physicalTableName = partitionSpec.getLocation().getPhyTableName();
-                    Set<String> physicalTableNames = topology.computeIfAbsent(groupKey, k -> new HashSet<>());
-                    physicalTableNames.add(physicalTableName);
-                }
-            }
-        } else {
-            TddlRuleManager tddlRuleManager = op.getRuleManager();
-            TableRule tableRule = tddlRuleManager.getTableRule(tableName);
-            if (tableRule == null) {
-                String dbIndex = tddlRuleManager.getDefaultDbIndex(tableName);
-                topology = new HashMap<>();
-                topology.put(dbIndex, com.google.common.collect.Sets.newHashSet(tableName));
-            } else {
-                topology = tableRule.getStaticTopology();
-                if (topology == null || topology.size() == 0) {
-                    topology = tableRule.getActualTopology();
-                }
-            }
-        }
-
-        /*
-          transform db index to phy schema
-         */
-        List<GroupDetailInfoExRecord> groupDetailInfoExRecords = TableGroupLocation.getOrderedGroupList(schema);
-        if (groupDetailInfoExRecords.size() == 0) {
-            return null;
-        }
-        Map<String, String> dbIndexToPhySchema = Maps.newHashMap();
-        for (GroupDetailInfoExRecord group : groupDetailInfoExRecords) {
-            dbIndexToPhySchema.put(group.getGroupName().toLowerCase(Locale.ROOT),
-                group.getPhyDbName().toLowerCase(Locale.ROOT));
-        }
-
-        Map<String, Set<String>> rs = Maps.newHashMap();
-        for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
-            String phySchema = dbIndexToPhySchema.get(entry.getKey().toLowerCase(Locale.ROOT));
-            rs.put(phySchema, entry.getValue());
-            /*
-              broadcast table only keep one phy table
-             */
-            if (partitionInfoManager.isBroadcastTable(tableName)) {
-                break;
-            }
-        }
-
-        return rs;
-    }
-
-    public static long sumRowCount(Map<String, Set<String>> topologyMap, Map<String, Map<String, Long>> rowCountMap) {
-        AtomicLong sum = new AtomicLong(0L);
-        for (Map.Entry<String, Set<String>> entry : topologyMap.entrySet()) {
-            String phySchema = entry.getKey();
-            Set<String> phyTables = entry.getValue();
-            Map<String, Long> tableRowCountMap = rowCountMap.get(phySchema.toLowerCase(Locale.ROOT));
-            if (tableRowCountMap == null) {
-                continue;
-            }
-            phyTables.forEach(t -> sum.addAndGet(
-                tableRowCountMap.get(t.toLowerCase(Locale.ROOT)) == null ? 0 : tableRowCountMap.get(t.toLowerCase(
-                    Locale.ROOT))));
-        }
-        return sum.get();
     }
 
     /**
@@ -982,4 +896,172 @@ public class StatisticUtils {
         statisticMap.put("DATA_FREE", dataFree);
         return statisticMap;
     }
+
+    /**
+     * @return phy schema-> phy table name -> rows num
+     */
+    public static Map<String, Map<String, Long>> collectRowCount(String dnId, Collection<String> tblNames)
+        throws SQLException {
+        Map<String, Map<String, Long>> rowCountsMap = Maps.newHashMap();
+        Connection conn = null;
+        Statement stmt = null;
+        ResultSet rs = null;
+        try {
+            conn = DbTopologyManager.getConnectionForStorage(dnId, InstConfUtil.getInt(STATISTIC_VISIT_DN_TIMEOUT));
+            avoidInformationSchemaCache(conn);
+            stmt = conn.createStatement();
+            String sql = buildCollectRowCountSql(tblNames);
+
+            rs = stmt.executeQuery(sql);
+            while (rs.next()) {
+                String tableSchema = rs.getString("table_schema");
+                String tableName = rs.getString("table_name");
+                Long tableRows = rs.getLong("table_rows");
+
+                Map<String, Long> tableRowCountMap;
+                if (rowCountsMap.containsKey(tableSchema)) {
+                    tableRowCountMap = rowCountsMap.get(tableSchema);
+                } else {
+                    tableRowCountMap = Maps.newHashMap();
+                    rowCountsMap.put(tableSchema, tableRowCountMap);
+                }
+                tableRowCountMap.put(tableName, tableRows);
+            }
+            return rowCountsMap;
+        } catch (Throwable e) {
+            ModuleLogInfo.getInstance()
+                .logRecord(
+                    Module.STATISTICS,
+                    UNEXPECTED,
+                    new String[] {"collectRowCount table statistic from dn:" + dnId, e.getMessage()},
+                    CRITICAL,
+                    e
+                );
+            throw e;
+        } finally {
+            JdbcUtils.close(rs);
+            JdbcUtils.close(stmt);
+            JdbcUtils.close(conn);
+        }
+    }
+
+    /**
+     * build dn sql to collect rowcount, tbl names is null or empty meaning collect all table info
+     *
+     * @param tblNames target tables
+     * @return collect rowcount sql
+     */
+    @NotNull
+    public static String buildCollectRowCountSql(Collection<String> tblNames) {
+        String sql;
+        if (tblNames == null || tblNames.isEmpty()) {
+            sql = SELECT_TABLE_ROWS_SQL;
+        } else {
+            sql = SELECT_TABLE_ROWS_SQL + " WHERE TABLE_NAME IN ('" + String.join("','", tblNames) + "')";
+        }
+        return sql;
+    }
+
+    private static void avoidInformationSchemaCache(Connection conn) throws SQLException {
+        // avoid mysql 8.0 cache information_schema
+        Statement setVarStmt = conn.createStatement();
+        try {
+            setVarStmt.execute("set information_schema_stats_expiry = 0");
+        } catch (Throwable t) {
+            // pass
+        } finally {
+            JdbcUtils.close(setVarStmt);
+        }
+    }
+
+    /**
+     * logicalTableName
+     * whereFilter for query informationSchema
+     * informationSchemaCache dbName -> {physicalTableName -> RowCount}
+     */
+    public static Map<String, Set<String>> getTopology(String schema, String tableName) {
+        OptimizerContext op = OptimizerContext.getContext(schema);
+        if (op == null) {
+            return null;
+        }
+        PartitionInfoManager partitionInfoManager = op.getPartitionInfoManager();
+
+        /*
+          build topology for one logical table
+         */
+        Map<String, Set<String>> topology;
+        if (partitionInfoManager.isNewPartDbTable(tableName)) {
+            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
+            if (partitionInfo.getSubPartitionBy() != null) {
+                return null;
+//                throw new AssertionError("do not support subpartition for statistic collector");
+            } else {
+                List<PartitionSpec> partitionSpecs = partitionInfo.getPartitionBy().getPartitions();
+                topology = new HashMap<>();
+                for (PartitionSpec partitionSpec : partitionSpecs) {
+                    String groupKey = partitionSpec.getLocation().getGroupKey();
+                    String physicalTableName = partitionSpec.getLocation().getPhyTableName();
+                    Set<String> physicalTableNames = topology.computeIfAbsent(groupKey, k -> new HashSet<>());
+                    physicalTableNames.add(physicalTableName);
+                }
+            }
+        } else {
+            TddlRuleManager tddlRuleManager = op.getRuleManager();
+            TableRule tableRule = tddlRuleManager.getTableRule(tableName);
+            if (tableRule == null) {
+                String dbIndex = tddlRuleManager.getDefaultDbIndex(tableName);
+                topology = new HashMap<>();
+                topology.put(dbIndex, com.google.common.collect.Sets.newHashSet(tableName));
+            } else {
+                topology = tableRule.getStaticTopology();
+                if (topology == null || topology.size() == 0) {
+                    topology = tableRule.getActualTopology();
+                }
+            }
+        }
+
+        /*
+          transform db index to phy schema
+         */
+        List<GroupDetailInfoExRecord> groupDetailInfoExRecords = TableGroupLocation.getOrderedGroupList(schema);
+        if (groupDetailInfoExRecords.size() == 0) {
+            return null;
+        }
+        Map<String, String> dbIndexToPhySchema = Maps.newHashMap();
+        for (GroupDetailInfoExRecord group : groupDetailInfoExRecords) {
+            dbIndexToPhySchema.put(group.getGroupName().toLowerCase(Locale.ROOT),
+                group.getPhyDbName().toLowerCase(Locale.ROOT));
+        }
+
+        Map<String, Set<String>> rs = Maps.newHashMap();
+        for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
+            String phySchema = dbIndexToPhySchema.get(entry.getKey().toLowerCase(Locale.ROOT));
+            rs.put(phySchema, entry.getValue());
+            /*
+              broadcast table only keep one phy table
+             */
+            if (partitionInfoManager.isBroadcastTable(tableName)) {
+                break;
+            }
+        }
+
+        return rs;
+    }
+
+    public static long sumRowCount(Map<String, Set<String>> topologyMap, Map<String, Map<String, Long>> rowCountMap) {
+        AtomicLong sum = new AtomicLong(0L);
+        for (Map.Entry<String, Set<String>> entry : topologyMap.entrySet()) {
+            String phySchema = entry.getKey();
+            Set<String> phyTables = entry.getValue();
+            Map<String, Long> tableRowCountMap = rowCountMap.get(phySchema.toLowerCase(Locale.ROOT));
+            if (tableRowCountMap == null) {
+                continue;
+            }
+            phyTables.forEach(t -> sum.addAndGet(
+                tableRowCountMap.get(t.toLowerCase(Locale.ROOT)) == null ? 0 : tableRowCountMap.get(t.toLowerCase(
+                    Locale.ROOT))));
+        }
+        return sum.get();
+    }
+
 }

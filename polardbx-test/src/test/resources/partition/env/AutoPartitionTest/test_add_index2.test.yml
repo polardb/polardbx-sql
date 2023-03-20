@@ -1,0 +1,34 @@
+drop table if exists `tbl`;
+
+CREATE TABLE `tbl` (
+`a` int NOT NULL AUTO_INCREMENT,
+`b` TIMESTAMP,
+`c` DATETIME,
+`d` DATE,
+`e` YEAR,
+PRIMARY KEY (a)
+);
+
+alter table tbl add index `idx1` (b);
+
+show create table tbl;
+
+show full create table tbl;
+
+create index `idx2` on tbl (c);
+
+show create table tbl;
+
+show full create table tbl;
+
+create index `idx3` on tbl (d, b);
+
+show create table tbl;
+
+show full create table tbl;
+
+alter table tbl add index `idx4` (e, b);
+
+show create table tbl;
+
+show full create table tbl;

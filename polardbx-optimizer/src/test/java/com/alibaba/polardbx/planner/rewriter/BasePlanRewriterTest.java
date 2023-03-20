@@ -68,6 +68,7 @@ public abstract class BasePlanRewriterTest extends BasePlannerTest {
         }
 
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+        plannerContext.setSchemaName(appName);
 
         ExecutionPlan executionPlan = planner.getPlan(ast, plannerContext);
         RelDrdsWriter relWriter = new RelDrdsWriter();

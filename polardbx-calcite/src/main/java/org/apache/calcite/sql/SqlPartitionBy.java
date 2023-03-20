@@ -74,11 +74,11 @@ public class SqlPartitionBy extends SqlCall {
             isColumnsPartition = true;
         } else if (partByObj instanceof SqlPartitionByHash) {
             isHash = true;
-            isColumnsPartition = ((SqlPartitionByHash)partByObj).isKey();
-        } else if(partByObj instanceof SqlPartitionByRange){
-            isColumnsPartition = ((SqlPartitionByRange)partByObj).isColumns();
+            isColumnsPartition = ((SqlPartitionByHash) partByObj).isKey();
+        } else if (partByObj instanceof SqlPartitionByRange) {
+            isColumnsPartition = ((SqlPartitionByRange) partByObj).isColumns();
         } else if (partByObj instanceof SqlPartitionByList) {
-            isColumnsPartition = ((SqlPartitionByList)partByObj).isColumns();
+            isColumnsPartition = ((SqlPartitionByList) partByObj).isColumns();
         }
 
         for (SqlNode partCol : this.getColumns()) {
@@ -86,17 +86,20 @@ public class SqlPartitionBy extends SqlCall {
             partCol.accept(columnFinder);
             if (columnFinder.getPartColumn() == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
-                    .format("Not allowed to use unknown column[%s] as partition column",partCol.toString()));
+                    .format("Not allowed to use unknown column[%s] as partition column", partCol.toString()));
             } else {
                 if (isColumnsPartition) {
                     if (columnFinder.isContainPartFunc()) {
                         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
-                            .format("Not allowed to use partition column[%s] with partition function in  key or range/list columns policy",partCol.toString()));
+                            .format(
+                                "Not allowed to use partition column[%s] with partition function in  key or range/list columns policy",
+                                partCol.toString()));
                     }
                 } else {
                     if (columnFinder.isUseNestingPartFunc()) {
                         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
-                            .format("Not allowed to use nesting partition function [%s] in hash/range/list policy",partCol.toString()));
+                            .format("Not allowed to use nesting partition function [%s] in hash/range/list policy",
+                                partCol.toString()));
                     }
                 }
             }
@@ -109,7 +112,7 @@ public class SqlPartitionBy extends SqlCall {
             SqlTypeName typeName = dataType.getSqlTypeName();
             if (isColumnsPartition) {
                 if (!(SqlTypeName.INT_TYPES.contains(typeName) || SqlTypeName.DATETIME_YEAR_TYPES.contains(typeName)
-                    || SqlTypeName.CHAR_TYPES.contains(typeName))) {
+                    || SqlTypeName.CHAR_TYPES.contains(typeName) || typeName == SqlTypeName.VARBINARY ||typeName == SqlTypeName.BINARY  )) {
                     throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
                         .format("The datatype[%s] of column[%s] is not supported", typeName.getName(),
                             partCol.toString()));
@@ -137,8 +140,8 @@ public class SqlPartitionBy extends SqlCall {
     }
 
     public static void validatePartitionCount(SqlValidator validator,
-                                        SqlValidatorScope scope,
-                                        SqlNode partCnt) {
+                                              SqlValidatorScope scope,
+                                              SqlNode partCnt) {
         if (partCnt != null) {
             RelDataType dataType = validator.deriveType(scope, partCnt);
             if (dataType == null) {
@@ -155,9 +158,9 @@ public class SqlPartitionBy extends SqlCall {
     }
 
     public static void validatePartitionDefs(SqlValidator validator,
-                                    SqlValidatorScope scope,
-                                    List<SqlNode> partDefs,
-                                    int partColCnt, boolean allowNoPartBndVal) {
+                                             SqlValidatorScope scope,
+                                             List<SqlNode> partDefs,
+                                             int partColCnt, boolean allowNoPartBndVal) {
         Set<String> partNameSet = new HashSet<>();
         for (int i = 0; i < partDefs.size(); i++) {
             SqlPartition partDef = (SqlPartition) partDefs.get(i);
@@ -198,7 +201,7 @@ public class SqlPartitionBy extends SqlCall {
                     for (int k = 0; k < opList.size(); k++) {
                         SqlNode v = opList.get(k);
                         if (v instanceof SqlIdentifier) {
-                            String str = ((SqlIdentifier)v).getLastName();
+                            String str = ((SqlIdentifier) v).getLastName();
                             if (str != null && str.toLowerCase().contains("maxvalue")) {
                                 containMaxValue = true;
                                 break;
@@ -206,22 +209,23 @@ public class SqlPartitionBy extends SqlCall {
                         }
                     }
                 } else if (valItem instanceof SqlIdentifier) {
-                    String str = ((SqlIdentifier)valItem).getLastName();
+                    String str = ((SqlIdentifier) valItem).getLastName();
                     if (str != null && str.toLowerCase().contains("maxvalue")) {
                         containMaxValue = true;
                     }
                 }
                 if (containMaxValue && bndVal.getOperator() == SqlPartitionValue.Operator.In) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format("cannot use 'maxvalue' as value in VALUES IN"));
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                        String.format("cannot use 'maxvalue' as value in VALUES IN"));
                 }
 
                 RelDataType valItemDt = validator.deriveType(scope, valItem);
                 if (valItemDt.isStruct()) {
                     // valItem is row expr
                     List<RelDataTypeField> valItemTypeFlds = valItemDt.getFieldList();
-                    if ( partColCnt > 0 && valItemTypeFlds.size() != partColCnt) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-                                "the bound value of partition[%s] must match the partition columns", partNameStr));
+                    if (partColCnt > 0 && valItemTypeFlds.size() != partColCnt) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                            "the bound value of partition[%s] must match the partition columns", partNameStr));
                     }
                 } else {
                     // valItem is single col or func(col) expr

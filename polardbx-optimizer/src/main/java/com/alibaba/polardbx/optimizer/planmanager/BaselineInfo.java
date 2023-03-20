@@ -280,7 +280,7 @@ public class BaselineInfo {
         return fixPlans;
     }
 
-    public void merge(BaselineInfo t) {
+    public void merge(String schema, BaselineInfo t) {
         if (!parameterSql.equals(t.parameterSql)) {
             return;
         }
@@ -289,23 +289,47 @@ public class BaselineInfo {
         int maxAcceptedPlans = InstConfUtil.getInt(SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE);
         for (PlanInfo planInfo : t.getAcceptedPlans().values()) {
             if (acceptedPlans.containsKey(planInfo.getId())) {
+
+                // merge fixed plan
+                if (planInfo.isFixed()) {
+                    acceptedPlans.get(planInfo.getId()).setFixed(true);
+                }
                 continue;
             } else {
                 acceptedPlans.put(planInfo.getId(), planInfo);
             }
         }
 
-        // Remove accepted plan until the size fits SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE
-        while (acceptedPlans.size() >= maxAcceptedPlans) {
-            int minChooseCount = Integer.MAX_VALUE;
-            int toRemove = -1;
+        List<Integer> toRemoveList = Lists.newArrayList();
+        // remove all unfixed plan when fix num exceeded maxAcceptedPlans num
+        if (acceptedPlans.values().stream().filter(p -> p.isFixed()).count() > maxAcceptedPlans) {
             for (PlanInfo p : acceptedPlans.values()) {
-                if (p.getChooseCount() <= minChooseCount) {
-                    minChooseCount = p.getChooseCount();
-                    toRemove = p.getId();
+                if (!p.isFixed()) {
+                    toRemoveList.add(p.getId());
                 }
             }
-            acceptedPlans.remove(toRemove);
+            toRemoveList.forEach(pid -> acceptedPlans.remove(pid));
+        } else {
+            // remove plan expired[1 week] or was unable to match the table version
+            for (PlanInfo p : acceptedPlans.values()) {
+                if (isNeedRemove(schema, p)) {
+                    toRemoveList.add(p.getId());
+                }
+            }
+            toRemoveList.forEach(pid -> acceptedPlans.remove(pid));
+
+            // Remove accepted plan until the size fits SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE
+            while (acceptedPlans.size() >= maxAcceptedPlans) {
+                int minChooseCount = Integer.MAX_VALUE;
+                int toRemove = -1;
+                for (PlanInfo p : acceptedPlans.values()) {
+                    if (p.getChooseCount() <= minChooseCount && !p.isFixed()) {
+                        minChooseCount = p.getChooseCount();
+                        toRemove = p.getId();
+                    }
+                }
+                acceptedPlans.remove(toRemove);
+            }
         }
 
         // merge point
@@ -322,5 +346,22 @@ public class BaselineInfo {
         newPoints.addAll(Stream.concat(pointSetStream, targetPointSetStream).collect(Collectors.toList()));
 
         pointSet = newPoints;
+    }
+
+    /**
+     * remove plans with a mismatching tbl version or is not used recently
+     *
+     * @param schema baseline schema
+     * @param p plan
+     */
+    private boolean isNeedRemove(String schema, PlanInfo p) {
+        if (p == null || p.isFixed()) {
+            return false;
+        }
+
+        boolean isRecentlyUsed = PlanManager.isRecentlyExecuted(p);
+        int tblHashcode = PlanManagerUtil.computeTablesVersion(tableSet, schema, null);
+        boolean isTableVersionMatch = p.getTablesHashCode() == tblHashcode;
+        return !isRecentlyUsed || !isTableVersionMatch;
     }
 }

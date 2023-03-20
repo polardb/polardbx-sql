@@ -17,17 +17,17 @@ package com.alibaba.polardbx.druid.util;
 
 /**
  * rowFormat validation This class encodes/decodes hexadecimal data
- * 
+ *
  * @author Jeffrey Rodriguez
  * @version $Id: HexBin.java,v 1.4 2007/07/19 04:38:32 ofung Exp $
  */
 public final class HexBin {
 
-    static private final int    BASE_LENGTH        = 128;
-    static private final int    LOOKUP_LENGTH      = 16;
-    static final private byte[] HEX_NUMBER_TABLE   = new byte[BASE_LENGTH];
-    static final private char[] UPPER_CHARS        = new char[LOOKUP_LENGTH];
-    static final private char[] LOWER_CHARS        = new char[LOOKUP_LENGTH];
+    static private final int BASE_LENGTH = 128;
+    static private final int LOOKUP_LENGTH = 16;
+    static final private byte[] HEX_NUMBER_TABLE = new byte[BASE_LENGTH];
+    static final private char[] UPPER_CHARS = new char[LOOKUP_LENGTH];
+    static final private char[] LOWER_CHARS = new char[LOOKUP_LENGTH];
 
     static {
         for (int i = 0; i < BASE_LENGTH; i++) {
@@ -52,7 +52,7 @@ public final class HexBin {
             LOWER_CHARS[i] = (char) ('a' + i - 10);
         }
     }
-    
+
     public static String encode(byte[] bytes) {
         return encode(bytes, true);
     }
@@ -75,7 +75,7 @@ public final class HexBin {
 
     /**
      * Decode hex string to a byte array
-     * 
+     *
      * @param encoded encoded string
      * @return return array of byte to encode
      */
@@ -86,7 +86,9 @@ public final class HexBin {
 
         int lengthData = encoded.length();
         if (lengthData % 2 != 0) {
-            return null;
+            // Padding leading zero for binary string with odd length.
+            encoded = "0" + encoded;
+            lengthData = encoded.length();
         }
 
         char[] binaryData = encoded.toCharArray();

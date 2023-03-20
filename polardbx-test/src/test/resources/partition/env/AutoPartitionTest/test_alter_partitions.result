@@ -1,0 +1,216 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	b int NOT NULL,
+	c int NOT NULL,
+	d int NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `gidx`(a, b),
+	UNIQUE INDEX `ugidx` (c, d)
+);
+INSERT INTO tbl
+VALUES (101, 101, 101, 101),
+	(102, 102, 102, 102),
+	(103, 103, 103, 103),
+	(201, 201, 201, 201),
+	(202, 202, 202, 202),
+	(203, 203, 203, 203);
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `gidx` (`a`, `b`),
+	UNIQUE INDEX `ugidx` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_ugidx` (`c`, `d`),
+	LOCAL KEY `_local_gidx` (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE gidx;
+Table,Create Table
+gidx_$,CREATE TABLE `gidx_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE ugidx;
+Table,Create Table
+ugidx_$,CREATE TABLE `ugidx_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+ALTER TABLE tbl
+	PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	INDEX `gidx` (`a`, `b`),
+	UNIQUE INDEX `ugidx` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 4,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 4,
+	UNIQUE LOCAL KEY `_local_ugidx` (`c`, `d`),
+	LOCAL KEY `_local_gidx` (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SHOW CREATE TABLE gidx;
+Table,Create Table
+gidx_$,CREATE TABLE `gidx_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+SHOW CREATE TABLE ugidx;
+Table,Create Table
+ugidx_$,CREATE TABLE `ugidx_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 4
+ALTER TABLE tbl
+	ADD GLOBAL INDEX tbl_index (a, b, c);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	INDEX `gidx` (`a`, `b`),
+	INDEX `tbl_index` (`a`, `b`, `c`),
+	UNIQUE INDEX `ugidx` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 4,
+	GLOBAL INDEX /* tbl_index_$ */ `tbl_index` (`a`, `b`, `c`) PARTITION BY KEY (`a`, `b`, `c`) PARTITIONS 4,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 4,
+	UNIQUE LOCAL KEY `_local_ugidx` (`c`, `d`),
+	LOCAL KEY `_local_gidx` (`a`, `b`),
+	LOCAL KEY `_local_tbl_index` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE tbl
+PARTITION BY KEY (c, d) PARTITIONS 5;
+ALTER TABLE tbl
+	ADD GLOBAL INDEX tbl_index2 (a, b, c) PARTITION BY KEY (a);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	GLOBAL INDEX `tbl_index2` (`a`, `b`, `c`) COVERING (`d`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
+	KEY `gidx` USING BTREE (`a`, `b`),
+	KEY `tbl_index` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 5
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	GLOBAL INDEX /* tbl_index2_$ */ `tbl_index2` (`a`, `b`, `c`) COVERING (`d`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
+	LOCAL KEY `gidx` USING BTREE (`a`, `b`),
+	LOCAL KEY `tbl_index` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 5
+/* tablegroup = `tg` */
+SHOW CREATE TABLE tbl_index2;
+Table,Create Table
+tbl_index2_$,CREATE TABLE `tbl_index2_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`a`),
+	KEY `i_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3

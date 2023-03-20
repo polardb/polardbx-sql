@@ -77,6 +77,7 @@ public abstract class AbstractConnection implements NIOConnection {
     protected SslHandler sslHandler;
     protected AtomicBoolean checkSsl = new AtomicBoolean(true);
     protected boolean sslEnable = false;                  // 标记当前链接是否处于ssl交互中
+    protected boolean registerSlave = false; //是否注册MySQL Slave
 
     public AbstractConnection(SocketChannel channel) {
         this.channel = channel;
@@ -866,4 +867,7 @@ public abstract class AbstractConnection implements NIOConnection {
         this.sslHandler = sslHandler;
     }
 
+    public void setRegisterSlave(boolean registerSlave) {
+        this.registerSlave = registerSlave;
+    }
 }

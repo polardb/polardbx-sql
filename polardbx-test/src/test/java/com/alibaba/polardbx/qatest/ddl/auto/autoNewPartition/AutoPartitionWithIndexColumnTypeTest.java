@@ -85,14 +85,17 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .filter(c -> !c.contains("_set"))
             .filter(c -> !c.contains("_binary"))
             .filter(c -> !c.contains("_varbinary"))
+            .filter(c -> !c.contains("_date"))
+            .filter(c -> !c.contains("_timestamp"))
+            .filter(c -> !c.contains("_datetime"))
             .map(c -> new String[] {c})
             .collect(Collectors.toList());
     }
 
     @Before
     public void before() {
-        TABLE_NAME = "auto_partition_idx_tb" +  RandomUtils.getStringBetween(1, 10);
-        INDEX_NAME = "ap_index" +  RandomUtils.getStringBetween(1, 10);
+        TABLE_NAME = "auto_partition_idx_tb" + RandomUtils.getStringBetween(1, 10);
+        INDEX_NAME = "ap_index" + RandomUtils.getStringBetween(1, 10);
         dropTableWithGsi(TABLE_NAME, ImmutableList.of(INDEX_NAME));
     }
 

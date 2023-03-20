@@ -18,6 +18,8 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.LongConfigParam;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -54,12 +56,16 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 
-import static com.alibaba.polardbx.common.constants.ServerVariables.SUPPORT_SET_GLOBAL_VARIABLES;
+import static com.alibaba.polardbx.common.constants.ServerVariables.CN_VARIABLES_REPLACE_DN_VARIABLES;
+import static com.alibaba.polardbx.common.constants.ServerVariables.PROCEDURE_PARAMS;
+import static com.alibaba.polardbx.common.constants.ServerVariables.SUPPORT_SHOW_CN_GLOBAL_VARIABLES;
 
 /**
  * @author chenmo.cm
@@ -144,6 +150,17 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
             variables.put("auto_increment_increment", 1);
         }
 
+        // fill session variable
+        if (!isGlobal) {
+            if (variables.containsKey(ConnectionProperties.SQL_SELECT_LIMIT)) {
+                variables.put(ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
+                    executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
+            }
+            for (LongConfigParam procedureConf : PROCEDURE_PARAMS) {
+                variables.put(procedureConf.getName(), executionContext.getParamManager().getLong(procedureConf));
+            }
+        }
+
         ArrayResultCursor result = new ArrayResultCursor("Show Variables");
         result.addColumn("Variable_name", DataTypes.StringType);
         result.addColumn("Value", DataTypes.StringType);
@@ -178,11 +195,16 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
         while ((row = cursor.next()) != null) {
             String variableName = row.getString(0);
             String variableValue = row.getString(1);
-            variables.put(variableName, variableValue);
+            if (CN_VARIABLES_REPLACE_DN_VARIABLES.contains(variableName)) {
+                variables.putIfAbsent(variableName, variableValue);
+            } else {
+                variables.put(variableName, variableValue);
+            }
         }
 
         Properties cnVariableConfigMap = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
-        Map<String, Object> dnVariableConfigMap = MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
+        Map<String, Object> dnVariableConfigMap =
+            MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
         if (isGlobal) {
             if (showAllParams) {
                 Set<String> connectionProperties = SystemPropertiesHelper.getConnectionProperties();
@@ -196,7 +218,7 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
             }
             // Add all supported "set-global" variables into result if they are absent.
             final ParamManager paramManager = new ParamManager(cnVariableConfigMap);
-            SUPPORT_SET_GLOBAL_VARIABLES.forEach((paramName) -> {
+            SUPPORT_SHOW_CN_GLOBAL_VARIABLES.forEach((paramName) -> {
                 final String cnParamName = paramName.toUpperCase();
                 if (null != variables.get(cnParamName)) {
                     // Already exists in result set, return.
@@ -213,7 +235,9 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
                     }
                 }
                 if (null != val) {
-                    variables.put(cnParamName, val);
+                    String displayName = CN_VARIABLES_REPLACE_DN_VARIABLES.contains(cnParamName) ?
+                        cnParamName.toLowerCase(Locale.ROOT) : cnParamName;
+                    variables.put(displayName, val);
                 }
             });
 

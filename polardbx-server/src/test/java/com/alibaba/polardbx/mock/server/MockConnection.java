@@ -66,6 +66,11 @@ public class MockConnection extends FrontendConnection {
     }
 
     @Override
+    public void binlogDump(byte[] data) {
+
+    }
+
+    @Override
     public boolean checkConnectionCount() {
         return true;
     }

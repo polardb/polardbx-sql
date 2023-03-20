@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.gms.sync;
 
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +29,6 @@ public interface ISyncResultHandler {
      *
      * @param results sync result with the corresponding node info
      */
-    void handle(List<Pair<NodeInfo, List<Map<String, Object>>>> results);
+    void handle(List<Pair<GmsNode, List<Map<String, Object>>>> results);
 
 }

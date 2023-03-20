@@ -85,7 +85,6 @@ public class ExplainResult {
         // show vectorized plan
         VEC;
 
-
         public boolean isLogic() {
             return this == LOGIC || isSimple();
         }
@@ -197,5 +196,17 @@ public class ExplainResult {
 
     public static boolean isExplainVec(ExplainResult er) {
         return er == null ? false : er.explainMode.isVec();
+    }
+
+    public static boolean isSuitableForDirectMode(ExplainResult er) {
+        if (isExplainOptimizer(er) ||
+            isExplainAdvisor(er) ||
+            isExplainStatistics(er) ||
+            isExplainJsonPlan(er) ||
+            isExplainExecute(er) ||
+            isExplainSharding(er)) {
+            return false;
+        }
+        return true;
     }
 }

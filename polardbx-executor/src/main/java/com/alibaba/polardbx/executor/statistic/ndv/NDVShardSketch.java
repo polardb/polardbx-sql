@@ -193,7 +193,7 @@ public class NDVShardSketch {
             // just return
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     INTERRUPTED,
                     new String[] {
                         "ndv sketch " + shardKey,
@@ -223,7 +223,7 @@ public class NDVShardSketch {
             if (current - gmtUpdate[i] > expiredTime) {
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         UPDATE_NDV_FOR_EXPIRED,
                         new String[] {
                             shardKey, shardParts[i], new Date(current).toString(), new Date(gmtUpdate[i]).toString(),
@@ -240,7 +240,7 @@ public class NDVShardSketch {
                     if (dValue > maxDValue || ((double) dValue / currentCardinality) > MAX_DIFF_VALUE_RATIO) {
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 UPDATE_NDV_FOR_CHANGED,
                                 new String[] {
                                     shardKey, shardParts[i], maxDValue + "", dValue + "",
@@ -262,7 +262,7 @@ public class NDVShardSketch {
                     // null meaning the hll request is stopped by something
                     ModuleLogInfo.getInstance()
                         .logRecord(
-                            Module.STATISTIC,
+                            Module.STATISTICS,
                             INTERRUPTED,
                             new String[] {"ndv sketch", shardKey + "," + shardParts[i]},
                             LogLevel.NORMAL
@@ -283,7 +283,7 @@ public class NDVShardSketch {
                 sketchInfoTime += System.currentTimeMillis() - start;
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         PROCESS_END,
                         new String[] {"ndv sketch", shardKey + "," + shardParts[i]},
                         LogLevel.NORMAL
@@ -311,7 +311,7 @@ public class NDVShardSketch {
                 if (e.getMessage().contains("sketch bytes not ready yet")) {
                     ModuleLogInfo.getInstance()
                         .logRecord(
-                            Module.STATISTIC,
+                            Module.STATISTICS,
                             NDV_SKETCH_NOT_READY,
                             new String[] {shardKey},
                             LogLevel.NORMAL
@@ -319,7 +319,7 @@ public class NDVShardSketch {
                 } else {
                     ModuleLogInfo.getInstance()
                         .logRecord(
-                            Module.STATISTIC,
+                            Module.STATISTICS,
                             UNEXPECTED,
                             new String[] {"update ndv sketch:" + shardKey, e.getMessage()},
                             LogLevel.CRITICAL,
@@ -329,7 +329,7 @@ public class NDVShardSketch {
             } catch (Exception e) {
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         UNEXPECTED,
                         new String[] {"update ndv sketch:" + shardKey, e.getMessage()},
                         LogLevel.CRITICAL,
@@ -338,7 +338,7 @@ public class NDVShardSketch {
             } finally {
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         PROCESS_END,
                         new String[] {
                             "update ndv sketch:" + shardKey,
@@ -471,7 +471,7 @@ public class NDVShardSketch {
             // just return
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     INTERRUPTED,
                     new String[] {
                         "ndv sketch " + tableName + "," + columnName,
@@ -484,7 +484,7 @@ public class NDVShardSketch {
 
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_START,
                 new String[] {"ndv sketch rebuild:", tableName + "," + columnName},
                 LogLevel.NORMAL
@@ -537,7 +537,7 @@ public class NDVShardSketch {
 
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_END,
                 new String[] {
                     "ndv sketch rebuild:" + tableName + "," + columnName,
@@ -556,12 +556,11 @@ public class NDVShardSketch {
         PolarDbXSystemTableNDVSketchStatistic.getInstance().batchReplace(ndvShardSketch.serialize(sketchArray));
 
         /** sync other nodes */
-        SyncManagerHelper.sync(
+        SyncManagerHelper.syncWithDefaultDB(
             new UpdateStatisticSyncAction(
                 schemaName,
                 tableName,
-                null),
-            schemaName);
+                null));
 
         return ndvShardSketch;
     }
@@ -625,7 +624,7 @@ public class NDVShardSketch {
                     if (!LeaderStatusBridge.getInstance().hasLeadership()) {
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 INTERRUPTED,
                                 new String[] {
                                     "ndv sketch " + shardKey,
@@ -640,7 +639,7 @@ public class NDVShardSketch {
                         // just return
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 INTERRUPTED,
                                 new String[] {
                                     "ndv sketch " + shardKey,
@@ -656,7 +655,7 @@ public class NDVShardSketch {
                         // just return
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 INTERRUPTED,
                                 new String[] {
                                     "ndv sketch " + shardKey,
@@ -678,7 +677,7 @@ public class NDVShardSketch {
 
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         PROCESSING,
                         new String[] {
                             "ndv sketch " + shardKey + "," + nodeName,
@@ -746,7 +745,7 @@ public class NDVShardSketch {
 
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_END,
                 new String[] {
                     "ndv sketch " + shardKey + "," + shardPart,

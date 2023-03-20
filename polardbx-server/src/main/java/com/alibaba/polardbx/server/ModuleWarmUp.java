@@ -53,7 +53,7 @@ public class ModuleWarmUp {
         StatisticDataSource sds = new StatisticDataTableSource(systemTableTableStatistic, systemTableColumnStatistic,
             systemTableNDVSketchStatistic, ndvSketch);
         StatisticManager.sds = sds;
-        Module.STATISTIC.register(StatisticManager.getInstance());
+        Module.STATISTICS.register(StatisticManager.getInstance());
 
         PlanManager.baselineSyncController = new BaselineSyncController();
         Module.SPM.register(PlanManager.getInstance());

@@ -292,7 +292,8 @@ public class ServerPrepareTest extends CrudBasedLockTestCase {
      */
     @Test
     public void sendLongDataTest() throws SQLException {
-        ResultSet rs = JdbcUtil.executeQuery("select blob_test from " + baseOneTableName + " limit 1", tddlPreparedConn);
+        ResultSet rs =
+            JdbcUtil.executeQuery("select blob_test from " + baseOneTableName + " limit 1", tddlPreparedConn);
         Assert.assertTrue(rs.next());
         byte[] data = rs.getBytes(1);
 
@@ -355,6 +356,36 @@ public class ServerPrepareTest extends CrudBasedLockTestCase {
         List<Object> params = new ArrayList<>();
         params.add(ColumnDataGenerator.pkValue);
         assertServerPrepareTest(mysqlConnection, tddlPreparedConn, sql, params);
+    }
+
+    /**
+     * 多次执行验证information_schema查询
+     */
+    @Test
+    public void informationSchemaPrepareTest() throws SQLException {
+        final int execCount = 3;
+        String sql = "SELECT TABLES.TABLE_NAME, CCSA.CHARACTER_SET_NAME "
+            + " FROM INFORMATION_SCHEMA.TABLES JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY AS CCSA"
+            + " ON TABLES.TABLE_COLLATION = CCSA.COLLATION_NAME "
+            + " WHERE TABLES.TABLE_SCHEMA = ? limit 1";
+        PreparedStatement preparedStmt = null;
+        ResultSet rs = null;
+        for (int i = 0; i < 2; i++) {
+            try {
+                preparedStmt = tddlPreparedConn.prepareStatement(sql);
+                for (int j = 0; j < execCount; j++) {
+                    preparedStmt.setString(1, polardbxOneDB);
+                    try {
+                        rs = preparedStmt.executeQuery();
+                        rs.next();
+                    } finally {
+                        JdbcUtil.close(rs);
+                    }
+                }
+            } finally {
+                JdbcUtil.close(preparedStmt);
+            }
+        }
     }
 
     private void assertServerPrepareTest(

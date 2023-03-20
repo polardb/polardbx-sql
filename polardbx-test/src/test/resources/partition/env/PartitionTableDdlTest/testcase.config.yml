@@ -16,3 +16,4 @@ test_alter_repartition_with_gsi
 test_invalid_alter_partition
 test_alter_table_modify_column_after
 test_add_index_with_clustered_gsi
+test_rename_table

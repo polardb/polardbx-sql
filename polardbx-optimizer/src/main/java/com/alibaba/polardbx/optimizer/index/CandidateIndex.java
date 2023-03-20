@@ -29,10 +29,10 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
@@ -401,11 +401,15 @@ public class CandidateIndex {
     }
 
     private boolean dataTypeNotSupportPartitionGsi(DataType dataType) {
-        return isGsi() && (DataTypeUtil.equalsSemantically(DataTypes.YearType, dataType)
+        return isGsi() && dataTypeNotSupportPartitionType(dataType);
+    }
+
+    private boolean dataTypeNotSupportPartitionType(DataType dataType) {
+        return DataTypeUtil.equalsSemantically(DataTypes.YearType, dataType)
             || DataTypeUtil.equalsSemantically(DataTypes.TimeType, dataType)
             || DataTypeUtil.equalsSemantically(DataTypes.FloatType, dataType)
             || DataTypeUtil.equalsSemantically(DataTypes.DoubleType, dataType)
-            || DataTypeUtil.equalsSemantically(DataTypes.DecimalType, dataType));
+            || DataTypeUtil.equalsSemantically(DataTypes.DecimalType, dataType);
     }
 
     public boolean changeByPartitionInfo(PartitionInfo partitionInfo) {
@@ -652,6 +656,12 @@ public class CandidateIndex {
     }
 
     public CandidateIndex copyAsGsi() {
+        // ignore gsi for unsupported date type
+        for (ColumnMeta meta : getIndexMeta().getKeyColumns()) {
+            if (dataTypeNotSupportPartitionType(meta.getDataType())) {
+                return null;
+            }
+        }
         CandidateIndex newCandidateIndex = new CandidateIndex(schemaName, tableName, columnNames, true,
             coveringColumns);
         return newCandidateIndex;

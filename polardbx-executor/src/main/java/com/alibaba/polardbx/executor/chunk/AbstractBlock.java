@@ -29,8 +29,15 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     final int arrayOffset;
     int positionCount;
 
+    /**
+     * the memory size allocated for this block
+     */
     long estimatedSize;
-    long sizeInBytes;
+
+    /**
+     * bytes used by valuable elements (in other words, index < positionCount)
+     */
+    long elementUsedBytes;
 
     protected DataType dataType;
     protected boolean[] isNull;
@@ -65,8 +72,8 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     }
 
     @Override
-    public long getSizeInBytes() {
-        return sizeInBytes;
+    public long getElementUsedBytes() {
+        return elementUsedBytes;
     }
 
     @Override
@@ -128,6 +135,7 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     @Override
     public void resize(int positionCount) {
         this.positionCount = positionCount;
+        updateSizeInfo();
     }
 
     // ====== methods about copying ======
@@ -151,6 +159,7 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     public void shallowCopyTo(RandomAccessBlock another) {
         another.setIsNull(isNull);
         another.setHasNull(hasNull);
+        another.resize(positionCount);
     }
 
     protected void digest() {
@@ -196,4 +205,11 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     public String toString() {
         return getDigest();
     }
+
+    /**
+     * if block size has been changed, e.g. init, compact or update element in the variable-length block
+     * this method should be called to update block size info, including @estimatedSize and @elementUsedBytes
+     * suggest adding sequence: [instantSize] + isNullSize + valueSize + [offsetSize]
+     */
+    abstract void updateSizeInfo();
 }

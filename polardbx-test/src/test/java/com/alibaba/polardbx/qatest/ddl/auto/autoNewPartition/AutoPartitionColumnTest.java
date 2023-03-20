@@ -148,6 +148,24 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         final List<Throwable> excps = new CopyOnWriteArrayList<>();
         final int baseIdx = hasPk ? 1 : 0;
 
+        // insert some data before alter to prevent empty records
+        for (int i = 0; i < 10; ++i) {
+            final int tmp = idGen.getAndIncrement();
+            final String tmpSql;
+            if (hasPk) {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (pk,c0,order_id,seller_id) values ({1,number,#},{2,number,#},{3,number,#},{4,number,#})",
+                        TABLE_NAME, tmp, tmp + 100, tmp + 1000, tmp % 100);
+            } else {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (c0,order_id,seller_id) values ({1,number,#},{2,number,#},{3,number,#})",
+                        TABLE_NAME, tmp + 100, tmp + 1000, tmp % 100);
+            }
+            JdbcUtil.executeUpdateSuccess(tddlConnection, tmpSql);
+        }
+
         // insert & check threads.
         for (int i = 0; i < concurrentNumber; ++i) {
             runners.add(new Thread(() -> {
@@ -236,8 +254,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
 
         runners.forEach(Thread::start);
 
-//        Thread.sleep(1000); // Run for 1s.
-
         System.out.println("Strart add col.");
 
         // Now add col.
@@ -245,8 +261,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         JdbcUtil.executeUpdateSuccess(tddlConnection, addCol);
 
         System.out.println("Finish add col.");
-
-//        Thread.sleep(1000); // Run for 1s.
 
         // Finish threads.
         exit.set(true);
@@ -300,6 +314,24 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         final AtomicInteger idGen = new AtomicInteger(1);
         final List<Throwable> excps = new CopyOnWriteArrayList<>();
         final int baseIdx = hasPk ? 1 : 0;
+
+        // insert some data before alter to prevent empty records
+        for (int i = 0; i < 10; ++i) {
+            final int tmp = idGen.getAndIncrement();
+            final String tmpSql;
+            if (hasPk) {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` values ({1,number,#},{2,number,#},current_timestamp,{3,number,#},{4,number,#},{5,number,#})",
+                        TABLE_NAME, tmp, tmp + 100, tmp + 1000, tmp % 100, tmp + 100);
+            } else {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` values ({1,number,#},current_timestamp,{2,number,#},{3,number,#},{4,number,#})",
+                        TABLE_NAME, tmp + 100, tmp + 1000, tmp % 100, tmp + 100);
+            }
+            JdbcUtil.executeUpdateSuccess(tddlConnection, tmpSql);
+        }
 
         // insert & check threads.
         for (int i = 0; i < concurrentNumber; ++i) {
@@ -392,8 +424,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
 
         runners.forEach(Thread::start);
 
-//        Thread.sleep(1000); // Run for 1s.
-
         System.out.println("Strart drop col.");
 
         // Now add col.
@@ -401,8 +431,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropCol);
 
         System.out.println("Finish dorp col.");
-
-//        Thread.sleep(1000); // Run for 1s.
 
         // Finish threads.
         exit.set(true);
@@ -498,6 +526,24 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         final List<Throwable> excps = new CopyOnWriteArrayList<>();
         final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
+        // insert some data before alter to prevent empty records
+        for (int i = 0; i < 10; ++i) {
+            final int tmp = idGen.getAndIncrement();
+            final String tmpSql;
+            if (hasPk) {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (pk,order_id,seller_id) values ({1,number,#},{2,number,#},{3,number,#})",
+                        TABLE_NAME, tmp, tmp + 1000, tmp % 100);
+            } else {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (order_id,seller_id) values ({1,number,#},{2,number,#})",
+                        TABLE_NAME, tmp + 1000, tmp % 100);
+            }
+            JdbcUtil.executeUpdateSuccess(tddlConnection, tmpSql);
+        }
+
         // insert & check threads.
         for (int i = 0; i < concurrentNumber; ++i) {
             runners.add(new Thread(() -> {
@@ -556,16 +602,12 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
 
         runners.forEach(Thread::start);
 
-//        Thread.sleep(2000); // Run for 2s.
-
         System.out.println("Start alter col default.");
 
         // Now alter col default.
         JdbcUtil.executeUpdateSuccess(tddlConnection, MessageFormat.format(alterDefaultTmpl, 2));
 
         System.out.println("Finish alter col default.");
-
-//        Thread.sleep(2000); // Run for 2s.
 
         // Finish threads.
         exit.set(true);
@@ -610,6 +652,24 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
         final AtomicInteger idGen = new AtomicInteger(1);
         final List<Throwable> excps = new CopyOnWriteArrayList<>();
         final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        // insert some data before alter to prevent empty records
+        for (int i = 0; i < 10; ++i) {
+            final int tmp = idGen.getAndIncrement();
+            final String tmpSql;
+            if (hasPk) {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (pk,order_id,seller_id) values ({1,number,#},{2,number,#},{3,number,#})",
+                        TABLE_NAME, tmp, tmp + 1000, tmp % 100);
+            } else {
+                tmpSql = MessageFormat
+                    .format(
+                        "insert into `{0}` (order_id,seller_id) values ({1,number,#},{2,number,#})",
+                        TABLE_NAME, tmp + 1000, tmp % 100);
+            }
+            JdbcUtil.executeUpdateSuccess(tddlConnection, tmpSql);
+        }
 
         // insert & check threads.
         for (int i = 0; i < concurrentNumber; ++i) {
@@ -694,8 +754,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
 
         runners.forEach(Thread::start);
 
-//        Thread.sleep(2000); // Run for 2s.
-
         System.out.println("Start alter col default.");
 
         // Now alter col default.
@@ -703,8 +761,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
             MessageFormat.format("alter table `{0}` alter `c0` drop default", TABLE_NAME));
 
         System.out.println("Finish alter col default.");
-
-//        Thread.sleep(2000); // Run for 2s.
 
         // Finish threads.
         exit.set(true);

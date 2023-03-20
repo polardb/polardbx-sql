@@ -16,12 +16,21 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
+import com.clearspring.analytics.util.Lists;
 import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -29,6 +38,9 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,11 +49,12 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
     private String schemaName;
     private boolean withSingleTbl;
     private boolean withPartitionTbl;
+    private String uniqGroupName;
 
     public ReplaceTblWithPhyTblVisitor(String defaultSchemaName,
                                        ExecutionContext executionContext) {
         super(defaultSchemaName, executionContext);
-        Preconditions.checkArgument(!DbInfoManager.getInstance().isNewPartitionDb(defaultSchemaName));
+        //Preconditions.checkArgument(!DbInfoManager.getInstance().isNewPartitionDb(defaultSchemaName));
         this.schemaName = defaultSchemaName;
         this.withSingleTbl = false;
         this.withPartitionTbl = false;
@@ -61,8 +74,40 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
         if (tddlRuleManager == null) {
             return sqlNode;
         }
+        String pName = ec.getPartitionName();
         final TableRule tableRule = tddlRuleManager.getTableRule(logicalTableName);
         if (tableRule == null) {
+            if (pName != null && !pName.isEmpty()) {
+                TableMeta tb =
+                    OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+                PartitionInfo pi = tb.getPartitionInfo();
+                List<String> partitionList = Lists.newArrayList();
+                partitionList.add(pName);
+                Map<String, List<PhysicalPartitionInfo>> physicalPartitionInfos =
+                    pi.getPhysicalPartitionTopology(partitionList);
+                if (physicalPartitionInfos != null && physicalPartitionInfos.size() == 1) {
+                    Map.Entry<String, List<PhysicalPartitionInfo>> entry =
+                        physicalPartitionInfos.entrySet().iterator().next();
+                    String groupName = entry.getKey();
+                    if (entry.getValue().size() == 1) {
+                        if (uniqGroupName == null) {
+                            uniqGroupName = groupName.toLowerCase(Locale.ROOT).trim();
+                        } else {
+                            // error
+                            if (!uniqGroupName.equalsIgnoreCase(groupName)) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                                    "Unsupported to use direct HINT for multi partition");
+                            }
+                        }
+                        String physicalTblName = entry.getValue().get(0).getPhyTable();
+                        return new SqlIdentifier(physicalTblName, SqlParserPos.ZERO);
+                    }
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
+                }
+            }
+
             return sqlNode;
         }
         // don't replace table with sharding db and  tb
@@ -71,6 +116,13 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
                 if (dbEntry.getValue().size() > 1) {
                     return new SqlIdentifier(logicalTableName, SqlParserPos.ZERO);
                 }
+            }
+        }
+        if (pName != null && !pName.isEmpty()) {
+            if (uniqGroupName == null) {
+                uniqGroupName = pName;
+            } else {
+                // error
             }
         }
 
@@ -101,4 +153,7 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
         return false;
     }
 
+    public String getUniqGroupName() {
+        return uniqGroupName;
+    }
 }

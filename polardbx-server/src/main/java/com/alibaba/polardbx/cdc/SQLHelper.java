@@ -30,7 +30,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
@@ -50,12 +49,6 @@ import static com.alibaba.polardbx.druid.sql.SQLUtils.normalize;
  * Created by ziyang.lb
  **/
 public class SQLHelper {
-    public final static SQLParserFeature[] FEATURES = {
-        SQLParserFeature.EnableSQLBinaryOpExprGroup,
-        SQLParserFeature.UseInsertColumnsCache, SQLParserFeature.OptimizedForParameterized,
-        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
-        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
-    };
 
     static String getSqlName(SQLExpr sqlName) {
         if (sqlName == null) {

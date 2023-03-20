@@ -13,7 +13,7 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import java.util.List;
 import java.util.Map;
 
-public class InformationSchemaFunctionCacheCapacityHandler extends BaseVirtualViewSubClassHandler{
+public class InformationSchemaFunctionCacheCapacityHandler extends BaseVirtualViewSubClassHandler {
     public InformationSchemaFunctionCacheCapacityHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }

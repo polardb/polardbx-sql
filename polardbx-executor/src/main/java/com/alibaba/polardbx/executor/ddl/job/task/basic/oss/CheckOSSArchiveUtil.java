@@ -116,7 +116,7 @@ public class CheckOSSArchiveUtil {
             return;
         }
 
-        for (SqlAlterSpecification alter : ((SqlAlterTable)logicalAlterTable.getNativeSqlNode()).getAlters()) {
+        for (SqlAlterSpecification alter : ((SqlAlterTable) logicalAlterTable.getNativeSqlNode()).getAlters()) {
             SqlKind kind = alter.getKind();
             //if the sql alters column
             if (kind == SqlKind.ADD_COLUMN
@@ -124,7 +124,8 @@ public class CheckOSSArchiveUtil {
                 || kind == SqlKind.MODIFY_COLUMN
                 || kind == SqlKind.ALTER_COLUMN_DEFAULT_VAL
                 || kind == SqlKind.CHANGE_COLUMN) {
-                throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive table "+ schema + "." + table);
+                throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+                    "unarchive table " + schema + "." + table);
             }
         }
     }
@@ -151,50 +152,7 @@ public class CheckOSSArchiveUtil {
             StringUtils.isEmpty(localPartitionDefinitionInfo.getArchiveTableName())) {
             return;
         }
-        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive table "+ schema + "." + table);
-    }
-
-    /**
-     * check all tables in the table group has no archive table, based on record in GMS
-     *
-     * @param schema schema of the table group
-     * @param tableGroup the table group to be checked
-     */
-    public static void checkTableGroupWithoutOSSGMS(String schema, String tableGroup) {
-        if (!DbInfoManager.getInstance().isNewPartitionDb(schema)) {
-            return;
-        }
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        try (Connection conn = MetaDbDataSource.getInstance().getDataSource().getConnection()) {
-            final TableGroupInfoManager tableGroupInfoManager =
-                OptimizerContext.getContext(schema).getTableGroupInfoManager();
-            TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroup);
-            if (tableGroupConfig == null) {
-                return;
-            }
-
-            tableInfoManager.setConnection(conn);
-            // check table one by one
-            for (TablePartRecordInfoContext table : tableGroupConfig.getAllTables()) {
-                TableLocalPartitionRecord record =
-                    tableInfoManager.getLocalPartitionRecord(schema, table.getLogTbRec().getTableName());
-                // not local partition
-                if (record == null) {
-                    return;
-                }
-
-                // without archive table
-                if (StringUtils.isEmpty(record.getArchiveTableName()) && StringUtils.isEmpty(
-                    record.getArchiveTableName())) {
-                    return;
-                }
-                throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
-                    "unarchive tablegroup " + tableGroup);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-            throw GeneralUtil.nestedException(e);
-        }
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive table " + schema + "." + table);
     }
 
     /**
@@ -221,7 +179,7 @@ public class CheckOSSArchiveUtil {
                 record.getArchiveTableName())) {
                 return;
             }
-            throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive table "+ schema + "." + table);
+            throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive table " + schema + "." + table);
         } catch (SQLException e) {
             e.printStackTrace();
             throw GeneralUtil.nestedException(e);
@@ -230,6 +188,7 @@ public class CheckOSSArchiveUtil {
 
     /**
      * get the archive table schema and name of the primary table
+     *
      * @param schemaName the schema of primary table
      * @param tableName the name of primary table
      * @return the schema, table pair. null if any of schema/table is empty

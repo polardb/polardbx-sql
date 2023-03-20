@@ -389,7 +389,7 @@ public class ExplainTest extends ReadBaseTestCase {
                 for (String target : targets) {
                     exist |= row.contains(target);
                 }
-                // make sure the have
+                // make sure the result contains ExecutorMode
                 assertWithMessage("sql: " + explainSql + "\nshould contain 'ExecutorMode'")
                     .that(exist).isTrue();
             } catch (SQLException e) {

@@ -62,7 +62,7 @@ public class ModuleTest extends BaseTestCase {
             Assert.assertTrue(args.contains("plan_cache"));
             Assert.assertTrue(args.contains("plan_cache_capacity"));
             break;
-        case "STATISTIC":
+        case "STATISTICS":
             args = resultSet.getString("STATS").toLowerCase(Locale.ROOT);
             Assert.assertTrue(args.contains("background_statistic_collection_expire_time:604800"));
             Assert.assertTrue(args.contains("enable_background_statistic_collection:true"));

@@ -19,7 +19,13 @@ package com.alibaba.polardbx.gms.engine;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.oss.filesystem.Constants;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.NFSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
@@ -29,6 +35,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.GlobalStorageStatistics;
 import org.apache.hadoop.fs.StorageStatistics;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -55,6 +62,8 @@ public class FileStoreStatistics {
     private static final ReadWriteLock LOCK = new ReentrantReadWriteLock();
 
     private static final int FILE_STORAGE_FIELD_COUNT = 10;
+
+    public static final int CACHE_STATS_FIELD_COUNT = 10;
 
     private static AtomicLong lastUpdateTime;
 
@@ -104,7 +113,8 @@ public class FileStoreStatistics {
         }
     }
 
-    private static void foreachFileSystem(FileSystem fileSystem, Engine engine, boolean isMaster, List<Map<StatisticItem, String>> localStats) {
+    private static void foreachFileSystem(FileSystem fileSystem, Engine engine, boolean isMaster,
+                                          List<Map<StatisticItem, String>> localStats) {
         ImmutableMap.Builder<StatisticItem, String> statsBuilder = ImmutableMap.builder();
         // basic info.
         String endpoint = fileSystem.getConf().get(Constants.ENDPOINT_KEY);
@@ -136,11 +146,20 @@ public class FileStoreStatistics {
             statsBuilder.put(item, String.valueOf(statistics.getValue()));
         }
 
-        if (fileSystem instanceof FileMergeCachingFileSystem
-            && ((FileMergeCachingFileSystem) fileSystem).getDataTier() instanceof OSSFileSystem) {
-            FileSystemRateLimiter rateLimiter = ((OSSFileSystem) ((FileMergeCachingFileSystem) fileSystem).getDataTier()).getRateLimiter();
-            statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
-            statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
+        if (fileSystem instanceof FileMergeCachingFileSystem) {
+            FileSystem dataTierFileSystem = ((FileMergeCachingFileSystem) fileSystem).getDataTier();
+            if (dataTierFileSystem instanceof OSSFileSystem) {
+                FileSystemRateLimiter rateLimiter = ((OSSFileSystem) dataTierFileSystem).getRateLimiter();
+                statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
+                statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
+            } else if (dataTierFileSystem instanceof NFSFileSystem) {
+                FileSystemRateLimiter rateLimiter = ((NFSFileSystem) dataTierFileSystem).getRateLimiter();
+                statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
+                statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
+            } else {
+                statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(-1L));
+                statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(-1L));
+            }
         } else {
             statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(-1L));
             statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(-1L));
@@ -222,6 +241,58 @@ public class FileStoreStatistics {
                 fileStorageRows.add(result);
             }
             return fileStorageRows;
+        } finally {
+            readLock.unlock();
+        }
+    }
+
+    public synchronized static List<byte[][]> generateCacheStatsPacket() {
+        if (PREVIOUS_STATS.isEmpty()
+            || lastUpdateTime.updateAndGet(l -> System.currentTimeMillis() - l) > STATS_TIME_PERIOD) {
+            // force collection.
+            collectStatistics();
+        }
+
+        List<byte[][]> cacheStatsResultsList = new ArrayList<>();
+
+        Lock readLock = LOCK.readLock();
+        try {
+            readLock.lock();
+            Iterator<Map<FileStoreStatistics.StatisticItem, String>> iterator = FileStoreStatistics.currentStats();
+            while (iterator.hasNext()) {
+                Map<FileStoreStatistics.StatisticItem, String> statsMap = iterator.next();
+                FileSystem fileSystem = FileSystemManager.getFileSystemGroup(
+                    Engine.valueOf(statsMap.get(FileStoreStatistics.StatisticItem.ENGINE))).getMaster();
+                if (fileSystem instanceof FileMergeCachingFileSystem) {
+                    CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
+
+                    if (cacheManager != null) {
+                        CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
+                        FileMergeCacheConfig fileMergeCacheConfig =
+                            ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
+                        CacheConfig cacheConfig = ((FileMergeCacheManager) cacheManager).getCacheConfig();
+                        BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
+                        long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();
+
+                        byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
+                        int pos = 0;
+                        results[pos++] =
+                            String.valueOf(statsMap.get(FileStoreStatistics.StatisticItem.ENGINE)).getBytes();
+                        results[pos++] = String.valueOf(cacheSize).getBytes();
+                        results[pos++] = String.valueOf(cacheEntries).getBytes();
+                        results[pos++] = String.valueOf(cacheStats.getInMemoryRetainedBytes()).getBytes();
+                        results[pos++] = String.valueOf(cacheStats.getCacheHit()).getBytes();
+                        results[pos++] = String.valueOf(cacheStats.getCacheMiss()).getBytes();
+                        results[pos++] = String.valueOf(cacheStats.getQuotaExceed()).getBytes();
+                        results[pos++] = cacheConfig.getBaseDirectory().toString().getBytes();
+                        results[pos++] = fileMergeCacheConfig.getCacheTtl().toString().getBytes();
+                        results[pos++] = String.valueOf(fileMergeCacheConfig.getMaxCachedEntries()).getBytes();
+
+                        cacheStatsResultsList.add(results);
+                    }
+                }
+            }
+            return cacheStatsResultsList;
         } finally {
             readLock.unlock();
         }

@@ -29,13 +29,9 @@ import org.apache.calcite.sql.SqlChangeMaster;
 
 import com.alibaba.fastjson.JSON;
 
-
-/**
- *
- */
 public class LogicalChangeMasterHandler extends LogicalReplicationBaseHandler {
 
-    public LogicalChangeMasterHandler(IRepository repo){
+    public LogicalChangeMasterHandler(IRepository repo) {
         super(repo);
     }
 
@@ -48,7 +44,8 @@ public class LogicalChangeMasterHandler extends LogicalReplicationBaseHandler {
             .setRequest(JSON.toJSONString(sqlNode.getParams()))
             .build();
 
-        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub = CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
+        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub =
+            CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
         RplCommandResponse response = blockingStub.changeMaster(request);
         return handleRplCommandResponse(response, blockingStub.getChannel());
     }

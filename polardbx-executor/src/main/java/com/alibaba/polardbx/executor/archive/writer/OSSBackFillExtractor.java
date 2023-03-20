@@ -127,6 +127,8 @@ public class OSSBackFillExtractor extends Extractor {
         case OSS:
         case S3:
         case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS:
             RelNode fileStorePlan =
                 OSSTableScan.fromPhysicalTableOperation(extractPlan, extractEc, this.sourceTableName, 1);
 
@@ -144,6 +146,8 @@ public class OSSBackFillExtractor extends Extractor {
         case S3:
         case LOCAL_DISK:
         case OSS:
+        case EXTERNAL_DISK:
+        case NFS:
             return consumeFileStore(extractPlan, extractEc, batchConsumer, extractCursor);
         case INNODB:
         default:
@@ -229,6 +233,8 @@ public class OSSBackFillExtractor extends Extractor {
         case OSS:
         case S3:
         case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS:
             plan = OSSTableScan.fromPhysicalTableOperation(phyTableOperation, baseEc, this.sourceTableName, 1);
             break;
         case INNODB:

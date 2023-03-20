@@ -963,15 +963,15 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
             if (row != null) {
                 ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
                 // | View | Create View | character_set_client | collation_connection |
-                resultCursor.addColumn("View", DataTypes.StringType);
-                resultCursor.addColumn("Create View", DataTypes.StringType);
-                resultCursor.addColumn("character_set_client", DataTypes.StringType);
-                resultCursor.addColumn("collation_connection", DataTypes.StringType);
+                resultCursor.addColumn("View", DataTypes.StringType, false);
+                resultCursor.addColumn("Create View", DataTypes.StringType, false);
+                resultCursor.addColumn("character_set_client", DataTypes.StringType, false);
+                resultCursor.addColumn("collation_connection", DataTypes.StringType, false);
                 boolean printPlan = row.getPlan() != null && row.getPlanType() != null;
                 if (printPlan) {
                     // | PLAN | PLAN_TYPE |
-                    resultCursor.addColumn("PLAN", DataTypes.StringType);
-                    resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType);
+                    resultCursor.addColumn("PLAN", DataTypes.StringType, false);
+                    resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType, false);
                 }
 
                 String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :

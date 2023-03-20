@@ -44,7 +44,15 @@ public enum EventType {
     /**
      * MODULE unexpected critical log
      */
-    MODULE_ERROR(EventLevel.WARN);
+    MODULE_ERROR(EventLevel.WARN),
+
+    /**
+     * Log for X-Protocol(XRPC)
+     */
+
+    XRPC_NEW_VALID_CLIENT(EventLevel.INFO),
+    XRPC_AUTH_TIMEOUT(EventLevel.WARN),
+    XRPC_KILL_CLIENT(EventLevel.WARN);
 
     private final EventLevel level;
 

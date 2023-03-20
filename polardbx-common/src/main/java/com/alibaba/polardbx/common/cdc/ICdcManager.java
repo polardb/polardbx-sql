@@ -34,10 +34,18 @@ public interface ICdcManager {
     String REFRESH_CREATE_SQL_4_PHY_TABLE = "REFRESH_CREATE_SQL_4_PHY_TABLE";
 
     enum InstructionType {
-
+        /**
+         * Cdc初始化
+         */
         CdcStart,
-
-        StorageInstChange
+        /**
+         * 存储实例发生了变更
+         */
+        StorageInstChange,
+        /**
+         * 元数据镜像
+         */
+        MetaSnapshot;
     }
 
     void sendInstruction(InstructionType instructionType, String instructionId, String instructionContent);

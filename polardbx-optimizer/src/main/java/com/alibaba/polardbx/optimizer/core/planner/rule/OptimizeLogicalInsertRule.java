@@ -19,6 +19,9 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.LastInsertId;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.partition.datatype.DatePartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.DatetimePartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
@@ -93,6 +96,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSequenceParam;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexVisitorImpl;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.util.mapping.Mappings;
 
@@ -420,6 +424,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         final TableMeta primaryMeta = ec.getSchemaManager(schema).getTable(targetTable);
         final List<TableMeta> gsiMetas = GlobalIndexMeta.getIndex(primaryTable, ec);
         final boolean withGsi = GeneralUtil.isNotEmpty(gsiMetas);
+        final boolean hasJsonColumn = primaryMeta.getAllColumns().stream()
+            .anyMatch(cm -> DataTypeUtil.equalsSemantically(cm.getDataType(), DataTypes.JsonType));
 
         final RelDataType originSourceRowType = replace.getInsertRowType();
         final List<Integer> originSourceValuePermute = Mappings.identityMapping(originSourceRowType.getFieldCount());
@@ -488,7 +494,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
 
         final LogicalReplace newReplace =
             new LogicalReplace(newInsert, primaryInsertWriter, primaryReplaceRelocateWriter, gsiInsertWriters,
-                gsiReplaceRelocateWriters, null, primaryColumnNames);
+                gsiReplaceRelocateWriters, null, primaryColumnNames, hasJsonColumn);
         newReplace.setTargetTableIsWritable(scaleOutCanWrite);
         newReplace.setTargetTableIsReadyToPublish(scaleOutReadyToPublish);
         newReplace.setSourceTablesIsReadyToPublish(false);
@@ -536,6 +542,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         final List<String> primaryTargetColumns = upsert.getInsertRowType().getFieldNames();
         final boolean scaleOutCanWrite = ComplexTaskPlanUtils.canWrite(primaryMeta);
         final boolean scaleOutReadyToPublish = ComplexTaskPlanUtils.isReadyToPublish(primaryMeta);
+        final boolean hasJsonColumn = primaryMeta.getAllColumns().stream()
+            .anyMatch(cm -> DataTypeUtil.equalsSemantically(cm.getDataType(), DataTypes.JsonType));
 
         // Mapping from VALUES of target INSERT to VALUES of source INSERT
         final List<Integer> primaryValuePermute =
@@ -552,11 +560,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             .buildColumnMappings(updateColumnList, updateColumnList.stream().map(c -> 0).collect(Collectors.toList()),
                 ImmutableMap.of(0, gsiMetas), primaryUpdateColumnMappings, gsiUpdateColumnMappings);
 
-        // Get relation between uk and partition key
-        final TreeSet<String> partitionKeys = GlobalIndexMeta.getPartitionKeySet(targetTable, schema, ec);
-
         final boolean allGsiPublished = GlobalIndexMeta.isAllGsiPublished(gsiMetas, context);
-        boolean modifyPartitionKey = updateColumnList.stream().anyMatch(partitionKeys::contains);
+        AtomicBoolean modifyPartitionKey = new AtomicBoolean();
         final boolean modifyUniqueKey = isModifyUniqueKey(updateColumnList, targetTable, schema, ec);
 
         final LogicalInsert newInsert = replaceExpAndSeqWithParam(upsert, true, false, ec);
@@ -599,12 +604,12 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 false, primaryMeta, false, isBroadcast, isSingleTable, ec);
         } else {
             // SELECT --> deduplicate --> INSERT(values) or UPDATE or DELETE + INSERT(selected)
-            modifyPartitionKey = true;
             primaryRelocateWriter = WriterFactory
                 .createUpsertRelocateWriter(newInsert, primaryTable, updateColumnList,
                     primaryUpdateColumnMappings.get(0), primaryValuePermute,
                     selectListForDuplicateCheck, primaryMeta, false, isBroadcast, isSingleTable, ec);
         }
+        modifyPartitionKey.set(primaryDoRelocate);
 
         final RelOptSchema catalog = RelUtils.buildCatalogReader(schema, ec);
 
@@ -635,6 +640,13 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 doRelocate |= gsiUpdateColumns.stream().anyMatch(pkName::contains);
             }
 
+            if (GlobalIndexMeta.canDelete(ec, gsiMeta) && !GlobalIndexMeta.canWrite(ec, gsiMeta)) {
+                // DELETE_ONLY, need delete writer
+                doRelocate = true;
+            }
+
+            modifyPartitionKey.set(modifyPartitionKey.get() || doRelocate);
+
             final RelOptTable gsiTable = catalog.getTableForMember(ImmutableList.of(schema, gsiMeta.getTableName()));
             final List<Integer> gsiValuePermute = gsiValuePermutes.get(gsiIndex);
 
@@ -659,8 +671,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         final LogicalUpsert result =
             new LogicalUpsert(newInsert, primaryInsertWriter, primaryUpsertWriter, primaryRelocateWriter,
                 gsiInsertWriters, gsiUpsertWriters, gsiRelocateWriters, selectListForDuplicateCheck,
-                beforeUpdateMapping, selectListForDuplicateCheck.size(), modifyPartitionKey, modifyUniqueKey,
-                withColumnRefInDuplicateKeyUpdate.get(), allUpdatedSkRefValue);
+                beforeUpdateMapping, selectListForDuplicateCheck.size(), modifyPartitionKey.get(), modifyUniqueKey,
+                withColumnRefInDuplicateKeyUpdate.get(), allUpdatedSkRefValue, hasJsonColumn);
         result.setSourceTablesIsReadyToPublish(false);
         result.setTargetTableIsWritable(scaleOutCanWrite);
         result.setTargetTableIsReadyToPublish(scaleOutReadyToPublish);
@@ -668,7 +680,6 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         result.getLocalIndexPhyName().putAll(getLocalIndexName(result.getUkGroupByTable(), schema, ec));
         result.getColumnMetaMap().putAll(getColumnMetaMap(primaryMeta, result.getUkGroupByTable()));
         result.setUsePartFieldChecker(isNewPartDb && allColumnsSupportPartField(result.getColumnMetaMap()));
-
         // TODO need exclusive lock for UPSERT SELECT ?
         result.initAutoIncrementColumn();
 
@@ -960,9 +971,11 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             return false;
         }
 
+        int refCnt = 0;
         for (int i = 0; i < updateColumnList.size(); i++) {
             String columnName = updateColumnList.get(i);
             if (partitionKeys.contains(updateColumnList.get(i))) {
+                refCnt++;
                 try {
                     RexNode rexNode = ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands().get(1);
                     RexCall rexCall = (RexCall) ((RexCallParam) rexNode).getRexCall();
@@ -983,7 +996,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             }
         }
 
-        return true;
+        // Need to make sure all partition key ref to after value
+        return refCnt == partitionKeys.size();
     }
 
     private static boolean checkAllUpdatedSkRefBeforeValue(List<String> updateColumnList, Set<String> partitionKeys,
@@ -1003,12 +1017,13 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                         return false;
                     }
                 } catch (Throwable e) {
-                    // If it's not values(col), just return false
+                    // If it's not col, just return false
                     return false;
                 }
             }
         }
 
+        // If partition key does not appear in update list, it must ref to before value
         return true;
     }
 
@@ -1465,6 +1480,10 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
 
             // If the function can't be pushed down, all its operands must be computed too.
             doReplace |= !call.getOperator().canPushDown() || (logicalWrite && call.getOperator().isDynamicFunction());
+
+            // If function is last_insert_id with no operands, compute
+            doReplace |=
+                Objects.equals(call.getOperator().getName(), LastInsertId.NAME) && call.getOperands().size() == 0;
 
             if (!doReplace) {
                 return visited;

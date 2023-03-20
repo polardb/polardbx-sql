@@ -144,7 +144,7 @@ public abstract class AbstractCharsetHandler implements CharsetHandler {
         long longVal;
         long unsignedVal = toParse;
         boolean isNeg = false;
-        if (isUnsigned) {
+        if (!isUnsigned) {
             if (toParse < 0) {
 
                 unsignedVal = -unsignedVal;

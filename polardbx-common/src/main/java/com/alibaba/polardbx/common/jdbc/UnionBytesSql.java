@@ -120,6 +120,9 @@ public class UnionBytesSql extends BytesSql {
         if (unionSize == 1) {
             return super.getBytes(parameterContexts);
         }
+        if (!containRawString(parameterContexts)) {
+            return getBytes();
+        }
         byte[][] originBytesArray = new byte[unionSize][];
         int originLength = 0;
         for (int i = 0; i < originBytesArray.length; i++) {

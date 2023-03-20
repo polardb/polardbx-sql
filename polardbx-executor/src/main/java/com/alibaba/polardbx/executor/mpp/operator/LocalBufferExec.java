@@ -83,7 +83,7 @@ public class LocalBufferExec implements Executor, ConsumerExecutor {
             noData = true;
             long remainingSize = 0;
             for (Chunk chunk : buffer) {
-                remainingSize += chunk.getSizeInBytes();
+                remainingSize += chunk.estimateSize();
             }
             bufferMemoryManager.updateMemoryUsage(-remainingSize);
 
@@ -101,7 +101,7 @@ public class LocalBufferExec implements Executor, ConsumerExecutor {
             if (!noData) {
                 // buffered bytes must be updated before adding to the buffer to assure
                 // the count does not go negative
-                bufferMemoryManager.updateMemoryUsage(chunk.getSizeInBytes());
+                bufferMemoryManager.updateMemoryUsage(chunk.estimateSize());
                 try {
                     buffer.put(chunk);
                 } catch (Throwable t) {
@@ -173,7 +173,7 @@ public class LocalBufferExec implements Executor, ConsumerExecutor {
         } else {
             Chunk ret = buffer.poll();
             if (ret != null) {
-                bufferMemoryManager.updateMemoryUsage(-ret.getSizeInBytes());
+                bufferMemoryManager.updateMemoryUsage(-ret.estimateSize());
             }
             return ret;
         }
@@ -186,7 +186,7 @@ public class LocalBufferExec implements Executor, ConsumerExecutor {
                 if (ret == END) {
                     return null;
                 }
-                bufferMemoryManager.updateMemoryUsage(-ret.getSizeInBytes());
+                bufferMemoryManager.updateMemoryUsage(-ret.estimateSize());
             }
             return ret;
         } catch (Throwable t) {

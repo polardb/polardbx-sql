@@ -1380,7 +1380,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     public static boolean supportNewPartition(String typeName) {
         final String[] deniedTypes = {
             "bit", "float", "double", "time", "year", "tinyblob", "blob", "mediumblob", "longblob", "enum", "decimal",
-            "binary", "varbinary", "tinytext", "text", "mediumtext", "longtext", "set", "geometry"};
+            "binary", "tinytext", "text", "mediumtext", "longtext", "set", "geometry", "timestamp",
+            "datetime", "date"};
         for (String deniedType : deniedTypes) {
             if (typeName.equalsIgnoreCase(deniedType)) {
                 return false;
@@ -1389,7 +1390,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         return true;
     }
 
-    public static SqlNode assignAutoPartitionNewPartition(List<SqlIdentifier> keys, List<String> typeNames) {
+    public static SqlNode assignAutoPartitionNewPartition(List<SqlIdentifier> keys, List<String> typeNames,
+                                                          long defaultPartitions) {
         assert keys.size() == typeNames.size();
         Set<String> duplicateChecker = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         List<SqlIdentifier> validKeys = new ArrayList<>();
@@ -1424,7 +1426,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         final SqlPartitionByHash sqlPartitionByHash = new SqlPartitionByHash(true, false, SqlParserPos.ZERO);
         sqlPartitionByHash
             .setPartitionsCount(SqlLiteral
-                .createLiteralForIntTypes(Long.toString(DynamicConfig.getInstance().getAutoPartitionPartitions()),
+                .createLiteralForIntTypes(Long.toString(defaultPartitions),
                     SqlParserPos.ZERO, SqlTypeName.BIGINT));
         sqlPartitionByHash.getColumns().addAll(validKeys);
         final StringBuilder builder = new StringBuilder();
@@ -1434,8 +1436,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             }
             builder.append(SqlIdentifier.surroundWithBacktick(validKeys.get(i).getLastName()));
         }
-        sqlPartitionByHash.setSourceSql("KEY(" + builder + ") PARTITIONS "
-            + DynamicConfig.getInstance().getAutoPartitionPartitions());
+        sqlPartitionByHash.setSourceSql("KEY(" + builder + ") PARTITIONS " + defaultPartitions);
         return sqlPartitionByHash;
     }
 
@@ -1518,8 +1519,9 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         }
         assert concatKeys.size() == dataTypes.size();
 
+        long defaultPartitions = DynamicConfig.getInstance().getAutoPartitionPartitions();
         return index.rebuildToGsiNewPartition(
-            newIndexName, assignAutoPartitionNewPartition(concatKeys, dataTypes), clustered);
+            newIndexName, assignAutoPartitionNewPartition(concatKeys, dataTypes, defaultPartitions), clustered);
     }
 
     private static class RewriteOps {
@@ -1606,7 +1608,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             final List<String> pkDataTypes = pks.stream()
                 .map(col -> getColumnDefine(createTable, col.getLastName()).getDataType().getTypeName().getLastName()
                     .toLowerCase()).collect(Collectors.toList());
-            createTable.setSqlPartition(assignAutoPartitionNewPartition(pks, pkDataTypes));
+            long defaultPartitions = DynamicConfig.getInstance().getAutoPartitionPartitions();
+            createTable.setSqlPartition(assignAutoPartitionNewPartition(pks, pkDataTypes, defaultPartitions));
         }
 
         RewriteOps ops = new RewriteOps();
@@ -2603,7 +2606,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         final SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
         selectList.add(SqlIdentifier.star(SqlParserPos.ZERO));
         int ordinal = 0;
-        for (int i = 0; i < call.getSourceExpressionList().size();i++) {
+        for (int i = 0; i < call.getSourceExpressionList().size(); i++) {
             SqlNode exp = call.getSourceExpressionList().get(i);
             SqlNode targetColumnName = call.getTargetColumnList().get(i);
 
@@ -2668,7 +2671,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
         final SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
         int ordinal = 0;
-        for (int i = 0; i < call.getSourceExpressionList().size();i++) {
+        for (int i = 0; i < call.getSourceExpressionList().size(); i++) {
             SqlNode exp = call.getSourceExpressionList().get(i);
             SqlNode targetColumnName = call.getTargetColumnList().get(i);
 
@@ -8485,7 +8488,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                     SqlValidatorScope scope = getScope();
                     if (scope instanceof SelectScope) {
                         SqlValidator validator = scope.getValidator();
-                        SqlNode[] expandedSelectList = validator.expandStarForCheckSum(call.operand(0), ((SelectScope) scope).getNode());
+                        SqlNode[] expandedSelectList =
+                            validator.expandStarForCheckSum(call.operand(0), ((SelectScope) scope).getNode());
 
                         return new SqlBasicCall(SqlStdOperatorTable.CHECK_SUM, expandedSelectList, SqlParserPos.ZERO);
                     }

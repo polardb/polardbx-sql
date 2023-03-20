@@ -31,7 +31,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Time Block
- *
  */
 public class TimeBlock extends AbstractCommonBlock {
     private static final long NULL_VALUE = 0L;
@@ -49,8 +48,7 @@ public class TimeBlock extends AbstractCommonBlock {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = packed;
         this.timezone = timezone;
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(packed);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -183,4 +181,9 @@ public class TimeBlock extends AbstractCommonBlock {
         return timezone;
     }
 
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
+        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+    }
 }

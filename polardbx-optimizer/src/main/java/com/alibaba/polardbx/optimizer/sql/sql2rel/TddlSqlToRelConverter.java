@@ -17,14 +17,14 @@
 package com.alibaba.polardbx.optimizer.sql.sql2rel;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableList.Builder;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -33,7 +33,6 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -51,7 +50,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -74,7 +72,6 @@ import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableModify.TableInfo;
 import org.apache.calcite.rel.logical.LogicalProject;
-import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.type.RelDataType;
@@ -276,8 +273,16 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final boolean canPushDuplicateCheck =
                     withoutPkAndUk || (ukContainsPartitionKey && allGsiPublished && scaleOutConsistentBaseData);
 
-                if (isBroadcast || modifyGsi || scaleOutCanWrite || replaceNonDeterministicFunction
-                    || (!pushdownDuplicateCheck && !canPushDuplicateCheck)) {
+                final Set<String> partitionKeys = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                partitionKeys.addAll(oc.getRuleManager().getSharedColumns(tableName));
+                if (tableMeta.withGsi()) {
+                    tableMeta.getGsiTableMetaBean().indexMap.keySet()
+                        .forEach(indexTable -> partitionKeys.addAll(oc.getRuleManager().getSharedColumns(indexTable)));
+                }
+                final boolean modifyPartitionKey = updateColumns.stream().anyMatch(partitionKeys::contains);
+
+                if (isBroadcast || modifyGsi || modifyPartitionKey || scaleOutCanWrite
+                    || replaceNonDeterministicFunction || (!pushdownDuplicateCheck && !canPushDuplicateCheck)) {
                     for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
                         if (!updateColumns.contains(columnMeta.getName())) {
                             if (TStringUtil.containsIgnoreCase(columnMeta.getField().getExtra(), "on update")) {
@@ -1155,7 +1160,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
         assert concatKeys.size() == typeNames.size();
 
-        return SqlValidatorImpl.assignAutoPartitionNewPartition(concatKeys, typeNames);
+        long defaultPartitions = DynamicConfig.getInstance().getAutoPartitionPartitions();
+        if (tableMeta.getPartitionInfo() != null) {
+            PartitionByDefinition partitionBy = tableMeta.getPartitionInfo().getPartitionBy();
+            defaultPartitions = partitionBy == null ? defaultPartitions : partitionBy.getPartitions().size();
+        }
+        return SqlValidatorImpl.assignAutoPartitionNewPartition(concatKeys, typeNames, defaultPartitions);
     }
 
     @Override
@@ -1546,10 +1556,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final List<SqlNode> selectList = sourceSelect.getSelectList().getList();
         final AtomicInteger ordinal = new AtomicInteger(selectList.size() - 1);
 
-
-
         if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !gsiHasAutoUpdateColumns
-            ) {
+        ) {
             sourceSelect.setSelectList(new SqlNodeList(selectList, SqlParserPos.ZERO));
             return update.getSourceSelect();
         }

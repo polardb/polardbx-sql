@@ -42,7 +42,7 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
         + "INTERVAL 1 MONTH\n"
         + "EXPIRE AFTER 12\n"
         + "PRE ALLOCATE 6\n"
-        + "PIVOTDATE NOW()\n", Calendar.getInstance().get(Calendar.YEAR) - 1);
+        + "PIVOTDATE NOW()\n", Calendar.getInstance().get(Calendar.YEAR) - 2);
 
     @Test
     public void testCdcDdlRecord() throws SQLException, InterruptedException {
@@ -89,9 +89,9 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
 
         // Test Step
         tokenHints = buildTokenHints();
-        sql = tokenHints + String
-            .format("ALTER TABLE t_order EXPIRE LOCAL PARTITION p%s0401",
-                Calendar.getInstance().get(Calendar.YEAR) - 1);
+        sql = tokenHints + String.format("ALTER TABLE t_order EXPIRE LOCAL PARTITION p%s%s01",
+            Calendar.getInstance().get(Calendar.YEAR) - 1,
+            StringUtils.leftPad(String.valueOf(Calendar.getInstance().get(Calendar.MONTH) + 1), 2, "0"));
         stmt.execute(sql);
         Assert.assertEquals("", getDdlRecordSql(tokenHints));
 

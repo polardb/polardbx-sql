@@ -78,12 +78,18 @@ public class PolarPrivilegeUtils {
         // verify privilege
         if (executionPlan.getPrivilegeVerifyItems() != null) {
             for (PrivilegeVerifyItem item : executionPlan.getPrivilegeVerifyItems()) {
-                verifyPrivilege(item.getDb(), item.getTable(), item.getPrivilegePoint(), executionContext);
+                verifyPrivilege(item.getDb(), item.getTable(), item.isAnyTable(), item.getPrivilegePoint(),
+                    executionContext);
             }
         }
     }
 
     private static void verifyPrivilege(String db, String tb, PrivilegePoint priv, ExecutionContext executionContext) {
+        verifyPrivilege(db, tb, false, priv, executionContext);
+    }
+
+    private static void verifyPrivilege(String db, String tb, boolean isAnyTable, PrivilegePoint priv,
+                                        ExecutionContext executionContext) {
         // Don't check for system tables;
         tb = TStringUtil.normalizePriv(SQLUtils.normalizeNoTrim(tb));
         if (tb != null && SystemTables.contains(tb)) {
@@ -170,7 +176,7 @@ public class PolarPrivilegeUtils {
             return;
         }
 
-        Permission permission = Permission.from(db, tb, privilege);
+        Permission permission = Permission.from(db, tb, isAnyTable, privilege);
         PermissionCheckContext context = new PermissionCheckContext(pc.getPolarUserInfo().getAccountId(),
             pc.getActiveRoles(), permission);
         boolean hasPrivilege = PolarPrivManager.getInstance().checkPermission(context);

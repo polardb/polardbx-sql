@@ -121,7 +121,6 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
     }
 
     protected void initRouteFunction() {
-
         // Get the partCount and subPartCount of subPartition template
         this.partCount = partInfo.getPartitionBy().getPartitions().size();
         this.subPartCount = -1;
@@ -200,7 +199,8 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
             PartitionField newPartField = doIntervalMapping(exprExec, context, exprValPartField, cmdKindOutput, epInfo);
 
             // Build the PartitionBoundVal
-            PartitionBoundVal searchVal = PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isAlwaysNull);
+            PartitionBoundVal searchVal =
+                PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isAlwaysNull);
             searchValArr[0] = searchVal;
             SearchDatumInfo searchDatumInfo = new SearchDatumInfo(searchValArr);
             return searchDatumInfo;
@@ -209,14 +209,6 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
 
     /**
      *
-     *
-     *
-     * @param exprExec
-     * @param context
-     * @param exprValPartField
-     * @param cmdKindOutput
-     * @param endpoints
-     * @return
      */
     private PartitionField doIntervalMapping(PartClauseExprExec exprExec,
                                              ExecutionContext context,

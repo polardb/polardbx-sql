@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -49,6 +50,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
 
+@NotThreadSafe
 public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     final static Log log = LogFactory.getLog(AlterTableTest.class);
@@ -904,6 +906,33 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         String newPrimaryKeyColumn = "id";
         currentPkColumns = fetchPrimaryKeyColumns(tableName);
         Assert.assertTrue(TStringUtil.equalsIgnoreCase(currentPkColumns, newPrimaryKeyColumn));
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
+    public void testAlterTableDropAddCompPrimaryKey() {
+        if (TStringUtil.isNotEmpty(schemaPrefix)) {
+            return;
+        }
+
+        String tableName = "drop_add_comp_pk";
+
+        dropTableIfExists(tableName);
+
+        String sql = "CREATE TABLE " + tableName + " (\n"
+            + "col1 varchar(255) DEFAULT NULL,\n"
+            + "col2 varchar(255) NOT NULL,\n"
+            + "id int(11) NOT NULL AUTO_INCREMENT,\n"
+            + "PRIMARY KEY (id,col2)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "ALTER TABLE " + tableName + "\n"
+            + "DROP PRIMARY KEY,\n"
+            + "DROP COLUMN col2,\n"
+            + "ADD PRIMARY KEY (id) USING BTREE";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         dropTableIfExists(tableName);
     }
@@ -1969,7 +1998,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
         dropTableIfExists(tableName);
 
-        String createSql = "create table %s (id int not null, name char(32), item varchar(32), primary key (id))";
+        String createSql =
+            "create table %s (id int not null, name char(32), item varchar(32), primary key (id)) broadcast";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(createSql, tableName));
         Pair<String, String> phyDbTableName = fetchPhyDbAndTableNames(schemaName, simpleTableName, true);
         compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());

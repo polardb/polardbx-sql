@@ -411,6 +411,22 @@ public class ConnectionParams {
         false);
 
     /**
+     * 在 REPLACE、UPSERT 的时候是否跳过相同行比较（将导致 affected rows 不正确）
+     */
+    public final static BooleanConfigParam DML_SKIP_IDENTICAL_ROW_CHECK = new BooleanConfigParam(
+        ConnectionProperties.DML_SKIP_IDENTICAL_ROW_CHECK,
+        false,
+        false);
+
+    /**
+     * 在 REPLACE、UPSERT 的时候是否跳过含有 JSON 的相同行比较（因为 CN 不支持 JSON 比较）
+     */
+    public final static BooleanConfigParam DML_SKIP_IDENTICAL_JSON_ROW_CHECK = new BooleanConfigParam(
+        ConnectionProperties.DML_SKIP_IDENTICAL_JSON_ROW_CHECK,
+        true,
+        false);
+
+    /**
      * 是否强制使用 Online Modify Column，即使列类型没有改变，或者不是支持的类型
      */
     public final static BooleanConfigParam OMC_FORCE_TYPE_CONVERSION = new BooleanConfigParam(
@@ -1254,8 +1270,9 @@ public class ConnectionParams {
     public static final IntConfigParam STATISTIC_VISIT_DN_TIMEOUT = new IntConfigParam(
         ConnectionProperties.STATISTIC_VISIT_DN_TIMEOUT, 1, null, 60000, true);
 
+    // 6 days expired time
     public static final IntConfigParam BACKGROUND_STATISTIC_COLLECTION_EXPIRE_TIME = new IntConfigParam(
-        ConnectionProperties.BACKGROUND_STATISTIC_COLLECTION_EXPIRE_TIME, 1, null, 604800, true);
+        ConnectionProperties.BACKGROUND_STATISTIC_COLLECTION_EXPIRE_TIME, 1, null, 6 * 24 * 60 * 60, true);
 
     public static final FloatConfigParam SAMPLE_PERCENTAGE = new FloatConfigParam(
         ConnectionProperties.SAMPLE_PERCENTAGE, -1f, 100f, -1f, true);
@@ -1655,6 +1672,13 @@ public class ConnectionParams {
         ConnectionProperties.MODIFY_SELECT_BUFFER_SIZE, 64 * 1024L, 256 * 1024 * 1024L,
         64 * 1024 * 1024L, true);
 
+    /**
+     * SQL_SELECT_LIMIT
+     */
+    public static final LongConfigParam SQL_SELECT_LIMIT = new LongConfigParam(
+        ConnectionProperties.SQL_SELECT_LIMIT, 1L, Long.MAX_VALUE,
+        Long.MAX_VALUE, true);
+
     public static final LongConfigParam MAX_CACHE_PARAMS = new LongConfigParam(ConnectionProperties.MAX_CACHE_PARAMS,
         0L, Long.MAX_VALUE, 10000L, true);
 
@@ -1874,7 +1898,6 @@ public class ConnectionParams {
         (long) 4096,
         true
     );
-
 
     /**
      * switch groupKey between sourceGroupKey and targetGroupKey
@@ -2423,6 +2446,12 @@ public class ConnectionParams {
     public static final IntConfigParam CDC_STARTUP_MODE = new IntConfigParam(
         ConnectionProperties.CDC_STARTUP_MODE, 0, 2, 1, true);
 
+    /**
+     * CDC模块是否支持元数据snapshot功能
+     */
+    public static final BooleanConfigParam ENABLE_CDC_META_BUILD_SNAPSHOT = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_CDC_META_BUILD_SNAPSHOT, true, true);
+
     public static final BooleanConfigParam SHARE_STORAGE_MODE = new BooleanConfigParam(
         ConnectionProperties.SHARE_STORAGE_MODE,
         false,
@@ -2668,7 +2697,6 @@ public class ConnectionParams {
     public static final IntConfigParam IN_PRUNE_MAX_TIME = new IntConfigParam(
         ConnectionProperties.IN_PRUNE_MAX_TIME, 1, Integer.MAX_VALUE, 100, true);
 
-
     /**
      * Allow re-binding a new archive table to ttl table, replacing the old archive table.
      */
@@ -2680,7 +2708,7 @@ public class ConnectionParams {
     public static final BooleanConfigParam ALLOW_CREATE_TABLE_LIKE_FILE_STORE = new BooleanConfigParam(
         ConnectionProperties.ALLOW_CREATE_TABLE_LIKE_FILE_STORE, false, true);
 
-    public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR =  new StringConfigParam(
+    public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR = new StringConfigParam(
         ConnectionProperties.PURGE_OSS_FILE_CRON_EXPR, "0 0 1 ? * WED", true);
     public static final IntConfigParam PURGE_OSS_FILE_BEFORE_DAY = new IntConfigParam(
         ConnectionProperties.PURGE_OSS_FILE_BEFORE_DAY, 1, Integer.MAX_VALUE, 60, true);
@@ -2770,7 +2798,7 @@ public class ConnectionParams {
         ConnectionProperties.OPTIMIZE_TABLE_USE_DAL, false, true);
 
     public static final BooleanConfigParam ENABLE_AUTO_SPLIT_PARTITION = new BooleanConfigParam(
-            ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION, true, true);
+        ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION, true, true);
 
     public static final BooleanConfigParam ENABLE_MODULE_LOG = new BooleanConfigParam(
         ConnectionProperties.ENABLE_MODULE_LOG, true, true);
@@ -2818,4 +2846,36 @@ public class ConnectionParams {
         ConnectionProperties.ENABLE_STORAGE_TRIGGER,
         false,
         false);
+
+    /**
+     * Whether enable optimization for adding FORCE INDEX(PRIMARY) for count() under tso.
+     */
+    public static final BooleanConfigParam ENABLE_FORCE_PRIMARY_FOR_TSO = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_FORCE_PRIMARY_FOR_TSO, true, true);
+
+    /**
+     * Whether add FORCE INDEX(PRIMARY) for count() under tso where filter is given.
+     */
+    public static final BooleanConfigParam ENABLE_FORCE_PRIMARY_FOR_FILTER = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_FORCE_PRIMARY_FOR_FILTER, false, true);
+
+    /**
+     * Whether add FORCE INDEX(PRIMARY) for count() under tso where group by is given.
+     */
+    public static final BooleanConfigParam ENABLE_FORCE_PRIMARY_FOR_GROUP_BY = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_FORCE_PRIMARY_FOR_GROUP_BY, false, true);
+
+    /**
+     * Whether rollback a branch of XA trx if its primary group is unknown. By default, it is false.
+     * Set it to true if you know what you are doing. Consider in case when a trx branch should be committed,
+     * but the datasource of its primary group is not yet inited and its primary group is regarded as unknown.
+     * We leave such cases solved manually when the following parameter is false, and rollback the trx when it is true.
+     */
+    public static final BooleanConfigParam ROLLBACK_UNKNOWN_XA_TRANSACTION = new BooleanConfigParam(
+        ConnectionProperties.ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX,
+        false,
+        true);
+
+    public static final BooleanConfigParam ENABLE_REPLICA = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_REPLICA, true, true);
 }

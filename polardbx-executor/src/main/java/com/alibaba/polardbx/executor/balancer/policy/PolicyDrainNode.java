@@ -41,7 +41,15 @@ import com.alibaba.polardbx.executor.balancer.action.DropPhysicalDbTask;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.*;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CleanRemovedDbGroupMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CleanRemovedDbLocalityMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainCDCTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainNodeValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropDbGroupHideMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseReleaseXLockTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateGroupInfoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateNodeStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncThenReleaseXLockTask;
@@ -51,9 +59,13 @@ import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.locality.LocalityDetailInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
-import com.alibaba.polardbx.gms.tablegroup.*;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
@@ -86,7 +98,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -174,7 +185,7 @@ public class PolicyDrainNode implements BalancePolicy {
         node.setMaxActions(options.maxActions);
         node.setMaxPartitionSize((int) options.maxPartitionSize);
 
-        for(String schema: schemaNameList){
+        for (String schema : schemaNameList) {
             moveDataActions.add(new ActionDrainDatabase(schema, options.drainNode, node.toString(), stats.get(schema)));
         }
 
@@ -351,8 +362,6 @@ public class PolicyDrainNode implements BalancePolicy {
                 .filter(x -> drainNodeInfo.containsDnInst(x.getStorageInstId()))
                 .map(GroupDetailInfoRecord::getGroupName)
                 .collect(Collectors.toList());
-
-
 
         // query locality and reset locality involving drain node
         // move partitions
@@ -593,7 +602,7 @@ public class PolicyDrainNode implements BalancePolicy {
             Map<String, StorageInstHaContext> allStorage =
                 StorageHaManager.getInstance().refreshAndGetStorageInstHaContextCache();
 
-            if(validateDeleteable) {
+            if (validateDeleteable) {
                 Set<String> nonDeletableStorage;
                 try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
                     nonDeletableStorage = DbTopologyManager.getNonDeletableStorageInst(metaDbConn);
@@ -606,16 +615,16 @@ public class PolicyDrainNode implements BalancePolicy {
                     StorageInstHaContext storage = allStorage.get(dnInst);
                     if (storage == null) {
                         throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                                "storage not found: " + dnInst);
+                            "storage not found: " + dnInst);
                     }
 
                     // check if dn is allowed to be deleted
                     boolean deletable =
-                    DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, dnInst,
+                        DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, dnInst,
                             storage.getStorageKind());
                     if (!deletable) {
                         throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                                "storage not deletable: " + dnInst);
+                            "storage not deletable: " + dnInst);
                     }
                 }
             }
@@ -636,8 +645,8 @@ public class PolicyDrainNode implements BalancePolicy {
             }
         }
 
-        private Set<String> nodeToHostPort(List<NodeInfo> serverList) {
-            return serverList.stream().map(NodeInfo::getHostPort).collect(Collectors.toSet());
+        private Set<String> nodeToHostPort(List<GmsNode> serverList) {
+            return serverList.stream().map(GmsNode::getHostPort).collect(Collectors.toSet());
         }
     }
 

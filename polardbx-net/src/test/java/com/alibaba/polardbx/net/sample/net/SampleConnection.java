@@ -54,6 +54,10 @@ public class SampleConnection extends FrontendConnection {
     }
 
     @Override
+    public void binlogDump(byte[] data) {
+    }
+
+    @Override
     public void fieldList(byte[] data) {
     }
 

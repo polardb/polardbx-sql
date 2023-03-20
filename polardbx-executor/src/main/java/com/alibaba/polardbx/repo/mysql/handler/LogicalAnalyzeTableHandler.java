@@ -154,7 +154,7 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
         }
         long end = System.currentTimeMillis();
         ModuleLogInfo.getInstance()
-            .logRecord(Module.STATISTIC,
+            .logRecord(Module.STATISTICS,
                 LogPattern.PROCESS_END,
                 new String[] {
                     "analyze table " + schemaTables.stream().map(pair -> {

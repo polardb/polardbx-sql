@@ -230,8 +230,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                         blocks[i] =
                             new DecimalBlock(DataTypes.DecimalType, decimalBlock.getMemorySegments(),
                                 decimalBlock.nulls(), decimalBlock.hasNull(), selSize,
-                                selection, decimalBlock.isSimple(), decimalBlock.getInt1Pos(),
-                                decimalBlock.getInt2Pos(), decimalBlock.getFracPos());
+                                selection, decimalBlock.getState());
                     } else if (delayMaterialization && cachedBlock instanceof SliceBlock) {
                         // case 4. slice block delay materialization
                         blocks[i] = new SliceBlock((SliceType) ((SliceBlock) cachedBlock).getType(), 0, selSize,

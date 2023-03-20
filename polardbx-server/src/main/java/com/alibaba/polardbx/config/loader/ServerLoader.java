@@ -73,6 +73,8 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Properties;
 
+import static com.alibaba.polardbx.optimizer.biv.MockUtils.mockByEnv;
+
 public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
     protected static final Logger logger = LoggerFactory.getLogger(ServerLoader.class);

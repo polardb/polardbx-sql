@@ -453,6 +453,7 @@ public class DdlEngineDagExecutor {
     }
 
     private void onSubjobFinished() {
+        ddlContext.setErrorMessage(errorMessage);
         // Release resource after subjob finished
         ddlJobManager.getResourceManager().releaseResource(ddlContext.getJobId());
     }
@@ -916,7 +917,7 @@ public class DdlEngineDagExecutor {
         if (ddlContext.isInterrupted()) {
             return true;
         }
-        if(interruptWhileLosingLeader && !ExecUtils.hasLeadership(null)){
+        if (interruptWhileLosingLeader && !ExecUtils.hasLeadership(null)) {
             ddlContext.setInterruptedAsTrue();
             DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, String.format(
                 "interrupt DDL JOB %s for losing CN leadership.", ddlContext.getJobId()));
@@ -925,17 +926,6 @@ public class DdlEngineDagExecutor {
             return true;
         }
         if (!deamonThreadAlive()) {
-            return true;
-        }
-        if(interruptWhileLosingLeader && !ExecUtils.hasLeadership(null)){
-            ddlContext.setInterruptedAsTrue();
-            DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, String.format(
-                "interrupt DDL JOB %s for losing CN leadership.", ddlContext.getJobId()));
-            EventLogger.log(EventType.DDL_INTERRUPT, String.format(
-                "interrupt DDL JOB %s for losing CN leadership.", ddlContext.getJobId()));
-            return true;
-        }
-        if (!deamonThreadAlive()){
             return true;
         }
         return false;

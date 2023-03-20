@@ -30,11 +30,14 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.dnCount;
@@ -236,9 +239,14 @@ public class SelectShardingTest extends ReadBaseTestCase {
     }
 
     @Test
-    public void conditionFalse1() {
+    public void conditionFalse1() throws SQLException {
         final List<String> tableNames = ImmutableList.of(baseOneTableName, baseTwoTableName, baseThreeTableName);
-
+        // analyze tables
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("analyze table " + String.join(",", tableNames));
+        } catch (SQLException e) {
+            throw e;
+        }
         String sql = MessageFormat.format(
             "SELECT a.varchar_test"
                 + "  FROM {0} a"
@@ -255,8 +263,15 @@ public class SelectShardingTest extends ReadBaseTestCase {
     }
 
     @Test
-    public void conditionFalse2() {
+    public void conditionFalse2() throws SQLException {
         final List<String> tableNames = ImmutableList.of(baseOneTableName, baseTwoTableName, baseThreeTableName);
+
+        // analyze tables
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("analyze table " + String.join(",", tableNames));
+        } catch (SQLException e) {
+            throw e;
+        }
 
         String sql = MessageFormat.format(
             " /*+TDDL:cmd_extra(enable_bka_join=false) HASH_JOIN({0}, {1}) "
@@ -1029,7 +1044,8 @@ public class SelectShardingTest extends ReadBaseTestCase {
             ResultSet rs = statement.executeQuery(sql);
             rs.next();
             if (!usingNewPartDb()) {
-                Assert.assertTrue(4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"));
+                Assert.assertTrue(4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"))
+                ;
             } else {
                 Assert.assertTrue(3 == rs.getInt("SHARD_COUNT"));
             }

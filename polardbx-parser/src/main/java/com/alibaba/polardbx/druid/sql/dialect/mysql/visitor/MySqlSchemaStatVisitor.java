@@ -815,11 +815,13 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
         return false;
     }
 
-    @Override public void endVisit(MySqlClearPartitionsHeatmapCacheStatement x) {
+    @Override
+    public void endVisit(MySqlClearPartitionsHeatmapCacheStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlClearPartitionsHeatmapCacheStatement x) {
+    @Override
+    public boolean visit(MySqlClearPartitionsHeatmapCacheStatement x) {
         return false;
     }
 
@@ -2448,6 +2450,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
     }
 
     @Override
+    public boolean visit(DrdsShowStorage x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowStorage x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsShowTableGroup x) {
         return true;
     }
@@ -2540,6 +2552,7 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
     @Override
     public void endVisit(DrdsUnArchiveStatement x) {
     }
+
     @Override
     public boolean visit(DrdsUnArchiveStatement x) {
         return true;
@@ -2597,6 +2610,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public void endVisit(DrdsShowLocality x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinaryStreamsStatement mySqlShowBinaryStreamsStatement) {
 
     }
 

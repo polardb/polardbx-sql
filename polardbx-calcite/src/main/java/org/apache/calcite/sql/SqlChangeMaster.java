@@ -9,16 +9,6 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
 
-/**
- * @Author ShuGuang
- * @Description
- * @Date 2021/3/4 11:41 上午
- */
-/**
- * @Author ShuGuang
- * @Description
- * @Date 2021/3/4 11:41 上午
- */
 public class SqlChangeMaster extends SqlReplicationBase {
 
     {
@@ -66,8 +56,12 @@ public class SqlChangeMaster extends SqlReplicationBase {
         case RplConstants.DEST_APPLIER_TYPE:
             params.put(RplConstants.DEST_APPLIER_TYPE, v);
             break;
+        case RplConstants.MODE:
+            params.put(RplConstants.MODE, v);
+            break;
         default:
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, String.format("Unrecognized arguments: %s", k));
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT,
+                String.format("Unrecognized arguments: %s", k));
         }
     }
 

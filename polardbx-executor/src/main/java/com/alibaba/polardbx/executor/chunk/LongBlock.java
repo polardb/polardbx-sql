@@ -29,7 +29,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Long Block
- *
  */
 public class LongBlock extends AbstractBlock {
     public static final long NULL_VALUE = 0L;
@@ -43,15 +42,13 @@ public class LongBlock extends AbstractBlock {
     public LongBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new long[slotLen];
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public LongBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -206,7 +203,12 @@ public class LongBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
     }
 }

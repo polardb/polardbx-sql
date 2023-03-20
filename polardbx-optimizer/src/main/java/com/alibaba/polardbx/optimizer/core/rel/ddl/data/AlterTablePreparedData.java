@@ -109,6 +109,7 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private boolean onlineChangeColumn = false;
 
     private String modifyColumnType = null;
+    private String modifyColumnTypeNullable = null;
     private String modifyColumnName = null;
 
     private String tmpColumnName = null;

@@ -34,6 +34,8 @@ import io.airlift.slice.SliceInput;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 
+import java.nio.charset.StandardCharsets;
+
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.chunk.EncoderUtil.decodeNullBits;
 import static com.alibaba.polardbx.executor.chunk.EncoderUtil.encodeNullsAsBits;
@@ -54,10 +56,9 @@ public class DecimalBlockEncoding implements BlockEncoding {
         sliceOutput.appendInt(positionCount);
 
         // for fast decimal
-        sliceOutput.writeBoolean(b.isSimple());
-        sliceOutput.writeInt(b.getInt1Pos());
-        sliceOutput.writeInt(b.getInt2Pos());
-        sliceOutput.writeInt(b.getFracPos());
+        String stateName = b.getState() == null ? "" : b.getState().name();
+        sliceOutput.writeInt(stateName.length());
+        sliceOutput.writeBytes(stateName.getBytes());
 
         int nullsCnt = encodeNullsAsBits(sliceOutput, b);
 
@@ -75,10 +76,12 @@ public class DecimalBlockEncoding implements BlockEncoding {
         int positionCount = sliceInput.readInt();
 
         // for fast decimal
-        boolean isSimple = sliceInput.readBoolean();
-        int int1Pos = sliceInput.readInt();
-        int int2Pos = sliceInput.readInt();
-        int fracPos = sliceInput.readInt();
+        int stateNameLen = sliceInput.readInt();
+        byte[] stateName = new byte[stateNameLen];
+        sliceInput.readBytes(stateName);
+        DecimalBlock.DecimalBlockState state = stateName.length == 0
+            ? DecimalBlock.DecimalBlockState.UNSET_STATE
+            : DecimalBlock.DecimalBlockState.valueOf(new String(stateName, StandardCharsets.UTF_8));
 
         boolean[] valueIsNull = decodeNullBits(sliceInput, positionCount);
         boolean existNonNull = sliceInput.readBoolean();
@@ -91,6 +94,6 @@ public class DecimalBlockEncoding implements BlockEncoding {
             slice = slice.slice(0, length);
         }
 
-        return new DecimalBlock(positionCount, valueIsNull, slice, isSimple, int1Pos, int2Pos, fracPos);
+        return new DecimalBlock(positionCount, valueIsNull, slice, state);
     }
 }

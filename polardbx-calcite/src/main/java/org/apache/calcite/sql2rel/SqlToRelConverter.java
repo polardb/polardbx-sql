@@ -183,6 +183,8 @@ import org.apache.calcite.sql.SqlAlterFileStorage;
 import org.apache.calcite.sql.SqlAlterJoinGroup;
 import org.apache.calcite.sql.SqlAlterRule;
 import org.apache.calcite.sql.SqlAlterSpecification;
+import org.apache.calcite.sql.SqlAlterSystemRefreshStorage;
+import org.apache.calcite.sql.SqlAlterSystemReloadStorage;
 import org.apache.calcite.sql.SqlAlterSystemSetConfig;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
@@ -2614,7 +2616,7 @@ public class SqlToRelConverter {
                     Optional<SqlIdentifier> optionalSqlIdentifier = null;
                     if (firstValues != null) {
                         optionalSqlIdentifier = firstValues.stream()
-                            .filter(i -> i.names.containsAll(ImmutableList.of(originalRelName, originalFieldName)))
+                            .filter(i -> i.names.containsAll(ImmutableList.of(originalRelName, field.getName())))
                             .findFirst();
                     }
                     // sub-query can reference group by keys projected from
@@ -2628,10 +2630,10 @@ public class SqlToRelConverter {
                     } else {
                         // correl not grouped
                         SqlIdentifier firstValue =
-                            new SqlIdentifier(ImmutableList.of(originalRelName, originalFieldName), null,
+                            new SqlIdentifier(ImmutableList.of(originalRelName, field.getName()), null,
                                 SqlParserPos.ZERO, null);
                         throw new ValidationFirstValueException(
-                            "Identifier '" + originalRelName + "." + originalFieldName + "' is not a group expr",
+                            "Identifier '" + originalRelName + "." + field.getName() + "' is not a group expr",
                             firstValue);
                     }
                 }
@@ -3385,6 +3387,16 @@ public class SqlToRelConverter {
     private RelNode convertChangeConsensusRole(SqlChangeConsensusRole query) {
         RelDataType targetRowType = validator.getValidatedNodeType(query);
         return ChangeConsensusRole.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertAlterSystemRefreshStorage(SqlAlterSystemRefreshStorage query) {
+        RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return Dal.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertAlterSystemReloadStorage(SqlAlterSystemReloadStorage query) {
+        RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return Dal.create(query, targetRowType, getCluster());
     }
 
     private RelNode convertCreateIndex(SqlCreateIndex query) {

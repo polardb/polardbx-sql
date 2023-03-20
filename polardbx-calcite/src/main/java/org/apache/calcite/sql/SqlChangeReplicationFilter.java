@@ -9,11 +9,8 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
 
-
-
 /**
  * @author shicai.xsc 2021/3/5 13:09
- * @desc
  * @since 5.0.0.0
  */
 public class SqlChangeReplicationFilter extends SqlReplicationBase {
@@ -24,14 +21,13 @@ public class SqlChangeReplicationFilter extends SqlReplicationBase {
         keyWord = "CHANGE REPLICATION FILTER";
     }
 
-    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options){
+    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options) {
         super(pos, options);
     }
 
-    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel){
+    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel) {
         super(pos, options, channel);
     }
-
 
     @Override
     protected void parseParams(String k, String v) {
@@ -59,13 +55,14 @@ public class SqlChangeReplicationFilter extends SqlReplicationBase {
             params.put(RplConstants.REPLICATE_REWRITE_DB, v);
             break;
         default:
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, String.format("Unrecognized arguments: %s", k));
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT,
+                String.format("Unrecognized arguments: %s", k));
         }
     }
 
     public static class SqlChangeReplicationFilterOperator extends SqlReplicationOperator {
 
-        public SqlChangeReplicationFilterOperator(){
+        public SqlChangeReplicationFilterOperator() {
             super(SqlKind.CHANGE_REPLICATION_FILTER);
         }
     }

@@ -1,3 +1,4 @@
+## DISABLE_FAST_SQL_PARSER
 ## test hash/one col/int
 drop table if exists tbl;
 create table if not exists tbl (a int not null)
@@ -10,7 +11,7 @@ explain select * from tbl where a=99 order by a;
 explain select * from tbl where a=200 order by a;
 explain select * from tbl where a<200 order by a;
 drop table if exists tbl;
-## test hash/one col with year/datetime
+  ## test hash/one col with year/datetime
 drop table if exists tbl;
 create table if not exists tbl (a datetime not null)
 partition by hash(year(a))
@@ -21,3 +22,5 @@ select * from tbl order by a;
 explain select * from tbl where a='2012-10-12 12:12:12' order by a;
 explain select * from tbl where a>'2010-10-12 12:12:12' order by a;
 drop table if exists tbl;
+  ## error_msg: $# Not all physical DDLs have been executed successfully #$
+create table t1 (c1 int primary key default null);

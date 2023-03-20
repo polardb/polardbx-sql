@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author yuehan.wcf
@@ -46,7 +47,7 @@ public class StoredFunctionManager {
 
     public static StoredFunctionManager INSTANCE = new StoredFunctionManager();
 
-    Map<String, Pair<SQLCreateFunctionStatement, Long>> functions = new HashMap<>();
+    Map<String, Pair<SQLCreateFunctionStatement, Long>> functions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     long totalSpace = MemorySetting.UNLIMITED_SIZE;
 
@@ -67,7 +68,7 @@ public class StoredFunctionManager {
         functions.put(functionName, PlConstants.FUNCTION_PLACE_HOLDER);
     }
 
-    public void unregister(String functionName) {
+    public synchronized void unregister(String functionName) {
         if (functions.containsKey(functionName)) {
             usedSpace -= functions.get(functionName).getValue();
         }
@@ -95,7 +96,8 @@ public class StoredFunctionManager {
                 SQLCreateFunctionStatement
                     createFunctionStatement =
                     (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunction).get(0);
-                createFunctionStatement.setSqlDataAccess(records.get(0).canPush ? SqlDataAccess.NO_SQL: SqlDataAccess.CONTAINS_SQL);
+                createFunctionStatement.setSqlDataAccess(
+                    records.get(0).canPush ? SqlDataAccess.NO_SQL : SqlDataAccess.CONTAINS_SQL);
                 long functionSize = createFunction.getBytes().length;
                 checkCapacity(functionSize);
                 usedSpace += functionSize;
@@ -125,7 +127,7 @@ public class StoredFunctionManager {
             FunctionAccessor accessor = new FunctionAccessor();
             accessor.setConnection(connection);
             List<FunctionMetaRecord> records = accessor.loadFunctionMetas();
-            for (FunctionMetaRecord record: records) {
+            for (FunctionMetaRecord record : records) {
                 String functionName = record.name;
                 register(functionName);
             }
@@ -171,7 +173,7 @@ public class StoredFunctionManager {
 
     public synchronized Map<String, Long> getFunctions() {
         Map<String, Long> loadedFunctions = new HashMap<>();
-        for(Map.Entry<String, Pair<SQLCreateFunctionStatement, Long>> entry: functions.entrySet()) {
+        for (Map.Entry<String, Pair<SQLCreateFunctionStatement, Long>> entry : functions.entrySet()) {
             loadedFunctions.put(entry.getKey(), entry.getValue().getValue());
         }
         return loadedFunctions;

@@ -229,7 +229,7 @@ public class GmsClusterLoader extends ClusterLoader {
             FunctionAccessor accessor = new FunctionAccessor();
             accessor.setConnection(connection);
             List<FunctionMetaRecord> records = accessor.loadFunctionMetas();
-            for(FunctionMetaRecord record: records) {
+            for (FunctionMetaRecord record : records) {
                 UdfUtils.registerSqlUdf(record.routineMeta, record.canPush);
             }
         } catch (Exception ex) {
@@ -368,7 +368,7 @@ public class GmsClusterLoader extends ClusterLoader {
                                 (System.nanoTime() - startTime) / 1e9);
                         } else {
                             logger.warn(
-                                    "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(),
+                                "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(),
                                 ex);
                         }
                     }));

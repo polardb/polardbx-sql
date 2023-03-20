@@ -188,7 +188,7 @@ public class StorageHaChecker {
         } catch (Throwable ex) {
             String msg = ex.getMessage();
             if (msg.contains("Access denied") || msg.contains("Communications link failure") || msg
-                .contains("Connection refused")) {
+                .contains("Connection refused") || msg.contains("caching_sha2_password")) {
                 // maybe is logger, ignore log in meta-db.log
             } else {
                 MetaDbLogUtil.META_DB_LOG.warn(
@@ -210,7 +210,7 @@ public class StorageHaChecker {
      * @param allowFetchRoleOnlyFromLeader allow return the role from the new hosts (not exists in metaDB yet)
      */
     public static Map<String, StorageNodeHaInfo> checkAndFetchRole(
-        List<String> addrList, String vipAddr, int xport, String usr, String passwd, int storageType,
+        List<Pair<String, Boolean>> addrList, String vipAddr, int xport, String usr, String passwd, int storageType,
         int storageInstKind, boolean allowFetchRoleOnlyFromLeader) {
 
         boolean isMasterStorage = true;
@@ -228,10 +228,14 @@ public class StorageHaChecker {
             // e.g in test env, storage node is just mysql or polardb
 
             // If has vip addr, then use vip addr
+            final boolean isVip;
             String availableAddr = vipAddr;
             if (availableAddr == null && addrList.size() == 1) {
                 // if has no vip addr, then use first storage node info as available addr
-                availableAddr = addrList.get(0);
+                availableAddr = addrList.get(0).getKey();
+                isVip = addrList.get(0).getValue();
+            } else {
+                isVip = true;
             }
 
             // For storage master inst, use leader role
@@ -241,7 +245,7 @@ public class StorageHaChecker {
                 role = StorageRole.LEARNER;
             }
 
-            if (XConfig.VIP_WITH_X_PROTOCOL) {
+            if (isVip && XConfig.VIP_WITH_X_PROTOCOL) {
                 xport = resolveHostPort(availableAddr).getValue();
             } else if ((!XConfig.GALAXY_X_PROTOCOL && !XConfig.OPEN_XRPC_PROTOCOL) ||
                 storageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_SINGLE) {
@@ -259,10 +263,13 @@ public class StorageHaChecker {
             }
 
             MetaDbLogUtil.META_DB_LOG.info(
-                "Non-cluster DN with type: " + storageType + " addr: " + availableAddr + (XConfig.GALAXY_X_PROTOCOL ?
-                    " with galaxy" : "") + (XConfig.OPEN_XRPC_PROTOCOL ? " with xrpc" : "") + " xport: " + xport);
+                "Non-cluster DN with type: " + storageType + " vip_addr: " + (null == vipAddr ? "null" : vipAddr)
+                    + " addr: " + availableAddr + (XConfig.GALAXY_X_PROTOCOL ? " with galaxy" : "") + (
+                    XConfig.OPEN_XRPC_PROTOCOL ? " with xrpc" : "") + " xport: "
+                    + xport + " isVip: " + isVip);
 
-            StorageNodeHaInfo storageHaInfo = new StorageNodeHaInfo(availableAddr, role, true, xport);
+            StorageNodeHaInfo storageHaInfo =
+                new StorageNodeHaInfo(availableAddr, role, true, xport, usr, passwd, isVip);
             addrHaInfoMap.put(availableAddr, storageHaInfo);
             return addrHaInfoMap;
         }
@@ -270,10 +277,11 @@ public class StorageHaChecker {
         // Try to fetch storage leader info from all storage nodes (non-vip)
         boolean isFetchLeaderSucc = false;
         for (int i = 0; i < addrList.size(); i++) {
-            String addr = addrList.get(i);
+            final String addr = addrList.get(i).getKey();
+            final boolean isVip = addrList.get(i).getValue();
             AtomicBoolean isFetchLeader = new AtomicBoolean(false);
-            fetchPaxosRoleInfosByAddr(addr, usr, passwd, storageType, isMasterStorage, allowFetchRoleOnlyFromLeader,
-                addrHaInfoMap, isFetchLeader);
+            fetchPaxosRoleInfosByAddr(addr, isVip, usr, passwd, storageType, isMasterStorage,
+                allowFetchRoleOnlyFromLeader, addrHaInfoMap, isFetchLeader);
 
             if (isFetchLeader.get()) {
                 isFetchLeaderSucc = true;
@@ -290,7 +298,7 @@ public class StorageHaChecker {
             // Try to use vip to fetch role infos
             if (vipAddr != null) {
                 AtomicBoolean isFetchLeader = new AtomicBoolean(false);
-                fetchPaxosRoleInfosByAddr(vipAddr, usr, passwd, storageType, isMasterStorage,
+                fetchPaxosRoleInfosByAddr(vipAddr, true, usr, passwd, storageType, isMasterStorage,
                     allowFetchRoleOnlyFromLeader, addrHaInfoMap, isFetchLeader);
             }
         }
@@ -373,6 +381,7 @@ public class StorageHaChecker {
      * false if the the fetch process failed and has any exceptions
      */
     protected static boolean fetchPaxosRoleInfosByAddr(String addr,
+                                                       boolean isVipAddr,
                                                        String usr,
                                                        String passwd,
                                                        int storageType,
@@ -422,7 +431,12 @@ public class StorageHaChecker {
                 if (rs.next()) {
                     xPort = rs.getInt(1);
                 }
-            } // This should never fail. Or throw an error.
+            } catch (SQLException e) {  // This should never fail. Or throw an error.
+                if (storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                    // ignore for RDS80
+                    throw e;
+                }
+            }
 
             if (allowFetchRoleOnlyFromLeader) {
                 currentLeaderAddr = AddressUtils.getStorageNodeAddrByPaxosNodeAddr(currentPaxosLeaderAddr);
@@ -477,8 +491,9 @@ public class StorageHaChecker {
                                             nodeAddr, nodeRoleVal.name()));
                                 }
                             }
+                            // nodeAddr loaded from internal system table, so it is not vip
                             StorageNodeHaInfo newStorageHaInfo =
-                                new StorageNodeHaInfo(nodeAddr, nodeRoleVal, true, nodeXPort);
+                                new StorageNodeHaInfo(nodeAddr, nodeRoleVal, true, nodeXPort, usr, passwd, false);
                             addrHaInfoMap.putIfAbsent(nodeAddr, newStorageHaInfo);
                         }
                         peerSucc = true;
@@ -497,12 +512,16 @@ public class StorageHaChecker {
                         }
                         portSucc = true;
                     } catch (Throwable ex) {
-                        // Bad server?
-                        canConnectToNewLeaderByPasswd = false;
-                        MetaDbLogUtil.META_DB_LOG.warn(
-                            String.format("Fail to fetch xport from leader node[%s], and set xport=-1",
-                                currentLeaderAddr),
-                            ex);
+                        if (storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                            // ignore for RDS80
+                        } else {
+                            // Bad server?
+                            canConnectToNewLeaderByPasswd = false;
+                            MetaDbLogUtil.META_DB_LOG.warn(
+                                String.format("Fail to fetch xport from leader node[%s], and set xport=-1",
+                                    currentLeaderAddr),
+                                ex);
+                        }
                     }
 
                     isSucc = peerSucc && portSucc;
@@ -513,7 +532,8 @@ public class StorageHaChecker {
                 if (canConnectToNewLeaderByPasswd) {
                     // Add the true leader info for current xcluster
                     StorageNodeHaInfo leaderStorageHaInfo =
-                        new StorageNodeHaInfo(currentLeaderAddr, StorageRole.LEADER, true, leaderXPort);
+                        new StorageNodeHaInfo(currentLeaderAddr, StorageRole.LEADER, true, leaderXPort, usr, passwd,
+                            false); // currentLeaderAddr loaded from internal system table, so it is not vip
                     addrHaInfoMap.putIfAbsent(currentLeaderAddr, leaderStorageHaInfo);
                     isFetchLeader.set(true);
                 }
@@ -526,7 +546,8 @@ public class StorageHaChecker {
             }
         } catch (Throwable ex) {
             String msg = ex.getMessage();
-            if (msg != null && msg.toLowerCase().contains("access denied")) {
+            if (msg != null &&
+                (msg.toLowerCase().contains("access denied") || msg.toLowerCase().contains("caching_sha2_password"))) {
                 // ignore error of building conn to logger,
                 // logger is NOT allowed to accepting any connections
                 roleVal = StorageRole.LOGGER;
@@ -549,7 +570,8 @@ public class StorageHaChecker {
             }
         }
         if (!allowFetchRoleOnlyFromLeader) {
-            StorageNodeHaInfo storageHaInfo = new StorageNodeHaInfo(addr, roleVal, isHealthy, xPort);
+            StorageNodeHaInfo storageHaInfo =
+                new StorageNodeHaInfo(addr, roleVal, isHealthy, xPort, usr, passwd, isVipAddr);
             addrHaInfoMap.putIfAbsent(addr, storageHaInfo);
         }
         return isSucc;

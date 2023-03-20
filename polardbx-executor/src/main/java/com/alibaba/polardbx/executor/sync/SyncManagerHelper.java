@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.sync.ISyncResultHandler;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 
 import java.util.List;
@@ -43,6 +44,13 @@ public class SyncManagerHelper {
 
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action) {
         return sync(action, false);
+    }
+
+    /**
+     * sync with default db(polardbx)
+     */
+    public static List<List<Map<String, Object>>> syncWithDefaultDB(IGmsSyncAction action) {
+        return sync(action, SystemDbHelper.DEFAULT_DB_NAME, false);
     }
 
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, boolean throwExceptions) {

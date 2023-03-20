@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -32,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
@@ -48,7 +50,7 @@ public final class Session {
     private long tsoTime = -1;
     private boolean omitTso;
     private boolean lizard1PC;
-    private HashMap<String, Long> lsns = new HashMap<>();
+    private ConcurrentHashMap<String, Long> dnLsns = new ConcurrentHashMap<>();
     private boolean cacheOutput;
     private boolean ignoreSplitInfo = false;
 
@@ -120,7 +122,10 @@ public final class Session {
         if (ExecutorContext.getContext(
             getSchema()).getStorageInfoManager().supportTso() &&
             clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
-            !getSchema().equalsIgnoreCase("MetaDB")) {
+            !getSchema().equalsIgnoreCase("MetaDB") &&
+            (ExecUtils.existMppOnlyInstanceNode() ||
+                clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
+        ) {
             ITransaction iTransaction = clientContext.getTransaction();
             if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
                 if (iTransaction.getTransactionClass() == AUTO_COMMIT_SINGLE_SHARD) {
@@ -134,7 +139,9 @@ public final class Session {
                 }
 
                 for (Map.Entry<String, String> group : groups.entrySet()) {
-                    ExecUtils.getLsn(group, lsns);
+                    GroupingFetchLSN.getInstance()
+                        .getLsn(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
+                            group.getKey(), dnLsns);
                 }
             }
         }
@@ -211,7 +218,7 @@ public final class Session {
             clientContext.getConnection().getLastInsertId(),
             clientContext.getTimeZone(),
             tsoTime,
-            lsns,
+            dnLsns,
             omitTso,
             lizard1PC,
             clientContext.getWorkloadType());

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -50,6 +51,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
 
+@NotThreadSafe
 @RunWith(Parameterized.class)
 public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
@@ -1588,15 +1590,33 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     private Pair<String, String> fetchPhyDbAndTableNames(String schemaName, String tableName)
         throws SQLException {
-        String dnWhereMetaDbResides, dnId, phyDbName, phyTableName;
-        dnWhereMetaDbResides = dnId = phyDbName = phyTableName = "N/A";
+        String storageIP, storageId, phyDbName, phyTableName, dnId;
+        storageIP = storageId = phyDbName = phyTableName = dnId = "N/A";
 
-        String sql = "select ip from storage_info where storage_inst_id like '%gms%' and ip not like '%cands%'";
+        String sql =
+            "select ip from storage_info "
+                + "where storage_inst_id like '%-gms%' or storage_inst_id like '%-meta%' limit 1";
         try (Connection metaDbConn = getMetaConnection();
             Statement stmt = metaDbConn.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) {
-                dnWhereMetaDbResides = rs.getString(1);
+                storageIP = rs.getString(1);
+            }
+        }
+
+        // Returned ip may be real ip or storage instance id, so we have to query again.
+        sql = "select storage_inst_id from storage_info "
+            + "where (storage_inst_id like '%-dn%' or storage_inst_id like '%-master')and (storage_inst_id=? or ip=?)";
+        try (Connection metaDbConn = getMetaConnection();
+            PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
+
+            ps.setString(1, storageIP);
+            ps.setString(2, storageIP);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    storageId = rs.getString(1);
+                }
             }
         }
 
@@ -1605,16 +1625,17 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
             Statement stmt = cnConn.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                phyTableName = rs.getString(3);
-                phyDbName = rs.getString(5);
-                dnId = rs.getString(6);
-                if (TStringUtil.equalsIgnoreCase(dnId, dnWhereMetaDbResides)) {
-                    if (TStringUtil.contains(phyTableName, "00000") ||
-                        TStringUtil.contains(phyTableName, "00001")) {
-                        break;
-                    }
+                dnId = rs.getString("DN_ID");
+                if (TStringUtil.equalsIgnoreCase(storageId, dnId)) {
+                    phyTableName = rs.getString("TABLE_NAME");
+                    phyDbName = rs.getString("PHY_DB_NAME");
+                    break;
                 }
             }
+        }
+
+        if (dnId.equals("N/A") || phyDbName.equals("N/A") || phyTableName.equals("N/A")) {
+            Assert.fail("Didn't find a DN that resides in the same storage instance as MetaDB");
         }
 
         String message = "Physical DB and Table chosen:\n" + phyDbName + ", " + phyTableName;
@@ -2732,6 +2753,64 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testGeneratedColumnsForbidden() {
+        final String tableName = "test_generated_columns";
+        final String createTable = "create table " + tableName + " (c1 int, c2 int, c3 int, c4 int, c5 int)";
+        final String alterTable = "alter table " + tableName + " %s";
+        final String expectedErrMsg = "Do not support generated columns";
+
+        dropTableIfExists(tableName);
+        JdbcUtil.executeSuccess(tddlConnection, createTable);
+
+        String sql = String.format(alterTable, "modify c2 bigint as (c1+1)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "modify c2 bigint generated always as (c1+1)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "modify c2 bigint generated always as (c1+2) virtual");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "modify c2 bigint as (c1+3) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "modify c3 bigint generated always as (c1+3) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "change c4 c4 bigint as (c1+1)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "change c4 c4 bigint generated always as (c1+1)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "change c4 c4 bigint generated always as (c1+2) virtual");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "change c4 c4 bigint as (c1+3) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "change c5 c5 bigint generated always as (c1+3) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "add c6 int as (c1+4)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "add c7 int generated always as (c1+4)");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "add c8 int generated always as (c1+5) virtual");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "add c9 int as (c1+6) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        sql = String.format(alterTable, "add cx int generated always as (c1+6) stored");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+
+        dropTableIfExists(tableName);
     }
 
     @Override

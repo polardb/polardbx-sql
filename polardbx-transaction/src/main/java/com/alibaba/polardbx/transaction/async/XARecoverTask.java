@@ -18,11 +18,13 @@ package com.alibaba.polardbx.transaction.async;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
@@ -66,7 +68,7 @@ public class XARecoverTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(XARecoverTask.class);
 
-    private static final long RETRY_PERIOD = TimeUnit.SECONDS.toNanos(60);
+    private static final long RETRY_PERIOD = TimeUnit.SECONDS.toNanos(60 * 60);
 
     private final TransactionExecutor executor;
 
@@ -112,8 +114,10 @@ public class XARecoverTask implements Runnable {
             }
 
             for (IDataSource dataSource : instanceDataSources.values()) {
-                recoverInstance(dataSource, groupSet);
+                recoverInstance(dataSource, groupSet, schema);
             }
+
+            TransactionManager.getInstance(schema).setFirstRecover(false);
         } catch (Throwable ex) {
             logger.error("Failed to check XA RECOVER transactions", ex);
         }
@@ -126,8 +130,12 @@ public class XARecoverTask implements Runnable {
      * @param groups All groups in this APPNAME, to filter out groups of other databases
      * @return a map from group name to prepared transactions on it
      */
-    private void recoverInstance(IDataSource dataSource, Set<String> groups) {
+    private void recoverInstance(IDataSource dataSource, Set<String> groups, String schema) {
         try (IConnection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            if (conn.isWrapperFor(XConnection.class)) {
+                // Note: XA RECOVER will hold the LOCK_transaction_cache lock, so never block it.
+                conn.unwrap(XConnection.class).setDefaultTokenCount(Integer.MAX_VALUE);
+            }
             ResultSet rs = stmt.executeQuery("XA RECOVER");
 
             // Result set of XA RECOVER
@@ -167,12 +175,12 @@ public class XARecoverTask implements Runnable {
                 final Set<PreparedXATrans> lastPreparedSet = lastPreparedSets.get(group);
                 final Set<PreparedXATrans> currentPreparedSet = e.getValue();
 
-                // Roll back or forward transactions that appeared twice
-                if (lastPreparedSet != null) {
+                // Roll back or forward transactions that appeared twice, or this is the first round of recover task.
+                if (TransactionManager.getInstance(schema).isFirstRecover() || lastPreparedSet != null) {
                     Iterator<PreparedXATrans> iterator = currentPreparedSet.iterator();
                     while (iterator.hasNext()) {
                         PreparedXATrans next = iterator.next();
-                        if (lastPreparedSet.contains(next)) {
+                        if (TransactionManager.getInstance(schema).isFirstRecover() || lastPreparedSet.contains(next)) {
                             if (rollBackOrForward(next, stmt)) {
                                 iterator.remove();
                             }
@@ -197,7 +205,8 @@ public class XARecoverTask implements Runnable {
         if (schemaAndGroup == null) {
             TransactionLogger.error(transInfo.transId, "Recovery failed: cannot find schema and group");
             long firstSeen = badGroupUniqueIds.getUnchecked(transInfo.primaryGroupUid);
-            if (System.nanoTime() - firstSeen > RETRY_PERIOD) {
+            if (InstConfUtil.getBool(ConnectionParams.ROLLBACK_UNKNOWN_XA_TRANSACTION)
+                && System.nanoTime() - firstSeen > RETRY_PERIOD) {
                 // Cannot find schema and group for it. This is strange... Just roll it back
                 TransactionLogger.warn(transInfo.transId, "rollback unknown XA transaction");
                 return tryRollback(stmt, trans);

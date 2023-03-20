@@ -72,7 +72,6 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
             for (Map.Entry<String, StatisticManager.CacheLine> entry : entryTmp.getValue().entrySet()) {
                 String tableName = entry.getKey();
                 StatisticManager.CacheLine cacheLine = entry.getValue();
-                Map<String, TopN> topNMap = cacheLine.getTopNMap();
                 Map<String, Histogram> histogramMap = cacheLine.getHistogramMap();
 
                 TableMeta tableMeta;
@@ -105,11 +104,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                     objects[4] = statisticResult.getLongValue();
                     objects[5] = statisticResult.getSource();
 
-                    if (topNMap != null && topNMap.get(columnName) != null) {
-                        objects[6] = TopN.serializeToJson(topNMap.get(columnName));
-                    } else {
-                        objects[7] = null;
-                    }
+                    objects[6] = TopN.serializeToJson(cacheLine.getTopN(columnName));
                     if (histogramMap != null && histogramMap.get(columnName) != null) {
                         objects[7] = Histogram.serializeToJson(histogramMap.get(columnName));
                     } else {
@@ -139,12 +134,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                         StatisticManager.getInstance().getCardinality(schema, tableName, columnsName, false);
                     objects[4] = statisticResult.getLongValue();
                     objects[5] = statisticResult.getSource();
-
-                    if (topNMap != null && topNMap.get(columnsName) != null) {
-                        objects[6] = TopN.serializeToJson(topNMap.get(columnsName));
-                    } else {
-                        objects[6] = null;
-                    }
+                    objects[6] = TopN.serializeToJson(cacheLine.getTopN(columnsName));
                     if (histogramMap != null && histogramMap.get(columnsName) != null) {
                         objects[7] = Histogram.serializeToJson(histogramMap.get(columnsName));
                     } else {

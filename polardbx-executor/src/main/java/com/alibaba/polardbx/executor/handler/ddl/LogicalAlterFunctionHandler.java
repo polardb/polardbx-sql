@@ -19,13 +19,13 @@ import org.apache.calcite.sql.SqlAlterProcedure;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LogicalAlterFunctionHandler extends LogicalCommonDdlHandler{
+public class LogicalAlterFunctionHandler extends LogicalCommonDdlHandler {
     public LogicalAlterFunctionHandler(IRepository repo) {
         super(repo);
     }
 
     @Override
-    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext){
+    public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
         List<DdlTask> taskList = new ArrayList<>();
@@ -35,7 +35,8 @@ public class LogicalAlterFunctionHandler extends LogicalCommonDdlHandler{
         return executableDdlJob;
     }
 
-    private AlterFunctionModifyMetaTask getAlterFunctionTask(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+    private AlterFunctionModifyMetaTask getAlterFunctionTask(BaseDdlOperation logicalDdlPlan,
+                                                             ExecutionContext executionContext) {
         SqlAlterFunction alterFunction = ((LogicalAlterFunction) logicalDdlPlan).getSqlAlterFunction();
         return new AlterFunctionModifyMetaTask(logicalDdlPlan.getSchemaName(), null,
             alterFunction.getFunctionName(),

@@ -364,6 +364,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLAlterResour
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLCreateResourceGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLListResourceGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLShowPartitionsHeatmapStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
 import com.alibaba.polardbx.druid.util.FnvHash;
@@ -564,7 +565,8 @@ public class SQLStatementParser extends SQLParser {
                     SQLStatement stmt = statementList.get(statementList.size() - 1);
                     stmt.addAfterComment(lexer.readAndResetComments());
                 }
-                checkUnsupportedStatement(statementList);return;
+                checkUnsupportedStatement(statementList);
+                return;
             case SEMI: {
                 int line0 = lexer.getLine();
                 lexer.nextToken();
@@ -598,8 +600,6 @@ public class SQLStatementParser extends SQLParser {
                     && statementList.size() > 0
                     && statementList.get(statementList.size() - i) instanceof MySqlHintStatement) {
                     hintStatement = (MySqlHintStatement) statementList.get(statementList.size() - i);
-                } else if (i > 0 && !semi) {
-                    throw new ParserException("syntax error. " + lexer.info());
                 }
                 SQLStatement stmt = parseSelect();
                 stmt.setParent(parent);
@@ -870,6 +870,7 @@ public class SQLStatementParser extends SQLParser {
                 SQLStatement stmt = parseList();
                 if (stmt != null) {
                     statementList.add(stmt);
+                    stmt.setParent(parent);
                     continue;
                 } else {
                     lexer.reset(mark);
@@ -924,11 +925,6 @@ public class SQLStatementParser extends SQLParser {
                 statementList.add(stmt);
                 stmt.setParent(parent);
 
-                if (parent instanceof SQLBlockStatement
-                    && DbType.mysql == dbType) {
-                    return;
-                }
-
                 continue;
             }
 
@@ -958,11 +954,6 @@ public class SQLStatementParser extends SQLParser {
 
                 statementList.add(stmt);
                 stmt.setParent(parent);
-
-                if (parent instanceof SQLBlockStatement
-                    && DbType.mysql == dbType) {
-                    return;
-                }
 
                 continue;
             }
@@ -1163,10 +1154,10 @@ public class SQLStatementParser extends SQLParser {
             break;
         case SCHEMA:
 
-                stmt = parseDropDatabaseOrSchema(false);
-                if (physical) {
-                    ((SQLDropDatabaseStatement) stmt).setPhysical(physical);
-                }
+            stmt = parseDropDatabaseOrSchema(false);
+            if (physical) {
+                ((SQLDropDatabaseStatement) stmt).setPhysical(physical);
+            }
 
             break;
         case FUNCTION:

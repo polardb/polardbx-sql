@@ -21,11 +21,12 @@ import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
 import com.alibaba.polardbx.atom.config.TAtomDsConfHandle;
 import com.alibaba.polardbx.atom.config.listener.AtomAppConfigChangeListener;
 import com.alibaba.polardbx.atom.config.listener.AtomDbStatusListener;
-import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -309,7 +310,7 @@ public class TAtomDataSource extends AbstractTAtomDataSource {
 
     public String getDnId() {
         if (dnId == null) {
-            return "empty";
+            return IDataSource.EMPTY;
         }
         return dnId;
     }

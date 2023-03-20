@@ -109,6 +109,7 @@ public class ChunkBuilder {
                 && (sourceBlock instanceof SliceBlock)
                 && selSize <= sourceBlock.getPositionCount()) {
                 SliceBlock sliceBlock = (SliceBlock) sourceBlock;
+
                 if (sliceBlock.getSelection() != null) {
                     int[] oldSelection = sliceBlock.getSelection();
                     newSelection = new int[selSize];
@@ -140,8 +141,7 @@ public class ChunkBuilder {
                 targetBlocks[channel]
                     = new DecimalBlock(DataTypes.DecimalType, decimalBlock.getMemorySegments(),
                     decimalBlock.nulls(), decimalBlock.hasNull(), selSize,
-                    newSelection, decimalBlock.isSimple(), decimalBlock.getInt1Pos(), decimalBlock.getInt2Pos(),
-                    decimalBlock.getFracPos());
+                    newSelection, decimalBlock.getState());
             } else if (enableDelay
                 && (sourceBlock instanceof DateBlock)
                 && selSize <= sourceBlock.getPositionCount()) {
@@ -158,7 +158,8 @@ public class ChunkBuilder {
                 // delay for date block
                 targetBlocks[channel]
                     = new DateBlock(0, selSize,
-                    dateBlock.nulls(), dateBlock.getPacked(), dateBlock.getType(), dateBlock.getTimezone(), newSelection);
+                    dateBlock.nulls(), dateBlock.getPacked(), dateBlock.getType(), dateBlock.getTimezone(),
+                    newSelection);
             } else if (enableDelay
                 && (sourceBlock instanceof IntegerBlock)
                 && selSize <= sourceBlock.getPositionCount()) {
@@ -174,7 +175,8 @@ public class ChunkBuilder {
                 }
                 // delay for date block
                 targetBlocks[channel]
-                    = new IntegerBlock(integerBlock.getType(), integerBlock.intArray(), integerBlock.nulls(), integerBlock.hasNull(), selSize, newSelection);
+                    = new IntegerBlock(integerBlock.getType(), integerBlock.intArray(), integerBlock.nulls(),
+                    integerBlock.hasNull(), selSize, newSelection);
             } else {
                 // normal
                 for (int position : positions) {

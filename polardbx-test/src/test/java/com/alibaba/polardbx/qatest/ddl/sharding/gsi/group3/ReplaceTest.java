@@ -39,6 +39,8 @@ import static org.hamcrest.Matchers.is;
 public class ReplaceTest extends DDLBaseNewDBTestCase {
     private static final String DISABLE_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI=FALSE";
     private static final String FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE";
+    private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
+    private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
 
     private static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -2753,7 +2755,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             JdbcUtil.executeUpdateSuccess(conn, replace);
             List<List<String>> trace = getTrace(conn);
 
-            for (List<String> row: trace) {
+            for (List<String> row : trace) {
                 String phySql = row.get(row.size() - 4);
                 Assert.assertFalse(phySql.contains("REPLACE"));
             }
@@ -2794,7 +2796,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             List<List<String>> trace = getTrace(conn);
             boolean hasReplace = false;
 
-            for (List<String> row: trace) {
+            for (List<String> row : trace) {
                 String phySql = row.get(row.size() - 4);
                 hasReplace |= phySql.contains("REPLACE");
             }
@@ -3008,17 +3010,16 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
 
         String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
-        JdbcUtil.executeUpdateSuccess(tddlConnection,"trace " +  buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
         List<List<String>> trace = getTrace(tddlConnection);
-            String phySql = trace.get(0).get(trace.get(0).size() - 4);
-            Assert.assertFalse(phySql.contains("UNION"));
+        String phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertFalse(phySql.contains("UNION"));
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + replace);
         trace = getTrace(tddlConnection);
         phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertTrue(phySql.contains("UNION"));
     }
-
 
     /**
      * 检查是否限制了物理 SQL 的 IN 数量
@@ -3049,45 +3050,57 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
         // no limit, no partition pruning on primary table
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
 
         // limit 1
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 12 * 2 + gsiTopology.size() * 3));
 
         // limit 3
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 4 * 2 + gsiTopology.size() * 3));
 
         // limit 5
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 5 + gsiTopology.size() * 3));
 
         // limit -1, same as no limit
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
     }
 
     @Test
     public void testLogicalReplaceUsingIn() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
 
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", false, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", true, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", true, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", true, true, false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", false, true, true,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", false, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", false, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", true, true, true,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", true, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", true, true, false,
+            REPLACE_PARAMS);
     }
 
     @Test
@@ -3119,5 +3132,64 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<List<Object>> allResult = JdbcUtil.getAllResult(resultSet);
 
         Assert.assertThat(allResult.size(), Matchers.is(1));
+    }
+
+    @Test
+    public void testReplaceJson() {
+        final String tableName = "replace_json_tbl";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testReplaceJson1() {
+        final String tableName = "replace_json_tbl1";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
     }
 }

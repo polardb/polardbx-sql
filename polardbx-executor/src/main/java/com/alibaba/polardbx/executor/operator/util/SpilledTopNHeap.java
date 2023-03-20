@@ -464,7 +464,7 @@ public class SpilledTopNHeap {
         }
 
         public long getEstimatedSizeInBytes() {
-            return page.estimateSize() + sizeOf(reference) + INSTANCE_SIZE;
+            return page.getElementUsedBytes() + sizeOf(reference) + INSTANCE_SIZE;
         }
     }
 

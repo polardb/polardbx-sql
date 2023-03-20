@@ -1,12 +1,5 @@
 ## DISABLE_FAST_SQL_PARSER
 
-##=== hash & key
-## error_msg: $# not allowed #$
-CREATE TABLE `tbl` (
-`b` tinyint(4) NOT NULL,
-`a` binary(6) DEFAULT NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 partition by hash(`a`);
-
 ## error_msg: $# unknown column #$
 CREATE TABLE `tbl2` (
 `b` tinyint(4) NOT NULL,

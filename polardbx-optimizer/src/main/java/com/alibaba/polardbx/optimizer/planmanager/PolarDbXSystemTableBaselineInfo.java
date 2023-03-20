@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
+import com.alibaba.druid.util.JdbcUtils;
+import com.alibaba.druid.util.StringUtils;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.util.JdbcUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
@@ -36,6 +37,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -152,6 +154,10 @@ public class PolarDbXSystemTableBaselineInfo {
                 try {
                     int baselineId = rs.getInt("BASELINE_INFO.ID");
                     String schema = rs.getString("BASELINE_INFO.SCHEMA_NAME");
+                    if (StringUtils.isEmpty(schema)) {
+                        continue;
+                    }
+                    schema = schema.toLowerCase(Locale.ROOT);
                     String parameterSql = rs.getString("BASELINE_INFO.SQL");
                     Set<Pair<String, String>> tableSet =
                         BaselineInfo.deserializeTableSet(rs.getString("BASELINE_INFO.TABLE_SET"));

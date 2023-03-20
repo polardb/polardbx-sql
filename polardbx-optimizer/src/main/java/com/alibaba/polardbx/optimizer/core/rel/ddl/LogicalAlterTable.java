@@ -102,6 +102,7 @@ import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.ListUtils;
 
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -183,7 +184,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
     }
 
     public boolean isAlterEngine() {
-        return sqlAlterTable != null && sqlAlterTable.getTableOptions() != null && sqlAlterTable.getTableOptions().getEngine() != null;
+        return sqlAlterTable != null && sqlAlterTable.getTableOptions() != null
+            && sqlAlterTable.getTableOptions().getEngine() != null;
     }
 
     public boolean isAlterAsOfTimeStamp() {
@@ -1004,6 +1006,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
         TableMeta tableMeta = sm.getTable(this.tableName);
+        TableMeta currentTableMeta = sm.getTable(tableName);
         preparedData.setTableVersion(tableMeta.getVersion());
 
         List<String> droppedColumns = getAlteredColumns(sqlAlterTable, SqlAlterTable.ColumnOpt.DROP);
@@ -1036,6 +1039,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
         List<String> dropFiles = new ArrayList<>();
 
         Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        MetaUtils.TableColumns tableColumns = MetaUtils.TableColumns.build(tableMeta);
 
         for (SqlAlterSpecification alterItem : GeneralUtil.emptyIfNull(sqlAlterTable.getAlters())) {
             if (alterItem instanceof SqlChangeColumn) {
@@ -1135,6 +1140,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 }
             } else if (alterItem instanceof SqlDropPrimaryKey) {
                 primaryKeyDropped = true;
+                droppedIndexes.add("PRIMARY");
             } else if (alterItem instanceof SqlAddPrimaryKey) {
                 SqlAddPrimaryKey addPrimaryKey = (SqlAddPrimaryKey) alterItem;
                 for (SqlIndexColumnName indexColumnName : addPrimaryKey.getColumns()) {
@@ -1175,6 +1181,29 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 SqlConvertToCharacterSet convertCharset = (SqlConvertToCharacterSet) alterItem;
                 preparedData.setCharset(convertCharset.getCharset());
                 preparedData.setCollate(convertCharset.getCollate());
+                updatedColumns.addAll(
+                    currentTableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList()));
+                if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                    boolean reHash = false;
+                    if (CollectionUtils.isNotEmpty(tableColumns.shardingKeys)) {
+                        reHash = tableColumns.shardingKeys.stream().anyMatch(
+                            e -> tableMeta.getColumnIgnoreCase(e).getDataType().getSqlType() == Types.VARCHAR
+                                || tableMeta.getColumnIgnoreCase(e).getDataType().getSqlType() == Types.CHAR);
+                    }
+
+                    if (CollectionUtils.isNotEmpty(tableColumns.gsiShardingKeys.values())) {
+                        for (Set<String> cset : tableColumns.gsiShardingKeys.values()) {
+                            reHash = reHash || cset.stream().anyMatch(
+                                e -> tableMeta.getColumnIgnoreCase(e).getDataType().getSqlType() == Types.VARCHAR
+                                    || tableMeta.getColumnIgnoreCase(e).getDataType().getSqlType() == Types.CHAR);
+                        }
+                    }
+
+                    if (reHash) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
+                            "ALTER TABLE CONVERT TO CHARACTER SET is not supported yet.");
+                    }
+                }
             } else if (alterItem instanceof SqlEnableKeys) {
                 SqlEnableKeys enableKeys = (SqlEnableKeys) alterItem;
                 preparedData.setEnableKeys(enableKeys.getEnableType());
@@ -1200,9 +1229,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
         }
 
         if (sqlAlterTable instanceof SqlAlterTableAsOfTimeStamp) {
-            preparedData.setTimestamp(((SqlAlterTableAsOfTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
+            preparedData.setTimestamp(
+                ((SqlAlterTableAsOfTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
         } else if (sqlAlterTable instanceof SqlAlterTablePurgeBeforeTimeStamp) {
-            preparedData.setTimestamp(((SqlAlterTablePurgeBeforeTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
+            preparedData.setTimestamp(
+                ((SqlAlterTablePurgeBeforeTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
         }
 
         preparedData.setAlterDefaultColumns(alterDefaultColumns);
@@ -1418,28 +1449,28 @@ public class LogicalAlterTable extends LogicalTableOperation {
                         getAlterColumnSpecification(tableMeta, changeColumn);
                     alterColumnSpecificationSets.add(specificationSet);
 
-                        if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
-                            if ((tableColumns.isPrimaryKey(columnName) ||
-                                tableColumns.isShardingKey(columnName) ||
-                                tableColumns.isGsiShardingKey(columnName))) {
-                                if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                        "Do not support change column name or type on primary key or sharding key on table with GSI");
-                                }
-                            } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
-                                if (!paramManager
-                                    .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
-                                    !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                        "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
-                                }
-                            } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
-                                && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)
-                                && !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
+                    if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
+                        if ((tableColumns.isPrimaryKey(columnName) ||
+                            tableColumns.isShardingKey(columnName) ||
+                            tableColumns.isGsiShardingKey(columnName))) {
+                            if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Change column name or type included in GSI is not recommended");
+                                    "Do not support change column name or type on primary key or sharding key on table with GSI");
                             }
-                        } // Alter default, comment and order, so just let it go.
+                        } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
+                            if (!paramManager
+                                .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
+                                !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                    "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
+                            }
+                        } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
+                            && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)
+                            && !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                "Change column name or type included in GSI is not recommended");
+                        }
+                    } // Alter default, comment and order, so just let it go.
 
                     // Change alter warning.
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI) &&
@@ -1500,28 +1531,28 @@ public class LogicalAlterTable extends LogicalTableOperation {
                         getAlterColumnSpecification(tableMeta, modifyColumn);
                     alterColumnSpecificationSets.add(specificationSet);
 
-                        if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
-                            if ((tableColumns.isPrimaryKey(columnName) ||
-                                tableColumns.isShardingKey(columnName) ||
-                                tableColumns.isGsiShardingKey(columnName))) {
-                                if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                        "Do not support change column name or type on primary key or sharding key on table with GSI");
-                                }
-                            } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
-                                if (!paramManager
-                                    .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
-                                    !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                        "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
-                                }
-                            } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
-                                && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY) &&
-                            !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
+                    if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
+                        if ((tableColumns.isPrimaryKey(columnName) ||
+                            tableColumns.isShardingKey(columnName) ||
+                            tableColumns.isGsiShardingKey(columnName))) {
+                            if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                                    "Change column name or type included in GSI is not recommended");
+                                    "Do not support change column name or type on primary key or sharding key on table with GSI");
                             }
-                        } // Alter default, comment and order, so just let it go.
+                        } else if (tableColumns.existsInGsiUniqueKey(columnName, false)) {
+                            if (!paramManager
+                                .getBoolean(ConnectionParams.ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI) &&
+                                !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                    "Change column included in UGSI is extremely dangerous which may corrupt the unique constraint");
+                            }
+                        } else if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI)
+                            && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY) &&
+                            !paramManager.getBoolean(ConnectionParams.OMC_ALTER_TABLE_WITH_GSI)) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                                "Change column name or type included in GSI is not recommended");
+                        }
+                    } // Alter default, comment and order, so just let it go.
 
                     // Modify alter warning.
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI) &&

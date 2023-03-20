@@ -20,7 +20,6 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.engine.CachePolicy;
@@ -31,12 +30,9 @@ import com.alibaba.polardbx.gms.engine.FileStorageInfoRecord;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.aliyun.oss.OSS;
-import com.aliyun.oss.OSSClientBuilder;
 import com.google.common.collect.ImmutableList;
 import lombok.Getter;
 import org.apache.hadoop.fs.FileSystem;
@@ -95,6 +91,11 @@ public class CreateFileStorageTask extends BaseGmsTask {
             record1.accessKeyId = items.get(FileStorageInfoKey.ACCESS_KEY_ID);
             record1.accessKeySecret = PasswdUtil.encrypt(items.get(FileStorageInfoKey.ACCESS_KEY_SECRET));
 
+            if (fileStorageInfoAccessor.query(Engine.of(engineName)).size() != 0) {
+                throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_EXISTS,
+                    String.format("FileStorage %s already exists", engineName));
+            }
+
             // check the endpoint is right
             int wait = 10;
             List<String> unexpectedErrors = new ArrayList<>();
@@ -126,7 +127,8 @@ public class CreateFileStorageTask extends BaseGmsTask {
         }
 
         if (fileStorageInfoAccessor.query(Engine.of(engineName)).size() != 0) {
-            throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_EXISTS, String.format("FileStorage %s already exists", engineName));
+            throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_EXISTS,
+                String.format("FileStorage %s already exists", engineName));
         }
         fileStorageInfoAccessor.insertIgnore(ImmutableList.of(record1));
 

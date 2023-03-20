@@ -135,4 +135,9 @@ public class MppMockConnection implements ITConnection {
     public boolean isClosed() {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public boolean isMppConnection() {
+        return true;
+    }
 }

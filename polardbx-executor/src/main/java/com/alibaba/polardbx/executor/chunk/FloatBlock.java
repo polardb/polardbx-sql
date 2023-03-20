@@ -35,16 +35,13 @@ public class FloatBlock extends AbstractBlock {
     public FloatBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new float[slotLen];
-
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Float.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public FloatBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, float[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Float.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -175,8 +172,13 @@ public class FloatBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Float.BYTES * positionCount;
     }
 }
 

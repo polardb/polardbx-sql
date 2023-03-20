@@ -19,6 +19,8 @@ package com.alibaba.polardbx.qatest.dql.auto.select;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataOperator;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -32,8 +34,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectErrorAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.updateErrorAssert;
 
 /**
  * 子查询测试
@@ -761,6 +765,43 @@ public class SelectWithSubqueryTest extends AutoReadBaseTestCase {
             + " where a.varchar_test = varchar_test )  from  " + baseTwoTableName + " a";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, false);
 
+    }
+
+    /**
+     * test ERR_SUBQUERY_VALUE_NOT_READY error
+     */
+    static boolean testSubqueryWithGsi = false;
+
+    @Test
+    public void testSubqueryWithGsi() {
+        if (testSubqueryWithGsi) {
+            return;
+        }
+        testSubqueryWithGsi = true;
+        // prepare catalog
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table if exists testSubqueryWithGsi1");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table if exists testSubqueryWithGsi2");
+        String createTbl1 =
+            "CREATE TABLE if not exists `testSubqueryWithGsi1` ( `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, `customer_id` bigint(20) DEFAULT NULL COMMENT '租户id', `shipper` varchar(64) DEFAULT NULL COMMENT '托运人code', PRIMARY KEY USING BTREE (`id`), INDEX `customer_shipper` USING BTREE (`customer_id`, `shipper`)) ENGINE = InnoDB DEFAULT CHARSET = utf8";
+        String createTbl2 =
+            "CREATE TABLE if not exists `testSubqueryWithGsi2` ( `customer_id` bigint(20) NOT NULL , PRIMARY KEY USING BTREE (`customer_id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTbl1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTbl2);
+
+        String sql = "SELECT 1\n"
+            + "FROM testSubqueryWithGsi1\n"
+            + "WHERE customer_id = 1000\n"
+            + "  AND (customer_id IN\n"
+            + "         (SELECT customer_id\n"
+            + "          FROM testSubqueryWithGsi2)\n"
+            + "       OR customer_id NOT IN\n"
+            + "         (SELECT customer_id\n"
+            + "          FROM testSubqueryWithGsi2));";
+        JdbcUtil.executeQuery(sql, tddlConnection);
+
+        // clear
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table if exists testSubqueryWithGsi1");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table if exists testSubqueryWithGsi2");
     }
 
 }

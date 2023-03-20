@@ -28,7 +28,8 @@ import java.util.List;
  */
 public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("MODIFY PARTITION VALUES", SqlKind.MODIFY_PARTITION);
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("MODIFY PARTITION VALUES", SqlKind.MODIFY_PARTITION);
 
     protected final SqlPartition partition;
     protected final boolean isAdd;
@@ -36,7 +37,7 @@ public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
     protected SqlNode parent;
 
-    public SqlAlterTableModifyPartitionValues(SqlParserPos pos, SqlPartition partitionDef, boolean isAdd){
+    public SqlAlterTableModifyPartitionValues(SqlParserPos pos, SqlPartition partitionDef, boolean isAdd) {
         super(pos);
         this.partition = partitionDef;
         this.isAdd = isAdd;
@@ -55,7 +56,7 @@ public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, isAdd?"ADD":"DROP", "");
+        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, isAdd ? "ADD" : "DROP", "");
 
         partition.unparse(writer, leftPrec, rightPrec);
 

@@ -21,14 +21,11 @@ import com.alibaba.polardbx.common.utils.InstanceRole;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 
-
 public class ConfigDataMode {
 
     public static final String CONFIG_MODE = "tddl.config.mode";
 
-
     private static Mode mode;
-
 
     private static Mode configServerMode;
 
@@ -91,10 +88,10 @@ public class ConfigDataMode {
         supportSingleDbMultiTbs = BooleanUtils.toBoolean(singleDbMultiTbsSupported);
 
         String removeDdlSupported = System.getProperty("supportRemoveDdl");
-            supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
+        supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
 
-            String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
-            supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
+        String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
+        supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
 
         String simpleSequenceAllowed = System.getProperty("allowSimpleSequence");
         allowSimpleSequence = BooleanUtils.toBoolean(simpleSequenceAllowed);
@@ -161,6 +158,15 @@ public class ConfigDataMode {
 
     public static boolean isFastMock() {
         return mode != null && mode == Mode.FAST_MOCK;
+    }
+
+    // ========= The DB type of Server =========
+    public static boolean isPolarDbX() {
+        if (isFastMock()) {
+            return false;
+        }
+        // PolarDbX load configs by GMS/MetaDB
+        return configServerMode == Mode.GMS;
     }
 
     public static boolean isMasterMode() {

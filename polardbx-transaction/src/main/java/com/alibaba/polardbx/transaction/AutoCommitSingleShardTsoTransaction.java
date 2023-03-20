@@ -25,6 +25,8 @@ import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -34,8 +36,6 @@ import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashMap;
-import java.util.Map;
 
 import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
 
@@ -73,6 +73,7 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
     @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
             false, rw.equals(ITransaction.RW.WRITE), executionContext);
 
@@ -91,10 +92,9 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
                 topology = ((com.alibaba.polardbx.transaction.TransactionManager) manager).getTransactionExecutor()
                     .getTopology();
             }
-            final Map<String, Long> lsnMap = new HashMap<>(1);
-            ExecUtils.getLsn(topology, group, lsnMap);
-            Long masterLsn = lsnMap.get(group);
-            conn.executeLater("SET read_lsn = " + masterLsn.toString());
+            TGroupDataSource groupDataSource = (TGroupDataSource) topology.get(group).getDataSource();
+            long masterLsn = GroupingFetchLSN.getInstance().getLsn(groupDataSource);
+            conn.executeLater(String.format("SET read_lsn = %d", masterLsn));
         }
 
         if (omitTso) {

@@ -125,6 +125,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemGetConfigStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemRefreshStorageStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemReloadStorageStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemSetConfigStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddClusteringKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
@@ -350,6 +352,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowStorage;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeMasterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeReplicationFilterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlKillStatement;
@@ -674,6 +677,14 @@ public interface SQLASTVisitor {
     boolean visit(SQLChangeRoleStatement x);
 
     void endVisit(SQLChangeRoleStatement x);
+
+    boolean visit(SQLAlterSystemRefreshStorageStatement x);
+
+    void endVisit(SQLAlterSystemRefreshStorageStatement x);
+
+    boolean visit(SQLAlterSystemReloadStorageStatement x);
+
+    void endVisit(SQLAlterSystemReloadStorageStatement x);
 
     boolean visit(SQLDropIndexStatement x);
 
@@ -1350,6 +1361,10 @@ public interface SQLASTVisitor {
 
     boolean visit(SQLShowDatabasesStatement x);
 
+    void endVisit(DrdsShowStorage x);
+
+    boolean visit(DrdsShowStorage x);
+
     void endVisit(SQLShowTableGroupsStatement x);
 
     boolean visit(SQLShowTableGroupsStatement x);
@@ -1785,6 +1800,7 @@ public interface SQLASTVisitor {
     void endVisit(SQLAlterTableDropFile x);
 
     boolean visit(SQLAlterTableDropFile x);
+
     boolean visit(SQLCreateJoinGroupStatement x);
 
     void endVisit(SQLCreateJoinGroupStatement x);

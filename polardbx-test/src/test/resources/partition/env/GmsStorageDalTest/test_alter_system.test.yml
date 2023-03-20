@@ -1,0 +1,11 @@
+## DISABLE_FAST_SQL_PARSER
+
+desc information_schema.storage;
+desc information_schema.storage_replicas;
+desc information_schema.full_storage;
+
+#select distinct storage_inst_id from information_schema.storage order by storage_inst_id;
+#select distinct storage_inst_id,replicas from information_schema.storage_replicas order by storage_inst_id,replicas;
+#select distinct dn,node from information_schema.full_storage where info_from='MetaDB' order by dn,node;
+#alter system refresh storage 'polardbx-storage-meta' set `vip_port`='127.0.0.1:3306';
+#select distinct dn,node from information_schema.full_storage where info_from='MetaDB' order by dn,node;

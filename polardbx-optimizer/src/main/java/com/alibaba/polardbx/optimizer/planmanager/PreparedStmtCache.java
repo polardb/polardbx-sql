@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.planmanager;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
+import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 
 public class PreparedStmtCache {
     /**
@@ -36,6 +37,8 @@ public class PreparedStmtCache {
     private String javaCharset;
     private byte[] catalog;
     private FieldPacket[] fieldPackets;
+
+    private PrivilegeContext privilegeContext;
 
     private PreparedStmtCache() {
         this.stmt = null;
@@ -95,5 +98,13 @@ public class PreparedStmtCache {
 
     public void setFieldPackets(FieldPacket[] fieldPackets) {
         this.fieldPackets = fieldPackets;
+    }
+
+    public PrivilegeContext getPrivilegeContext() {
+        return privilegeContext;
+    }
+
+    public void setPrivilegeContext(PrivilegeContext privilegeContext) {
+        this.privilegeContext = privilegeContext;
     }
 }

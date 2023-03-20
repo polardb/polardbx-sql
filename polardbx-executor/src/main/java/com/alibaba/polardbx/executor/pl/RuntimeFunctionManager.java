@@ -32,7 +32,7 @@ public class RuntimeFunctionManager {
             return new ArrayList<>();
         }
         List<RuntimeFunction> functions = new ArrayList<>();
-        for(Map.Entry<String, Map<Integer, RuntimeFunction>> funcEntry: runtimeFunctions.entrySet()) {
+        for (Map.Entry<String, Map<Integer, RuntimeFunction>> funcEntry : runtimeFunctions.entrySet()) {
             String key = funcEntry.getKey();
             if (key.startsWith(traceId)) {
                 functions.addAll(funcEntry.getValue().values());

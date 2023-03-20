@@ -190,6 +190,11 @@ public class OSSTableScanClient implements Closeable {
         }
     }
 
+    public synchronized void setIsFinish() {
+        this.isFinished = true;
+        notifyBlockedCallers();
+    }
+
     private boolean isReady() {
         return results.peek() != null || splits.isEmpty();
     }
@@ -260,8 +265,7 @@ public class OSSTableScanClient implements Closeable {
                     }
                 }
                 // If physical table list or file list is empty, notify the blocked thread there.
-                notifyBlockedCallers();
-                isFinished = true;
+                setIsFinish();
             } catch (Throwable t) {
                 setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, t.getMessage(), t));
             }
@@ -325,7 +329,6 @@ public class OSSTableScanClient implements Closeable {
             }
         }
     }
-
 
     /**
      * The Pool hold all the buffer in a Prefetch thread.
@@ -443,7 +446,8 @@ public class OSSTableScanClient implements Closeable {
                     bloomFilterCondition = bloomFiltersMap.values().iterator().next();
                 } else {
                     bloomFilterCondition = rexBuilder
-                        .makeCall(TddlOperatorTable.AND, bloomFiltersMap.values().stream().collect(Collectors.toList()));
+                        .makeCall(TddlOperatorTable.AND,
+                            bloomFiltersMap.values().stream().collect(Collectors.toList()));
                 }
 
                 if (ossTableScan.getOrcNode().getFilters().isEmpty()) {
@@ -471,7 +475,8 @@ public class OSSTableScanClient implements Closeable {
             } else {
                 Parameters parameters = context.getParams();
                 OSSPredicateBuilder predicateBuilder =
-                    new OSSPredicateBuilder(parameters, ossTableScan.getOrcNode().getInputProjectRowType().getFieldList(),
+                    new OSSPredicateBuilder(parameters,
+                        ossTableScan.getOrcNode().getInputProjectRowType().getFieldList(),
                         bloomFilterInfos, ossTableScan.getOrcNode().getRowType().getFieldList(),
                         CBOUtil.getTableMeta(ossTableScan.getTable()), sessionProperties);
                 Boolean valid = rexNode.accept(predicateBuilder);

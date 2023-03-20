@@ -1990,4 +1990,83 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         }
         return null;
     }
+
+    public static void execDdlWithRetry(String schemaName, String tableName, String ddl, Connection conn) {
+        try {
+            try {
+                Statement stmt = conn.createStatement();
+                stmt.execute(ddl);
+            } catch (SQLException e) {
+                String msg = e.getMessage();
+                System.out.println(msg);
+                if (!(msg.contains("Deadlock found") || msg.contains("check status") || msg.contains(
+                    "Query timeout"))) {
+                    throw e;
+                }
+                // get ddl job id
+                String jobId = findDdlByTable(schemaName, tableName, conn);
+                if (jobId.isEmpty()) {
+                    return;
+                }
+                // retry 5 times
+                int retryCnt = 0;
+                while (true) {
+                    try {
+                        JdbcUtil.executeUpdateSuccess(conn, "continue ddl " + jobId);
+                        break;
+                    } catch (Throwable e1) {
+                        if (StringUtils.containsIgnoreCase(e1.getMessage(), "in RUNNING state")) {
+                            // already running, just wait to finish
+                            while (true) {
+                                String state = findDdlStateByTable(schemaName, tableName, conn);
+                                if (state.isEmpty()) {
+                                    // finish
+                                    return;
+                                } else if (!state.equalsIgnoreCase("RUNNING")) {
+                                    // pause for some reason, retry
+                                    break;
+                                }
+                                System.out.println("wait ddl job " + jobId + " to finish");
+                                Thread.sleep(1000);
+                            }
+                        }
+                        retryCnt++;
+                        if (retryCnt > 5) {
+                            throw e1;
+                        }
+                        System.out.println("retry " + retryCnt + " " + e1.getMessage());
+                        Thread.sleep(1000);
+                    }
+                }
+
+            }
+        } catch (Throwable e) {
+            Assert.fail(e.getMessage());
+        }
+    }
+
+    private static String findDdlByTable(String schemaName, String tableName, Connection conn) throws SQLException {
+        ResultSet rs = JdbcUtil.executeQuery("show ddl", conn);
+        String jobId = "";
+        while (rs.next()) {
+            if (rs.getString("OBJECT_SCHEMA").equalsIgnoreCase(schemaName) && rs.getString("OBJECT_NAME")
+                .equalsIgnoreCase(tableName)) {
+                jobId = rs.getString("JOB_ID");
+                break;
+            }
+        }
+        return jobId;
+    }
+
+    private static String findDdlStateByTable(String schemaName, String tableName, Connection conn)
+        throws SQLException {
+        ResultSet rs = JdbcUtil.executeQuery("show ddl", conn);
+        while (rs.next()) {
+            if (rs.getString("OBJECT_SCHEMA").equalsIgnoreCase(schemaName) && rs.getString("OBJECT_NAME")
+                .equalsIgnoreCase(tableName)) {
+                return rs.getString("STATE");
+            }
+        }
+        return "";
+    }
 }

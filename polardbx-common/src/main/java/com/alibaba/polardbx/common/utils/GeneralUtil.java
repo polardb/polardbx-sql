@@ -463,11 +463,12 @@ public class GeneralUtil {
             return Collections.emptyList();
         }
         List<ParameterContext> p = new LinkedList<>();
-        for (int i = 0; i < param.size(); i++) {
-            p.add(null);
-        }
-        for (Map.Entry<Integer, ParameterContext> entry : param.entrySet()) {
-            p.set(entry.getKey() - 1, entry.getValue());
+        for (int i = 1; i <= param.size(); i++) {
+            if (param.get(i) == null) {
+                p.add(null);
+            } else {
+                p.add(param.get(i));
+            }
         }
         return p;
     }
@@ -477,31 +478,39 @@ public class GeneralUtil {
         if (paramList == null || paramList.isEmpty()) {
             return paramList;
         }
-        int indexShift = 0;
+        boolean hasRawString = false;
+        for (ParameterContext parameterContext : paramList) {
+            if (parameterContext != null && parameterContext.getValue() instanceof RawString) {
+                hasRawString = true;
+                break;
+            }
+        }
+        if (!hasRawString) {
+            return paramList;
+        }
+        int indexCurrent = 1;
         for (ParameterContext parameterContext : paramList) {
             if (parameterContext.getValue() instanceof RawString) {
-                int index = (int) parameterContext.getArgs()[0];
                 for (Object o : ((RawString) parameterContext.getValue()).getObjList()) {
                     if (o instanceof List) {
                         for (Object sub : (List<?>) o) {
                             r.add(new ParameterContext(parameterContext.getParameterMethod(),
-                                new Object[] {index++, sub}));
-                            indexShift++;
+                                new Object[] {indexCurrent++, sub}));
                         }
                     } else {
-                        r.add(new ParameterContext(parameterContext.getParameterMethod(), new Object[] {index++, o}));
-                        indexShift++;
+                        r.add(new ParameterContext(parameterContext.getParameterMethod(),
+                            new Object[] {indexCurrent++, o}));
                     }
                 }
-                indexShift = indexShift - 1;
             } else {
-                if (indexShift > 0) {
+                if (parameterContext.getArgs()[0] == null || (int) parameterContext.getArgs()[0] != indexCurrent) {
                     Object[] args = parameterContext.getArgs().clone();
-                    args[0] = (int) args[0] + indexShift;
+                    args[0] = indexCurrent;
                     r.add(new ParameterContext(parameterContext.getParameterMethod(), args));
                 } else {
                     r.add(parameterContext);
                 }
+                indexCurrent++;
             }
         }
         return r;

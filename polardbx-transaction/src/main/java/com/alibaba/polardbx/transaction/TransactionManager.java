@@ -105,6 +105,17 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     // fair=true is necessary to prevent starvation
     private final ReadWriteLock lock = new ReentrantReadWriteLock(true);
 
+    // Whether it is the first time a XA recover task runs.
+    private volatile boolean firstRecover = true;
+
+    public Boolean isFirstRecover() {
+        return firstRecover;
+    }
+
+    public void setFirstRecover(boolean f) {
+        firstRecover = f;
+    }
+
     static {
         timestampOracle = new ClusterTimestampOracle();
         timestampOracle.init();

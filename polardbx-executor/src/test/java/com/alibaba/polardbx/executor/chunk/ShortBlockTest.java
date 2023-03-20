@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.optimizer.core.datatype.ShortType;
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -28,6 +30,12 @@ import static org.junit.Assert.assertTrue;
  * @author hongxi.chx
  */
 public class ShortBlockTest extends BaseBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        ShortBlock shortBlock = new ShortBlock(new ShortType(), 1024);
+        Assert.assertEquals(3072, shortBlock.getElementUsedBytes());
+    }
+
     @Test
     public void test() {
         final Short[] values = new Short[] {

@@ -107,6 +107,10 @@ public enum AccountType {
         return AccountType.GOD == this;
     }
 
+    public boolean isDBA() {
+        return AccountType.DBA == this;
+    }
+
     public boolean isUser() {
         return ROLE != this;
     }

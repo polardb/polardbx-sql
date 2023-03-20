@@ -49,13 +49,16 @@ public class LogicalReplace extends LogicalInsertIgnore {
     private final List<ReplaceRelocateWriter> gsiRelocateWriters;
     private final BroadCastReplaceScaleOutWriter broadCastReplaceScaleOutWriter;
 
+    private final boolean hasJsonColumn;
+
     public LogicalReplace(LogicalInsert insert,
                           InsertWriter primaryInsertWriter,
                           ReplaceRelocateWriter primaryRelocateWriter,
                           List<InsertWriter> gsiInsertWriters,
                           List<ReplaceRelocateWriter> gsiRelocateWriters,
                           BroadCastReplaceScaleOutWriter broadCastReplaceScaleOutWriter,
-                          List<String> selectListForDuplicateCheck
+                          List<String> selectListForDuplicateCheck,
+                          boolean hasJsonColumn
     ) {
         super(insert.getCluster(),
             insert.getTraitSet(),
@@ -89,6 +92,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiInsertWriters = gsiInsertWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     protected LogicalReplace(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -112,7 +116,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              List<RexNode> unOpitimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                              List<InsertWriter> gsiInsertIgnoreWriter, DistinctWriter primaryDeleteWriter,
                              List<DistinctWriter> gsiDeleteWriters, boolean usePartFieldChecker,
-                             Map<String, ColumnMeta> columnMetaMap) {
+                             Map<String, ColumnMeta> columnMetaMap, boolean hasJsonColumn) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
@@ -124,6 +128,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     @Override
@@ -172,7 +177,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getPrimaryDeleteWriter(),
             getGsiDeleteWriters(),
             isUsePartFieldChecker(),
-            getColumnMetaMap());
+            getColumnMetaMap(),
+            isHasJsonColumn());
         return newLogicalReplace;
     }
 
@@ -208,5 +214,9 @@ public class LogicalReplace extends LogicalInsertIgnore {
     public InsertWriter getPrimaryInsertWriter() {
         return Optional.ofNullable(this.primaryInsertWriter)
             .orElseGet(() -> getPrimaryRelocateWriter().getModifyWriter().unwrap(InsertWriter.class));
+    }
+
+    public boolean isHasJsonColumn() {
+        return hasJsonColumn;
     }
 }

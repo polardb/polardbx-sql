@@ -67,7 +67,7 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
 
     public void change(SequenceOptRecord record) {
         String seqName = genNameForNewSequence(record);
-        execute(String.format(CHANGE_START_WITH, seqName, record.startWith - 1));
+        execute(String.format(CHANGE_START_WITH, seqName, record.startWith - 1), false);
     }
 
     @Override
@@ -79,7 +79,8 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
     public int rename(SequenceOptRecord record) {
         String oldName = genNameForNewSequence(record);
         String newName = genNameForNewSequence(record.schemaName, record.newName);
-        return execute(String.format(RENAME_NEW_SEQ, oldName, newName));
+        execute(String.format(RENAME_NEW_SEQ, oldName, newName));
+        return 0;
     }
 
     public void drop(SequenceOptRecord record) {
@@ -87,10 +88,18 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
         execute(String.format(DROP_NEW_SEQ, seqName));
     }
 
-    private int execute(String sql) {
+    private void execute(String sql) {
+        execute(sql, true);
+    }
+
+    private void execute(String sql, boolean isDDL) {
         try {
             DdlMetaLogUtil.logSql(sql);
-            return MetaDbUtil.executeDDL(sql, connection);
+            if (isDDL) {
+                MetaDbUtil.executeDDL(sql, connection);
+            } else {
+                MetaDbUtil.execute(sql, connection);
+            }
         } catch (SQLException e) {
             LOGGER.error(String.format("Failed to execute sequence operation '%s'", sql), e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_NEW_SEQUENCE, e, sql, e.getMessage());

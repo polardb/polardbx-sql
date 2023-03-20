@@ -16,10 +16,14 @@
 
 package com.alibaba.polardbx.rpc;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamAccessor;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamRecord;
 import com.alibaba.polardbx.gms.metadb.cdc.CdcDataAccessor;
 import com.alibaba.polardbx.gms.metadb.cdc.CdcDumperRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -35,6 +39,7 @@ import io.grpc.stub.StreamObserver;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -45,7 +50,6 @@ import java.util.concurrent.TimeUnit;
 public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
     protected static final Logger logger = LoggerFactory.getLogger(CdcRpcClient.class);
 
-    private static final String CDC_DUMPER_MASTER_ROLE = "M";
     private static CdcRpcClient cdcRpcClient;
 
     public CdcRpcClient() {
@@ -65,23 +69,45 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
             if (dumpers == null) {
                 return null;
             }
-            Optional<CdcDumperRecord> master = dumpers.stream().filter(
-                d -> d != null && CDC_DUMPER_MASTER_ROLE.equals(d.getRole()))
-                .findFirst();
+            Optional<CdcDumperRecord> master = dumpers.stream().findFirst();
             if (master.isPresent()) {
                 CdcDumperRecord cdr = master.get();
                 return cdr.getIp() + ":" + cdr.getPort();
             }
-
         } catch (Exception e) {
             logger.error("get cdc records fail", e);
         }
         return StringUtils.EMPTY;
     }
 
+    private static String getCdcTargetFromMetaDb(String streamName) {
+        BinlogStreamAccessor cdcDataAccessor = new BinlogStreamAccessor();
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            cdcDataAccessor.setConnection(metaDbConn);
+            List<BinlogStreamRecord> dumpers = cdcDataAccessor.getStream(streamName);
+            if (dumpers == null || dumpers.size() == 0) {
+                throw new TddlNestableRuntimeException("can not find target cdc endpoint for stream: " + streamName);
+            }
+            BinlogStreamRecord cdr = dumpers.get(0);
+            return cdr.getHost() + ":" + cdr.getPort();
+        } catch (SQLException e) {
+            logger.error("get cdc records fail", e);
+            throw new TddlNestableRuntimeException("get cdc records fail for stream: " + streamName);
+        }
+    }
+
     public CdcServiceBlockingStub getCdcServiceBlockingStub() {
         ManagedChannel channel = ManagedChannelBuilder
             .forTarget(getCdcTargetFromMetaDb())
+            .usePlaintext()
+            .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
+            .build();
+        return CdcServiceGrpc.newBlockingStub(channel);
+    }
+
+    public CdcServiceBlockingStub getCdcServiceBlockingStub(String streamName) {
+        ManagedChannel channel = ManagedChannelBuilder
+            .forTarget(getCdcTargetFromMetaDb(streamName))
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
             .build();
@@ -98,6 +124,18 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
         return CdcServiceGrpc.newStub(channel);
     }
 
+    public CdcServiceStub getCdcServiceStub(String streamName) {
+        if (StringUtils.isEmpty(streamName)) {
+            return getCdcServiceStub();
+        }
+        ManagedChannel channel = ManagedChannelBuilder
+            .forTarget(getCdcTargetFromMetaDb(streamName))
+            .usePlaintext()
+            .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
+            .build();
+        return CdcServiceGrpc.newStub(channel);
+    }
+
     public static CdcRpcClient getCdcRpcClient() {
         return cdcRpcClient;
     }
@@ -108,16 +146,25 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
      * @return cdc target endpoint
      */
     public static boolean useCdc() {
-        return !StringUtils.isEmpty(getCdcTargetFromMetaDb());
+        if (ConfigDataMode.isPolarDbX()) {
+            return getCdcTargetFromMetaDb() != null;
+        } else {
+            return false;
+        }
     }
 
     public static class CdcRpcStreamingProxy {
+        private final String streamName;
         private ManagedChannel channel;
         private Context.CancellableContext mListenContext;
 
+        public CdcRpcStreamingProxy(String streamName) {
+            this.streamName = streamName;
+        }
+
         public void dump(final DumpRequest listenRequest, final StreamObserver<DumpStream> messageStream) {
             Runnable runnable = () -> {
-                final CdcServiceStub cdcServiceStub = getCdcRpcClient().getCdcServiceStub();
+                final CdcServiceStub cdcServiceStub = getCdcRpcClient().getCdcServiceStub(streamName);
                 channel = (ManagedChannel) cdcServiceStub.getChannel();
                 cdcServiceStub.dump(listenRequest, messageStream);
             };
@@ -136,9 +183,11 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
                 try {
                     mListenContext.cancel(null);
                     mListenContext = null;
-                    channel.shutdown();
-                    channel.awaitTermination(1, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
+                    if (channel != null) {
+                        channel.shutdown();
+                        channel.awaitTermination(1, TimeUnit.SECONDS);
+                    }
+                } catch (Exception e) {
                     logger.warn("channel shutdown awaitTermination fail");
                 }
             }

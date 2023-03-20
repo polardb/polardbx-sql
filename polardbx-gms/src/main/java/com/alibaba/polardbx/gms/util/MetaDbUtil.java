@@ -63,6 +63,13 @@ public class MetaDbUtil {
         }
     }
 
+    public static boolean execute(String sql, Connection connection) throws SQLException {
+        validate(sql);
+        try (Statement statement = connection.createStatement()) {
+            return statement.execute(sql);
+        }
+    }
+
     public static int executeDDL(String ddl, Connection connection) throws SQLException {
         validate(ddl);
         try (Statement statement = connection.createStatement()) {

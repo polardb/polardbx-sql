@@ -38,7 +38,9 @@ import com.alibaba.polardbx.gms.partition.TableLocalPartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionSpecConfig;
 import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessor;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
@@ -519,7 +521,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void changeOssFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount) {
-        filesAccessor.vaildFile(primaryKey, fileMeta, fileSize, rowCount);
+        filesAccessor.validFile(primaryKey, fileMeta, fileSize, rowCount);
     }
 
     public void changeTableEngine(String tableSchema, String tableName, String engine) {
@@ -729,6 +731,22 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public void renamePartitionTablePhyTable(String tableSchema, String tableName, String newTableName) {
+        TablePartitionConfig tablePartitionConfig =
+            tablePartitionAccessor.getTablePartitionConfig(tableSchema, tableName, false);
+        for (TablePartitionSpecConfig item : tablePartitionConfig.getPartitionSpecConfigs()) {
+            String phyTableName = item.getSpecConfigInfo().phyTable;
+            String newPhyTableName = TStringUtil.replaceWithIgnoreCase(phyTableName, tableName, newTableName);
+            tablePartitionAccessor.renamePhyTableName(item.getSpecConfigInfo().id, newPhyTableName);
+        }
+    }
+
+    public void renameLocalPartitionInfo(String tableSchema, String tableName, String newTableName) {
+        String newScheduleName = tableSchema + "." + tableName;
+        scheduledJobsAccessor.rename(newTableName, newScheduleName, tableSchema, tableName);
+        localPartitionAccessor.rename(newTableName, tableSchema, tableName);
+    }
+
     public void setMultiWriteSourceColumn(String tableSchema, String tableName, String columnsName) {
         columnsAccessor.updateStatus(tableSchema, tableName, ImmutableList.of(columnsName),
             ColumnStatus.MULTI_WRITE_SOURCE.getValue());
@@ -750,6 +768,14 @@ public class TableInfoManager extends AbstractAccessor {
     public void removeColumns(String tableSchema, String tableName, List<String> columnNames) {
         columnsAccessor.delete(tableSchema, tableName, columnNames);
         indexesAccessor.deleteColumns(tableSchema, tableName, columnNames);
+    }
+
+    public void hideIndexesColumns(String tableSchema, String tableName, List<String> columnsNames) {
+        indexesAccessor.updateColumnStatus(tableSchema, tableName, columnsNames, IndexStatus.ABSENT.getValue());
+    }
+
+    public void showIndexesColumns(String tableSchema, String tableName, List<String> columnsNames) {
+        indexesAccessor.updateColumnStatus(tableSchema, tableName, columnsNames, IndexStatus.PUBLIC.getValue());
     }
 
     public void addColumns(PhyInfoSchemaContext context, Map<String, Map<String, Object>> columnsJdbcExtInfo,

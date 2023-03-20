@@ -39,29 +39,25 @@ public class ShortBlock extends AbstractBlock {
     public ShortBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new short[slotLen];
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Short.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ShortBlock(DataType dataType, short[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Short.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ShortBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, short[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = values;
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Short.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     public ShortBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, short[] values, boolean hasNull) {
         super(DataTypes.ShortType, positionCount, valueIsNull, hasNull);
         this.values = values;
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Short.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -192,7 +188,12 @@ public class ShortBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Short.BYTES * positionCount;
     }
 }

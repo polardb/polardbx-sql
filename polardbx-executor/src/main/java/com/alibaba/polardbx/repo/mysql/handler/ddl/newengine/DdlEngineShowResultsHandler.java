@@ -25,7 +25,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManage
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponseCollectSyncAction;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -60,11 +60,11 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
         //new engine
         IGmsSyncAction syncAction = new DdlResponseCollectSyncAction(schemaName, jobIds);
         GmsSyncManagerHelper.sync(syncAction, schemaName, results -> {
-            if(results==null){
+            if (results == null) {
                 return;
             }
-            for (Pair<NodeInfo, List<Map<String, Object>>> result : results) {
-                if(result==null || result.getValue()==null){
+            for (Pair<GmsNode, List<Map<String, Object>>> result : results) {
+                if (result == null || result.getValue() == null) {
                     continue;
                 }
                 for (Map<String, Object> row : result.getValue()) {

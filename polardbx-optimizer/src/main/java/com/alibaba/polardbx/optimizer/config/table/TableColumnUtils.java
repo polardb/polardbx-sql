@@ -18,6 +18,9 @@ package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -34,7 +37,6 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -42,6 +44,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
 import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
 /**
@@ -63,6 +67,11 @@ public class TableColumnUtils {
         ColumnMeta columnMeta = tableMeta.getColumn(columnName);
         if (columnMeta == null || columnMeta.getStatus() == ColumnStatus.MULTI_WRITE_TARGET) {
             // Not in table meta's all column list, must be hidden
+            return true;
+        }
+
+        if (IMPLICIT_COL_NAME.equalsIgnoreCase(columnName) || IMPLICIT_KEY_NAME.equalsIgnoreCase(columnName)) {
+            // hide IMPLICIT_KEY_NAME from all dal command
             return true;
         }
 
@@ -130,17 +139,28 @@ public class TableColumnUtils {
         return columnMultiWriteMapping;
     }
 
-    public static String getDataDefFromColumnDef(String columnName, String colDef) {
+    public static String getDataDefFromColumnDef(SQLColumnDefinition colDef) {
         // Just remove column name from column def
-        colDef = colDef.trim();
-        return StringUtils.replaceOnceIgnoreCase(colDef, columnName, "").replace("`", "");
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        return tmpColDef.toString();
     }
 
-    public static String getDataDefFromColumnDefWithoutUnique(String columnName, String colDef) {
+    public static String getDataDefFromColumnDefWithoutUnique(SQLColumnDefinition colDef) {
         // Just remove column name from column def
-        colDef = StringUtils.replaceOnceIgnoreCase(colDef, "UNIQUE", "");
-        colDef = colDef.trim();
-        return StringUtils.replaceOnceIgnoreCase(colDef, columnName, "").replace("`", "");
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        tmpColDef.getConstraints().removeIf(constraint -> constraint instanceof SQLColumnUniqueKey);
+        return tmpColDef.toString();
+    }
+
+    public static String getDataDefFromColumnDefWithoutUniqueNullable(SQLColumnDefinition colDef) {
+        // Just remove column name from column def
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        tmpColDef.getConstraints().removeIf(constraint -> constraint instanceof SQLColumnUniqueKey);
+        tmpColDef.getConstraints().removeIf(sqlColumnConstraint -> sqlColumnConstraint instanceof SQLNotNullConstraint);
+        return tmpColDef.toString();
     }
 
     public static String generateTemporaryName(String name) {

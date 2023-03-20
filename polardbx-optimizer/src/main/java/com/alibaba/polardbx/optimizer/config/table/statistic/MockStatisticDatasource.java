@@ -150,6 +150,9 @@ public class MockStatisticDatasource implements StatisticDataSource {
                     if (columnList != null) {
                         for (Pair<String, Object> columnInfo : columnList) {
                             Map<String, Object> histMap = (Map<String, Object>) columnInfo.getValue();
+                            if (histMap == null) {
+                                continue;
+                            }
                             JSONObject topNJson = new JSONObject();
                             topNJson.put("countArr", histMap.get("countArr"));
                             topNJson.put("valueArr", histMap.get("valueArr"));

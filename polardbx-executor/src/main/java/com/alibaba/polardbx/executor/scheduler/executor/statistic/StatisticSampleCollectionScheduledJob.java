@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor.statistic;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
@@ -23,6 +25,7 @@ import com.alibaba.polardbx.executor.scheduler.executor.SchedulerExecutor;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
@@ -38,6 +41,7 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILE
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.RUNNING;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCESS;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.collectRowCount;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sampleTable;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sketchTable;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
@@ -45,6 +49,7 @@ import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.WARNING;
 import static com.alibaba.polardbx.gms.module.LogPattern.INTERRUPTED;
+import static com.alibaba.polardbx.gms.module.LogPattern.NOT_ENABLED;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 import static com.alibaba.polardbx.gms.module.LogPattern.REMOVE;
@@ -75,6 +80,23 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
         long startTime = ZonedDateTime.now().toEpochSecond();
         String remark = "";
         try {
+            // check conf
+            boolean enableStatisticBackground =
+                InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
+            if (!enableStatisticBackground) {
+                remark = "statistic background collection task not enabled";
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTICS,
+                        NOT_ENABLED,
+                        new String[] {
+                            ConnectionProperties.ENABLE_BACKGROUND_STATISTIC_COLLECTION,
+                            STATISTIC_SAMPLE_SKETCH + "," + fireTime + " exit"
+                        },
+                        NORMAL);
+                return succeedExit(scheduleId, fireTime, remark);
+            }
+
             //mark as RUNNING
             boolean casSuccess =
                 ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
@@ -90,7 +112,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
             List<String> schemas = DbInfoManager.getInstance().getDbList();
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     PROCESS_START,
                     new String[] {
                         STATISTIC_SAMPLE_SKETCH.name(),
@@ -111,7 +133,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
                     if (pair.getKey()) {
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 INTERRUPTED,
                                 new String[] {
                                     STATISTIC_SAMPLE_SKETCH + "," + fireTime,
@@ -127,43 +149,43 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
                         // sample
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 PROCESS_START,
                                 new String[] {
                                     "sample table ",
                                     schema + "," + logicalTableName
                                 },
                                 NORMAL);
+                        collectRowCount(schema, logicalTableName);
                         sampleTable(schema, logicalTableName);
                         // persist
                         StatisticUtils.persistStatistic(schema, logicalTableName, true);
                         // sync other nodes
-                        SyncManagerHelper.sync(
+                        SyncManagerHelper.syncWithDefaultDB(
                             new UpdateStatisticSyncAction(
                                 schema,
                                 logicalTableName,
-                                StatisticManager.getInstance().getCacheLine(schema, logicalTableName)),
-                            schema);
+                                StatisticManager.getInstance().getCacheLine(schema, logicalTableName)));
                     }
                     // small table use cache_line
                     if (c.getRowCount() > DEFAULT_SAMPLE_SIZE || testSketchPointCheck()) {
                         // hll
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 PROCESS_START,
                                 new String[] {
                                     "hll scan table ",
                                     schema + "," + logicalTableName
                                 },
                                 NORMAL);
-                        //sketchTable(schema, logicalTableName, false);
+//                        sketchTable(schema, logicalTableName, false);
                     } else if (c.getRowCount() < DEFAULT_SAMPLE_SIZE &&
                         StatisticManager.getInstance().hasNdvSketch(schema, logicalTableName)) {
                         // remove ndv info if table rowcount less than DEFAULT_SAMPLE_SIZE
                         ModuleLogInfo.getInstance()
                             .logRecord(
-                                Module.STATISTIC,
+                                Module.STATISTICS,
                                 REMOVE,
                                 new String[] {
                                     STATISTIC_SAMPLE_SKETCH + "," + fireTime,
@@ -175,7 +197,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
                     long endPerTable = System.currentTimeMillis();
                     ModuleLogInfo.getInstance()
                         .logRecord(
-                            Module.STATISTIC,
+                            Module.STATISTICS,
                             PROCESS_END,
                             new String[] {
                                 "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + "," + logicalTableName,
@@ -186,7 +208,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
                 long end = System.currentTimeMillis();
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         PROCESS_END,
                         new String[] {
                             "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + ",table size "
@@ -199,7 +221,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
         } catch (Throwable t) {
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     UNEXPECTED,
                     new String[] {
                         "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + fireTime,
@@ -241,5 +263,18 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
     private void errorExit(long scheduleId, long fireTime, String error) {
         //mark as fail
         ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, null, error);
+    }
+
+    @Override
+    public Pair<Boolean, String> needInterrupted() {
+        if (FailPoint.isKeyEnable(FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB)) {
+            return Pair.of(false, "fail point");
+        }
+        boolean enableStatisticBackground =
+            InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
+        if (!enableStatisticBackground) {
+            return Pair.of(true, "ENABLE_BACKGROUND_STATISTIC_COLLECTION not enabled");
+        }
+        return Pair.of(!inMaintenanceWindow(), "maintenance window");
     }
 }

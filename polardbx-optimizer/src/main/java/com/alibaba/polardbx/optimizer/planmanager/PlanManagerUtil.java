@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
@@ -266,6 +267,10 @@ public class PlanManagerUtil {
         }
         ParamManager paramManager = executionContext.getParamManager();
 
+        if (executionContext.isUseHint()) {
+            return false;
+        }
+
         if (!paramManager.getBoolean(ConnectionParams.ENABLE_SPM)) {
             return false;
         }
@@ -497,6 +502,10 @@ public class PlanManagerUtil {
 
     public static boolean useSpm(SqlParameterized sqlParameterized, ExecutionContext ec) {
         ExplainResult explain = ec.getExplain();
+        if (ec.isUseHint()) {
+            return false;
+        }
+
         if (isExplainOptimizer(explain)) {
             return false;
         }
@@ -530,6 +539,11 @@ public class PlanManagerUtil {
         }
 
         if (ec.getLoadDataContext() != null) {
+            return false;
+        }
+
+        if (ec.getExtraCmds().get(ConnectionProperties.PARTITION_NAME) != null &&
+            !ec.getExtraCmds().get(ConnectionProperties.PARTITION_NAME).toString().isEmpty()) {
             return false;
         }
 
@@ -716,5 +730,9 @@ public class PlanManagerUtil {
             }
         }
         return columnsMap;
+    }
+
+    public static boolean canOptByForcePrimary(ExecutionPlan plan, ExecutionContext ec) {
+        return plan.isCanOptByForcePrimary() && ec.enableForcePrimaryForTso();
     }
 }

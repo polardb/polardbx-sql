@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.metadb.cdc;
 
-
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -25,7 +24,6 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.google.common.collect.Maps;
 
 import java.util.List;
 import java.util.Map;

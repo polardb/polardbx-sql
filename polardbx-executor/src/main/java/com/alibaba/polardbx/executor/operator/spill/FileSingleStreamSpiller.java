@@ -111,7 +111,7 @@ public class FileSingleStreamSpiller implements SingleStreamSpiller {
             if (closed) {
                 return NOT_BLOCKED;
             }
-            bufferedPageBytes += page.getSizeInBytes();
+            bufferedPageBytes += page.getElementUsedBytes();
             pageBuffer.add(page);
             if (bufferedPageBytes > MAX_PAGE_BUFFER) {
                 return flushPageBuffer();

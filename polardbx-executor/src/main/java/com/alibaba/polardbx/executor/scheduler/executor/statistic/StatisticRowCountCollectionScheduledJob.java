@@ -43,8 +43,8 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILE
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.RUNNING;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCESS;
-import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.collectRowCount;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.collectRowCountAll;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getTopology;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sumRowCount;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.isFileStore;
@@ -65,6 +65,7 @@ import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.STATIS
  *
  * @author fangwu
  */
+@Deprecated
 public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
 
     private final ExecutableScheduledJob executableScheduledJob;
@@ -100,7 +101,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
                 remark = "statistic background collection task not enabled";
                 ModuleLogInfo.getInstance()
                     .logRecord(
-                        Module.STATISTIC,
+                        Module.STATISTICS,
                         NOT_ENABLED,
                         new String[] {
                             ConnectionProperties.ENABLE_BACKGROUND_STATISTIC_COLLECTION,
@@ -135,7 +136,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
                     return succeedExit(scheduleId, fireTime, remark);
                 }
                 try {
-                    Map<String, Map<String, Long>> rowRs = collectRowCount(dnId, null);
+                    Map<String, Map<String, Long>> rowRs = collectRowCountAll(dnId, null);
                     if (rowRs != null) {
                         rowCountMap.putAll(rowRs);
                     }
@@ -172,7 +173,6 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
                         sum = sumRowCount(topologyMap, rowCountMap);
                     }
                     cl.setRowCount(sum);
-                    cl.setLastModifyTime(unixTimeStamp());
                     count++;
                 }
             }
@@ -180,7 +180,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
             long end = System.currentTimeMillis();
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     PROCESS_END,
                     new String[] {
                         STATISTIC_ROWCOUNT_COLLECTION + "," + fireTime,
@@ -194,7 +194,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
         } catch (Throwable t) {
             ModuleLogInfo.getInstance()
                 .logRecord(
-                    Module.STATISTIC,
+                    Module.STATISTICS,
                     UNEXPECTED,
                     new String[] {
                         STATISTIC_ROWCOUNT_COLLECTION + "," + fireTime,
@@ -231,7 +231,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
         long end = System.currentTimeMillis();
         ModuleLogInfo.getInstance()
             .logRecord(
-                Module.STATISTIC,
+                Module.STATISTICS,
                 PROCESS_END,
                 new String[] {
                     "persist tables statistics",

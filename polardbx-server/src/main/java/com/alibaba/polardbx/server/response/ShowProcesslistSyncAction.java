@@ -182,10 +182,9 @@ public class ShowProcesslistSyncAction implements ISyncAction {
             info = addProcedureInfo(sc.getId(), info);
         }
 
-        String dumpState = sc.getDumpState();
-        if (StringUtils.isNotEmpty(dumpState)) {
+        if (sc.getProxy() != null) {
             command = "Binlog Dump";
-            info = dumpState;
+            info = "Sending to client";
         }
 
         long time = (System.nanoTime() - sc.getLastActiveTime()) / 1000000000;

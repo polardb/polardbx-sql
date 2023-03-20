@@ -386,7 +386,10 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         final boolean modifyPartitionKey = upsert.isModifyPartitionKey();
 
         final boolean skipTrivialUpdate =
-            upsertEc.getParamManager().getBoolean(ConnectionParams.DML_SKIP_TRIVIAL_UPDATE);
+            !(upsertEc.getParamManager().getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_ROW_CHECK) || (
+                upsert.isHasJsonColumn() && upsertEc.getParamManager()
+                    .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK))) && upsertEc.getParamManager()
+                .getBoolean(ConnectionParams.DML_SKIP_TRIVIAL_UPDATE);
 
         final Map<String, RexNode> columnValueMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Ord.zip(insertColumns).forEach(o -> columnValueMap.put(o.getValue(), rexRow.get(o.getKey())));
@@ -783,8 +786,13 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                 }
             });
 
+            final boolean skipIdenticalRowCheck =
+                upsertEc.getParamManager().getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_ROW_CHECK) || (
+                    upsert.isHasJsonColumn() && upsertEc.getParamManager()
+                        .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK));
             // Check identical row
-            final boolean isIdenticalRow = identicalRow(withoutAppended, this.after, rowColumnMeta);
+            final boolean isIdenticalRow =
+                !skipIdenticalRowCheck && identicalRow(withoutAppended, this.after, rowColumnMeta);
             final List<Object> updated = isIdenticalRow ? withoutAppended : withAppended;
             this.affectedRows += isIdenticalRow ? 1 : 2;
 

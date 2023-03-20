@@ -16,8 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
@@ -67,5 +71,13 @@ public class LogicalIndexScan extends LogicalView {
     @Override
     public RelNode clone() {
         return new LogicalIndexScan(this, lockMode).setScalarList(scalarList);
+    }
+
+    /**
+     * @return true if this index scan is scanning a UGSI.
+     */
+    public boolean isUniqueGsi() {
+        GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = RelUtils.getGsiIndexMetaBean(this);
+        return null != gsiIndexMetaBean && !gsiIndexMetaBean.nonUnique;
     }
 }

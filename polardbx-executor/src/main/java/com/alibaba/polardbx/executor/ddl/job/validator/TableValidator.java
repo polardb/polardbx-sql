@@ -50,10 +50,22 @@ import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableDropPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMergePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableModifyPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSetTableGroup;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -283,7 +295,7 @@ public class TableValidator {
             columnsAccessor.setConnection(connection);
             List<ColumnsRecord> columnsRecords = columnsAccessor.query(schemaName, tableName);
             for (ColumnsRecord columnsRecord : columnsRecords) {
-                if(unexpectedType.equalsIgnoreCase(columnsRecord.dataType)) {
+                if (unexpectedType.equalsIgnoreCase(columnsRecord.dataType)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
                         String.format("unexpected column [%s] in table [%s] with data type: [%s]",
                             columnsRecord.columnName,
@@ -444,18 +456,18 @@ public class TableValidator {
         SequenceValidator.validateExistenceForRename(schemaName, targetTableName);
     }
 
-
-    public static void validateLocality(String schemaName, LocalityDesc localityDesc){
+    public static void validateLocality(String schemaName, LocalityDesc localityDesc) {
         Long dbId = DbInfoManager.getInstance().getDbInfo(schemaName).id;
         LocalityInfo localityInfo = LocalityManager.getInstance().getLocalityOfDb(dbId);
-        if(localityInfo != null && localityDesc != null){
+        if (localityInfo != null && localityDesc != null) {
             LocalityDesc dbLocality = LocalityDesc.parse(localityInfo.getLocality());
             if (!dbLocality.compactiableWith(localityDesc)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                        " Table locality definition is not compatible with database locality! ");
+                    " Table locality definition is not compatible with database locality! ");
             }
         }
     }
+
     public static void validateTruncatePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         boolean withGsi = tableMeta.withGsi();
@@ -532,16 +544,31 @@ public class TableValidator {
             if (Engine.isFileStore(tableMeta.getEngine())) {
                 throwEngineNotSupport(schemaName, logicalTableName, tableMeta.getEngine());
             }
+        } else if (
+            ddlOperation instanceof LogicalAlterTableAddPartition
+                || ddlOperation instanceof LogicalAlterTableDropPartition
+                || ddlOperation instanceof LogicalAlterTableExtractPartition
+                || ddlOperation instanceof LogicalAlterTableGroupAddTable
+                || ddlOperation instanceof LogicalAlterTableMergePartition
+                || ddlOperation instanceof LogicalAlterTableModifyPartition
+                || ddlOperation instanceof LogicalAlterTableRenamePartition
+                || ddlOperation instanceof LogicalAlterTableSetTableGroup
+                || ddlOperation instanceof LogicalAlterTableSplitPartition
+                || ddlOperation instanceof LogicalAlterTableSplitPartitionByHotValue) {
+            // todo(shengyu): refactor this
         }
     }
+
     private static void throwEngineNotSupport(String schemaName, String logicalTableName, Engine engine) {
         throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
             "Engine of " + schemaName + "." + logicalTableName + " is " + engine);
     }
+
     public static void checkCompatibleWithOss(TableMeta sourceTable, TableMeta targetTable) {
         checkTopologyConsistency(sourceTable, targetTable);
         checkColumnConsistency(sourceTable, targetTable);
     }
+
     public static void checkTopologyConsistency(TableMeta sourceTable, TableMeta targetTable) {
         boolean isShard = false;
         if (TableTopologyUtil.isBroadcast(sourceTable) != TableTopologyUtil.isBroadcast(targetTable)
@@ -562,6 +589,7 @@ public class TableValidator {
             }
         }
     }
+
     /**
      * Check if source table is enabled to migrated to target table.
      */
@@ -591,6 +619,7 @@ public class TableValidator {
             }
         }
     }
+
     private static void throwMetaInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
         throw GeneralUtil.nestedException(
             MessageFormat
@@ -598,6 +627,7 @@ public class TableValidator {
                         + "please create a new archive table for source table {0}", sourceTable.getTableName(),
                     targetTable.getTableName()));
     }
+
     private static void throwTopologyInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
         throw GeneralUtil.nestedException(
             MessageFormat

@@ -18,9 +18,8 @@ package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group3;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -28,6 +27,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -549,5 +549,127 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(rs.getString(3).equalsIgnoreCase("40"));
         Assert.assertTrue(rs.getString(4).equalsIgnoreCase("40"));
         rs.close();
+    }
+
+    @Test
+    public void testUpdateZeroDate() throws SQLException {
+        String tableName = "update_zero_date_tbl";
+
+        String[] tddlKeyDefs = {
+            "primary key (a)", "primary key (a,b)", "primary key (a), global unique index g1(c) dbpartition by hash(c)",
+            "primary key (a,b), clustered index g1(c) dbpartition by hash(c)"};
+        String[] mysqlKeyDefs = {
+            "primary key (a)", "primary key (a,b)", "primary key (a), unique index g1(c)",
+            "primary key (a,b), index g1(c)"};
+        String createSql = String.format(
+            "create table %s (a int, b datetime DEFAULT '0000-00-00 00:00:00', c int, d int, %%s) ", tableName);
+        String[] partDefs =
+            {"dbpartition by hash(a)", "dbpartition by YYYYMM(b)", "dbpartition by hash(c)", "single", "broadcast"};
+
+        int round = 0;
+        for (int i = 0; i < tddlKeyDefs.length; i++) {
+            for (String partDef : partDefs) {
+                boolean hasGsi = (tddlKeyDefs[i].contains("global") || tddlKeyDefs[i].contains("clustered"));
+                if (hasGsi && !partDef.contains("partition")) {
+                    continue;
+                }
+                System.out.println("Round " + round++);
+                System.out.println(tddlKeyDefs[i]);
+                System.out.println(partDef);
+
+                final String polardbxTable = String.format(createSql, tddlKeyDefs[i]) + partDef;
+                final String mysqlTable = String.format(createSql, mysqlKeyDefs[i]);
+
+                final List<String> sqlExecuted = new ArrayList<>();
+                boolean succeed = false;
+
+                try {
+                    dropTableIfExists(tableName);
+                    dropTableIfExistsInMySql(tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(createSql, tddlKeyDefs[i]) + partDef);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(createSql, mysqlKeyDefs[i]));
+
+                    String insert = String.format("insert into %s(a,c,d) values (1,1,1)", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+                    sqlExecuted.add(insert);
+
+                    String update = String.format("update %s set c=2 where a=1", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+
+                    insert = String.format("insert into %s(a,b,c,d) values (3,'2022-10-10 10:10:10',3,3)", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+                    sqlExecuted.add(insert);
+
+                    update = String.format("update %s set b='0000-00-00 00:00:00', c=4 where a=3", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+
+                    update = String.format("update %s set a=a+1 where b='0000-00-00 00:00:00'", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    getTrace(tddlConnection).forEach(System.out::println);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+
+                    update = String.format("update %s set c=c+1 where a=4", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+
+                    update = String.format("update %s set d=d+1 where a=4", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+
+                    update = String.format("update %s set d=last_insert_id(d+1) where a=4", tableName);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+                    JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+                    sqlExecuted.add(update);
+
+                    selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                    if (hasGsi) {
+                        checkGsi(tddlConnection, "g1");
+                    }
+                    succeed = true;
+                } finally {
+                    if (!succeed) {
+                        System.out.println("MySQL Table: \n" + mysqlTable);
+                        System.out.println("PolarDB-X Table: \n" + polardbxTable);
+                        System.out.println(String.join(";", sqlExecuted));
+                        System.out.println();
+                    }
+                }
+            }
+        }
     }
 }

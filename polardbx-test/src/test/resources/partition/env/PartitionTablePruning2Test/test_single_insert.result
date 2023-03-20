@@ -1,0 +1,37 @@
+## DISABLE_FAST_SQL_PARSER
+create table tbl_sin
+(
+pk     decimal(18)    not null comment '',
+c1     varchar(256)  null comment '',
+primary key (pk)
+) single;
+show create table tbl_sin;
+Table,Create Table
+tbl_sin,CREATE TABLE `tbl_sin` (
+	`pk` decimal(18, 0) NOT NULL,
+	`c1` varchar(256) DEFAULT NULL,
+	PRIMARY KEY (`pk`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+insert into tbl_sin values (1000, 'abcd');
+select pk,c1 from tbl_sin;
+pk,c1
+1000,abcd
+create table tbl_bro
+(
+pk     decimal(18)    not null comment '',
+c1     varchar(256)  null comment '',
+primary key (pk)
+) broadcast;
+show create table tbl_bro;
+Table,Create Table
+tbl_bro,CREATE TABLE `tbl_bro` (
+	`pk` decimal(18, 0) NOT NULL,
+	`c1` varchar(256) DEFAULT NULL,
+	PRIMARY KEY (`pk`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+insert into tbl_bro values (1000, 'abcd');
+select pk,c1 from tbl_bro;
+pk,c1
+1000,abcd

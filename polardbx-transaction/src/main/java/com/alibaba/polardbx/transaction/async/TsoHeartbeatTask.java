@@ -31,6 +31,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 
 import javax.sql.DataSource;
@@ -75,12 +76,15 @@ public class TsoHeartbeatTask implements Runnable {
         long timestamp = tso.nextTimestamp();
 
         List<Future> futures = new ArrayList<>();
-        if (DynamicConfig.getInstance().isKeepTsoBasedCDC()
+        if (DynamicConfig.getInstance().isBasedCDC()
             && ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) != null) {
             TopologyHandler topologyHandler =
                 ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
             for (Group group : topologyHandler.getMatrix().getGroups()) {
                 if (!DbGroupInfoManager.isVisibleGroup(group)) {
+                    continue;
+                }
+                if (GroupInfoUtil.isSingleGroup(group.getName())) {
                     continue;
                 }
                 String groupName = group.getName();

@@ -165,7 +165,7 @@ public class DropGsiJobFactory extends DdlJobFactory {
                 // add source partition for drop gsi
                 builder.setPartitionInfo(OptimizerContext.getContext(preparedData.getSchemaName())
                     .getPartitionInfoManager()
-                    .getPartitionInfo(preparedData.getPrimaryTableName()));
+                    .getPartitionInfo(preparedData.getRepartitionTableName()));
             }
             builder.build();
             PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();

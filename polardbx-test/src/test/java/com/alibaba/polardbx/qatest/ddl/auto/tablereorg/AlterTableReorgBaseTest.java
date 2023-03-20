@@ -276,7 +276,7 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
             sqlHint = String.format("/*+TDDL:CMD_EXTRA(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='%s')*/",
                 status.name());
         }
-        String ignoreErr = "[TDDL-4636][ERR_DDL_JOB_ERROR] Please use SHOW DDL";
+        String ignoreErr = "Please use SHOW DDL";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sqlHint + command,
