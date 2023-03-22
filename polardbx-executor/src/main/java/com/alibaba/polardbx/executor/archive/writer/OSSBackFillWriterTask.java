@@ -19,13 +19,14 @@ package com.alibaba.polardbx.executor.archive.writer;
 import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.OrderInvariantHasher;
-import com.alibaba.polardbx.common.OrderInvariantHasher;
+import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.oss.OSSMetaLifeCycle;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.common.oss.access.OSSKey;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -393,8 +394,8 @@ public class OSSBackFillWriterTask {
         }
 
         // submit async flush task
-        PriorityWorkQueue.getInstance()
-            .executeWithContext(flushTask, PriorityFIFOTask.TaskPriority.OSS_FLUSH);
+        ServiceProvider.getInstance().getServerExecutor()
+            .submit(this.logicalTable, this.taskId.toString(), AsyncTask.build(flushTask));
 
         totalRows = 0L;
     }

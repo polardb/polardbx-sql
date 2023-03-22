@@ -2662,7 +2662,7 @@ public class ConnectionParams {
         true);
 
     public static final IntConfigParam MAX_SESSION_PREPARED_STMT_COUNT = new IntConfigParam(
-        ConnectionProperties.MAX_SESSION_PREPARED_STMT_COUNT, 0, Integer.MAX_VALUE, 100, true);
+        ConnectionProperties.MAX_SESSION_PREPARED_STMT_COUNT, 0, Integer.MAX_VALUE, 256, true);
 
     public static final BooleanConfigParam ENABLE_PARTITIONS_HEATMAP_COLLECTION = new BooleanConfigParam(
         ConnectionProperties.ENABLE_PARTITIONS_HEATMAP_COLLECTION, true, true);
