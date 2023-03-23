@@ -3352,12 +3352,20 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     @Override
     public boolean visit(MySqlShowBinaryLogsStatement x) {
         print0(ucase ? "SHOW BINARY LOGS" : "show binary logs");
+        if (x.getWith() != null) {
+            print0(ucase ? " WITH " : " with ");
+            x.getWith().accept(this);
+        }
         return false;
     }
 
     @Override
     public boolean visit(MySqlShowMasterLogsStatement x) {
         print0(ucase ? "SHOW MASTER LOGS" : "show master logs");
+        if (x.getWith() != null) {
+            print0(ucase ? " WITH " : " with ");
+            x.getWith().accept(this);
+        }
         return false;
     }
 
@@ -3388,6 +3396,10 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     @Override
     public boolean visit(MySqlShowBinLogEventsStatement x) {
         print0(ucase ? "SHOW BINLOG EVENTS" : "show binlog events");
+        if (x.getWith() != null) {
+            print0(ucase ? " WITH " : " with ");
+            x.getWith().accept(this);
+        }
         if (x.getIn() != null) {
             print0(ucase ? " IN " : " in ");
             x.getIn().accept(this);
