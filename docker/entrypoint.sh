@@ -17,7 +17,7 @@
 POLARDBX_SQL_HOME=/home/admin/drds-server
 
 function polardbx_sql_pid() {
-  jps | grep Tddl | cut -d ' ' -f 1
+  ps auxf | grep java | grep TddlLauncher | awk '{print $2}'
 }
 
 function kill_and_clean() {
