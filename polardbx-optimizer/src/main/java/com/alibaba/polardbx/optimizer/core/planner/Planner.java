@@ -718,9 +718,11 @@ public class Planner {
         }
 
         if (hintCollection.pushdownOriginSql() ||
-            (StringUtils.isNotEmpty(ec.getPartitionName()) && (ast.isA(DML) || ast.isA(QUERY))
-                && isSuitableForDirectMode(explain))
-        ) {
+            (StringUtils.isNotEmpty(ec.getPartitionHint()) &&
+                (ast.isA(DML) || ast.isA(QUERY)) &&
+                isSuitableForDirectMode(explain) &&
+                !ec.isVisitDBBuildIn()
+            )) {
             executionPlan = hintPlanner.direct(ast, cmdBean, hintCollection, param, ec.getSchemaName(), ec);
         } else if (hintCollection.cmdOnly() || hintCollection.errorMessages.size() > 0) {
             //FIXME here task the illegal hint as the cmd hint.

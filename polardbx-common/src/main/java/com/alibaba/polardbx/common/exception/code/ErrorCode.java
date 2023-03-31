@@ -186,6 +186,8 @@ public enum ErrorCode {
      */
     ERR_TABLE_EMPTY_WITH_HINT(ErrorType.Optimizer, 4528),
 
+    ERR_PARTITION_HINT(ErrorType.Optimizer, 4529),
+
     // ============= executor 从4600下标开始================
     //
     ERR_FUNCTION(ErrorType.Executor, 4600),

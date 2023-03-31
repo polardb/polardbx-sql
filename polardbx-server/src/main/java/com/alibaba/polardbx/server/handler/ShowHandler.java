@@ -23,6 +23,8 @@ import com.alibaba.polardbx.server.response.ShowCacheStats;
 import com.alibaba.polardbx.server.response.ShowConnection;
 import com.alibaba.polardbx.server.response.ShowDatabases;
 import com.alibaba.polardbx.server.response.ShowErrors;
+import com.alibaba.polardbx.server.response.ShowFileStorage;
+import com.alibaba.polardbx.server.response.ShowFullConnection;
 import com.alibaba.polardbx.server.response.ShowFullDatabases;
 import com.alibaba.polardbx.server.response.ShowFileStorage;
 import com.alibaba.polardbx.server.response.ShowGitCommit;
@@ -105,6 +107,9 @@ public final class ShowHandler {
                 break;
             case ServerParseShow.FULL_DATABASES:
                 ShowFullDatabases.response(c, hasMore);
+                break;
+            case ServerParseShow.FULL_CONNECTION:
+                ShowFullConnection.execute(c, hasMore);
                 break;
             default:
                 c.execute(stmt, hasMore);

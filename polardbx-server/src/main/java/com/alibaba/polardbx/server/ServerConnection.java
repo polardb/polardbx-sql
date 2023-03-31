@@ -294,7 +294,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
     private volatile RescheduleParam rescheduleParam;
     private volatile RescheduleTask rescheduleTask;
     private ExecInfo execInfo;
-    private String partitionName;
+    private String partitionHint;
 
     /**
      * Session's active roles.
@@ -1485,8 +1485,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
         ec.setSchemaName(schema);
         ec.setClientFoundRows(clientFoundRows());
         ec.setTxIsolation(this.txIsolation);
-        ec.setPartitionName(partitionName);
-        if (StringUtils.isNotEmpty(partitionName)) {
+        ec.setPartitionHint(partitionHint);
+        if (StringUtils.isNotEmpty(partitionHint)) {
             ec.setUseHint(true);
         }
 
@@ -2254,8 +2254,12 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
-    public void setPartitionName(String partitionName) {
-        this.partitionName = partitionName;
+    public void setPartitionHint(String partitionHint) {
+        this.partitionHint = partitionHint;
+    }
+
+    public String getPartitionHint() {
+        return partitionHint;
     }
 
     /**

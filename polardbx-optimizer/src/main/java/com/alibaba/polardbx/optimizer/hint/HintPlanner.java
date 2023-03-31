@@ -187,6 +187,7 @@ import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -395,6 +396,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
                                 Map<Integer, ParameterContext> param, String schemaName, ExecutionContext ec) {
         // init group
         List<String> finalGroups;
+        boolean hasDirectHint = false;
         if (cmdBean.jsonHint()) {
             // JSON HINT
             RouteCondition rc =
@@ -419,6 +421,10 @@ public class HintPlanner extends TddlSqlToRelConverter {
             finalGroups = cmdBean.getGroups();
         }
 
+        if (finalGroups.size() > 0) {
+            hasDirectHint = true;
+        }
+
         final SqlConverter converter = SqlConverter.getInstance(schemaName, ec);
         final RelOptCluster cluster = converter.createRelOptCluster(null);
         final List<Integer> dynamicParamIndex = PlannerUtils.getDynamicParamIndex(ast);
@@ -431,6 +437,22 @@ public class HintPlanner extends TddlSqlToRelConverter {
         PhyQueryOperationBuilder phyQueryBuilder = new PhyQueryOperationBuilder();
         List<String> logTbls = new ArrayList<>();
         List<List<String>> phyTbls = new ArrayList<>();
+
+        if (StringUtils.isNotEmpty(ec.getPartitionHint())) {
+            ec.setOriginSqlPushdownOrRoute(true);
+        }
+
+        // replace table name
+        ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec, hasDirectHint);
+        ast = ast.accept(visitor);
+        if (visitor.getUniqGroupName() != null) {
+            finalGroups.add(visitor.getUniqGroupName());
+        } else {
+            if (finalGroups.size() == 0) {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                    "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
+            }
+        }
 
         final ExecutionPlanPropertiesVisitor logicalPlanPropertiesVisitor = new ExecutionPlanPropertiesVisitor();
         ast.accept(logicalPlanPropertiesVisitor);
@@ -469,6 +491,21 @@ public class HintPlanner extends TddlSqlToRelConverter {
         Map<String, Map<String, List<String>>> logTbPhyTbListMapping =
             new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         if (sqlKind != null && sqlKind.belongsTo(SqlKind.DML)) {
+            // if request with partition hint and dml with one broadcast table, refuse to do direct plan
+            if (StringUtils.isNotEmpty(ec.getPartitionHint())) {
+                for (String tb : visitor.getTableNames()) {
+                    if (ec.getSchemaManager(schemaName).getTddlRuleManager().isBroadCast(tb)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED,
+                            String.format("Not allowed to modify broadcast table[%s] by partition hint", tb));
+                    }
+                    TableMeta tbMeta = ec.getSchemaManager(schemaName).getTable(String.valueOf(tb));
+                    if (tbMeta.isGsi() || tbMeta.withGsi()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY,
+                            tb);
+                    }
+                }
+            }
+
             if ((!pushdownHintOnGsi) || (!pushdownDmlOnBroadcast)) {
                 tableModified =
                     checkModifyGsiOrBroadcastDirectly(schemaName, modifiedPhyTableNames, ec, pushdownHintOnGsi,
@@ -550,9 +587,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 ec.getParamManager().getBoolean(ConnectionParams.ENABLE_NODE_HINT_REPLACE) &&
                 hintCollection.nodeOnly()) {
                 // change suffix for node hint of select
-                ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec);
-                ast = ast.accept(visitor);
-
                 // replace node 0 to single
                 if (visitor.shouldChooseSingleGroup()) {
                     boolean zeroGroup = true;
@@ -570,17 +604,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
                             }
                         }
                     }
-                }
-            }
-            // change suffix for node hint of select
-            ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec);
-            ast = ast.accept(visitor);
-            if (visitor.getUniqGroupName() != null) {
-                finalGroups.add(visitor.getUniqGroupName());
-            } else {
-                if (finalGroups.size() == 0) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                        "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
                 }
             }
             for (String group : finalGroups) {

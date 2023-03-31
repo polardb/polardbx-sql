@@ -437,12 +437,39 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             } finally {
                 this.hintBlackboard.endAlias();
             }
+        } else if (fromKind == SqlKind.AS_OF) {
+            select.setFrom(buildAsOfNode((SqlBasicCall) from));
         } else if (fromKind == SqlKind.JOIN) {
             // 多表JOIN
             select.setFrom(visit((SqlJoin) from));
         } else if (fromKind == SqlKind.SELECT) {
             select.setFrom(visit((SqlCall) from));
         }
+    }
+
+    protected SqlCall buildAsOfNode(SqlBasicCall from) {
+        final SqlNode leftNode = from.getOperandList().get(0);
+        final SqlNode rightNode = from.getOperandList().get(1);
+        if (leftNode.getKind() == SqlKind.IDENTIFIER) {
+            // Build a new AS node,
+            // e.g. "FROM tb AS OF TIMESTAMP ?" -> "FROM tb_xxx AS OF TIMESTAMP ? AS tb"
+            SqlIdentifier identifier = (SqlIdentifier) leftNode;
+            this.tableNames.add(Util.last(identifier.names));
+            SqlNode asOfNode = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
+                buildSth(leftNode),
+                rightNode,
+            }, SqlParserPos.ZERO);
+            SqlIdentifier alias = new SqlIdentifier(
+                ImmutableList.of(Util.last(identifier.names)),
+                null,
+                identifier.getParserPosition(),
+                null,
+                identifier.indexNode,
+                identifier.partitions,
+                null);
+            return SqlStdOperatorTable.AS.createCall(identifier.getParserPosition(), asOfNode, alias);
+        }
+        return from;
     }
 
     @Override

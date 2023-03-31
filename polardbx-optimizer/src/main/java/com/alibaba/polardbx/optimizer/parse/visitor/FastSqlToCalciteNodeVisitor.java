@@ -384,6 +384,7 @@ import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.SeqTypeUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -1076,7 +1077,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     private boolean visit(List<ValuesClause> valuesList, int columnCount, HintCollection hintCollection) {
         boolean isBatch = false;
         // If it's using hint or in prepare mode, don't optimize.
-        if (!hintCollection.pushdownOriginSql() && !context.isPrepareMode()) {
+        if (!hintCollection.pushdownOriginSql() && !context.isPrepareMode() && StringUtils.isEmpty(
+            ec.getPartitionHint())) {
             List<ValuesClause> newValuesList =
                 FastSqlConstructUtils.convertToSingleValuesIfNeed(valuesList, columnCount, context);
             if (newValuesList.size() < valuesList.size()) {
@@ -4466,6 +4468,21 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         }
         SqlNode tableNameIdentifier = convertToSqlNode(expr);
 
+        SqlNodeList partitions = null;
+        if (x.getPartitionSize() > 0) {
+            List<SqlNode> partNameList = new ArrayList<>();
+            for (int i = 0; i < partNames.size(); i++) {
+                SQLName partName = partNames.get(i);
+                SqlNode partNameId = convertToSqlNode(partName);
+                partNameList.add(partNameId);
+            }
+            partitions = new SqlNodeList(partNameList, SqlParserPos.ZERO);
+        }
+
+        if (ec != null && SystemDbHelper.isDBBuildIn(x.getSchema())) {
+            ec.setVisitDBBuildIn(true);
+        }
+
         if (flashbackTimestamp != null) {
             SqlNode snapshotTimestampIdentifier = convertToSqlNode(flashbackTimestamp);
 
@@ -4483,17 +4500,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 snapshotTimestampIdentifier
             }, SqlParserPos.ZERO);
 
-        }
-
-        SqlNodeList partitions = null;
-        if (x.getPartitionSize() > 0) {
-            List<SqlNode> partNameList = new ArrayList<>();
-            for (int i = 0; i < partNames.size(); i++) {
-                SQLName partName = partNames.get(i);
-                SqlNode partNameId = convertToSqlNode(partName);
-                partNameList.add(partNameId);
-            }
-            partitions = new SqlNodeList(partNameList, SqlParserPos.ZERO);
         }
 
         if (alias != null) {

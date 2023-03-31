@@ -401,7 +401,9 @@ public class ExecutionContext {
 
     private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace;
 
-    private String partitionName;
+    private String partitionHint;
+
+    private boolean visitDBBuildIn;
 
     public ExecutionContext() {
     }
@@ -860,12 +862,20 @@ public class ExecutionContext {
         return rs;
     }
 
-    public String getPartitionName() {
-        return partitionName;
+    public String getPartitionHint() {
+        return partitionHint;
     }
 
-    public void setPartitionName(String partitionName) {
-        this.partitionName = partitionName;
+    public void setPartitionHint(String partitionHint) {
+        this.partitionHint = partitionHint;
+    }
+
+    public boolean isVisitDBBuildIn() {
+        return visitDBBuildIn;
+    }
+
+    public void setVisitDBBuildIn(boolean visitDBBuildIn) {
+        this.visitDBBuildIn = visitDBBuildIn;
     }
 
     public static class ErrorMessage {

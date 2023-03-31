@@ -364,8 +364,8 @@ public final class SetHandler {
                         // ignore max_statement_time for 2.0
                     } else if ("MAX_STATEMENT_TIME".equalsIgnoreCase(key.getName())) {
                         // ignore max_statement_time for 2.0
-                    } else if ("PARTITION_NAME".equalsIgnoreCase(key.getName())) {
-                        c.setPartitionName(RelUtils.stringValue(oriValue));
+                    } else if ("PARTITION_HINT".equalsIgnoreCase(key.getName())) {
+                        c.setPartitionHint(RelUtils.stringValue(oriValue));
                     } else if ("TRANSACTION POLICY".equalsIgnoreCase(key.getName())) {
                         if (!(oriValue instanceof SqlNumericLiteral) &&
                             !(oriValue instanceof SqlUserDefVar) && !(oriValue instanceof SqlSystemVar)) {

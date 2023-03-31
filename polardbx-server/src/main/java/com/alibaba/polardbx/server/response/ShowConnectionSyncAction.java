@@ -77,6 +77,7 @@ public class ShowConnectionSyncAction implements ISyncAction {
         result.addColumn("CHANNELS", DataTypes.IntegerType);
         result.addColumn("TRX", DataTypes.IntegerType);
         result.addColumn("NEED_RECONNECT", DataTypes.IntegerType);
+        result.addColumn("PARTITION_HINT", DataTypes.StringType);
 
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
             for (FrontendConnection fc : p.getFrontends().values()) {
@@ -107,7 +108,7 @@ public class ShowConnectionSyncAction implements ISyncAction {
                             fc.getCharset(), fc.getNetInBytes(), fc.getNetOutBytes(),
                             (TimeUtil.currentTimeMillis() - fc.getStartupTime()) / 1000L,
                             (System.nanoTime() - sc.getLastActiveTime()) / (1000 * 1000), count, trx,
-                            needReconnect});
+                            needReconnect, sc.getPartitionHint()});
 
                 }
             }
