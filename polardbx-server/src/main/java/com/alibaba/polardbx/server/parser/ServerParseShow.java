@@ -21,6 +21,8 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * @author xianmao.hexm 2011-5-7 下午01:23:06
@@ -53,7 +55,34 @@ public final class ServerParseShow {
     public static final int ARCHIVE = 26;
     public static final int FILE_STORAGE = 27;
     public static final int FULL_DATABASES = 28;
-    public static final int PROCEDURE_CACHE = 29;
+    public static final int FULL_CONNECTION = 29;
+    public static final int PROCEDURE_CACHE = 30;
+
+    public static final Set<Integer> PREPARE_UNSUPPORTED_SHOW_TYPE;
+
+    static {
+        PREPARE_UNSUPPORTED_SHOW_TYPE = new HashSet<>();
+
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(DATABASES);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(NODE);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(CONNECTION);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(WARNINGS);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(ERRORS);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(HELP);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(GIT_COMMIT);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(STATISTIC);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(MEMORYPOOL);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(STORAGE_REPLICAS);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(STORAGE);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(MDL_DEADLOCK_DETECTION);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(MPP);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(WORKLOAD);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(PARAMETRIC);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(CACHE_STATS);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(ARCHIVE);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(FILE_STORAGE);
+        PREPARE_UNSUPPORTED_SHOW_TYPE.add(FULL_DATABASES);
+    }
 
     public static int parse(String stmt, int offset) {
         return parse(ByteString.from(stmt), offset);
@@ -429,6 +458,34 @@ public final class ServerParseShow {
         return OTHER;
     }
 
+    // SHOW DATA
+    static int connectionCheck(ByteString stmt, int offset) {
+        if (stmt.length() >= offset + "onnection".length()) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            char c4 = stmt.charAt(++offset);
+            char c5 = stmt.charAt(++offset);
+            char c6 = stmt.charAt(++offset);
+            char c7 = stmt.charAt(++offset);
+            char c8 = stmt.charAt(++offset);
+            char c9 = stmt.charAt(++offset);
+            if ((c1 == 'O' || c1 == 'o') &&
+                (c2 == 'N' || c2 == 'n') &&
+                (c3 == 'N' || c3 == 'n') &&
+                (c4 == 'E' || c4 == 'e') &&
+                (c5 == 'C' || c5 == 'c') &&
+                (c6 == 'T' || c6 == 't') &&
+                (c7 == 'I' || c7 == 'i') &&
+                (c8 == 'O' || c8 == 'o') &&
+                (c9 == 'N' || c9 == 'n')
+            ) {
+                return CONNECTION;
+            }
+        }
+        return OTHER;
+    }
+
     // SHOW DATABASES
     static int showDatabases(ByteString stmt, int offset) {
         if (stmt.length() > offset + "ases".length()) {
@@ -437,7 +494,8 @@ public final class ServerParseShow {
             char c3 = stmt.charAt(++offset);
             char c4 = stmt.charAt(++offset);
             if ((c1 == 'A' || c1 == 'a') && (c2 == 'S' || c2 == 's') && (c3 == 'E' || c3 == 'e')
-                && (c4 == 'S' || c4 == 's') && (stmt.length() == ++offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
+                && (c4 == 'S' || c4 == 's') && (stmt.length() == ++offset || ParseUtil.isEOF(
+                stmt.charAt(offset)))) {
                 return DATABASES;
             }
         }
@@ -474,13 +532,15 @@ public final class ServerParseShow {
             char c7 = stmt.charAt(++offset);
             if ((c1 == 'A' || c1 == 'a') && (c2 == 'R' || c2 == 'r') && (c3 == 'N' || c3 == 'n')
                 && (c4 == 'I' || c4 == 'i') && (c5 == 'N' || c5 == 'n') && (c6 == 'G' || c6 == 'g')
-                && (c7 == 'S' || c7 == 's') && (stmt.length() == ++offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
+                && (c7 == 'S' || c7 == 's') && (stmt.length() == ++offset || ParseUtil.isEOF(
+                stmt.charAt(offset)))) {
                 return WARNINGS;
             }
 
             if ((c1 == 'O' || c1 == 'o') && (c2 == 'R' || c2 == 'r') && (c3 == 'K' || c3 == 'k')
                 && (c4 == 'L' || c4 == 'l') && (c5 == 'O' || c5 == 'o') && (c6 == 'A' || c6 == 'a')
-                && (c7 == 'D' || c7 == 'd') && (stmt.length() == ++offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
+                && (c7 == 'D' || c7 == 'd') && (stmt.length() == ++offset || ParseUtil.isEOF(
+                stmt.charAt(offset)))) {
                 return WORKLOAD;
             }
         }
@@ -541,6 +601,15 @@ public final class ServerParseShow {
                         int res = dataCheck(stmt, offset);
                         if (res == DATABASES) {
                             return FULL_DATABASES;
+                        } else {
+                            return OTHER;
+                        }
+                    }
+                    case 'C':
+                    case 'c': {
+                        int res = connectionCheck(stmt, offset);
+                        if (res == CONNECTION) {
+                            return FULL_CONNECTION;
                         } else {
                             return OTHER;
                         }

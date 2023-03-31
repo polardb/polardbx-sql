@@ -1108,7 +1108,7 @@ public class TConnection implements ITConnection {
         PreparedStmtCache preparedStmtCache = null;
         DdlContext ddlContext = null;
         boolean usingHint = false;
-        String partitionName = null;
+        String partitionHint = null;
 
         if (this.executionContext != null) {
             privilegeContext = this.executionContext.getPrivilegeContext();
@@ -1123,7 +1123,7 @@ public class TConnection implements ITConnection {
             preparedStmtCache = this.executionContext.getPreparedStmtCache();
             ddlContext = this.executionContext.getDdlContext();
             usingHint = this.executionContext.isUseHint();
-            partitionName = this.executionContext.getPartitionName();
+            partitionHint = this.executionContext.getPartitionHint();
         }
         if (privilegeContext == null) {
             privilegeContext = new PrivilegeContext();
@@ -1171,7 +1171,7 @@ public class TConnection implements ITConnection {
         this.executionContext.setOptimizedWithReturning(false);
         this.executionContext.setClientFoundRows(isClientFoundRows());
         this.executionContext.setUseHint(usingHint);
-        this.executionContext.setPartitionName(partitionName);
+        this.executionContext.setPartitionHint(partitionHint);
 
         this.executionContext.setIsExecutingPreparedStmt(isExecutingPreparedStmt);
         this.executionContext.setPreparedStmtCache(preparedStmtCache);
