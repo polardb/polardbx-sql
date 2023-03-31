@@ -25,8 +25,6 @@ import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -37,15 +35,12 @@ import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
-
 public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction implements ITsoTransaction {
 
     final private boolean omitTso;
     final private boolean lizard1PC;
     final private ITimestampOracle tso;
     private long snapshotSeq = -1;
-    final private boolean consistentReplicaRead;
 
     public AutoCommitSingleShardTsoTransaction(ExecutionContext ec, TransactionManager tm, boolean omitTso,
                                                boolean lizard1PC) {
@@ -53,8 +48,6 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
         this.tso = tm.getTimestampOracle();
-        this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
-            ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
     }
 
     @Override
@@ -77,31 +70,19 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
             false, rw.equals(ITransaction.RW.WRITE), executionContext);
 
-        boolean needReadLsn = needReadLsn(this, schemaName, masterSlave, consistentReplicaRead);
-
-        IConnection conn = super.getSelfConnection(schemaName, group, ds, masterSlave);
+        IConnection conn = super.getRealConnection(schemaName, group, ds, masterSlave);
 
         conn = new DeferredConnection(conn, ec.getParamManager().getBoolean(
             ConnectionParams.USING_RDS_RESULT_SKIP));
 
-        if (needReadLsn) {
-            TopologyHandler topology;
-            if (schemaName != null) {
-                topology = ExecutorContext.getContext(schemaName).getTopologyExecutor().getTopology();
-            } else {
-                topology = ((com.alibaba.polardbx.transaction.TransactionManager) manager).getTransactionExecutor()
-                    .getTopology();
-            }
-            TGroupDataSource groupDataSource = (TGroupDataSource) topology.get(group).getDataSource();
-            long masterLsn = GroupingFetchLSN.getInstance().getLsn(groupDataSource);
-            conn.executeLater(String.format("SET read_lsn = %d", masterLsn));
-        }
+        conn = sendLsn(conn, schemaName, group, masterSlave, this::getSnapshotSeq);
 
-        if (omitTso) {
+        if (omitTso && snapshotSeqIsEmpty()) {
             useCtsTransaction(conn, lizard1PC);
-        } else if (tso != null) {
+        } else {
             sendSnapshotSeq(conn);
         }
+
         return conn;
     }
 

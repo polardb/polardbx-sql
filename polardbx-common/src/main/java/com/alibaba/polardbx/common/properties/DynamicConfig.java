@@ -72,6 +72,12 @@ public class DynamicConfig {
             case ConnectionProperties.USE_CDC_CON:
                 isBasedCDC = parseValue(value, Boolean.class, true);
                 break;
+            case ConnectionProperties.GROUPING_LSN_THREAD_NUM:
+                groupingThread = parseValue(value, Integer.class, 4);
+                break;
+            case ConnectionProperties.GROUPING_LSN_TIMEOUT:
+                groupingTimeout = parseValue(value, Integer.class, 1000);
+                break;
             case ConnectionProperties.FORCE_RECREATE_GROUP_DATASOURCE:
                 enableCreateGroupDataSource = parseValue(value, Boolean.class, false);
                 break;
@@ -240,6 +246,18 @@ public class DynamicConfig {
 
     public int getBusyThreshold() {
         return busyThreshold;
+    }
+
+    private volatile int groupingTimeout = 1000;
+
+    public int getGroupingTimeout() {
+        return groupingTimeout;
+    }
+
+    private volatile int groupingThread = 4;
+
+    public int getGroupingThread() {
+        return groupingThread;
     }
 
     private volatile boolean isBasedCDC = true;

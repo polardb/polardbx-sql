@@ -109,6 +109,7 @@ import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
@@ -720,7 +721,7 @@ public class ExecUtils {
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof BroadcastTableModify) {
             group = OptimizerContext.getContext(((BroadcastTableModify) relNode).getDirectTableOperation()
-                    .getSchemaName())
+                .getSchemaName())
                 .getRuleManager()
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof LogicalShow) {
@@ -1746,16 +1747,41 @@ public class ExecUtils {
         return MetricLevel.isOperatorMetricEnabled(context.getParamManager().getInt(ConnectionParams.MPP_METRIC_LEVEL));
     }
 
-    public static long getLsn(IDataSource dataSource) throws SQLException {
-        try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
-            Statement stmt = masterConn.createStatement()) {
-            ResultSet result =
-                stmt.executeQuery("SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL");
-            if (result.next()) {
-                long masterLsn = Long.parseLong(result.getString(1));
-                return masterLsn;
-            } else {
-                throw new SQLException("Empty result while getting Applied_index");
+    /**
+     * @param tso Task to send a timestamp to MASTER storage nodes in order to keep their latest timestamp up-to-date.
+     */
+    public static long getLsn(IDataSource dataSource, long tso) throws SQLException {
+        final String tsoSql = "SET GLOBAL innodb_heartbeat_seq = " + tso;
+        final String lsnSql = "SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL";
+
+        ResultSet result;
+        try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY)) {
+            if (masterConn.isWrapperFor(XConnection.class)) {
+                masterConn.unwrap(XConnection.class).execUpdate(tsoSql, null, true);
+            }
+
+            try (Statement stmt = masterConn.createStatement()) {
+                if (tso > 0) {
+                    if (masterConn.isWrapperFor(XConnection.class)) {
+                        result = stmt.executeQuery(lsnSql);
+                    } else {
+                        // Multi-statement, the first one is a SET statement, the last is a SELECT query.
+                        stmt.executeQuery(tsoSql + ";" + lsnSql);
+                        if (stmt.getUpdateCount() != -1 && stmt.getMoreResults()) {
+                            result = stmt.getResultSet();
+                        } else {
+                            throw new SQLException("Error occurs while getting Applied_index result set");
+                        }
+                    }
+                } else {
+                    result = stmt.executeQuery(lsnSql);
+                }
+
+                if (result.next()) {
+                    return Long.parseLong(result.getString(1));
+                } else {
+                    throw new SQLException("Empty result while getting Applied_index");
+                }
             }
         }
     }
