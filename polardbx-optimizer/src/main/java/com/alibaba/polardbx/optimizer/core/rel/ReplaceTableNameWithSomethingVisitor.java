@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -444,8 +445,6 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             select.setFrom(visit((SqlJoin) from));
         } else if (fromKind == SqlKind.SELECT) {
             select.setFrom(visit((SqlCall) from));
-        } else if (fromKind == SqlKind.AS_OF) {
-            select.setFrom(buildAsOfNode((SqlBasicCall) from));
         }
     }
 
@@ -457,10 +456,12 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             // e.g. "FROM tb AS OF TIMESTAMP ?" -> "FROM tb_xxx AS OF TIMESTAMP ? AS tb"
             SqlIdentifier identifier = (SqlIdentifier) leftNode;
             this.tableNames.add(Util.last(identifier.names));
-            SqlNode asOfNode = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
-                buildSth(leftNode),
-                rightNode,
-            }, SqlParserPos.ZERO);
+            SqlNode asOfNode = new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {
+                    buildSth(leftNode),
+                    rightNode,
+                }, SqlParserPos.ZERO);
             SqlIdentifier alias = new SqlIdentifier(
                 ImmutableList.of(Util.last(identifier.names)),
                 null,
@@ -660,10 +661,12 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             throw new TddlNestableRuntimeException("should not be here");
         }
         if (unwrapTablename) {
-            leftNode = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
-                leftNode,
-                rightNode,
-            }, SqlParserPos.ZERO);
+            leftNode = new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {
+                    leftNode,
+                    rightNode,
+                }, SqlParserPos.ZERO);
         }
 
         return SqlStdOperatorTable.AS.createCall(SqlParserPos.ZERO, leftNode, sqlIdentifier);
@@ -810,7 +813,8 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected SqlNode buildFlashback(SqlNode origin, SqlNode converted) {
         if (origin instanceof SqlIdentifier && ((SqlIdentifier) origin).flashback != null) {
-            return new SqlBasicCall(SqlStdOperatorTable.AS_OF,
+            return new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
                 new SqlNode[] {converted, ((SqlIdentifier) origin).flashback}, SqlParserPos.ZERO);
         }
         return converted;

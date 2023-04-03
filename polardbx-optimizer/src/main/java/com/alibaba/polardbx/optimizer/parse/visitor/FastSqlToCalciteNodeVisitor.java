@@ -31,6 +31,7 @@ import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
@@ -4496,9 +4497,11 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             ((SqlIdentifier) tableNameIdentifier).indexNode = sqlNodeHint;
             ((SqlIdentifier) tableNameIdentifier).partitions = partitions;
 
-            tableNameIdentifier = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
-                tableNameIdentifier,
-                snapshotTimestampIdentifier
+            tableNameIdentifier = new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {
+                    tableNameIdentifier,
+                    snapshotTimestampIdentifier
             }, SqlParserPos.ZERO);
 
         }

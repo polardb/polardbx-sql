@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -464,6 +465,8 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.supportFastChecker = tmpSupportFastChecker;
         this.supportXxHash = tmpSupportXxHash;
         this.isMysql80 = tmpRDS80;
+
+        InstanceVersion.setMYSQL80(this.isMysql80);
     }
 
     private boolean metaDbUsesXProtocol() {

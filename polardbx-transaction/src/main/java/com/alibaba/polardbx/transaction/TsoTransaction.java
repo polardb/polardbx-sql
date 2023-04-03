@@ -213,7 +213,8 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
             // Get commit timestamp and Write commit log via an external connection
             commitTimestamp = nextTimestamp();
 
-            if (isCrossGroup && !executionContext.getParamManager().getBoolean(ConnectionParams.TSO_OMIT_GLOBAL_TX_LOG)) {
+            if (isCrossGroup && !executionContext.getParamManager()
+                .getBoolean(ConnectionParams.TSO_OMIT_GLOBAL_TX_LOG)) {
                 try (IConnection logConn = dataSourceCache.get(primaryGroup).getConnection(MasterSlave.MASTER_ONLY)) {
                     beforePrimaryCommit();
                     commitState = TransactionCommitState.UNKNOWN;
