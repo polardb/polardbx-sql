@@ -2149,7 +2149,7 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam ENABLE_CONSISTENT_REPLICA_READ = new BooleanConfigParam(
         ConnectionProperties.ENABLE_CONSISTENT_REPLICA_READ,
-        false,
+        true,
         false);
 
     public static final IntConfigParam IN_SUB_QUERY_THRESHOLD = new IntConfigParam(
