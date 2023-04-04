@@ -2154,27 +2154,7 @@ public class Planner {
 
         PlannerContext.getPlannerContext(executionPlan.getPlan()).setExecutionContext(executionContext);
         executionContext.setFinalPlan(executionPlan);
-
-        // For RDS80 flashback query.
-        processFlashbackQuery(executionContext, executionPlan);
         return executionPlan;
-    }
-
-    private void processFlashbackQuery(ExecutionContext executionContext, ExecutionPlan executionPlan) {
-        List<Integer> flashbackIdx = PlannerContext.getPlannerContext(executionPlan.getPlan()).getFlashbackParamIdx();
-        if (null != flashbackIdx) {
-            for (Integer idx : flashbackIdx) {
-                ParameterContext timestampContext = executionContext.getParams().getCurrentParameter().get(idx);
-                try {
-                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(timestampContext.toString());
-                    // Change timestamp to GCN
-                    timestampContext.setValue(String.valueOf(date.getTime() << 22));
-                } catch (ParseException e) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARSER,
-                        "Invalid AS OF TIMESTAMP format, should be like '1970-01-01 00:00:00'");
-                }
-            }
-        }
     }
 
     protected void processCpuProfileForSqlType(ExecutionContext executionContext) {

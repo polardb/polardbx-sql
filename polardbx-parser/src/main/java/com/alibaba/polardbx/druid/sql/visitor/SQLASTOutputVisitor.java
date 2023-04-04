@@ -395,6 +395,8 @@ import java.math.BigInteger;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.NClob;
+import java.sql.SQLException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -461,6 +463,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     protected Boolean printStatementAfterSemi = defaultPrintStatementAfterSemi;
 
     private boolean specialNameWithBacktick = false;
+
+    protected boolean isMySQL80 = false;
 
     {
         features |= VisitorFeature.OutputPrettyFormat.mask;
@@ -6831,6 +6835,21 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         if (this.parameterized) {
             print('?');
             incrementReplaceCunt();
+
+            if (isMySQL80) {
+                String gcn = null;
+                try {
+                    // Change timestamp to GCN.
+                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(x.getValue());
+                    gcn = String.valueOf(date.getTime() << 22);
+                } catch (ParseException e) {
+                    // ignore
+                    gcn = null;
+                }
+                if (null != gcn) {
+                    x.setLiteral(gcn);
+                }
+            }
 
             if (this.parameters != null) {
                 ExportParameterVisitorUtils.exportParameter(this.parameters, x);
