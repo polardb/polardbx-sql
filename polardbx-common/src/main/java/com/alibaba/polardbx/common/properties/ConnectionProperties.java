@@ -1946,4 +1946,6 @@ public class ConnectionProperties {
     public static final String GROUPING_LSN_THREAD_NUM = "GROUPING_LSN_THREAD_NUM";
 
     public static final String GROUPING_LSN_TIMEOUT = "GROUPING_LSN_TIMEOUT";
+
+    public static final String ENABLE_SINGLE_SHARD_WRITE = "ENABLE_SINGLE_SHARD_WRITE";
 }

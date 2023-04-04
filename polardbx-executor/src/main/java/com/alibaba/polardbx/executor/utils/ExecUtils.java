@@ -1756,26 +1756,27 @@ public class ExecUtils {
 
         ResultSet result;
         try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY)) {
-            if (masterConn.isWrapperFor(XConnection.class)) {
-                masterConn.unwrap(XConnection.class).execUpdate(tsoSql, null, true);
-            }
+//            if (masterConn.isWrapperFor(XConnection.class)) {
+//                masterConn.unwrap(XConnection.class).execUpdate(tsoSql, null, true);
+//            }
 
             try (Statement stmt = masterConn.createStatement()) {
-                if (tso > 0) {
-                    if (masterConn.isWrapperFor(XConnection.class)) {
-                        result = stmt.executeQuery(lsnSql);
-                    } else {
-                        // Multi-statement, the first one is a SET statement, the last is a SELECT query.
-                        stmt.executeQuery(tsoSql + ";" + lsnSql);
-                        if (stmt.getUpdateCount() != -1 && stmt.getMoreResults()) {
-                            result = stmt.getResultSet();
-                        } else {
-                            throw new SQLException("Error occurs while getting Applied_index result set");
-                        }
-                    }
-                } else {
-                    result = stmt.executeQuery(lsnSql);
-                }
+//                if (tso > 0) {
+//                    if (masterConn.isWrapperFor(XConnection.class)) {
+//                        result = stmt.executeQuery(lsnSql);
+//                    } else {
+//                        // Multi-statement, the first one is a SET statement, the last is a SELECT query.
+//                        stmt.executeQuery(tsoSql + ";" + lsnSql);
+//                        if (stmt.getUpdateCount() != -1 && stmt.getMoreResults()) {
+//                            result = stmt.getResultSet();
+//                        } else {
+//                            throw new SQLException("Error occurs while getting Applied_index result set");
+//                        }
+//                    }
+//                } else {
+//                    result = stmt.executeQuery(lsnSql);
+//                }
+                result = stmt.executeQuery(lsnSql);
 
                 if (result.next()) {
                     return Long.parseLong(result.getString(1));
