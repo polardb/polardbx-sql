@@ -459,6 +459,9 @@ public class SessionHintTest extends BaseTestCase {
 
             // test partition hint working
             connWithHint.createStatement().execute("set partition_hint=" + partitionName);
+            // test partition hint with non-direct hint
+            connWithHint.createStatement().execute("trace /*TDDL:slave()*/ select * from " + TBL_NAME);
+            connWithHint.createStatement().execute("trace /*TDDL:a()*/ select * from " + TBL_NAME);
             connWithHint.createStatement()
                 .execute("trace /*TDDL:test_hint=true*/ select * from select_base_three_multi_db_one_tb");
             rs = connWithHint.createStatement().executeQuery("show trace");
