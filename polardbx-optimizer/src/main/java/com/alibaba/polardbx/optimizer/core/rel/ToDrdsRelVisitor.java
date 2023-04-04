@@ -296,7 +296,6 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean containScaleOutWritableTable = false;
     private boolean containReplicateWriableTable = false;
     private boolean containOnlineModifyColumnTable = false;
-    private boolean containAsOf = false;
 
     private SqlNode ast;
     private boolean existsWindow = false;
@@ -332,17 +331,6 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     public final RelNode visit(TableScan scan) {
         final List<String> qualifiedName = scan.getTable().getQualifiedName();
         final String tableName = Util.last(scan.getTable().getQualifiedName());
-
-        if (null != scan.getFlashback() && scan.getFlashback() instanceof RexDynamicParam &&
-            InstanceVersion.isMYSQL80()) {
-            // For RDS80, global flashback query is not supported.
-            // We need to convert the timestamp to a GCN.
-            int paramIndex = ((RexDynamicParam) scan.getFlashback()).getIndex() + 1;
-            if (null == plannerContext.getFlashbackParamIdx()) {
-                plannerContext.setFlashbackParamIdx(new ArrayList<>());
-            }
-            plannerContext.getFlashbackParamIdx().add(paramIndex);
-        }
 
         setShouldRemoveSchemaName(qualifiedName);
 

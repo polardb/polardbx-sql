@@ -128,8 +128,6 @@ public class PlannerContext implements Context, PlannerContextWithParam {
      */
     private boolean addForcePrimary = false;
 
-    private ArrayList<Integer> flashbackParamIdx = null;
-
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
     }
@@ -505,13 +503,5 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setAddForcePrimary(boolean addForcePrimary) {
         this.addForcePrimary = addForcePrimary;
-    }
-
-    public ArrayList<Integer> getFlashbackParamIdx() {
-        return flashbackParamIdx;
-    }
-
-    public void setFlashbackParamIdx(ArrayList<Integer> flashbackParamIdx) {
-        this.flashbackParamIdx = flashbackParamIdx;
     }
 }

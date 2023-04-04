@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.parse.visitor;
 
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLOver;
@@ -132,6 +133,7 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
     public DrdsParameterizeSqlVisitor(Appendable appender, boolean parameterized, ExecutionContext executionContext) {
         super(appender, parameterized);
         this.executionContext = executionContext;
+        this.isMySQL80 = InstanceVersion.isMYSQL80();
     }
 
     @Override
