@@ -27,10 +27,9 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -57,7 +56,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.ALLOW_FOLLOW_READ_TRANSACTION;
 
 /**
  * DRDS 分布式事务连接管理器
@@ -295,7 +294,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             return false;
         }
 
-        if (schema != null && schema.equalsIgnoreCase("information_schema")) {
+        if (schema != null && schema.equalsIgnoreCase(SystemDbHelper.INFO_SCHEMA_DB_NAME)) {
             //information_schema走的是metadb, 访问无需获取Lsn
             return false;
         }
@@ -304,38 +303,12 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             return false;
         }
 
-        if (!transaction.getTransactionClass().isA(TSO_TRANSACTION)) {
-            //非TSO事务无需获取Lsn
+        if (!transaction.getTransactionClass().isA(ALLOW_FOLLOW_READ_TRANSACTION)) {
+            // 非备库读事务无需获取 Lsn
             return false;
         }
 
         return masterSlave != MasterSlave.MASTER_ONLY;
-    }
-
-    private IConnection getConnectionWithLsn(String schema, String group, IDataSource ds, RW rw)
-        throws SQLException {
-        MasterSlave masterSlave = ExecUtils.getMasterSlave(
-            true, rw.equals(ITransaction.RW.WRITE), executionContext);
-
-        boolean needReadLsn = needReadLsn(trx, schema, masterSlave, consistentReplicaRead);
-
-        if (!needReadLsn) {
-            return ds.getConnection(masterSlave);
-        }
-
-        TopologyHandler topology = null;
-        if (schema != null) {
-            //支持跨库查询
-            topology = ExecutorContext.getContext(schema).getTopologyExecutor().getTopology();
-        } else {
-            topology = executor.getTopology();
-        }
-
-        long masterLsn = GroupingFetchLSN.getInstance().getLsn(topology, group, dnLsnMap);
-        IConnection slaveConn = new DeferredConnection(ds.getConnection(masterSlave),
-            executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP));
-        slaveConn.executeLater(String.format("SET read_lsn = %d", masterLsn));
-        return slaveConn;
     }
 
     public IConnection getConnection(String schema, String group, IDataSource ds, RW rw) throws SQLException {
@@ -586,7 +559,12 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                                           IDataSource ds, RW rw,
                                           List<HeldConnection> groupHeldConns,
                                           boolean shouldParticipate) throws SQLException {
-        IConnection conn = new DeferredConnection(getConnectionWithLsn(schema, group, ds, rw),
+
+        MasterSlave masterSlave = ExecUtils.getMasterSlave(
+            true, rw.equals(ITransaction.RW.WRITE), executionContext);
+        IConnection newConnection = ds.getConnection(masterSlave);
+
+        IConnection conn = new DeferredConnection(newConnection,
             executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP));
         connections.add(conn);
         HeldConnection heldConn =

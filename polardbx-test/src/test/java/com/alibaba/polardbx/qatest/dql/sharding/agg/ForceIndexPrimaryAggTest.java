@@ -4,6 +4,7 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 
@@ -14,13 +15,14 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+@NotThreadSafe
 public class ForceIndexPrimaryAggTest extends ReadBaseTestCase {
     final static String SINGLE_TABLE = "force_index_primary_single";
     final static String SHARDING_TABLE = "force_index_primary_sharding";
     final static String CREATE_SINGLE_TABLE =
-        "create table if not exists " + SINGLE_TABLE + "(id int primary key, a int)";
+        "create table if not exists " + SINGLE_TABLE + "(id int primary key, a int, key idx(a))";
     final static String CREATE_SHARDING_TABLE =
-        "create table if not exists " + SHARDING_TABLE + "(id int primary key, a int)";
+        "create table if not exists " + SHARDING_TABLE + "(id int primary key, a int, key idx(a))";
     final static String PART_INFO = "dbpartition by hash(id)";
     final static String DROP_TABLE = "drop table if exists ";
     final static int TABLE_SIZE = 100;

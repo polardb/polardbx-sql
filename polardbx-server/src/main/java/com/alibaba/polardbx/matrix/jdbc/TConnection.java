@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
@@ -37,6 +36,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -63,7 +63,6 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.utils.ExceptionUtils;
-import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
@@ -73,7 +72,6 @@ import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.MultiDdlContext;
@@ -109,16 +107,12 @@ import com.alibaba.polardbx.transaction.ITsoTransaction;
 import com.alibaba.polardbx.transaction.ReadOnlyTsoTransaction;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.PrintWriter;
@@ -154,26 +148,25 @@ import static org.apache.calcite.sql.SqlKind.UPDATE;
 public class TConnection implements ITConnection {
 
     protected final static Logger logger = LoggerFactory.getLogger(TConnection.class);
-    private PlanExecutor executor = null;
+    private static final String TRACE = "trace ";
     private final TDataSource dataSource;
-    private ExecutionContext executionContext = new ExecutionContext();                             // 记录上一次的执行上下文
     private final List<TStatement> openedStatements = new ArrayList<TStatement>(2);
+    private final ServerThreadPool executorService;
+    private final ReentrantLock lock = new ReentrantLock();
+    private PlanExecutor executor = null;
+    private ExecutionContext executionContext = new ExecutionContext();                             // 记录上一次的执行上下文
     private boolean isAutoCommit = true;                                               // jdbc规范，新连接为true
     private boolean readOnly = false;
     private volatile boolean closed;
     private int transactionIsolation = -1;
-    private final ServerThreadPool executorService;
-
     private ITransactionPolicy trxPolicy = null;
     // Only set by ServerConnection. For users, it's set by
     // "set batch_insert_policy='split'"
     // Null stands for not set by this connection, and the policy depends on
     // instance property.
     private BatchInsertPolicy batchInsertPolicy = null;
-
     private long lastExecutionBeginNano = -1;
     private long lastExecutionBeginUnixTime = -1;
-
     /**
      * 管理这个连接下用到的所有物理连接
      */
@@ -185,20 +178,16 @@ public class TConnection implements ITConnection {
     private String sqlMode = null;
     private List<Long> generatedKeys = Collections.synchronizedList(new ArrayList<Long>());
     private ITransaction trx;
-
     /**
      * 保存 select sql_calc_found_rows 返回的结果
      */
     private long foundRows = 0;
-
     /**
      * Store the result of ROW_COUNT()
      */
     private long affectedRows = 0;
-
     private SQLTracer tracer;
     private int socketTimeout = -1;
-    private final ReentrantLock lock = new ReentrantLock();
     // 下推到下层的系统变量，全部小写
     private Map<String, Object> serverVariables = null;
     // 下推到下层的全局系统变量，全部小写
@@ -214,7 +203,6 @@ public class TConnection implements ITConnection {
     private String frontendConnectionInfo = null;
     private Boolean asyncDDLPureModeSession = null;
     private InternalTimeZone logicalTimeZone = null;
-
     /**
      * <pre>
      * For UPDATE statements, the affected-rows value by default is the number of rows actually changed.
@@ -225,41 +213,28 @@ public class TConnection implements ITConnection {
      * </pre>
      */
     private boolean clientFoundRows = true;
-
     /**
      * 和show processlist里显示的ID一致，用于生成mpp的QueryId
      */
     private long id;
-
     /**
      * 分布式锁是连接级别（会话级别）
      */
     private LockingFunctionHandle lockHandle;
     private String traceId;
-
     /**
      * 事务级别
      */
     private ShareReadViewPolicy shareReadView = ShareReadViewPolicy.DEFAULT;
-
     /**
      * whether the current statement is a DDL
      */
     private boolean ddlStatement;
-
     /**
      * the intra group parallelism ,
      * when it is not null means user manually set the variable by "SET GROUP_PARALLELISM=xxx"
      */
     private Long groupParallelism;
-
-    public void setDdlStatement(boolean ddlStatement) {
-        this.ddlStatement = ddlStatement;
-    }
-
-    public boolean isDdlStatement() {
-        return ddlStatement;
-    }
 
     public TConnection(TDataSource ds) {
         this.dataSource = ds;
@@ -268,8 +243,63 @@ public class TConnection implements ITConnection {
         this.logicalTimeZone = ds.getLogicalDbTimeZone();
     }
 
+    private static int findTraceIndex(ByteString sql) {
+        int i = 0;
+        for (; i < sql.length(); ++i) {
+            switch (sql.charAt(i)) {
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+                continue;
+            }
+            break;
+        }
+
+        if (sql.regionMatches(true, i, TRACE, 0, TRACE.length())) {
+            return i + TRACE.length();
+        } else {
+            return -1;
+        }
+    }
+
+    private static void checkTransactionParams(IDistributedTransaction trx, ExecutionContext executionContext) {
+        // Check injected failure from hint (for test purpose)
+        String injectedFailure =
+            (String) executionContext.getExtraCmds().get(ConnectionProperties.FAILURE_INJECTION);
+        if (injectedFailure != null) {
+            trx.setFailureFlag(FailureInjectionFlag.parseString(injectedFailure));
+        }
+    }
+
+    public boolean isDdlStatement() {
+        return ddlStatement;
+    }
+
+    public void setDdlStatement(boolean ddlStatement) {
+        this.ddlStatement = ddlStatement;
+    }
+
     public boolean getShareReadView() {
         return shareReadView == ShareReadViewPolicy.ON;
+    }
+
+    public void setShareReadView(ShareReadViewPolicy shareReadView) {
+        if (this.shareReadView == shareReadView) {
+            return;
+        }
+        if (this.trx != null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                "Set share read view in the middle of transaction "
+                    + "is not allowed. Please do this operation right after transaction begins.");
+        }
+        if (shareReadView == ShareReadViewPolicy.ON) {
+            if (!dnSupportShareReadView()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Data node does not support share read view.");
+            }
+            ShareReadViewPolicy.checkTxIsolation(transactionIsolation);
+        }
+        this.shareReadView = shareReadView;
     }
 
     private ITransactionPolicy loadTrxPolicy(ExecutionContext executionContext) {
@@ -528,28 +558,6 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private static final String TRACE = "trace ";
-
-    private static int findTraceIndex(ByteString sql) {
-        int i = 0;
-        for (; i < sql.length(); ++i) {
-            switch (sql.charAt(i)) {
-            case ' ':
-            case '\t':
-            case '\r':
-            case '\n':
-                continue;
-            }
-            break;
-        }
-
-        if (sql.regionMatches(true, i, TRACE, 0, TRACE.length())) {
-            return i + TRACE.length();
-        } else {
-            return -1;
-        }
-    }
-
     /**
      * Separate execute(sql, ec) into two parts: plan and execute. If it's
      * writing into broadcast table and has no transaction, a new transaction
@@ -627,7 +635,7 @@ public class TConnection implements ITConnection {
             trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
             if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext) && executionContext.isTsoTransaction()) {
                 // If this plan can be optimized, rebuild plan.
-                plan = Planner.getInstance().plan(sql, executionContext);
+                plan = rebuildPlan(sql, executionContext, originParams, false);
             }
         }
 
@@ -652,13 +660,7 @@ public class TConnection implements ITConnection {
 
             // If any meta is modified during optimization, rebuild plan
             if (metaVersionChanged(plan, metaVersions, executionContext) || testRebuild) {
-                if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
-                    .isEmpty(originParams.getFirstParameter())) {
-                    // rebuild plan during executing preparedStmt should reset origin params
-                    // Resume empty parameters for insert
-                    executionContext.setParams(originParams);
-                }
-                plan = rebuildPlan(sql, executionContext);
+                plan = rebuildPlan(sql, executionContext, originParams, true);
 
                 // Update transaction policy for modify of broadcast table and
                 // of table with global secondary index
@@ -667,7 +669,7 @@ public class TConnection implements ITConnection {
                     if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext)
                         && executionContext.isTsoTransaction()) {
                         // If this plan can be optimized, rebuild plan.
-                        plan = Planner.getInstance().plan(sql, executionContext);
+                        plan = rebuildPlan(sql, executionContext, originParams, false);
                     }
                 }
             }
@@ -750,15 +752,6 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private static void checkTransactionParams(IDistributedTransaction trx, ExecutionContext executionContext) {
-        // Check injected failure from hint (for test purpose)
-        String injectedFailure =
-            (String) executionContext.getExtraCmds().get(ConnectionProperties.FAILURE_INJECTION);
-        if (injectedFailure != null) {
-            trx.setFailureFlag(FailureInjectionFlag.parseString(injectedFailure));
-        }
-    }
-
     private boolean metaVersionChanged(ExecutionPlan plan, long[] metaVersions,
                                        ExecutionContext executionContext) {
         if (executionContext.getSchemaManagers().values().stream().anyMatch(s -> s.isExpired())) {
@@ -768,14 +761,26 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext) {
-        SQLRecorderLogger.ddlLogger.warn(
-            MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
-                executionContext.getTraceId(),
-                sql,
-                GsiUtils.rowToString(executionContext.getParams())));
+    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext,
+                                      Parameters originParams,
+                                      boolean causedByMetaChanged) {
+        if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
+            .isEmpty(originParams.getFirstParameter())) {
+            // rebuild plan during executing preparedStmt should reset origin params
+            // Resume empty parameters for insert
+            executionContext.setParams(originParams.clone());
+        }
 
-        executionContext.refreshTableMeta();
+        if (causedByMetaChanged) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
+                    executionContext.getTraceId(),
+                    sql,
+                    GsiUtils.rowToString(executionContext.getParams())));
+
+            executionContext.refreshTableMeta();
+        }
+
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
         this.lastExecutionBeginNano = System.nanoTime();
         this.lastExecutionBeginUnixTime = unixTimeStamp();
@@ -1191,6 +1196,11 @@ public class TConnection implements ITConnection {
         return this.executionContext;
     }
 
+    public boolean getAutoCommit() throws SQLException {
+        checkClosed();
+        return isAutoCommit;
+    }
+
     /*
      * ========================================================================
      * JDBC事务相关的autoCommit设置、commit/rollback、TransactionIsolation等
@@ -1231,11 +1241,6 @@ public class TConnection implements ITConnection {
         if (this.executionContext != null) {
             this.executionContext.setAutoCommit(autoCommit);
         }
-    }
-
-    public boolean getAutoCommit() throws SQLException {
-        checkClosed();
-        return isAutoCommit;
     }
 
     public void commit() throws SQLException {
@@ -1716,10 +1721,6 @@ public class TConnection implements ITConnection {
         return trxPolicy;
     }
 
-    public ITransactionPolicy getTrxPolicyForLogging() {
-        return trxPolicy;
-    }
-
     @Override
     public void setTrxPolicy(ITransactionPolicy trxPolicy) {
         if (this.trxPolicy == trxPolicy) {
@@ -1739,6 +1740,10 @@ public class TConnection implements ITConnection {
         }
 
         this.trxPolicy = trxPolicy;
+    }
+
+    public ITransactionPolicy getTrxPolicyForLogging() {
+        return trxPolicy;
     }
 
     /**
@@ -2017,24 +2022,6 @@ public class TConnection implements ITConnection {
             openedStatements.add(stmt);
         }
         return stmt;
-    }
-
-    public void setShareReadView(ShareReadViewPolicy shareReadView) {
-        if (this.shareReadView == shareReadView) {
-            return;
-        }
-        if (this.trx != null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
-                "Set share read view in the middle of transaction "
-                    + "is not allowed. Please do this operation right after transaction begins.");
-        }
-        if (shareReadView == ShareReadViewPolicy.ON) {
-            if (!dnSupportShareReadView()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Data node does not support share read view.");
-            }
-            ShareReadViewPolicy.checkTxIsolation(transactionIsolation);
-        }
-        this.shareReadView = shareReadView;
     }
 
     public void setGroupParallelism(Long groupParallelism) {

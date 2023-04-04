@@ -414,12 +414,3 @@
   plan: |
     LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
 
-
-# show slave status
--
-  sql: |
-    show slave status
-  plan: |
-    LogicalDal(sql="SHOW SLAVE STATUS")
-
-

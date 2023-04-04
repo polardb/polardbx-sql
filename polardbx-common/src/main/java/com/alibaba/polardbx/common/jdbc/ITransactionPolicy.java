@@ -62,6 +62,12 @@ public interface ITransactionPolicy {
                 TransactionClass.TSO_READONLY,
                 TransactionClass.AUTO_COMMIT_SINGLE_SHARD);
 
+        public static EnumSet<TransactionClass> ALLOW_FOLLOW_READ_TRANSACTION = EnumSet
+            .of(TransactionClass.AUTO_COMMIT,
+                TransactionClass.TSO_READONLY,
+                TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
+                TransactionClass.MPP_READ_ONLY_TRANSACTION);
+
         public static EnumSet<TransactionClass> SUPPORT_INVENTORY_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
                 TransactionClass.ALLOW_READ_CROSS_DB,

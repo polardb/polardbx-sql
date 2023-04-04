@@ -52,6 +52,12 @@ public class ForceIndexVisitor extends RelShuttleImpl {
 
     @Override
     public RelNode visit(TableScan scan) {
+        final TableMeta tableMeta = RelUtils.getTableMeta(scan);
+        if (null == tableMeta || tableMeta.getSecondaryIndexes().isEmpty()) {
+            // No secondary indexes, no need to add FORCE INDEX PRIMARY.
+            return scan;
+        }
+
         // UGSI may have no primary key, so just disable this optimization for UGSI.
         if (scan instanceof LogicalIndexScan && ((LogicalIndexScan) scan).isUniqueGsi()) {
             return scan;

@@ -51,3 +51,7 @@ select a,c from tbl_with_gsi1 order by a;
 select a,c from tbl_with_gsi1 partition(p4) order by a;
 select a,c from tbl_with_gsi1 partition(p4) force index(idxc) where c>0 order by a;
 
+# partition selection for flashbach query
+/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 partition(p1) as of timestamp '2022-01-01 00:00:00';
+/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 tt partition(p1) as of timestamp '2022-01-01 00:00:00';
+/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 as of timestamp '2022-01-01 00:00:00' as tt partition(p1);

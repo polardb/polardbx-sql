@@ -37,6 +37,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.PlannerContextWithParam;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -126,6 +127,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
      * Set before building plan.
      */
     private boolean addForcePrimary = false;
+
+    private ArrayList<Integer> flashbackParamIdx = null;
 
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
@@ -502,5 +505,13 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setAddForcePrimary(boolean addForcePrimary) {
         this.addForcePrimary = addForcePrimary;
+    }
+
+    public ArrayList<Integer> getFlashbackParamIdx() {
+        return flashbackParamIdx;
+    }
+
+    public void setFlashbackParamIdx(ArrayList<Integer> flashbackParamIdx) {
+        this.flashbackParamIdx = flashbackParamIdx;
     }
 }

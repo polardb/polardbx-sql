@@ -267,23 +267,23 @@
 # Test count with group by for sharding table, should NOT add FORCE INDEX
 - sql: |
 
-    select count(0) from test_force_index_tb1 group by name;
+    select count(0) from test_force_index_tb1 group by a;
 
   plan: |
 
     project(count(0)="count(0)")
-      hashagg(group="name", count(0)="sum(count(0))")
+      hashagg(group="a", count(0)="sum(count(0))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` group by `name`")
+          logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count(0)` from `test_force_index_tb1` as `test_force_index_tb1` group by `a`")
 
 # Test count with group by for single table, should NOT add FORCE INDEX
 - sql: |
 
-    select count(0) from test_force_index_single group by name;
+    select count(0) from test_force_index_single group by a;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`name`")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select count(0) as `count(0)` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`a`")
 
 # Test subquery for sharding table, should NOT add FORCE INDEX
 - sql: |
@@ -308,22 +308,22 @@
 # Test subquery for sharding table, should NOT add FORCE INDEX
 - sql: |
 
-    select count from (select count(0) as count from test_force_index_tb1 group by name having count(id) > 0) as t;
+    select count from (select count(0) as count from test_force_index_tb1 group by a having count(id) > 0) as t;
 
   plan: |
 
     project(count="count")
       filter(condition="count > ?0")
-        hashagg(group="name", count="sum(count)")
+        hashagg(group="a", count="sum(count)")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `name`, count(*) as `count` from `test_force_index_tb1` as `test_force_index_tb1` group by `name`")
+            logicalview(tables="[0000-0003].test_force_index_tb1", shardcount=4, sql="select `a`, count(*) as `count` from `test_force_index_tb1` as `test_force_index_tb1` group by `a`")
 
 # Test subquery for single table, should NOT add FORCE INDEX
 - sql: |
 
-    select count from (select count(0) as count from test_force_index_single group by name having count(id) > 0) as t;
+    select count from (select count(0) as count from test_force_index_single group by a having count(id) > 0) as t;
 
   plan: |
 
-    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`name` having (count(`id`) > ?)) as `t`", params="0")
+    logicalview(tables="optest_0000.test_force_index_single", sql="select `t`.`count` as `count` from (select count(0) as `count` from `test_force_index_single` as `test_force_index_single` group by `test_force_index_single`.`a` having (count(`id`) > ?)) as `t`", params="0")
 

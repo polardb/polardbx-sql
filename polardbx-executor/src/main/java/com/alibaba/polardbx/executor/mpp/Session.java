@@ -47,7 +47,7 @@ public final class Session {
     private final boolean preferLocal;
     private boolean localResultIsSync = false;
     private HashMap<String, String> groups = new HashMap<>();
-    private long tsoTime = -1;
+    private long tsoTime = -1L;
     private boolean omitTso;
     private boolean lizard1PC;
     private ConcurrentHashMap<String, Long> dnLsns = new ConcurrentHashMap<>();
@@ -140,8 +140,8 @@ public final class Session {
 
                 for (Map.Entry<String, String> group : groups.entrySet()) {
                     GroupingFetchLSN.getInstance()
-                        .getLsn(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
-                            group.getKey(), dnLsns);
+                        .fetchLSN(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
+                            group.getKey(), dnLsns, this.tsoTime);
                 }
             }
         }

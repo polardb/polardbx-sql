@@ -19,12 +19,14 @@ package com.alibaba.polardbx.transaction;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
+import org.apache.hadoop.fs.viewfs.ConfigUtil;
 
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -234,7 +236,11 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
             checkCanContinue();
 
             if (!isCrossGroup) {
-                commitOneShardTrx();
+                if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SINGLE_SHARD_WRITE)) {
+                    commitOneShardTrx();
+                } else {
+                    commitMultiShardTrx();
+                }
                 return;
             }
 

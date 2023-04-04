@@ -17,40 +17,16 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.*;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateProcedure;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFunction;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropProcedure;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableDropPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMergePartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableModifyPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMovePartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTablePartitionCount;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRemovePartitioning;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRenamePartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalInsertOverwrite;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddTable;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMergeTableGroup;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalOptimizeTable;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
@@ -75,6 +51,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterProcedure;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterRule;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterSystemSetConfig;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableDropPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupDropPartition;
@@ -86,25 +65,34 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupRenameP
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSetLocality;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSetPartitionsLocality;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMergePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableModifyPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMovePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTablePartitionCount;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRemovePartitioning;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSetTableGroup;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJoinGroup;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateProcedure;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFileStorage;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJoinGroup;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropProcedure;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropView;
@@ -118,6 +106,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalSequenceDdl;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdIndex;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -130,7 +119,10 @@ import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils.TableProperties;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
@@ -202,6 +194,7 @@ import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexShuttle;
@@ -213,15 +206,8 @@ import org.apache.calcite.sql.SqlAlterTableExtractPartition;
 import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
-import org.apache.calcite.sql.SqlAlterTablePartitionKey;
-import org.apache.calcite.sql.SqlAlterTableAddPartition;
-import org.apache.calcite.sql.SqlAlterTableDropPartition;
-import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
-import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableRenamePartition;
-import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
-import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
@@ -239,13 +225,15 @@ import org.apache.calcite.sql.SqlOptimizeTable;
 import org.apache.calcite.sql.SqlRebalance;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.calcite.sql.SqlShow;
-import org.apache.calcite.sql.SqlShowCreateProcedure;
 import org.apache.calcite.sql.SqlShowLocalityInfo;
 import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -308,6 +296,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean containScaleOutWritableTable = false;
     private boolean containReplicateWriableTable = false;
     private boolean containOnlineModifyColumnTable = false;
+    private boolean containAsOf = false;
 
     private SqlNode ast;
     private boolean existsWindow = false;
@@ -343,6 +332,17 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     public final RelNode visit(TableScan scan) {
         final List<String> qualifiedName = scan.getTable().getQualifiedName();
         final String tableName = Util.last(scan.getTable().getQualifiedName());
+
+        if (null != scan.getFlashback() && scan.getFlashback() instanceof RexDynamicParam &&
+            InstanceVersion.isMYSQL80()) {
+            // For RDS80, global flashback query is not supported.
+            // We need to convert the timestamp to a GCN.
+            int paramIndex = ((RexDynamicParam) scan.getFlashback()).getIndex() + 1;
+            if (null == plannerContext.getFlashbackParamIdx()) {
+                plannerContext.setFlashbackParamIdx(new ArrayList<>());
+            }
+            plannerContext.getFlashbackParamIdx().add(paramIndex);
+        }
 
         setShouldRemoveSchemaName(qualifiedName);
 
@@ -1195,14 +1195,6 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return shouldRemoveSchemaName;
     }
 
-    public List<String> getTableNames() {
-        return tableNames;
-    }
-
-    public boolean isWithIndexHint() {
-        return withIndexHint;
-    }
-
     /**
      * TODO: 需要考虑 information_schema 等这些比较特殊的系统库
      */
@@ -1221,6 +1213,14 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
     }
 
+    public List<String> getTableNames() {
+        return tableNames;
+    }
+
+    public boolean isWithIndexHint() {
+        return withIndexHint;
+    }
+
     public boolean isModifyBroadcastTable() {
         return modifyBroadcastTable;
     }
@@ -1233,8 +1233,59 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return modifyGsiTable;
     }
 
+    public LockMode getLockMode() {
+        return lockMode;
+    }
+
+    public List<TableProperties> getModifiedTables() {
+        return modifiedTables;
+    }
+
+    public boolean isModifyShardingColumn() {
+        return modifyShardingColumn;
+    }
+
+    public boolean isContainUncertainValue() {
+        return containUncertainValue;
+    }
+
+    public boolean isContainComplexExpression() {
+        return containComplexExpression;
+    }
+
+    public boolean isContainScaleOutWritableTable() {
+        return containScaleOutWritableTable;
+    }
+
+    public boolean isContainReplicateWriableTable() {
+        return containReplicateWriableTable;
+    }
+
+    public boolean existsCannotPushDown() {
+        return existsWindow ||
+            existsIntersect ||
+            existsMinus || existsCheckSum || existsNonPushDownFunc;
+    }
+
+    public boolean isContainOnlineModifyColumnTable() {
+        return containOnlineModifyColumnTable;
+    }
+
+    public boolean isExistsGroupingSets() {
+        return existsGroupingSets;
+    }
+
+    public boolean existsOSSTable() {
+        return existsOSSTable;
+    }
+
+    public boolean isExistsCheckSum() {
+        return existsCheckSum;
+    }
+
     public static class ReplaceTableScanInFilterSubQueryFinder extends RexShuttle {
 
+        private final PlannerContext plannerContext;
         // Whether all tables are broadcast
         private boolean allTableBroadcast = true;
         // Whether all tables are single and in the same group and no broadcast table
@@ -1249,7 +1300,6 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         private SqlKind sqlKind;
         private LockMode lockMode = LockMode.UNDEF;
         private List<String> schemaNames;
-        private final PlannerContext plannerContext;
         private boolean existsOSSTable;
         private boolean existsWindow = false;
 
@@ -1362,55 +1412,5 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         public boolean isExistsWindow() {
             return existsWindow;
         }
-    }
-
-    public LockMode getLockMode() {
-        return lockMode;
-    }
-
-    public List<TableProperties> getModifiedTables() {
-        return modifiedTables;
-    }
-
-    public boolean isModifyShardingColumn() {
-        return modifyShardingColumn;
-    }
-
-    public boolean isContainUncertainValue() {
-        return containUncertainValue;
-    }
-
-    public boolean isContainComplexExpression() {
-        return containComplexExpression;
-    }
-
-    public boolean isContainScaleOutWritableTable() {
-        return containScaleOutWritableTable;
-    }
-
-    public boolean isContainReplicateWriableTable() {
-        return containReplicateWriableTable;
-    }
-
-    public boolean existsCannotPushDown() {
-        return existsWindow ||
-            existsIntersect ||
-            existsMinus || existsCheckSum || existsNonPushDownFunc;
-    }
-
-    public boolean isContainOnlineModifyColumnTable() {
-        return containOnlineModifyColumnTable;
-    }
-
-    public boolean isExistsGroupingSets() {
-        return existsGroupingSets;
-    }
-
-    public boolean existsOSSTable() {
-        return existsOSSTable;
-    }
-
-    public boolean isExistsCheckSum() {
-        return existsCheckSum;
     }
 }

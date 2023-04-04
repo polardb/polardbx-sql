@@ -92,43 +92,57 @@ public class ForceIndexSingleVisitor extends SqlShuttle {
             final SqlKind fromKind = from.getKind();
             if (fromKind == SqlKind.IDENTIFIER) {
                 // Case 1: FROM single-table.
-                // Try to get table meta, may be null;
-                this.tableMeta = RelUtils.getTableMeta((SqlIdentifier) from, this.ec);
-                if (findTargetAgg(select)) {
-                    this.canOptByForcePrimary = true;
-                    if (this.addForcePrimary) {
-                        // FROM single-table FORCE INDEX (PRIMARY).
-                        tryToAddForceIndex(from);
-                    }
-                }
+                tryToAddForceIndex(select, from, from);
             } else if (fromKind == SqlKind.AS) {
                 // Case 2: FROM Something AS alias.
                 SqlNode leftNode = ((SqlBasicCall) from).getOperandList().get(0);
-                if (leftNode instanceof SqlSelect) {
-                    // Case 2.1: FROM Sub-query as alias.
+                if (leftNode.getKind() == SqlKind.SELECT) {
+                    // Case 2.1: FROM Sub-query AS alias.
                     leftNode = visit((SqlSelect) leftNode);
                     ((SqlBasicCall) from).setOperand(0, leftNode);
-                } else if (leftNode instanceof SqlIdentifier) {
-                    // Try to get table meta, may be null;
-                    this.tableMeta = RelUtils.getTableMeta((SqlIdentifier) leftNode, this.ec);
-                    // Case 2.2: FROM single-table as alias.
-                    if (findTargetAgg(select)) {
-                        this.canOptByForcePrimary = true;
-                        if (this.addForcePrimary) {
-                            final SqlNode rightNode = ((SqlBasicCall) from).getOperandList().get(1);
-                            // FROM single-table as alias FORCE INDEX (PRIMARY).
-                            tryToAddForceIndex(rightNode);
-                        }
-                    }
+                } else if (leftNode.getKind() == SqlKind.AS_OF) {
+                    // Case 2.2: FROM single-table AS OF TIMESTAMP xxx AS alias.
+                    leftNode = ((SqlBasicCall) leftNode).getOperandList().get(0);
+                    SqlNode rightNode = ((SqlBasicCall) from).getOperandList().get(1);
+                    tryToAddForceIndex(select, leftNode, rightNode);
+                } else if (leftNode.getKind() == SqlKind.IDENTIFIER) {
+                    // Case 2.3: FROM single-table AS alias.
+                    SqlNode rightNode = ((SqlBasicCall) from).getOperandList().get(1);
+                    tryToAddForceIndex(select, leftNode, rightNode);
                 }
             } else if (fromKind == SqlKind.SELECT && from instanceof SqlSelect) {
                 // Case 3: FROM Sub-query.
                 select.setFrom(visit((SqlSelect) from));
+            } else if (fromKind == SqlKind.AS_OF) {
+                // Case 4: FROM single-table AS OF TIMESTAMP xxx.
+                SqlNode leftNode = ((SqlBasicCall) from).getOperandList().get(0);
+                if (leftNode.getKind() == SqlKind.IDENTIFIER) {
+                    // Index node should be added to left node.
+                    tryToAddForceIndex(select, leftNode, leftNode);
+                }
             }
 
             return select;
         }
         return call;
+    }
+
+    private void tryToAddForceIndex(SqlSelect select, SqlNode tableNode, SqlNode addIndexNode) {
+        if (!(tableNode instanceof SqlIdentifier) || !(addIndexNode instanceof SqlIdentifier)) {
+            return;
+        }
+        // Try to get table meta, may be null.
+        this.tableMeta = RelUtils.getTableMeta((SqlIdentifier) tableNode, this.ec);
+        if (null == tableMeta || tableMeta.getSecondaryIndexes().isEmpty()) {
+            // No secondary indexes, no need to add FORCE INDEX PRIMARY.
+            return;
+        }
+        if (findTargetAgg(select) && addIndexNode.getKind() == SqlKind.IDENTIFIER) {
+            this.canOptByForcePrimary = true;
+            if (this.addForcePrimary) {
+                addForceIndex(addIndexNode);
+            }
+        }
     }
 
     private boolean findTargetAgg(SqlSelect select) {
@@ -146,7 +160,7 @@ public class ForceIndexSingleVisitor extends SqlShuttle {
         return false;
     }
 
-    private void tryToAddForceIndex(SqlNode table) {
+    private void addForceIndex(SqlNode table) {
         // If we should optimize this sql node,
         // and originally it dose not have any force index hint,
         // we add a FORCE INDEX(PRIMARY) to it.
