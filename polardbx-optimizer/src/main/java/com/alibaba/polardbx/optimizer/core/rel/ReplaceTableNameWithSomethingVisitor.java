@@ -635,7 +635,7 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         SqlNode leftNode = call.getOperandList().get(0);
         SqlNode rightNode = null;
         boolean unwrapTablename = false;
-        if (leftNode instanceof SqlCall && ((SqlCall) leftNode).getOperator() instanceof SqlAsOfOperator) {
+        if (leftNode instanceof SqlCall && ((SqlCall) leftNode).getOperator().getKind() == SqlKind.AS_OF) {
             rightNode = ((SqlCall) leftNode).getOperandList().get(1);
             leftNode = ((SqlCall) leftNode).getOperandList().get(0);
             unwrapTablename = true;
