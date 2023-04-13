@@ -16,10 +16,9 @@
 
 package com.alibaba.polardbx.transaction;
 
-import com.alibaba.polardbx.rpc.XConfig;
-import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.SQLException;
 

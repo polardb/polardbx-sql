@@ -84,6 +84,9 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_PLAN_TYPE_DIGEST:
                 enablePlanTypeDigest = parseValue(value, Boolean.class, true);
                 break;
+            case ConnectionProperties.ENABLE_FOLLOWER_READ:
+                supportFollowRead = parseValue(value, Boolean.class, false);
+                break;
             case ConnectionProperties.PURGE_HISTORY_MS: {
                 long tempPurgeHistoryMs = parseValue(value, Long.class, 600 * 1000L);
                 if (tempPurgeHistoryMs > 0 && tempPurgeHistoryMs < purgeHistoryMs) {
@@ -354,6 +357,12 @@ public class DynamicConfig {
 
     public boolean isDefaultPasswordCheckPattern() {
         return DEFAULT_PASSWORD_CHECK_PATTERN_STR.equals(passwordCheckPattern.pattern());
+    }
+
+    private volatile boolean supportFollowRead = false;
+
+    public boolean enableFollowReadForPolarDBX() {
+        return supportFollowRead;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

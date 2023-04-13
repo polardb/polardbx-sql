@@ -54,10 +54,6 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
-import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
-import com.alibaba.polardbx.gms.module.LogLevel;
-import com.alibaba.polardbx.gms.module.Module;
-import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
@@ -81,7 +77,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
-import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
@@ -109,7 +104,6 @@ import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
@@ -146,7 +140,6 @@ import java.sql.Statement;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -168,10 +161,8 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_HLL;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
-import static com.alibaba.polardbx.gms.module.LogPattern.INTERRUPTED;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
 
@@ -528,6 +519,7 @@ public class ExecUtils {
     }
 
     public static MasterSlave getMasterSlave(boolean inTrans, boolean isWrite, ExecutionContext ec) {
+
         MasterSlave masterSlaveVal = MasterSlave.READ_WEIGHT;
         if (isWrite) {
             masterSlaveVal = MasterSlave.MASTER_ONLY;
@@ -543,6 +535,8 @@ public class ExecUtils {
                 masterSlaveVal = MasterSlave.MASTER_ONLY;
             } else if (ec.getExtraCmds().containsKey(ConnectionProperties.SLAVE)) {
                 masterSlaveVal = MasterSlave.SLAVE_ONLY;
+            } else if (ec.getExtraCmds().containsKey(ConnectionProperties.FOLLOWER)) {
+                masterSlaveVal = MasterSlave.FOLLOWER_ONLY;
             } else {
                 masterSlaveVal = getMasterSlaveByWeight(ec);
             }
@@ -557,7 +551,7 @@ public class ExecUtils {
         if (!ConfigDataMode.isMasterMode()) {
             ret = MasterSlave.SLAVE_ONLY;
         } else if (!StorageStatusManager.getInstance().getAllowReadLearnerStorageMap().isEmpty() ||
-            ConfigDataMode.enableSlaveReadForPolarDbX()) {
+            DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
             int readMasterWeight = ec.getParamManager().getInt(MASTER_READ_WEIGHT);
             if (readMasterWeight >= 100 || readMasterWeight < 0) {
                 return MasterSlave.MASTER_ONLY;
@@ -721,7 +715,7 @@ public class ExecUtils {
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof BroadcastTableModify) {
             group = OptimizerContext.getContext(((BroadcastTableModify) relNode).getDirectTableOperation()
-                .getSchemaName())
+                    .getSchemaName())
                 .getRuleManager()
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof LogicalShow) {

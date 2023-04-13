@@ -650,6 +650,14 @@ public class ConnectionProperties {
 
     public static final String SLAVE = "SLAVE";
 
+    /**
+     * 强制走follower备库
+     */
+    public static final String FOLLOWER = "FOLLOWER";
+
+    /**
+     * allow DDL on Global Secondary Index
+     */
     public static final String DDL_ON_GSI = "DDL_ON_GSI";
 
     public static final String DML_ON_GSI = "DML_ON_GSI";
@@ -1948,4 +1956,6 @@ public class ConnectionProperties {
     public static final String GROUPING_LSN_TIMEOUT = "GROUPING_LSN_TIMEOUT";
 
     public static final String ENABLE_SINGLE_SHARD_WRITE = "ENABLE_SINGLE_SHARD_WRITE";
+
+    public static final String ENABLE_FOLLOWER_READ = "ENABLE_FOLLOWER_READ";
 }

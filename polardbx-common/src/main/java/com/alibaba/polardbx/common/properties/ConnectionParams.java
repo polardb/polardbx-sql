@@ -2880,5 +2880,5 @@ public class ConnectionParams {
         ConnectionProperties.ENABLE_REPLICA, true, true);
 
     public static final BooleanConfigParam ENABLE_SINGLE_SHARD_WRITE = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_SINGLE_SHARD_WRITE, false, true);
+        ConnectionProperties.ENABLE_SINGLE_SHARD_WRITE, true, true);
 }

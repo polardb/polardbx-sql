@@ -40,8 +40,7 @@ public class ConfigDataMode {
     private static boolean supportDropAutoSeq = false;
     private static boolean allowSimpleSequence = false;
 
-    private static boolean supportSlaveRead = false;
-
+    // Default isolation level be set in `ServerLoader.configSystem`
     private static int txIsolation;
 
     private static String cluster;
@@ -95,9 +94,6 @@ public class ConfigDataMode {
 
         String simpleSequenceAllowed = System.getProperty("allowSimpleSequence");
         allowSimpleSequence = BooleanUtils.toBoolean(simpleSequenceAllowed);
-
-        String supportSlaveReaded = System.getProperty("supportSlaveRead");
-        supportSlaveRead = BooleanUtils.toBoolean(supportSlaveReaded);
     }
 
     public static void reload() {
@@ -169,6 +165,12 @@ public class ConfigDataMode {
         return configServerMode == Mode.GMS;
     }
 
+    public static boolean isDRDS() {
+        return !isPolarDbX();
+    }
+
+    // ========= The instance role of Server =========
+    // Check master for all DB type
     public static boolean isMasterMode() {
         return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER;
     }
@@ -263,9 +265,5 @@ public class ConfigDataMode {
 
     public static void setTxIsolation(int txIsolation) {
         ConfigDataMode.txIsolation = txIsolation;
-    }
-
-    public static boolean enableSlaveReadForPolarDbX() {
-        return supportSlaveRead && isMasterMode();
     }
 }

@@ -315,6 +315,17 @@ public class StorageInstHaContext {
         return null;
     }
 
+    public StorageInfoRecord getFollowerNode() {
+        for (Map.Entry<String, StorageNodeHaInfo> node : allStorageNodeHaInfoMap.entrySet()) {
+            String instId = node.getKey();
+            StorageNodeHaInfo info = node.getValue();
+            if (info.getRole() == StorageRole.FOLLOWER) {
+                return storageNodeInfos.get(instId);
+            }
+        }
+        return null;
+    }
+
     public List<StorageInfoRecord> getReplicaByZone(String zone) {
         Objects.requireNonNull(zone);
 

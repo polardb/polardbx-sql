@@ -4502,7 +4502,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 new SqlNode[] {
                     tableNameIdentifier,
                     snapshotTimestampIdentifier
-            }, SqlParserPos.ZERO);
+                }, SqlParserPos.ZERO);
 
         }
 

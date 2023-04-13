@@ -35,7 +35,16 @@ public enum MasterSlave {
     /**
      * 只路由低延迟的备库，路由不到直接报错
      */
-    LOW_DELAY_SLAVE_ONLY;
+    LOW_DELAY_SLAVE_ONLY,
+
+    /**
+     * 当开启follower read的时候：
+     * 1. 指定follower hint强制路由给follower
+     * 2. 不指定follower hint的时候:
+     * a）有只读实例的时候，忽略follower read
+     * b) 没有只读实例的时候，按照读写分离逻辑路由给follower
+     */
+    FOLLOWER_ONLY;
 
     MasterSlave() {
         mask = (1 << ordinal());

@@ -27,7 +27,6 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.engine.FileStorageMetaStore;
@@ -37,10 +36,8 @@ import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
-import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockRecord;
-import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
+import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
@@ -2160,6 +2157,24 @@ public class DbTopologyManager {
         String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(-1, storageConnProps);
         return GmsJdbcUtil
             .buildJdbcConnection(host, port, GmsJdbcUtil.DEFAULT_PHY_DB, user, passwdEnc, connProps);
+    }
+
+    public static Connection getFollowerConnectionForStorage(StorageInstHaContext storageInstHaContext) {
+        StorageInfoRecord storageInfoRecord = storageInstHaContext.getFollowerNode();
+        if (storageInfoRecord != null) {
+            String address = storageInfoRecord.getHostPort();
+            String user = storageInstHaContext.getUser();
+            String passwdEnc = storageInstHaContext.getEncPasswd();
+            Pair<String, Integer> ipAndPort = AddressUtils.getIpPortPairByAddrStr(address);
+            String host = ipAndPort.getKey();
+            int port = ipAndPort.getValue();
+            String storageConnProps = ConnPoolConfigManager.getInstance().getConnPoolConfig().connProps;
+            String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(-1, storageConnProps);
+            return GmsJdbcUtil
+                .buildJdbcConnection(host, port, GmsJdbcUtil.DEFAULT_PHY_DB, user, passwdEnc, connProps);
+        } else {
+            return null;
+        }
     }
 
     /*

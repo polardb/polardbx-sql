@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -85,7 +86,7 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
         connection = new DeferredConnection(connection, ec.getParamManager().getBoolean(
             ConnectionParams.USING_RDS_RESULT_SKIP));
         if (dnLsnMap.get(masterId) != null && (ConfigDataMode.isSlaveMode()
-            || ConfigDataMode.enableSlaveReadForPolarDbX())) {
+            || DynamicConfig.getInstance().enableFollowReadForPolarDBX())) {
             //为了支持主实例也可以运行MPP的情况，目前主实例只能去和主库连接，所以不需要使用LSN
             connection.executeLater(String.format("SET read_lsn = %d", dnLsnMap.get(masterId)));
         }

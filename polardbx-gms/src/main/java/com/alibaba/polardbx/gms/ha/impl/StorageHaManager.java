@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -184,6 +185,8 @@ public class StorageHaManager extends AbstractLifecycle {
     private Supplier<PrimaryZoneInfo> primaryZoneInfoSupplier = null;
 
     private Set<String> listenerReadOnlyInstIdSet = new HashSet<>();
+
+    private boolean allowFollowRead;
 
     protected static class StorageInfoConfigListener implements ConfigListener {
 
@@ -1933,6 +1936,9 @@ public class StorageHaManager extends AbstractLifecycle {
                 ExecutorUtil.awaitCountDownLatch(countDownLatch);
 
                 // Submit HA switch ds tasks
+                boolean forceHa =
+                    ConfigDataMode.isMasterMode() && DynamicConfig.getInstance().enableFollowReadForPolarDBX()
+                        != this.storageHaManager.allowFollowRead;
                 for (String storageInstIdVal : storageInstNewRoleInfoMap.keySet()) {
 
                     String newAvailableAddr = storageInstNewRoleInfoMap.get(storageInstIdVal).getKey();
@@ -1966,8 +1972,9 @@ public class StorageHaManager extends AbstractLifecycle {
                         }
                     }
 
-                    if (!shouldHa && ConfigDataMode.enableSlaveReadForPolarDbX()
+                    if (!shouldHa && ConfigDataMode.isMasterMode()
                         && haCache.storageKind == StorageInfoRecord.INST_KIND_MASTER) {
+                        //check the new followers
                         Set<String> newFollows = new HashSet<>();
                         Set<String> oldFollows = new HashSet<>();
 
@@ -1990,6 +1997,7 @@ public class StorageHaManager extends AbstractLifecycle {
                         if (!newFollows.equals(oldFollows)) {
                             shouldHa = true;
                         }
+                        shouldHa = shouldHa || forceHa;
                     }
 
                     // Refresh all the HaInfos for all storageNode in memory
@@ -2042,6 +2050,7 @@ public class StorageHaManager extends AbstractLifecycle {
                             addrWithRoleMap, haCache);
                     }
                 }
+                this.storageHaManager.allowFollowRead = DynamicConfig.getInstance().enableFollowReadForPolarDBX();
                 endTs = System.nanoTime();
             } catch (Throwable ex) {
                 haCheckEx = ex;
