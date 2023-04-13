@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -75,7 +74,7 @@ public class AutoCommitTransaction extends BaseTransaction {
         if (groupName == null) {
             throw new IllegalArgumentException("group name is null");
         }
-        if(ds==null){
+        if (ds == null) {
             throw new IllegalArgumentException("DataSource is null");
         }
 

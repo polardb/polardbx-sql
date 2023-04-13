@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.mpp;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -122,8 +124,8 @@ public final class Session {
         if (ExecutorContext.getContext(
             getSchema()).getStorageInfoManager().supportTso() &&
             clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
-            !getSchema().equalsIgnoreCase("MetaDB") &&
-            (ExecUtils.existMppOnlyInstanceNode() ||
+            !getSchema().equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME) &&
+            (ExecUtils.existMppOnlyInstanceNode() || DynamicConfig.getInstance().enableFollowReadForPolarDBX() ||
                 clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
         ) {
             ITransaction iTransaction = clientContext.getTransaction();

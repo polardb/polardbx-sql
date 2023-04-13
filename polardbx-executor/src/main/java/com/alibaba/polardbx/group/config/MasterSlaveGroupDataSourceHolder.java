@@ -31,16 +31,40 @@ import java.util.Random;
 public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
 
     private final TAtomDataSource masterDataSource;
-    private final List<TAtomDataSource> slaveDataSources;
-    private final List<String> slaveStorageIds;
+
+    //learner
+    private final List<TAtomDataSource> slaveOtherFollowerDataSources = new ArrayList<>();
+    private final List<String> slaveOtherFollowerIds = new ArrayList<>();
+
+    //follower
+    private final List<TAtomDataSource> followerDataSources = new ArrayList<>();
+    private final List<String> followerIds = new ArrayList<>();
+
     private Random random;
 
+    private boolean existFollower = false;
+    private boolean existLearner = false;
+
+    private final List<TAtomDataSource> slaveDataSources;
+    private final List<String> slaveStorageIds;
+
     public MasterSlaveGroupDataSourceHolder(
-        TAtomDataSource masterDataSource, List<TAtomDataSource> slaveDataSources, List<String> slaveStorageIds) {
+        TAtomDataSource masterDataSource, List<TAtomDataSource> slaveDataSources) {
         this.masterDataSource = masterDataSource;
-        this.slaveDataSources = slaveDataSources;
-        this.slaveStorageIds = slaveStorageIds;
+        for (TAtomDataSource dataSource : slaveDataSources) {
+            if (dataSource.isFollowerDB()) {
+                followerDataSources.add(dataSource);
+                followerIds.add(dataSource.getDnId());
+            } else {
+                slaveOtherFollowerDataSources.add(dataSource);
+                slaveOtherFollowerIds.add(dataSource.getDnId());
+            }
+        }
         this.random = new Random(System.currentTimeMillis());
+        this.existFollower = followerDataSources.size() > 0;
+        this.existLearner = slaveOtherFollowerDataSources.size() > 0;
+        this.slaveDataSources = existLearner ? slaveOtherFollowerDataSources : followerDataSources;
+        this.slaveStorageIds = existLearner ? slaveOtherFollowerIds : followerIds;
     }
 
     @Override
@@ -48,6 +72,14 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
         switch (masterSlave) {
         case MASTER_ONLY:
         case READ_WEIGHT:
+            return masterDataSource;
+        case FOLLOWER_ONLY:
+            if (existFollower) {
+                if (followerDataSources.size() == 1) {
+                    return followerDataSources.get(0);
+                }
+                return followerDataSources.get(random.nextInt(followerDataSources.size()));
+            }
             return masterDataSource;
         case SLAVE_FIRST:
             if (GeneralUtil.isEmpty(slaveDataSources)) {
@@ -67,7 +99,7 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
     }
 
     private TAtomDataSource selectSlaveDataSource() {
-        Map<String, StorageStatus> statusMap = StorageStatusManager.getInstance().getAllowReadLearnerStorageMap();
+        Map<String, StorageStatus> statusMap = StorageStatusManager.getInstance().getStorageStatus();
         int startIndex = random.nextInt(slaveDataSources.size());
         //基于延迟和负载均衡策略，选择符合要求的备库路由
         for (int i = 0; i < slaveStorageIds.size(); i++) {

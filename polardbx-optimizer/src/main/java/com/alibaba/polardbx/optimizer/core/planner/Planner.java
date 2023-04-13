@@ -765,7 +765,7 @@ public class Planner {
         executionPlan.setExplain(isExplain);
         executionPlan.setUsePostPlanner(
             StringUtils.isEmpty(ec.getPartitionHint()) &&
-            (PostPlanner.usePostPlanner(explain, ec.isUseHint()) || hintCollection.usePostPlanner()));
+                (PostPlanner.usePostPlanner(explain, ec.isUseHint()) || hintCollection.usePostPlanner()));
         return executionPlan;
     }
 

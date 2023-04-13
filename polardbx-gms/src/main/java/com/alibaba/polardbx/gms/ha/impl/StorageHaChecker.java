@@ -303,7 +303,7 @@ public class StorageHaChecker {
             }
         }
 
-        if (ConfigDataMode.enableSlaveReadForPolarDbX() && storageInstKind == StorageInfoRecord.INST_KIND_MASTER) {
+        if (ConfigDataMode.isMasterMode() && storageInstKind == StorageInfoRecord.INST_KIND_MASTER) {
             modifyTheFollowRole(addrHaInfoMap, usr, passwd, storageType);
         }
         return addrHaInfoMap;

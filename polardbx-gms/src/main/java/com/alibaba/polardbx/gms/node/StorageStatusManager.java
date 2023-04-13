@@ -139,11 +139,21 @@ public class StorageStatusManager extends AbstractLifecycle {
                     Iterator<StorageInstHaContext> iterator = storageStatusMap.values().stream().iterator();
                     while (iterator.hasNext()) {
                         StorageInstHaContext instHaContext = iterator.next();
-                        if (instHaContext != null && !instHaContext.isMasterMode()) {
+                        if (instHaContext != null) {
 
                             long delaySecond = 0;
                             long activeSession = 0;
-                            try (Connection salveConn = DbTopologyManager.getConnectionForStorage(instHaContext)) {
+                            Connection salveConn = null;
+                            try {
+                                if (instHaContext.isMasterMode()) {
+                                    salveConn = DbTopologyManager.getFollowerConnectionForStorage(instHaContext);
+                                } else {
+                                    salveConn = DbTopologyManager.getConnectionForStorage(instHaContext);
+                                }
+                                if (salveConn == null) {
+                                    continue;
+                                }
+
                                 Statement stmt = null;
                                 try {
                                     stmt = salveConn.createStatement();
@@ -187,6 +197,14 @@ public class StorageStatusManager extends AbstractLifecycle {
                                 activeSession = 0;
                                 delaySecond = Integer.MAX_VALUE;
                                 logger.warn("check slave status error for " + instHaContext.getStorageInstId(), e);
+                                if (salveConn != null) {
+                                    try {
+                                        salveConn.close();
+                                        salveConn = null;
+                                    } catch (Throwable t) {
+                                        //ignore
+                                    }
+                                }
                             }
                             boolean isBusy = activeSession >= DynamicConfig.getInstance().getBusyThreshold();
                             boolean isDelay = delaySecond >= DynamicConfig.getInstance().getDelayThreshold();

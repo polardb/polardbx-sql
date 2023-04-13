@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.group.jdbc;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
-import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
@@ -42,7 +41,6 @@ import java.net.URLDecoder;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,10 +61,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
     public static final String VERSION = "2.4.1";
     private OptimizedGroupConfigManager configManager;
 
-    /**
-     * 下面三个为一组，支持本地配置
-     */
-    private String dsKeyAndWeightCommaArray;
     private DataSourceFetcher dataSourceFetcher;
     private DBType dbType = DBType.MYSQL;
     private String schemaName;
@@ -101,7 +95,7 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             unitName = unitName.trim();
         }
         this.unitName = unitName;
-        if (!ConfigDataMode.isMasterMode()) {
+        if (ConfigDataMode.isPolarDbX() && !ConfigDataMode.isMasterMode()) {
             masterSlave = MasterSlave.SLAVE_ONLY;
         }
     }
@@ -121,36 +115,9 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         if (url != null && !"".equalsIgnoreCase(url)) {
             parseUrl(url);
         }
-
-        if (dsKeyAndWeightCommaArray != null) {
-            // 本地配置方式：dsKeyAndWeightCommaArray + dataSourceFetcher + dyType
-            DataSourceFetcher wrapper = new DataSourceFetcher() {
-
-                @Override
-                public TAtomDataSource getDataSource(String key) {
-                    return dataSourceFetcher.getDataSource(key);
-                }
-
-            };
-            List<DataSourceWrapper> dss = OptimizedGroupConfigManager.buildDataSourceWrapper(dsKeyAndWeightCommaArray,
-                wrapper);
-            init(dss);
-        } else {
-            checkProperties();
-            configManager = new OptimizedGroupConfigManager(this);
-            configManager.init();
-        }
-
-    }
-
-    public void init(DataSourceWrapper... dataSourceWrappers) {
-        init(Arrays.asList(dataSourceWrappers));
-    }
-
-    public void init(List<DataSourceWrapper> dataSourceWrappers) {
+        checkProperties();
         configManager = new OptimizedGroupConfigManager(this);
-        configManager.init(dataSourceWrappers);
-        isInited = true;
+        configManager.init();
     }
 
     /**
@@ -173,13 +140,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SET_APPNAME);
         }
 
-    }
-
-    /**
-     * 危险接口。一般用于测试。应用也可以直接通过该接口重置数据源配置
-     */
-    public void resetDbGroup(String configInfo) {
-        configManager.resetDbGroup(configInfo);
     }
 
     @Override
@@ -324,20 +284,12 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         this.dbGroupKey = dbGroupKey;
     }
 
-    public void setDsKeyAndWeightCommaArray(String dsKeyAndWeightCommaArray) {
-        this.dsKeyAndWeightCommaArray = dsKeyAndWeightCommaArray;
-    }
-
     public void setDataSourceFetcher(DataSourceFetcher dataSourceFetcher) {
         this.dataSourceFetcher = dataSourceFetcher;
     }
 
     public void setDbType(DBType dbType) {
         this.dbType = dbType;
-    }
-
-    public String getDsKeyAndWeightCommaArray() {
-        return dsKeyAndWeightCommaArray;
     }
 
     @Override

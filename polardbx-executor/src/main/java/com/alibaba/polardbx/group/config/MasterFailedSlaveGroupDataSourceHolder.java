@@ -36,6 +36,7 @@ public class MasterFailedSlaveGroupDataSourceHolder implements GroupDataSourceHo
         case MASTER_ONLY:
         case READ_WEIGHT:
         case SLAVE_FIRST:
+        case FOLLOWER_ONLY:
             return masterDataSource;
         case SLAVE_ONLY:
         case LOW_DELAY_SLAVE_ONLY:

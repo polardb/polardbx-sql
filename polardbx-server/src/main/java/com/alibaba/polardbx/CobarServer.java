@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx;
 
-import com.alibaba.polardbx.atom.TAtomDsStandard;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.charset.CharsetFactory;
@@ -477,7 +476,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
 
         // 初始化一下密码
         ExtensionLoader.load(ISequenceManager.class);
-        ExtensionLoader.load(TAtomDsStandard.class);
         // 预热mysql资源
         try {
             ResourceBundle.getBundle("com.mysql.jdbc.LocalizedErrorMessages");

@@ -17,18 +17,11 @@
 package com.alibaba.polardbx.server.util;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.SchemaConfig;
-import com.alibaba.polardbx.config.ServerConfigManager;
-import com.alibaba.polardbx.config.SystemConfig;
-import com.alibaba.polardbx.matrix.jdbc.TConnection;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.config.ServerConfigManager;
