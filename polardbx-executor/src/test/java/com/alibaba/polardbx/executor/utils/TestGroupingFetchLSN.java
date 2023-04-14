@@ -10,10 +10,13 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 public class TestGroupingFetchLSN {
+
+    private long heartBeat = 0L;
 
     @Test(expected = TimeoutException.class)
     public void testGrouping1() throws Exception {
@@ -60,7 +63,7 @@ public class TestGroupingFetchLSN {
         int poolSize = 4;
         int fetchTimeout = 1000;
 
-        int mockFetchLSN = 100;
+        int mockFetchLSN = 10;
 
         testGrouping(dnNum, poolSize, fetchTimeout, mockFetchLSN);
     }
@@ -71,7 +74,7 @@ public class TestGroupingFetchLSN {
         int sessionNum = 1024;
         GroupingFetchLSN fetchLSN = Mockito.spy(GroupingFetchLSN.getInstance());
         fetchLSN.resetGroupingPool(fetchTimeout, poolSize);
-        when(fetchLSN.getLsnBasedCDC(any(), -1L)).thenAnswer(new Answer<Long>() {
+        when(fetchLSN.getLsnBasedCDC(anyString(), anyLong(), anyString())).thenAnswer(new Answer<Long>() {
             @Override
             public Long answer(InvocationOnMock invocationOnMock) throws Throwable {
                 DdlHelper.waitToContinue(mockFetchLSN);
@@ -91,7 +94,7 @@ public class TestGroupingFetchLSN {
                         break;
                     }
                     try {
-                        fetchLSN.groupingLsn(key + "", -1L);
+                        fetchLSN.groupingLsn(key + "", heartBeat++);
                     } catch (Exception t1) {
                         throwable.set(t1);
                         break;

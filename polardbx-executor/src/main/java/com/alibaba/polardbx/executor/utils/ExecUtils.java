@@ -1744,9 +1744,9 @@ public class ExecUtils {
     /**
      * @param tso Task to send a timestamp to MASTER storage nodes in order to keep their latest timestamp up-to-date.
      */
-    public static long getLsn(IDataSource dataSource, long tso) throws SQLException {
-        final String tsoSql = "SET GLOBAL innodb_heartbeat_seq = " + tso;
-        final String lsnSql = "SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL";
+    public static long getLsn(IDataSource dataSource, long tso, String hint) throws SQLException {
+        final String tsoSql = hint + "SET GLOBAL innodb_heartbeat_seq = " + tso;
+        final String lsnSql = hint + "SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL";
 
         ResultSet result;
         try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY)) {
