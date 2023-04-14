@@ -64,6 +64,14 @@ public class GroupingFetchLSN extends AbstractLifecycle {
 
     public class DNLsnInfo {
 
+        private String dnId;
+        private AtomicLong sendLsnCount = new AtomicLong(0);
+        private AtomicLong getLsnCount = new AtomicLong(0);
+
+        public DNLsnInfo(String dnId) {
+            this.dnId = dnId;
+        }
+
         private volatile LsnFuture currentLsnFuture = new LsnFuture(this);
 
         public synchronized void reset() {
@@ -75,7 +83,8 @@ public class GroupingFetchLSN extends AbstractLifecycle {
             }
         }
 
-        public LsnFuture getLsnFuture() {
+        public synchronized LsnFuture getLsnFuture(long tso) {
+            currentLsnFuture.updateTsoHeartbeat(tso);
             return currentLsnFuture;
         }
     }
@@ -85,16 +94,27 @@ public class GroupingFetchLSN extends AbstractLifecycle {
         AtomicBoolean notify = new AtomicBoolean(false);
         AtomicLong tsoHeartbeat = new AtomicLong(-1);
         DNLsnInfo dnLsnInfo;
+        long sendHeartbeat = -1L;
+        String hint;
 
         public LsnFuture(DNLsnInfo dnLsnInfo) {
             this.dnLsnInfo = dnLsnInfo;
+            this.hint = dnLsnInfo.dnId;
         }
 
-        public void notifyFetch(String dnMasterKey, long tso) {
+        public synchronized void updateTsoHeartbeat(long tso) {
             long expect = tsoHeartbeat.get();
-            while (expect < tso && !tsoHeartbeat.compareAndSet(expect, tso)) {
-                expect = tsoHeartbeat.get();
+            if (expect < tso) {
+                tsoHeartbeat.set(tso);
             }
+        }
+
+        public synchronized long getTsoHeartbeat() {
+            return tsoHeartbeat.get();
+        }
+
+        public void notifyFetch(String dnMasterKey) {
+            dnLsnInfo.getLsnCount.incrementAndGet();
             if (notify.compareAndSet(false, true)) {
                 fetcherPool.submit(new Runnable() {
                     @Override
@@ -102,7 +122,14 @@ public class GroupingFetchLSN extends AbstractLifecycle {
                         long masterLSN = -1;
                         try {
                             dnLsnInfo.reset();
-                            masterLSN = getLsnBasedCDC(dnMasterKey, tsoHeartbeat.get());
+                            sendHeartbeat = getTsoHeartbeat();
+                            hint = String.format("/* %s%s*/", dnLsnInfo.dnId, dnLsnInfo.sendLsnCount.incrementAndGet());
+                            long start = System.currentTimeMillis();
+                            masterLSN = getLsnBasedCDC(dnMasterKey, sendHeartbeat, hint);
+                            long cost = System.currentTimeMillis() - start;
+                            if (cost > timeout) {
+                                LOGGER.error("LSN take cost " + cost + " milliseconds!");
+                            }
                             settableFuture.set(masterLSN);
                         } catch (Exception e) {
                             settableFuture.setException(e);
@@ -118,8 +145,16 @@ public class GroupingFetchLSN extends AbstractLifecycle {
                  * The MAX RT for this method is (dn * 2 / poolSize * (rt of {@link ExecUtils.getLsn})
                  */
                 final long value = settableFuture.get(timeout, TimeUnit.MILLISECONDS);
+                if (sendHeartbeat < tsoHeartbeat.get()) {
+                    LOGGER.error(
+                        String.format("sendHeartbeat: %s, tsoHeartbeat: %s for %s", sendHeartbeat,
+                            tsoHeartbeat, dnLsnInfo.dnId));
+                    throw new RuntimeException("use the invalid tso HeartBeat!");
+                }
                 return value;
             } catch (TimeoutException e) {
+                LOGGER.error(String.format("the getLsnCount: %s, the sendLsnCount: %s, the using sql hint: %s",
+                    dnLsnInfo.getLsnCount.get(), dnLsnInfo.sendLsnCount.get(), hint));
                 throw new TimeoutException("Fetch LSN timeout.");
             }
         }
@@ -128,15 +163,15 @@ public class GroupingFetchLSN extends AbstractLifecycle {
     public long groupingLsn(String masterDNId, long tso) throws Exception {
         long masterLsn = -1L;
         if (masterDNId != null && !IDataSource.EMPTY.equalsIgnoreCase(masterDNId)) {
-            DNLsnInfo lsnInfo = masterDNLsnMap.computeIfAbsent(masterDNId, key -> new DNLsnInfo());
-            LsnFuture currentFuture = lsnInfo.getLsnFuture();
-            currentFuture.notifyFetch(masterDNId, tso);
+            DNLsnInfo lsnInfo = masterDNLsnMap.computeIfAbsent(masterDNId, key -> new DNLsnInfo(masterDNId));
+            LsnFuture currentFuture = lsnInfo.getLsnFuture(tso);
+            currentFuture.notifyFetch(masterDNId);
             masterLsn = currentFuture.waitLsn();
         }
         return masterLsn;
     }
 
-    public long getLsnBasedCDC(String dnMasterKey, long tso) throws SQLException {
+    public long getLsnBasedCDC(String dnMasterKey, long tso, String hint) throws SQLException {
         long masterLSN = -1;
         if (ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) != null) {
             TopologyHandler topologyHandler =
@@ -154,7 +189,7 @@ public class GroupingFetchLSN extends AbstractLifecycle {
 
                 TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
                 if (dataSource.getMasterDNId().equalsIgnoreCase(dnMasterKey)) {
-                    masterLSN = ExecUtils.getLsn(dataSource, tso);
+                    masterLSN = ExecUtils.getLsn(dataSource, tso, hint);
                     break;
                 }
             }
@@ -174,7 +209,7 @@ public class GroupingFetchLSN extends AbstractLifecycle {
                 /**
                  *  The cdc database maybe not exist!
                  */
-                masterLsn = ExecUtils.getLsn(groupDataSource, tso);
+                masterLsn = ExecUtils.getLsn(groupDataSource, tso, "");
             }
             return masterLsn;
         } catch (Exception e) {
