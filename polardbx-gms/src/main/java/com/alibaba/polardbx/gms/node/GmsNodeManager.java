@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class GmsNodeManager extends AbstractLifecycle {
 
@@ -323,6 +324,13 @@ public class GmsNodeManager extends AbstractLifecycle {
             return gmsNode1.instId.compareTo(gmsNode2.instId);
         });
         this.currentIndex = allNodes.indexOf(GmsNodeManager.getInstance().getLocalNode());
+        if (currentIndex == -1) {
+            LOGGER.error(String.format(
+                "local node not found from allNodes, local node is %s, while all node is %s",
+                GmsNodeManager.getInstance().getLocalNode(),
+                allNodes.stream().map(node -> node.toString()).collect(Collectors.joining(",")))
+            );
+        }
     }
 
     private GmsNode buildNode(ServerInfoRecord record, int uniqueId) {
