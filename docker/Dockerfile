@@ -6,6 +6,7 @@ COPY polardbx-server/target/polardbx-server drds-server
 COPY docker/admin/bin/* /home/admin/bin/
 COPY docker/etc/* /tmp/
 COPY docker/entrypoint.sh entrypoint.sh
+COPY docker/20-nproc.conf /etc/security/limits.d/20-nproc.conf
 
 RUN \
     chmod a+x bin/* && \
