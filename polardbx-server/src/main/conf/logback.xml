@@ -990,6 +990,9 @@
     <logger name="com.alibaba.polardbx.net.handler.FrontendAuthenticator" additivity="true">
         <level value="info"/>
     </logger>
+    <logger name="com.alibaba.polardbx.common.utils.AddressUtils" additivity="true">
+        <level value="info"/>
+    </logger>
     <logger name="com.alibaba.polardbx.config.manager" additivity="true">
         <level value="warn"/>
     </logger>
