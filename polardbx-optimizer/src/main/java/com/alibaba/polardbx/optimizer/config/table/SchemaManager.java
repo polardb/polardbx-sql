@@ -102,11 +102,36 @@ public interface SchemaManager extends Lifecycle {
         throw new AssertionError("NOT SUPPORTED");
     }
 
-    default void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
+    default void toNewVersionInTrx(List<String> tableNameList,
+                                   boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList,
+                                   boolean preemtive, long initWait, long interval, TimeUnit timeUnit,
+                                   long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList,
+                                   boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
+                                   long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion, long trxId) {
         throw new AssertionError("NOT SUPPORTED");
     }
 
     default void toNewVersionForTableGroup(String tableName, boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default public Map<String, Long> getStaleTables(List<String> tableNameList, Connection conn) {
         throw new AssertionError("NOT SUPPORTED");
     }
 }

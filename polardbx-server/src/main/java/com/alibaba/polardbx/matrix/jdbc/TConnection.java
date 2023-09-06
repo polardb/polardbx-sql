@@ -1032,9 +1032,16 @@ public class TConnection implements ITConnection {
                             schemaName, meta.getSchemaDigest(trxId),
                             executionContext.getTraceId(), sql, frontendConnectionInfo));
                     }
+                    if (executionContext.getLoadDataContext() != null) {
+                        // only for ossLoadData, get writeLock first , then downgrade to readLock
+                        mdlContext.acquireLock(MdlRequest.getTransactionalOssLoadDataMdlRequest(trxId,
+                            schemaName, meta.getDigest(),
+                            executionContext.getTraceId(), sql, frontendConnectionInfo));
+                    }
                     mdlContext.acquireLock(MdlRequest.getTransactionalDmlMdlRequest(trxId,
                         schemaName, meta.getDigest(),
                         executionContext.getTraceId(), sql, frontendConnectionInfo));
+
                 }
             }
             ;

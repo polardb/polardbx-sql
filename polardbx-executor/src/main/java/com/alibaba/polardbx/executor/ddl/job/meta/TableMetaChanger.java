@@ -132,6 +132,13 @@ public class TableMetaChanger {
         tableInfoManager.addOssFile(tableSchema, tableName, filesRecord);
     }
 
+    public static void addOssFileWithTso(Connection metaDbConn, String tableSchema, String tableName,
+                                         FilesRecord filesRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOssFileWithTso(tableSchema, tableName, filesRecord);
+    }
+
     public static void changeOssFile(Connection metaDbConn, Long primaryKey, Long fileSize) {
         changeOssFile(metaDbConn, primaryKey, new byte[] {}, fileSize, 0L);
     }

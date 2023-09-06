@@ -474,6 +474,10 @@ public class TableInfoManager extends AbstractAccessor {
         filesAccessor.insert(ImmutableList.of(filesRecord), tableSchema, tableName);
     }
 
+    public void addOssFileWithTso(String tableSchema, String tableName, FilesRecord filesRecord) {
+        filesAccessor.insertWithTso(ImmutableList.of(filesRecord));
+    }
+
     public List<FilesRecord> queryFilesByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
         return filesAccessor.queryByLogicalSchemaTable(logicalSchemaName, logicalTableName);
     }

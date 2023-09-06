@@ -67,6 +67,8 @@ public class GmsSystemTables {
     public static final String COLUMN_METAS = "column_metas";
     public static final String FILE_STORAGE_INFO = "file_storage_info";
     public static final String FILE_STORAGE_FILES_META = "file_storage_files_meta";
+    public static final String COLUMN_MAPPING = "column_mapping";
+    public static final String COLUMN_EVOLUTION = "column_evolution";
     public static final String TABLE_LOCAL_PARTITIONS = "table_local_partitions";
     public static final String JOIN_GROUP_INFO = "join_group_info";
     public static final String JOIN_GROUP_TABLE_DETAIL = "join_group_table_detail";

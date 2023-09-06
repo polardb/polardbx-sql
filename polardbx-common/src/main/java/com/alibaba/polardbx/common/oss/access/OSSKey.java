@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.oss.access;
 
 import com.alibaba.polardbx.common.oss.OSSFileType;
 
+import static com.alibaba.polardbx.common.oss.OSSFileType.EXPORT_ORC_FILE;
 import static com.alibaba.polardbx.common.oss.OSSFileType.TABLE_FILE;
 import static com.alibaba.polardbx.common.oss.OSSFileType.TABLE_FORMAT;
 import static com.alibaba.polardbx.common.oss.OSSFileType.TABLE_META;
@@ -28,7 +29,6 @@ import static com.alibaba.polardbx.common.oss.OSSFileType.TABLE_META;
 public class OSSKey {
     private static final String FILE_SUFFIX_FORMAT = "%s_%s";
     private final OSSFileType fileType;
-
     private String schemaName;
     private String tableName;
     private String tableFileId;
@@ -37,7 +37,8 @@ public class OSSKey {
     private String columnName;
     private long stripeIndex;
 
-    private OSSKey(OSSFileType fileType, String schemaName, String tableName, String tableFileId, String columnName, long stripeIndex) {
+    private OSSKey(OSSFileType fileType, String schemaName, String tableName, String tableFileId, String columnName,
+                   long stripeIndex) {
         this.fileType = fileType;
         this.schemaName = schemaName;
         this.tableName = tableName;
@@ -47,26 +48,36 @@ public class OSSKey {
         this.suffix = fileType.getSuffix();
     }
 
-    public static OSSKey createBloomFilterFileOSSKey(String schemaName, String tableName, String tableFileId, String columnName, long stripeIndex) {
+    public static OSSKey createBloomFilterFileOSSKey(String schemaName, String tableName, String tableFileId,
+                                                     String columnName, long stripeIndex) {
         return new OSSKey(TABLE_META, schemaName, tableName, tableFileId, columnName, stripeIndex);
     }
 
-    public static String localMetaPath(String schemaName, String tableName, String tableFileId, String columnName, long stripeIndex) {
-        return String.format(TABLE_META.getLocalPathFormat(), schemaName, tableName, tableFileId, columnName, stripeIndex, TABLE_META.getSuffix());
+    public static String localMetaPath(String schemaName, String tableName, String tableFileId, String columnName,
+                                       long stripeIndex) {
+        return String.format(TABLE_META.getLocalPathFormat(), schemaName, tableName, tableFileId, columnName,
+            stripeIndex, TABLE_META.getSuffix());
     }
 
     public static OSSKey createTableFileOSSKey(String schemaName, String tableName, String tableFileId) {
         return new OSSKey(OSSFileType.TABLE_FILE, schemaName, tableName, tableFileId, null, 0);
     }
 
-    public static OSSKey createTableFileOSSKey(String schemaName, String tableName, String fileSuffix, String tableFileId) {
+    public static OSSKey createTableFileOSSKey(String schemaName, String tableName, String fileSuffix,
+                                               String tableFileId) {
         return new OSSKey(OSSFileType.TABLE_FILE, schemaName, tableName,
             String.format(FILE_SUFFIX_FORMAT, fileSuffix, tableFileId),
             null, 0);
     }
 
+    public static OSSKey createExportOrcFileOSSKey(String path, String uniqueId) {
+        return new OSSKey(OSSFileType.EXPORT_ORC_FILE, path, null, uniqueId,
+            null, 0);
+    }
+
     public static String localFilePath(String schemaName, String tableName, String tableFileId) {
-        return String.format(TABLE_FILE.getLocalPathFormat(), schemaName, tableName, tableFileId, TABLE_FILE.getSuffix());
+        return String.format(TABLE_FILE.getLocalPathFormat(), schemaName, tableName, tableFileId,
+            TABLE_FILE.getSuffix());
     }
 
     public static OSSKey createFormatFileOSSKey(String schemaName, String tableName, String tableFileId) {
@@ -80,11 +91,16 @@ public class OSSKey {
     public String localPath() {
         switch (fileType) {
         case TABLE_FILE:
-            return String.format(TABLE_FILE.getLocalPathFormat(), schemaName, tableName, tableFileId, TABLE_FILE.getSuffix());
+            return String.format(TABLE_FILE.getLocalPathFormat(), schemaName, tableName, tableFileId,
+                TABLE_FILE.getSuffix());
         case TABLE_FORMAT:
-            return String.format(TABLE_FORMAT.getLocalPathFormat(), schemaName, tableName, tableFileId, TABLE_FORMAT.getSuffix());
+            return String.format(TABLE_FORMAT.getLocalPathFormat(), schemaName, tableName, tableFileId,
+                TABLE_FORMAT.getSuffix());
         case TABLE_META:
-            return String.format(TABLE_META.getLocalPathFormat(), schemaName, tableName, tableFileId, columnName, stripeIndex, TABLE_META.getSuffix());
+            return String.format(TABLE_META.getLocalPathFormat(), schemaName, tableName, tableFileId, columnName,
+                stripeIndex, TABLE_META.getSuffix());
+        case EXPORT_ORC_FILE:
+            return String.format(EXPORT_ORC_FILE.getLocalPathFormat(), schemaName, EXPORT_ORC_FILE.getSuffix());
         }
         return null;
     }
@@ -125,7 +141,10 @@ public class OSSKey {
         case TABLE_FILE:
             return String.format(fileType.getRemotePathFormat(), schemaName, tableName, tableFileId, suffix);
         case TABLE_META:
-            return String.format(fileType.getRemotePathFormat(), schemaName, tableName, tableFileId, columnName, stripeIndex, suffix);
+            return String.format(fileType.getRemotePathFormat(), schemaName, tableName, tableFileId, columnName,
+                stripeIndex, suffix);
+        case EXPORT_ORC_FILE:
+            return String.format(fileType.getRemotePathFormat(), schemaName, tableFileId, suffix);
         }
         return super.toString();
     }

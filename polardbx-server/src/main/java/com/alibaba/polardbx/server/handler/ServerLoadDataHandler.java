@@ -581,11 +581,14 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             contains("load_data_auto_fill_auto_increment_column=true");
         loadData.setExistAutoFillColumn(existAutoFillColumn);
         parseLoadDataPram(statement);
+
         hint = hint.replace("load_data_auto_fill_auto_increment_column=true", "");
         hint = hint.replace("load_data_auto_fill_auto_increment_column=false", "");
         if (hint.replace(" ", "").replace("/*+tddl:*/", "").equals("")) {
             hint = "";
         }
+
+        hint = hint.toUpperCase();
         return hint;
     }
 
