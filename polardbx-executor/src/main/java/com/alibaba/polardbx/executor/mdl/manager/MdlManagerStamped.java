@@ -28,9 +28,11 @@ import com.alibaba.polardbx.executor.mdl.MdlLock;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
+import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.executor.mdl.lock.MdlLockStamped;
 
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -130,14 +132,14 @@ public class MdlManagerStamped extends MdlManager {
     }
 
     @Override
-    public List<MdlTicket> getWaitFor(MdlKey mdlKey){
+    public List<MdlTicket> getWaitFor(MdlKey mdlKey) {
         List<MdlTicket> contextIdList = new ArrayList<>();
-        if(mdlKey==null){
+        if (mdlKey == null) {
             return contextIdList;
         }
-        tickets.forEach((contextId, keyTicketMap)->{
+        tickets.forEach((contextId, keyTicketMap) -> {
             MdlTicket mdlTicket = keyTicketMap.get(mdlKey);
-            if(mdlTicket != null){
+            if (mdlTicket != null) {
                 contextIdList.add(mdlTicket);
             }
         });
@@ -166,7 +168,11 @@ public class MdlManagerStamped extends MdlManager {
 
                 if (null == t) {
                     t = new MdlTicket(request, mdlLock, context, mdlLock.readLock());
+                } else if (t.getType() == MdlType.MDL_EXCLUSIVE) {
+                    // only for ossLoadData , need to downgrade to readlock
+                    t = new MdlTicket(request, mdlLock, context, mdlLock.tryConvertToReadLock(t.getStamp()));
                 }
+
                 // 仅支持事务级别的MDL，事务中的所有语句顺序加锁，且 DDL 不可能出现在事务当中
                 // 因此 ticket 存在代表当前事务已经从锁对象获取到了读锁，无需再次加锁
                 // 另外，tickets 中保存的凭证一定会在解锁时移除（参见 unlockRead 方法），因此无需判断
@@ -213,6 +219,9 @@ public class MdlManagerStamped extends MdlManager {
 
                 if (null == t) {
                     t = new MdlTicket(request, mdlLock, context, mdlLock.writeLock());
+                } else if (t.getType() != MdlType.MDL_EXCLUSIVE) {
+                    // 这里已经存在的读锁是当前事务id对应的读锁，在这里只会有ossLoadData会走到获取读锁
+                    t = new MdlTicket(request, mdlLock, context, mdlLock.tryConvertToWriteLock(t.getStamp()));
                 } else {
                     // 由于只有 DDL 语句加写锁，如果 ticket 已经存在，代表当前连接上已经有一个DDL在执行了
                     // MySQL 未支持这种用法，需要退出临界区，否则 unlockWrite 会被阻塞，导致死锁

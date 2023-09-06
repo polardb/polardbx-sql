@@ -358,13 +358,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 2. Allow two concurrent version exists, which is not safe for single-versioned TableRule & PartitionInfoManager
      */
     public void tonewversion(String tableName) {
-        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, true);
+        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, -1, true, false);
     }
 
     public void tonewversion(String tableName,
                              boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
                              boolean allowTwoVersion) {
-        tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, allowTwoVersion);
+        tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, -1, allowTwoVersion,
+            false);
     }
 
     /**
@@ -373,8 +374,17 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     @Override
     public void toNewVersionInTrx(List<String> tableNameList,
                                   boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
-                                  boolean allowTwoVersion) {
-        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, allowTwoVersion);
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
+        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup, trxId);
+    }
+
+    @Override
+    public void toNewVersionInTrx(List<String> tableNameList,
+                                  boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+        toNewVersionInTrx(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup, 1L);
     }
 
     /**
@@ -382,14 +392,19 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 1. Be preemptive to avoid deadlock within multiple tables
      */
     @Override
-    public void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
+    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion, long trxId) {
         ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
         boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
-        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.SECONDS,
-            allowTwoVersion);
+        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS, connId,
+            allowTwoVersion, tableNameList.size() > 1, trxId);
+    }
+
+    @Override
+    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
+        toNewVersionInTrx(tableNameList, connId, allowTwoVersion, 1L);
     }
 
     /**
@@ -419,7 +434,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         .map(TablePartRecordInfoContext::getTableName)
                         .collect(Collectors.toList());
 
-                toNewVersionInTrx(tableNames, allowTwoVersion);
+                toNewVersionInTrx(tableNames, -1, allowTwoVersion);
             }
         }
 
@@ -980,8 +995,15 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
     }
 
-    protected void loadAndCacheTableMeta(String tableName) {
-        loadAndCacheTableMeta(Arrays.asList(tableName));
+    protected void loadAndCacheTableMeta(String tableName){
+            loadAndCacheTableMeta(Arrays.asList(tableName));
+    }
+
+    private void tonewversionImpl(List<String> tableNameList,
+                                  boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup, 1L);
     }
 
     /**
@@ -996,9 +1018,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      *
      * @param allowTwoVersion if two versions of schema exist at the same time
      */
+
     private void tonewversionImpl(List<String> tableNameList,
                                   boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                  boolean allowTwoVersion) {
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
         synchronized (OptimizerContext.getContext(schemaName)) {
             boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
             GmsTableMetaManager oldSchemaManager =
@@ -1085,8 +1108,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
             // Insert mdl barrier
             {
-                mdlCriticalSection(preemptive, initWait, interval, timeUnit, oldSchemaManager, staleTables.keySet(),
-                    isNewPartitionDb, (x) -> {
+                mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
+                    staleTables.keySet(), isNewPartitionDb, sameTableGroup, (x) -> {
                         oldSchemaManager.expire();
                         if (!allowTwoVersion) {
                             OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
@@ -1095,17 +1118,68 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                         }
                         return null;
-                    });
+                    }, trxId);
             }
         }
+    }
+
+    @Override
+    public Map<String, Long> getStaleTables(List<String> tableNameList, Connection conn) {
+        boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        GmsTableMetaManager oldSchemaManager =
+            (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        Map<String, Long> staleTables = new HashMap<>();
+
+        for (String tableName : tableNameList) {
+            TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
+            long version = checkTableVersion(tableName, conn);
+
+            if (version != -1
+                && currentMeta != null
+                && currentMeta.getVersion() >= version
+                && currentMeta.getStatus() != TableStatus.ABSENT) {
+                SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
+                    "{0}.{1} meta version change to {2} ignored, current version {3}", schemaName, tableName,
+                    version,
+                    currentMeta.getVersion()));
+                continue;
+            }
+
+            // Invalidate various cache
+            SequenceCacheManager.invalidate(schemaName, AUTO_SEQ_PREFIX + tableName);
+            if (!isNewPartitionDb) {
+                if (version == -1) {
+                    TableRuleManager.invalidate(schemaName, tableName);
+                } else {
+                    TableRuleManager.reload(schemaName, tableName);
+                }
+            } else {
+                if (version == -1) {
+                    PartitionInfoManager.invalidate(schemaName, tableName);
+                } else {
+                    PartitionInfoManager.reload(schemaName, tableName);
+                }
+            }
+            staleTables.put(tableName, version);
+        }
+
+        return staleTables;
+    }
+
+    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
+                                   GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
+                                   boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier) {
+        mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
+            tableNameList, isNewPartDb, sameTableGroup, duringBarrier, 1L);
     }
 
     /**
      * Insert an MDL barrier for tables to clear cross status transaction.
      */
-    private void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                    GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
-                                    boolean isNewPartDb, Function<Void, Void> duringBarrier) {
+    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
+                                   GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
+                                   boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier,
+                                   long trxId) {
         final MdlContext context;
         if (preemptive) {
             context = MdlManager.addContext(schemaName, initWait, interval, timeUnit);
@@ -1136,7 +1210,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             if (lockedTables.size() == 1) {
                 // table sync (all database support)
                 MdlTicket ticket = context.acquireLock(
-                    new MdlRequest(1L,
+                    new MdlRequest(trxId,
                         MdlKey.getTableKeyWithLowerTableName(schemaName, lockedTables.get(0)),
                         MdlType.MDL_EXCLUSIVE,
                         MdlDuration.MDL_TRANSACTION));
@@ -1152,10 +1226,20 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 for (String oldDigest : oldDigestList) {
                     assert oldDigest != null;
                     MdlTicket ticket = context.acquireLock(
-                        new MdlRequest(1L,
+                        new MdlRequest(trxId,
                             MdlKey.getTableKeyWithLowerTableName(schemaName, oldDigest),
                             MdlType.MDL_EXCLUSIVE,
                             MdlDuration.MDL_TRANSACTION));
+                    tickets.add(ticket);
+                }
+            } else {
+                for (String tableName : lockedTables) {
+                    MdlTicket ticket = context.acquireLock(
+                        new MdlRequest(trxId,
+                            MdlKey.getTableKeyWithLowerTableName(schemaName, tableName),
+                            MdlType.MDL_EXCLUSIVE,
+                            MdlDuration.MDL_TRANSACTION));
+
                     tickets.add(ticket);
                 }
             }
@@ -1174,7 +1258,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             PlanManager.getInstance().invalidateCache();
 
             for (MdlTicket ticket : tickets) {
-                context.releaseLock(1L, ticket);
+                context.releaseLock(trxId, ticket);
             }
 
             elapsedMillis = System.currentTimeMillis() - startMillis;
@@ -1191,6 +1275,24 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         long version = -1;
 
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            PreparedStatement stmt =
+                metaDbConn.prepareStatement("select version from tables where table_schema=? and table_name=?");
+            stmt.setString(1, schemaName);
+            stmt.setString(2, tableName);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                version = rs.getLong(1);
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException(e);
+        }
+        return version;
+    }
+
+    private long checkTableVersion(String tableName, Connection metaDbConn) {
+        long version = -1;
+
+        try {
             PreparedStatement stmt =
                 metaDbConn.prepareStatement("select version from tables where table_schema=? and table_name=?");
             stmt.setString(1, schemaName);

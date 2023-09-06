@@ -85,6 +85,20 @@ public final class MdlRequest {
             traceId, sql, frontend);
     }
 
+    /**
+     * only for ossLoadData , get MDL_EXCLUSIVE mdl ,
+     * downgrade to MDL_SHARED_WRITE later to prevent other ossLoadData
+     */
+    public static MdlRequest getTransactionalOssLoadDataMdlRequest(@NotNull Long trxId, @NotNull String dbName,
+                                                                   @NotNull String tableName, @NotNull String traceId,
+                                                                   @NotNull ByteString sql, @NotNull String frontend) {
+        return new MdlRequest(trxId,
+            MdlKey.getTableKeyWithLowerTableName(dbName, tableName),
+            MdlType.MDL_EXCLUSIVE,
+            MdlDuration.MDL_TRANSACTION,
+            traceId, sql, frontend);
+    }
+
     public MdlTicket getTicket() {
         return ticket;
     }

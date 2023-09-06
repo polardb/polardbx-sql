@@ -165,6 +165,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private Map<String, Map<String, List<FileMeta>>> fileMetaSet = null;
     private Map<String, List<FileMeta>> flatFileMetas = null;
 
+    private volatile TableFilesMeta tableFilesMeta = null;
+
     private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
     public TableMeta(String schemaName, String tableName, List<ColumnMeta> allColumnsOrderByDefined,
@@ -813,6 +815,16 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         } else {
             return OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName).getActualTopology();
         }
+    }
+
+    /**
+     * get the field id of a column
+     *
+     * @param column column name
+     * @return the same colum name if the table is an old file storage table
+     */
+    public String getColumnFieldId(String column) {
+        return tableFilesMeta.columnMapping.get(column.toLowerCase());
     }
 
 }

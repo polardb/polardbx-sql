@@ -55,6 +55,10 @@ public class FilesAccessor extends AbstractAccessor {
             + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`) "
             + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
+    private static final String INSERT_FILE_RECORD_WITH_TSO =
+        "insert into " + FILES_TABLE
+            + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`, `commit_ts`, `remove_ts`) "
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String CHANGE_FILE_RECORD =
         "update " + FILES_TABLE + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ? where `file_id` = ?";
 
@@ -154,6 +158,32 @@ public class FilesAccessor extends AbstractAccessor {
         try {
             DdlMetaLogUtil.logSql(INSERT_FILE_RECORD, paramsBatch);
             return MetaDbUtil.insert(INSERT_FILE_RECORD, paramsBatch, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of new records into " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int[] insertWithTso(List<FilesRecord> records) {
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        for (FilesRecord record : records) {
+            Map<Integer, ParameterContext> params = record.buildInsertParams();
+
+            // add commit tso and remove tso based on normal parameters.
+            int index = params.size();
+            MetaDbUtil.setParameter(++index, params,
+                record.commitTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.commitTs);
+            MetaDbUtil.setParameter(++index, params,
+                record.removeTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.removeTs);
+            //MetaDbUtil.setParameter(++index, params,
+            //record.schemaTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.schemaTs);
+            paramsBatch.add(params);
+        }
+        try {
+            DdlMetaLogUtil.logSql(INSERT_FILE_RECORD_WITH_TSO, paramsBatch);
+            return MetaDbUtil.insert(INSERT_FILE_RECORD_WITH_TSO, paramsBatch, connection);
         } catch (SQLException e) {
             LOGGER.error("Failed to insert a batch of new records into " + FILES_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",

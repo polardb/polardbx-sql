@@ -1390,6 +1390,18 @@ public class ConnectionParams {
     public static final IntConfigParam PARALLELISM = new IntConfigParam(
         ConnectionProperties.PARALLELISM, -1, Integer.MAX_VALUE, -1, true);
 
+    public static final IntConfigParam OSS_LOAD_DATA_PRODUCERS =
+        new IntConfigParam(ConnectionProperties.OSS_LOAD_DATA_PRODUCERS, -1, Integer.MAX_VALUE, 2, true);
+
+    public static final IntConfigParam OSS_LOAD_DATA_MAX_CONSUMERS =
+        new IntConfigParam(ConnectionProperties.OSS_LOAD_DATA_MAX_CONSUMERS, -1, Integer.MAX_VALUE, 32, true);
+
+    public static final IntConfigParam OSS_LOAD_DATA_FLUSHERS =
+        new IntConfigParam(ConnectionProperties.OSS_LOAD_DATA_FLUSHERS, -1, Integer.MAX_VALUE, 16, true);
+
+    public static final IntConfigParam OSS_LOAD_DATA_UPLOADERS =
+        new IntConfigParam(ConnectionProperties.OSS_LOAD_DATA_UPLOADERS, -1, Integer.MAX_VALUE, 2, true);
+
     public static final IntConfigParam PREFETCH_SHARDS = new IntConfigParam(
         ConnectionProperties.PREFETCH_SHARDS, -1, Integer.MAX_VALUE, -1, true);
 
@@ -2575,6 +2587,10 @@ public class ConnectionParams {
         ConnectionProperties.OSS_BLOOM_FILTER_FPP, .01f, .05f, .01f, true);
     public static final LongConfigParam OSS_MAX_ROWS_PER_FILE = new LongConfigParam(
         ConnectionProperties.OSS_MAX_ROWS_PER_FILE, 1_000L, 1000_000_000L, 5_000_000L, true);
+
+    public static final LongConfigParam OSS_EXPORT_MAX_ROWS_PER_FILE = new LongConfigParam(
+        ConnectionProperties.OSS_EXPORT_MAX_ROWS_PER_FILE, 1_000L, 1000_000_000L, 1000_000L, true);
+
     public static final BooleanConfigParam OSS_REMOVE_TMP_FILES = new BooleanConfigParam(
         ConnectionProperties.OSS_REMOVE_TMP_FILES, true, true);
     public static final StringConfigParam OSS_ORC_COMPRESSION = new StringConfigParam(

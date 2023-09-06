@@ -919,6 +919,29 @@ public class ConnectionProperties {
 
     public static final String PARALLELISM = "PARALLELISM";
 
+    /**
+     * Number of producers to run oss load data
+     */
+    public static final String OSS_LOAD_DATA_PRODUCERS = "OSS_LOAD_DATA_PRODUCERS";
+
+    /**
+     * Number of max consumers to run oss load data
+     */
+    public static final String OSS_LOAD_DATA_MAX_CONSUMERS = "OSS_LOAD_DATA_MAX_CONSUMERS";
+
+    /**
+     * Number of uploaders to run oss load data
+     */
+    public static final String OSS_LOAD_DATA_FLUSHERS = "OSS_LOAD_DATA_FLUSHERS";
+
+    /**
+     * Number of uploaders to run oss load data
+     */
+    public static final String OSS_LOAD_DATA_UPLOADERS = "OSS_LOAD_DATA_UPLOADERS";
+
+    /**
+     * Number of shards to prefetch (only take effect under parallel query)
+     */
     public static final String PREFETCH_SHARDS = "PREFETCH_SHARDS";
 
     public static final String MAX_CACHE_PARAMS = "MAX_CACHE_PARAMS";
@@ -1714,6 +1737,9 @@ public class ConnectionProperties {
     public static final String OSS_ORC_INDEX_STRIDE = "OSS_ORC_INDEX_STRIDE";
     public static final String OSS_BLOOM_FILTER_FPP = "OSS_BLOOM_FILTER_FPP";
     public static final String OSS_MAX_ROWS_PER_FILE = "OSS_MAX_ROWS_PER_FILE";
+
+    public static final String OSS_EXPORT_MAX_ROWS_PER_FILE = "OSS_EXPORT_MAX_ROWS_PER_FILE";
+
     public static final String OSS_REMOVE_TMP_FILES = "OSS_REMOVE_TMP_FILES";
     public static final String OSS_ORC_COMPRESSION = "OSS_ORC_COMPRESSION";
     /* ================ For OSS Table File System ================ */
