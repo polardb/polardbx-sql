@@ -2897,4 +2897,7 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam ENABLE_SINGLE_SHARD_WRITE = new BooleanConfigParam(
         ConnectionProperties.ENABLE_SINGLE_SHARD_WRITE, true, true);
+
+    public static final BooleanConfigParam ENABLE_SIMD = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_SIMD, false, true);
 }

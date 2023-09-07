@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.mpp.operator.LocalExchanger;
 import com.alibaba.polardbx.executor.mpp.operator.LocalExchangersStatus;
 import com.alibaba.polardbx.executor.mpp.operator.PartitioningBucketExchanger;
 import com.alibaba.polardbx.executor.mpp.operator.PartitioningExchanger;
+import com.alibaba.polardbx.executor.mpp.operator.PartitioningExchangerSIMD;
 import com.alibaba.polardbx.executor.mpp.operator.RandomExchanger;
 import com.alibaba.polardbx.executor.mpp.operator.SingleExchanger;
 import com.alibaba.polardbx.executor.mpp.planner.LocalExchange;
@@ -87,11 +88,19 @@ public class LocalExchangeConsumerFactory implements ConsumeExecutorFactory {
                     localExchange.getKeyTypes(), localExchange.getBucketNum(),
                     chunkLimit, context);
             } else {
-                localExchanger = new PartitioningExchanger(outputBufferMemoryManager, consumerExecutors,
-                    this.status,
-                    localExchange.isAsyncConsume(), localExchange.getTypes(),
-                    localExchange.getPartitionChannels(),
-                    localExchange.getKeyTypes(), context);
+                if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_SIMD)) {
+                    localExchanger = new PartitioningExchangerSIMD(outputBufferMemoryManager, consumerExecutors,
+                        this.status,
+                        localExchange.isAsyncConsume(), localExchange.getTypes(),
+                        localExchange.getPartitionChannels(),
+                        localExchange.getKeyTypes(), context);
+                } else {
+                    localExchanger = new PartitioningExchanger(outputBufferMemoryManager, consumerExecutors,
+                        this.status,
+                        localExchange.isAsyncConsume(), localExchange.getTypes(),
+                        localExchange.getPartitionChannels(),
+                        localExchange.getKeyTypes(), context);
+                }
             }
             break;
         case DIRECT:

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.mpp.operator.ScatterMemoryContext;
 
 import java.math.BigInteger;
 import java.sql.Blob;
@@ -197,5 +198,10 @@ public interface Block {
      */
     default Object getObjectForCmp(int position) {
         return getObject(position);
+    }
+
+    default void copyPositions_scatter_simd(
+        ScatterMemoryContext scatterMemoryContext, BlockBuilder[] blockBuilders) {
+        throw new UnsupportedOperationException(getClass().getName());
     }
 }

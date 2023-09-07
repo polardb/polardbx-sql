@@ -93,6 +93,10 @@ public class Chunk implements Iterable<Row> {
         return blocks[i];
     }
 
+    public Block[] getBlocksDirectly() {
+        return blocks;
+    }
+
     public int getBlockCount() {
         return blocks.length;
     }

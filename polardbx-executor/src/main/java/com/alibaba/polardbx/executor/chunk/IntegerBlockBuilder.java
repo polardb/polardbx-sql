@@ -86,4 +86,10 @@ public class IntegerBlockBuilder extends AbstractBlockBuilder {
         return values.getInt(position);
     }
 
+    public IntegerBlockBuilder writeBatchInts(int[] ints, boolean[] nulls, int sourceIndex, int count) {
+        values.addElements(getPositionCount(), ints, sourceIndex, count);
+        valueIsNull.addElements(getPositionCount(), nulls, sourceIndex, count);
+        return this;
+    }
+
 }
