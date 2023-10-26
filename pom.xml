@@ -51,8 +51,8 @@
         <maven.test.skip>false</maven.test.skip>
         <downloadSources>true</downloadSources>
         <!-- compiler settings properties -->
-        <java_source_version>1.8</java_source_version>
-        <java_target_version>1.8</java_target_version>
+        <java_source_version>17</java_source_version>
+        <java_target_version>17</java_target_version>
         <file_encoding>UTF-8</file_encoding>
         <!-- Log libs -->
         <slf4j_version>1.7.21</slf4j_version>
@@ -62,7 +62,7 @@
         <groovy_version>2.4.21</groovy_version>
         <mysql_connector_version>5.1.49</mysql_connector_version>
         <!-- Test libs -->
-        <lombok.version>1.18.10</lombok.version>
+        <lombok.version>1.18.22</lombok.version>
         <jackson.version>2.13.3</jackson.version>
 
         <open.jdk.version>0.2</open.jdk.version>

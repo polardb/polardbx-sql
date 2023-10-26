@@ -16,10 +16,10 @@ git clone https://github.com/polardb/polardbx-sql
 
 ### 安装依赖
 
-进入CN代码目录下载相应的依赖，注意系统及maven均使用JDK 1.8
+进入CN代码目录下载相应的依赖，注意系统及maven均使用JDK 17
 
 ```shell
-# 安装依赖 JDK 1.8 和 Maven 3
+# 安装依赖 JDK 17 和 Maven 3
 
 # 进入代码目录 
 cd polardbx-sql/
@@ -95,7 +95,7 @@ metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 
 ### 修改Idea环境变量
 
-在使用Idea作为调试IDE时，首先需要保证工程JDK使用JDK 1.8。
+在使用Idea作为调试IDE时，首先需要保证工程JDK使用JDK 17。
 
 添加Idea的环境变量`dnPasswordKey`，默认使用asdf1234ghjk5678
 

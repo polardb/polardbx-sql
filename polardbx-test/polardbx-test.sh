@@ -11,8 +11,8 @@ do
         testClasses=${testClasses},${baseClassPath}${i}"/**"
     fi
 done
-echo "mvn test  -Dmaven.test.failure.ignore=true -Dtest="${testClasses}" -Ddeploy.skip=true -Djdk=1.8"
-mvn test  -Dmaven.test.failure.ignore=true -Dtest="${testClasses}" -Ddeploy.skip=true -Djdk=1.8
+echo "mvn test  -Dmaven.test.failure.ignore=true -Dtest="${testClasses}" -Ddeploy.skip=true -Djdk=17"
+mvn test  -Dmaven.test.failure.ignore=true -Dtest="${testClasses}" -Ddeploy.skip=true -Djdk=17
 
 
 

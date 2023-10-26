@@ -75,7 +75,7 @@ make install
 ### 编译 PolarDB-X CN (计算节点，代号 PolarDB-X SQL)
 此步骤编译和安装 polardbx-sql & polardbx-glue代码。
 ```yaml
-# 安装依赖 JDK 1.8 和 Maven 3
+# 安装依赖 JDK 17 和 Maven 3
 # 配置 Maven 仓库地址
 
 # 进入代码目录 

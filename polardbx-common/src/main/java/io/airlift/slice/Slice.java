@@ -41,7 +41,6 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
-import static io.airlift.slice.JvmUtils.newByteBuffer;
 import static io.airlift.slice.JvmUtils.unsafe;
 import static io.airlift.slice.Preconditions.checkArgument;
 import static io.airlift.slice.Preconditions.checkPositionIndexes;
@@ -119,72 +118,6 @@ public final class Slice
         this.address = ARRAY_BYTE_BASE_OFFSET + offset;
         this.size = length;
         this.retainedSize = INSTANCE_SIZE + base.length;
-        this.reference = null;
-    }
-
-    Slice(boolean[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_BOOLEAN_BASE_OFFSET + offset * ARRAY_BOOLEAN_INDEX_SCALE;
-        this.size = length * ARRAY_BOOLEAN_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_BOOLEAN_INDEX_SCALE;
-        this.reference = null;
-    }
-
-    Slice(short[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_SHORT_BASE_OFFSET + offset * ARRAY_SHORT_INDEX_SCALE;
-        this.size = length * ARRAY_SHORT_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_SHORT_INDEX_SCALE;
-        this.reference = null;
-    }
-
-    Slice(int[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_INT_BASE_OFFSET + offset * ARRAY_INT_INDEX_SCALE;
-        this.size = length * ARRAY_INT_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_INT_INDEX_SCALE;
-        this.reference = null;
-    }
-
-    Slice(long[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_LONG_BASE_OFFSET + offset * ARRAY_LONG_INDEX_SCALE;
-        this.size = length * ARRAY_LONG_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_LONG_INDEX_SCALE;
-        this.reference = null;
-    }
-
-    Slice(float[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_FLOAT_BASE_OFFSET + offset * ARRAY_FLOAT_INDEX_SCALE;
-        this.size = length * ARRAY_FLOAT_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_FLOAT_INDEX_SCALE;
-        this.reference = null;
-    }
-
-    Slice(double[] base, int offset, int length) {
-        requireNonNull(base, "base is null");
-        checkPositionIndexes(offset, offset + length, base.length);
-
-        this.base = base;
-        this.address = ARRAY_DOUBLE_BASE_OFFSET + offset * ARRAY_DOUBLE_INDEX_SCALE;
-        this.size = length * ARRAY_DOUBLE_INDEX_SCALE;
-        this.retainedSize = INSTANCE_SIZE + base.length * ARRAY_DOUBLE_INDEX_SCALE;
         this.reference = null;
     }
 
@@ -913,20 +846,7 @@ public final class Slice
             return ByteBuffer.wrap((byte[]) base, (int) ((address - ARRAY_BYTE_BASE_OFFSET) + index), length);
         }
 
-        try {
-            return (ByteBuffer) newByteBuffer.invokeExact(address + index, length, (Object) reference);
-        } catch (Throwable throwable) {
-            if (throwable instanceof Error) {
-                throw (Error) throwable;
-            }
-            if (throwable instanceof RuntimeException) {
-                throw (RuntimeException) throwable;
-            }
-            if (throwable instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            throw new RuntimeException(throwable);
-        }
+        throw new RuntimeException("Failed to convert to byteBuffer");
     }
 
     @Override

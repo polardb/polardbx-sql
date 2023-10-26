@@ -51,9 +51,6 @@ import static sun.misc.Unsafe.ARRAY_SHORT_INDEX_SCALE;
 
 final class JvmUtils {
     static final Unsafe unsafe;
-    static final MethodHandle newByteBuffer;
-
-    private static final Field ADDRESS_ACCESSOR;
 
     static {
         try {
@@ -72,16 +69,6 @@ final class JvmUtils {
             assertArrayIndexScale("Long", ARRAY_LONG_INDEX_SCALE, 8);
             assertArrayIndexScale("Float", ARRAY_FLOAT_INDEX_SCALE, 4);
             assertArrayIndexScale("Double", ARRAY_DOUBLE_INDEX_SCALE, 8);
-
-            Class<?> directByteBufferClass = ClassLoader.getSystemClassLoader().loadClass("java.nio.DirectByteBuffer");
-            Constructor<?> constructor =
-                directByteBufferClass.getDeclaredConstructor(long.class, int.class, Object.class);
-            constructor.setAccessible(true);
-            newByteBuffer = MethodHandles.lookup().unreflectConstructor(constructor)
-                .asType(MethodType.methodType(ByteBuffer.class, long.class, int.class, Object.class));
-
-            ADDRESS_ACCESSOR = Buffer.class.getDeclaredField("address");
-            ADDRESS_ACCESSOR.setAccessible(true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -91,14 +78,6 @@ final class JvmUtils {
         if (actualIndexScale != expectedIndexScale) {
             throw new IllegalStateException(
                 name + " array index scale must be " + expectedIndexScale + ", but is " + actualIndexScale);
-        }
-    }
-
-    public static long getAddress(Buffer buffer) {
-        try {
-            return (long) ADDRESS_ACCESSOR.get(buffer);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
         }
     }
 

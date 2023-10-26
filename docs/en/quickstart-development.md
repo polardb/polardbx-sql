@@ -79,7 +79,7 @@ make install
 ### Compiling PolarDB-X Compute Node (PolarDB-X SQL & PolarDB-X Glue)
 
 ```shell
-# install JDK 1.8 and Maven 3
+# install JDK 17 and Maven 3
 
 # make sure polardbx-rpc (polardbx-glue) initialized
 git submodule update --init

@@ -16,8 +16,6 @@
  */
 package org.apache.calcite.sql;
 
-import com.sun.org.apache.bcel.internal.generic.PUSH;
-
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Locale;

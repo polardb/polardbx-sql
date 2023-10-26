@@ -41,7 +41,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.charset.Charset;
 
-import static io.airlift.slice.JvmUtils.getAddress;
 import static io.airlift.slice.Preconditions.checkArgument;
 import static io.airlift.slice.Preconditions.checkPositionIndexes;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -97,13 +96,6 @@ public final class Slices {
         return new Slice(new byte[capacity]);
     }
 
-    public static Slice allocateDirect(int capacity) {
-        if (capacity == 0) {
-            return EMPTY_SLICE;
-        }
-        return wrappedBuffer(ByteBuffer.allocateDirect(capacity));
-    }
-
     public static Slice copyOf(Slice slice) {
         return copyOf(slice, 0, slice.length());
     }
@@ -119,12 +111,6 @@ public final class Slices {
 
     @Deprecated
     public static Slice wrappedBuffer(ByteBuffer buffer) {
-        if (buffer.isDirect()) {
-            long address = getAddress(buffer);
-            return new Slice(null, address + buffer.position(), buffer.limit() - buffer.position(), buffer.capacity(),
-                buffer);
-        }
-
         if (buffer.hasArray()) {
             int address = ARRAY_BYTE_BASE_OFFSET + buffer.arrayOffset() + buffer.position();
             return new Slice(buffer.array(), address, buffer.limit() - buffer.position(), buffer.array().length, null);
@@ -155,72 +141,6 @@ public final class Slices {
         return new Slice(array, offset, length);
     }
 
-    public static Slice wrappedBooleanArray(boolean... array) {
-        return wrappedBooleanArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedBooleanArray(boolean[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
-    public static Slice wrappedShortArray(short... array) {
-        return wrappedShortArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedShortArray(short[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
-    public static Slice wrappedIntArray(int... array) {
-        return wrappedIntArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedIntArray(int[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
-    public static Slice wrappedLongArray(long... array) {
-        return wrappedLongArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedLongArray(long[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
-    public static Slice wrappedFloatArray(float... array) {
-        return wrappedFloatArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedFloatArray(float[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
-    public static Slice wrappedDoubleArray(double... array) {
-        return wrappedDoubleArray(array, 0, array.length);
-    }
-
-    public static Slice wrappedDoubleArray(double[] array, int offset, int length) {
-        if (length == 0) {
-            return EMPTY_SLICE;
-        }
-        return new Slice(array, offset, length);
-    }
-
     public static Slice copiedBuffer(String string, Charset charset) {
         requireNonNull(string, "string is null");
         requireNonNull(charset, "charset is null");
@@ -230,20 +150,5 @@ public final class Slices {
 
     public static Slice utf8Slice(String string) {
         return copiedBuffer(string, UTF_8);
-    }
-
-    public static Slice mapFileReadOnly(File file)
-        throws IOException {
-        requireNonNull(file, "file is null");
-
-        if (!file.exists()) {
-            throw new FileNotFoundException(file.toString());
-        }
-
-        try (RandomAccessFile randomAccessFile = new RandomAccessFile(file, "r");
-            FileChannel channel = randomAccessFile.getChannel()) {
-            MappedByteBuffer byteBuffer = channel.map(MapMode.READ_ONLY, 0, file.length());
-            return wrappedBuffer(byteBuffer);
-        }
     }
 }
