@@ -1984,4 +1984,6 @@ public class ConnectionProperties {
     public static final String ENABLE_SINGLE_SHARD_WRITE = "ENABLE_SINGLE_SHARD_WRITE";
 
     public static final String ENABLE_FOLLOWER_READ = "ENABLE_FOLLOWER_READ";
+
+    public static final String ENABLE_SIMD = "ENABLE_SIMD";
 }

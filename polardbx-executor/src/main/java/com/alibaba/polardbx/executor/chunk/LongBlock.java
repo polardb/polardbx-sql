@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.mpp.operator.SIMD.VectorizedPrimitives;
+import com.alibaba.polardbx.executor.mpp.operator.ScatterMemoryContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
@@ -210,5 +212,44 @@ public class LongBlock extends AbstractBlock {
     public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
         elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+    }
+
+    @Override
+    public void copyPositions_scatter_simd(ScatterMemoryContext scatterMemoryContext, BlockBuilder[] blockBuilders) {
+        long[] longScatterBufferDataBuffer = scatterMemoryContext.getLongScatterBufferDataBuffer();
+        long[] longBufferDataBuffer = scatterMemoryContext.getLongBufferDataBuffer();
+        int[] destScatterMapBuffer = scatterMemoryContext.getDestScatterMapBuffer();
+        int batchSize = scatterMemoryContext.getBatchSize();
+        int srcStartPosition = scatterMemoryContext.getSrcStartPosition();
+        int[] destLengthsPerPartitionInBatch = scatterMemoryContext.getDestLengthsPerPartitionInBatch();
+        readBatchLongs(srcStartPosition, longBufferDataBuffer, 0, batchSize);
+        VectorizedPrimitives.SIMD_PRIMITIVES_HANDLER.scatter(longBufferDataBuffer, longScatterBufferDataBuffer,
+            destScatterMapBuffer, 0, batchSize);
+        boolean[] scatterBufferNullsBuffer = scatterMemoryContext.getScatterBufferNullsBuffer();
+        boolean[] bufferNullsBuffer = scatterMemoryContext.getBufferNullsBuffer();
+        if (hasNull()) {
+            readBatchNulls(srcStartPosition, bufferNullsBuffer, 0, batchSize);
+            VectorizedPrimitives.SIMD_PRIMITIVES_HANDLER.scatter(bufferNullsBuffer, scatterBufferNullsBuffer,
+                destScatterMapBuffer, 0, batchSize);
+        }
+        int start = 0;
+        for (int partition = 0; partition < blockBuilders.length; partition++) {
+            if (destLengthsPerPartitionInBatch[partition] == 0) {
+                continue;
+            }
+            LongBlockBuilder longBlockBuilder = (LongBlockBuilder) blockBuilders[partition];
+            longBlockBuilder.writeBatchLongs(longScatterBufferDataBuffer, scatterBufferNullsBuffer, start,
+                destLengthsPerPartitionInBatch[partition]);
+            start += destLengthsPerPartitionInBatch[partition];
+        }
+    }
+
+    public void readBatchLongs(int basePosition, long[] target, int targetBase, int count) {
+        //将values数组从basePosition开始的count个元素copy到target数组从targetBase开始的位置
+        System.arraycopy(values, basePosition, target, targetBase, count);
+    }
+
+    public void readBatchNulls(int basePosition, boolean[] target, int targetBase, int count) {
+        System.arraycopy(isNull, basePosition, target, targetBase, count);
     }
 }

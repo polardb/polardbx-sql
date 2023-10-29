@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.mpp.operator.SIMD.VectorizedPrimitives;
+import com.alibaba.polardbx.executor.mpp.operator.ScatterMemoryContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
@@ -246,5 +248,48 @@ public class IntegerBlock extends AbstractBlock {
         if (selection != null) {
             throw new AssertionError("un-support delay materialization in this method");
         }
+    }
+
+    @Override
+    public void copyPositions_scatter_simd(ScatterMemoryContext scatterMemoryContext, BlockBuilder[] blockBuilders) {
+        //存储数据的buffer
+        int[] intScatterBufferDataBuffer = scatterMemoryContext.getIntScatterBufferDataBuffer();
+        int[] intBufferDataBuffer = scatterMemoryContext.getIntBufferDataBuffer();
+        int[] destScatterMapBuffer = scatterMemoryContext.getDestScatterMapBuffer(); //目的Scatter Buffer
+        int batchSize = scatterMemoryContext.getBatchSize(); //Batch Size
+        int srcStartPosition = scatterMemoryContext.getSrcStartPosition(); //开始的position
+        int[] destLengthsPerPartitionInBatch =
+            scatterMemoryContext.getDestLengthsPerPartitionInBatch(); //每一个partition中每一个batch对应的length
+        //memory copy
+        readBatchInts(srcStartPosition, intBufferDataBuffer, 0, batchSize);
+        VectorizedPrimitives.SIMD_PRIMITIVES_HANDLER.scatter(intBufferDataBuffer, intScatterBufferDataBuffer,
+            destScatterMapBuffer, 0, batchSize);
+        boolean[] scatterBufferNullsBuffer = scatterMemoryContext.getScatterBufferNullsBuffer();
+        boolean[] bufferNullsBuffer = scatterMemoryContext.getBufferNullsBuffer();
+        if (hasNull()) {
+            readBatchNulls(srcStartPosition, bufferNullsBuffer, 0, batchSize);
+            VectorizedPrimitives.SIMD_PRIMITIVES_HANDLER.scatter(bufferNullsBuffer, scatterBufferNullsBuffer,
+                destScatterMapBuffer, 0, batchSize);
+        }
+        int start = 0;
+        for (int partition = 0; partition < blockBuilders.length; partition++) {
+            if (destLengthsPerPartitionInBatch[partition] == 0) {
+                continue;
+            }
+            //构建出BlockBuilder
+            IntegerBlockBuilder integerBlockBuilder = (IntegerBlockBuilder) blockBuilders[partition];
+            integerBlockBuilder.writeBatchInts(intScatterBufferDataBuffer, scatterBufferNullsBuffer, start,
+                destLengthsPerPartitionInBatch[partition]);
+            start += destLengthsPerPartitionInBatch[partition];
+        }
+    }
+
+    public void readBatchInts(int basePosition, int[] target, int targetBase, int count) {
+        //将values数组从basePosition开始的count个元素copy到target数组从targetBase开始的位置
+        System.arraycopy(values, basePosition, target, targetBase, count);
+    }
+
+    public void readBatchNulls(int basePosition, boolean[] target, int targetBase, int count) {
+        System.arraycopy(isNull, basePosition, target, targetBase, count);
     }
 }

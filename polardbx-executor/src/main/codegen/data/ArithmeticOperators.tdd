@@ -667,17 +667,6 @@
         },
         {
           "inputDataType1": "Long",
-          "inputDataType2": "Long",
-          "outputDataType": "Long",
-          "inputVectorType1": "LongBlock",
-          "inputVectorType2": "LongBlock",
-          "outputVectorType": "LongBlock",
-          "inputType1": "long",
-          "inputType2": "long",
-          "outputType": "long"
-        },
-        {
-          "inputDataType1": "Long",
           "inputDataType2": "Float",
           "outputDataType": "Double",
           "inputVectorType1": "LongBlock",

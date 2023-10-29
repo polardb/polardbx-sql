@@ -93,6 +93,15 @@ instanceId=polardbx-polardbx
 metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 ```
 
+### 增加JDK 17编译命令
+
+1. 在IDEA启动洁面增加VM-Option `--add-modules jdk.incubator.vector`
+![JDK17_vm_option](../images/jdk17_vm_option.png)
+
+2. 在`Preference - Build, Execution,Deployment - Compiler - Java Compiler`中增加`--add-modules jdk.incubator.vector`
+
+![img.png](../images/jdk17_compiler.png)
+
 ### 修改Idea环境变量
 
 在使用Idea作为调试IDE时，首先需要保证工程JDK使用JDK 17。

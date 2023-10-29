@@ -84,4 +84,10 @@ public class LongBlockBuilder extends AbstractBlockBuilder {
         }
         return Long.hashCode(values.getLong(position));
     }
+
+    public LongBlockBuilder writeBatchLongs(long[] longs, boolean[] nulls, int sourceIndex, int count) {
+        values.addElements(getPositionCount(), longs, sourceIndex, count);
+        valueIsNull.addElements(getPositionCount(), nulls, sourceIndex, count);
+        return this;
+    }
 }
