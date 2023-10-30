@@ -16,11 +16,22 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlPlanState;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.partitionmanagement.rebalance.RebalanceDdlPlanManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.calcite.sql.SqlRollbackDdlJob;
+
+import static com.alibaba.polardbx.common.ddl.newengine.DdlPlanState.SUCCESS;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlPlanState.TERMINATED;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.MOVE_DATABASE;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.REBALANCE;
 
 public class DdlEngineRollbackJobsHandler extends DdlEngineCancelJobsHandler {
 

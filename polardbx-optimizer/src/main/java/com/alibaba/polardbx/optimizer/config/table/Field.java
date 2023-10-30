@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.commons.text.StringEscapeUtils;
 
 public class Field {
 
@@ -66,6 +68,7 @@ public class Field {
     // e.g. col timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     // the default value for col is CURRENT_TIMESTAMP
     private String defaultStr;
+    private SQLExpr defaultExpr;
 
     public Field copy() {
         return new Field(originTableName,
@@ -235,6 +238,10 @@ public class Field {
 
     public String getDefault() {
         return defaultStr;
+    }
+
+    public String getUnescapeDefault() {
+        return StringEscapeUtils.unescapeJava(defaultStr);
     }
 
     private static int getFieldLength(RelDataType type) {

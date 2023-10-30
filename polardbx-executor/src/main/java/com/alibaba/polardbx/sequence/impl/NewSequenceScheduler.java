@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.NewSequenceDao.MergingResult;
 import com.google.common.collect.Lists;
@@ -41,6 +42,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ_GROUPING_TIMEOUT;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ_TASK_QUEUE_NUM_PER_DB;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ_VALUE_HANDLER_KEEP_ALIVE_TIME;
@@ -61,7 +63,7 @@ public class NewSequenceScheduler {
     private volatile boolean requestMergingEnabled = true;
     private volatile long valueHandlerKeepAliveTime = NEW_SEQ_VALUE_HANDLER_KEEP_ALIVE_TIME;
 
-    private final List<Integer> activeQueueIndexes = Lists.newArrayList();
+    private final List<Pair<Integer, Boolean>> activeQueueIndexes = Lists.newArrayList();
     private final List<List<NewSeqValueTask>> valueTaskQueues = Lists.newArrayList();
     private final List<List<NewSeqSkipTask>> skipTaskQueues = Lists.newArrayList();
 
@@ -126,7 +128,7 @@ public class NewSequenceScheduler {
         }
 
         private void monitor() {
-            List<Integer> queueIndexesRequested = new ArrayList<>();
+            List<Pair<Integer, Boolean>> queueIndexesRequested = new ArrayList<>();
 
             synchronized (activeQueueIndexes) {
                 while (valid && activeQueueIndexes.isEmpty()) {
@@ -139,17 +141,22 @@ public class NewSequenceScheduler {
                 activeQueueIndexes.clear();
             }
 
-            for (int queueIndex : queueIndexesRequested) {
+            for (Pair<Integer, Boolean> queueInfo : queueIndexesRequested) {
                 // If any value handler has exited due to idle for more than keep alive time,
                 // and the monitor receives new request, then submit a new task to rebind to
                 // the corresponding queue to handle requests.
+                Integer queueIndex = queueInfo.getKey();
+                boolean isNextval = queueInfo.getValue();
+
                 String warnMsg = "Rebound a %s handler to %s queue " + queueIndex;
-                if (!valueFetcherFutures.keySet().contains(queueIndex)) {
+
+                if (isNextval && !valueFetcherFutures.keySet().contains(queueIndex)) {
                     valueFetcherFutures.put(queueIndex,
                         valueFetchers.submit(AsyncTask.build(new FetchNewSeqValueTask(queueIndex))));
                     LOGGER.warn(String.format(warnMsg, "fetcher", "value"));
                 }
-                if (!valueUpdaterFutures.keySet().contains(queueIndex)) {
+
+                if (!isNextval && !valueUpdaterFutures.keySet().contains(queueIndex)) {
                     valueUpdaterFutures.put(queueIndex,
                         valueUpdaters.submit(AsyncTask.build(new SkipNewSeqValueTask(queueIndex))));
                     LOGGER.warn(String.format(warnMsg, "updater", "skip"));
@@ -236,21 +243,23 @@ public class NewSequenceScheduler {
 
             if (requestMergingEnabled) {
                 MergingResult mergingResult = newSequenceDao.nextValueMerging(seqBatchSizes,
-                    v -> respondToTasks(valueTasksBySeq.get(v.getKey()), v.getValue(), null));
+                    v -> respondToTasks(v.getKey(), valueTasksBySeq.get(v.getKey()), v.getValue(), 0, null));
                 if (mergingResult != null) {
                     if (mergingResult.failedBeforeAnyResponse) {
                         // Failed before doing any next value merging process,
                         // so we should respond to all tasks in this situation.
                         exception = new SequenceException(mergingResult.origEx, mergingResult.errMsg);
                         for (Pair<String, Integer> pair : seqBatchSizes) {
-                            respondToTasks(valueTasksBySeq.get(pair.getKey()), 0, exception);
+                            String seqName = pair.getKey();
+                            respondToTasks(seqName, valueTasksBySeq.get(seqName), 0, 0, exception);
                         }
                     } else if (mergingResult.indexProcessed < (seqBatchSizes.size() - 1)) {
                         // Failed from some sequence's next value merging process, so
                         // we should respond to the rest of the tasks here.
                         exception = new SequenceException(mergingResult.origEx, mergingResult.errMsg);
                         for (int index = mergingResult.indexProcessed + 1; index < seqBatchSizes.size(); index++) {
-                            respondToTasks(valueTasksBySeq.get(seqBatchSizes.get(index).getKey()), 0, exception);
+                            String seqName = seqBatchSizes.get(index).getKey();
+                            respondToTasks(seqName, valueTasksBySeq.get(seqName), 0, 0, exception);
                         }
                     }
                 }
@@ -261,19 +270,25 @@ public class NewSequenceScheduler {
                     String seqName = seqBatchSize.getKey();
                     int batchSize = seqBatchSize.getValue();
 
+                    int increment = DEFAULT_INCREMENT_BY;
+                    if (batchSize > 1) {
+                        increment = SequenceManagerProxy.getInstance().getIncrement(schemaName, seqName);
+                    }
+
                     long valueBase = 0L;
                     try {
-                        valueBase = newSequenceDao.nextValue(seqName, batchSize) + 1 - batchSize;
+                        valueBase = newSequenceDao.nextValue(seqName, batchSize) - batchSize * increment + increment;
                     } catch (Exception e) {
                         exception = e;
                     }
 
-                    respondToTasks(valueTasksBySeq.get(seqName), valueBase, exception);
+                    respondToTasks(seqName, valueTasksBySeq.get(seqName), valueBase, increment, exception);
                 }
             }
         }
 
-        private void respondToTasks(List<NewSeqValueTask> valueTasks, long valueBase, Exception exception) {
+        private void respondToTasks(String seqName, List<NewSeqValueTask> valueTasks, long valueBase, int increment,
+                                    Exception exception) {
             if (exception == null && valueBase <= 0L) {
                 exception = new SequenceException("Unexpected value base: " + valueBase);
             }
@@ -282,8 +297,12 @@ public class NewSequenceScheduler {
                     valueTask.setException(exception);
                 }
             } else {
+                if (increment < 1) {
+                    increment = SequenceManagerProxy.getInstance().getIncrement(schemaName, seqName);
+                }
                 for (NewSeqValueTask valueTask : valueTasks) {
-                    valueTask.setValue(valueBase++);
+                    valueTask.setValue(valueBase);
+                    valueBase += increment;
                 }
             }
         }
@@ -497,7 +516,7 @@ public class NewSequenceScheduler {
         }
     }
 
-    public List<Integer> getActiveQueueIndexes() {
+    public List<Pair<Integer, Boolean>> getActiveQueueIndexes() {
         return activeQueueIndexes;
     }
 

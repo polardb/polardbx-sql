@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelTraitSet;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTableGroupPreparedData;
+import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.DropTableGroup;
-import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlDropTableGroup;
 
 /**
@@ -29,15 +29,21 @@ import org.apache.calcite.sql.SqlDropTableGroup;
  * @author luoyanxin
  */
 public class LogicalDropTableGroup extends BaseDdlOperation {
-    public LogicalDropTableGroup(RelOptCluster cluster,
-                                 RelTraitSet traitSet,
-                                 SqlDdl sqlDdl, RelDataType rowType) {
-        super(cluster, traitSet, sqlDdl, rowType);
+
+    DropTableGroupPreparedData preparedData;
+
+    public LogicalDropTableGroup(DDL ddl) {
+        super(ddl);
     }
 
     @Override
-    public String getSchemaName() {
-        return ((SqlDropTableGroup) nativeSqlNode).getSchemaName();
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public String getTableGroupName() {
@@ -49,6 +55,26 @@ public class LogicalDropTableGroup extends BaseDdlOperation {
     }
 
     public static LogicalDropTableGroup create(DropTableGroup input) {
-        return new LogicalDropTableGroup(input.getCluster(), input.getTraitSet(), input.getAst(), input.getRowType());
+        return new LogicalDropTableGroup(input);
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        return TableGroupNameUtil.isOssTg(getTableGroupName());
+    }
+
+    public DropTableGroupPreparedData getPreparedData() {
+        if (preparedData == null) {
+            preparedData();
+        }
+        return preparedData;
+    }
+
+    public void preparedData() {
+        preparedData = new DropTableGroupPreparedData();
+        preparedData.setTableGroupName(getTableGroupName());
+        preparedData.setSourceSql("");
+        preparedData.setIfExists(isIfExists());
+        preparedData.setSchemaName(getSchemaName());
     }
 }

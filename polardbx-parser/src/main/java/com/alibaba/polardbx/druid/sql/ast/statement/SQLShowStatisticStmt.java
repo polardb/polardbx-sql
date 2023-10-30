@@ -27,11 +27,11 @@ import java.util.List;
 public class SQLShowStatisticStmt extends SQLStatementImpl implements SQLShowStatement {
 
     private SQLExprTableSource tableSource;
-    private boolean            full;
+    private boolean full;
     private final List<SQLAssignItem> partitions = new ArrayList<SQLAssignItem>(4);
-    
+
     public SQLShowStatisticStmt() {
-        super (DbType.mysql);
+        super(DbType.mysql);
     }
 
     public SQLExprTableSource getTableSource() {

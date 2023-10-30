@@ -38,6 +38,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @since 5.1.17
  */
 
+
 public class SelectGroupByTest extends ReadBaseTestCase {
 
     @Parameters(name = "{index}:table0={0}")

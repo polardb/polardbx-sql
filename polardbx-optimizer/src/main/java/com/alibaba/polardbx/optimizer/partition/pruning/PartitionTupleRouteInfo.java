@@ -51,7 +51,8 @@ public class PartitionTupleRouteInfo {
         return tupleDispatchFuncInfos.get(tupleTempleIdx).routeTuple(ec, pruningCtx);
     }
 
-    public SearchDatumInfo calcSearchDatum(int tupleTempleIdx, ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+    public List<SearchDatumInfo> calcSearchDatum(int tupleTempleIdx, ExecutionContext ec,
+                                                 PartPruneStepPruningContext pruningCtx) {
         return tupleDispatchFuncInfos.get(tupleTempleIdx).calcSearchDatum(ec, pruningCtx);
     }
 

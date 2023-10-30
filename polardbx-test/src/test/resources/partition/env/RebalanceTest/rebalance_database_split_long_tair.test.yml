@@ -1,0 +1,159 @@
+schemaName: "rebalance_test_d12"
+dnNum: 4
+singleBalanceCaseBeans:
+# case generate by python scripts:
+#  import numpy as np
+#  m = 5
+#  n, upper_bound = 24, 1e6
+#  w = np.random.lognormal(m, 1, n)
+#  ranges = w * upper_bound/w.sum()
+#  bounds = [int(sum(ranges[0:i])) for i in range(1, n + 1)]
+#  bounds[-1] = "MAXVALUE"
+#  sql_temp = 'PARTITION `p{}` VALUES LESS THAN ({}) ENGINE = InnoDB'
+#  print(",\n".join([sql_temp.format(i + 1, bounds[i]) for i in range(n)]))
+  - createTableActions:
+  # m = 5
+    - tableName: "t1"
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+                                 `c1` bigint NOT NULL,
+                                 `c2` date NOT NULL,
+                                 `c3` double NOT NULL
+         )
+             PARTITION BY RANGE(`c1`)
+         PARTITIONS 32
+         (PARTITION `p1` VALUES LESS THAN (16487) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (51474) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (202501) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (206175) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (216789) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (377219) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (384508) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (397100) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (445577) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (483611) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (565495) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (658883) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (791375) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (798791) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (846074) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (850916) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (869521) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (876293) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (879282) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (931790) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (972415) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (982378) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (988810) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+    - tableName: "t2"
+      # m = 8
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t2` (
+                                     `c1` bigint NOT NULL,
+                                     `c2` date NOT NULL,
+                                     `c3` double NOT NULL
+             )
+                 PARTITION BY RANGE(`c1`)
+             PARTITIONS 32
+             (PARTITION `p1` VALUES LESS THAN (48908) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (73171) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (102499) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (163472) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (188592) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (274717) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (358100) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (387442) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (409117) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (461353) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (490463) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (502908) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (557607) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (573015) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (621027) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (755101) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (784073) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (787850) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (800583) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (831502) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (910675) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (954559) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (987751) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+      keyDistribution: "uniform"
+      distributionParameter: [ "1" ]
+      rowNum: 40000
+    - tableName: "t3"
+      # m = 3
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t3` (
+                                     `c1` bigint NOT NULL,
+                                     `c2` date NOT NULL,
+                                     `c3` double NOT NULL
+             )
+                 PARTITION BY RANGE(`c1`)
+             PARTITIONS 32
+             (PARTITION `p1` VALUES LESS THAN (27225) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (57893) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (61277) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (125710) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (138384) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (145892) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (283339) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (290741) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (298394) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (396942) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (411632) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (419203) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (708070) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (711903) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (718094) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (726471) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (749426) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (771982) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (801621) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (821934) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (849986) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (883718) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (985596) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+      keyDistribution: "uniform"
+      distributionParameter: [ "1" ]
+      rowNum: 40000
+    manipulateActions:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "rebalance database policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance database policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog" ]
+        expectedManipulateColumns: [ 2 ]
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance database policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance database policy = 'partition_balance'"
+        expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog" ]
+        expectedManipulateColumns: [ 2 ]
+    dataDistributionCheckActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t1"
+      objectType: "table"
+      expectedMu: 0.15
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t2"
+      objectType: "table"
+      expectedMu: 0.15
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t3"
+      objectType: "table"
+      expectedMu: 0.15

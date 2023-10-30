@@ -1,0 +1,86 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx;
+drop database if exists rds57_auto_ds;
+create database if not exists rds57_auto_ds mode='auto' default_single='on';
+use rds57_auto_ds;
+CREATE TABLE `t1` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+CREATE TABLE `t2` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+CREATE TABLE `t3` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+select distinct rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by rw_dn;
+rw_dn
+polardbx-storage-0-master
+polardbx-storage-1-master
+rebalance database drain_node='polardbx-storage-1-master';
+JOB_ID,SCHEMA,NAME,ACTION,BACKFILL_ROWS
+1620592829036232704,rds57_auto_ds,LockResource,Lock(rds57_auto_ds,rebalance_DATABASE_`rds57_auto_ds`),-1
+1620592829036232704,rds57_auto_ds,DrainNodeValidateTask,Execute DrainNodeValidateTask: ,-1
+1620592829036232704,rds57_auto_ds,UpdateGroupInfoTask,Execute UpdateGroupInfoTask: Update type of group (RDS57_AUTO_DS_P00001_GROUP) to 5,-1
+1620592829036232704,rds57_auto_ds,TopologySyncThenReleaseXLockTask,Execute TopologySyncThenReleaseXLockTask: ,-1
+1620592829036232704,rds57_auto_ds,CleanRemovedDbLocalityMetaTask,Execute CleanRemovedDbLocalityMetaTask: ,-1
+1620592829036232704,rds57_auto_ds,WriteDataDistLog,WriteDataDistLog,-1
+1620592829036232704,rds57_auto_ds,MoveTablePartition,move partition t2.p1 to group(RDS57_AUTO_DS_P00000_GROUP),0
+1620592829036232704,rds57_auto_ds,ActionDropBroadcastTable,drop broadcast table on storage: [polardbx-storage-1-master],-1
+1620592829036232704,rds57_auto_ds,DropDbGroupHideMetaTask,Execute DropDbGroupHideMetaTask: ,-1
+1620592829036232704,rds57_auto_ds,TopologySyncTask,Execute TopologySyncTask: ,-1
+1620592829036232704,rds57_auto_ds,DropPhysicalDbTask,Execute DropPhysicalDbTask: Drop group rds57_auto_ds.RDS57_AUTO_DS_P00001_GROUP,-1
+1620592829036232704,rds57_auto_ds,CleanRemovedDbGroupMetaTask,Execute CleanRemovedDbGroupMetaTask: ,-1
+select sleep(10);
+sleep(10)
+0
+select table_name,part_name,rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by table_name;
+table_name,part_name,rw_dn
+t1,p1,polardbx-storage-0-master
+t2,p1,polardbx-storage-0-master
+t3,p1,polardbx-storage-0-master
+select distinct rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by rw_dn;
+rw_dn
+polardbx-storage-0-master
+rebalance database;
+JOB_ID,SCHEMA,NAME,ACTION,BACKFILL_ROWS
+1620592876167626752,rds57_auto_ds,LockResource,Lock(rebalance_DATABASE_`rds57_auto_ds`),-1
+1620592876167626752,rds57_auto_ds,ActionInitPartitionDb,refresh topology,-1
+1620592876167626752,rds57_auto_ds,WriteDataDistLog,WriteDataDistLog,-1
+select sleep(10);
+sleep(10)
+0
+select table_name,part_name,rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by table_name;
+table_name,part_name,rw_dn
+t1,p1,polardbx-storage-0-master
+t2,p1,polardbx-storage-0-master
+t3,p1,polardbx-storage-0-master
+select distinct rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by rw_dn;
+rw_dn
+polardbx-storage-0-master
+set ALLOW_MOVING_BALANCED_SINGLE_TABLE=true;
+rebalance database;
+JOB_ID,SCHEMA,NAME,ACTION,BACKFILL_ROWS
+1620592921407389696,rds57_auto_ds,LockResource,Lock(rebalance_DATABASE_`rds57_auto_ds`),-1
+1620592921407389696,rds57_auto_ds,ActionInitPartitionDb,refresh topology,-1
+1620592921407389696,rds57_auto_ds,MoveTablePartition,move partition t1.p1 to group(RDS57_AUTO_DS_P00001_GROUP),0
+1620592921407389696,rds57_auto_ds,MoveTablePartition,move partition t3.p1 to group(RDS57_AUTO_DS_P00001_GROUP),0
+1620592921407389696,rds57_auto_ds,WriteDataDistLog,WriteDataDistLog,-1
+select sleep(10);
+sleep(10)
+0
+select distinct rw_dn from information_schema.partitions_meta where table_name in ('t1','t2','t3') and table_schema='rds57_auto_ds' order by rw_dn;
+rw_dn
+polardbx-storage-0-master
+polardbx-storage-1-master

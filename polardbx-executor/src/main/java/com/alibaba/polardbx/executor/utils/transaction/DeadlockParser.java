@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
 
 import java.sql.Timestamp;
 import java.util.Collection;
@@ -454,7 +453,7 @@ public class DeadlockParser {
 
         // Super user can always see deadlock info.
         try {
-            if (ec.isSuperUser()) {
+            if (ec.isSuperUserOrAllPrivileges()) {
                 return deadlockLog;
             }
         } catch (Throwable t) {

@@ -53,8 +53,26 @@ public class DeadlockTest extends CrudBasedLockTestCase {
 
     @Test(timeout = 60000)
     public void testAutoRollbackAfterLocalDeadlock() throws SQLException {
+        long before = 0, after = 0;
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "SHOW TRANS STATS")) {
+            if (rs.next()) {
+                before = rs.getLong("LOCAL_DEADLOCK_COUNT");
+            }
+        }
+
         final String tableName = "auto_rollback_after_local_deadlock_test";
         testFramework(tableName, true);
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "SHOW TRANS STATS")) {
+            if (rs.next()) {
+                after = rs.getLong("LOCAL_DEADLOCK_COUNT");
+            }
+        }
+
+        Assert.assertTrue(
+            "after.LOCAL_DEADLOCK_COUNT should > before.LOCAL_DEADLOCK_COUNT, but before is "
+                + before + ", and after is " + after,
+            after > before);
     }
 
     @Test(timeout = 60000)
@@ -186,17 +204,13 @@ public class DeadlockTest extends CrudBasedLockTestCase {
 
     @Test(timeout = 60000)
     @Ignore("fix by ???")
-    public void testAutoRollbackAfterMdlDeadlock() {
-        if (!enableMdlDetection()) {
+    public void testAutoRollbackAfterMdlDeadlock() throws SQLException {
+        if (!enableMdlDetection() || getPolardbxConnection().getMetaData().getURL().toLowerCase()
+            .contains("cursorfetch")) {
             return;
         }
 
-        final AtomicBoolean unexpectedError = new AtomicBoolean(false);
-        final List<Connection> connections = new ArrayList<>(6);
-        for (int i = 0; i < 6; i++) {
-            connections.add(getPolardbxConnection());
-        }
-
+        final List<Connection> connections = new ArrayList<>();
         final String tableName = "auto_rollback_after_mdl_deadlock_test";
         final String verifiedTableName = "auto_rollback_after_mdl_deadlock_test_verified";
         try {
@@ -215,6 +229,15 @@ public class DeadlockTest extends CrudBasedLockTestCase {
             sql = "insert into " + tableName + " values (0), (1)";
             JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
+            final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+            Assert.assertTrue("topology is null", CollectionUtils.isNotEmpty(topology));
+            final int connPoolSize = 2 + topology.size();
+
+            final AtomicBoolean unexpectedError = new AtomicBoolean(false);
+            for (int i = 0; i < connPoolSize; i++) {
+                connections.add(getPolardbxConnection());
+            }
+
             // Connection 0: select id = 0 for update
             JdbcUtil.executeQuerySuccess(connections.get(0), "begin");
             sql = "select * from " + tableName + " where id = 0 for update";
@@ -225,18 +248,14 @@ public class DeadlockTest extends CrudBasedLockTestCase {
             sql = "select * from " + tableName + " where id = 1 for update";
             JdbcUtil.executeQuerySuccess(connections.get(1), sql);
 
-            final ExecutorService threadPool = new ThreadPoolExecutor(6, 6, 0L,
+            final ExecutorService threadPool = new ThreadPoolExecutor(connPoolSize, connPoolSize, 0L,
                 TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
                 new NamedThreadFactory(DeadlockTest.class.getSimpleName(), false));
 
             final List<Future> futures = new LinkedList<>();
 
-            final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-            Assert.assertTrue("topology is null", CollectionUtils.isNotEmpty(topology));
-            Assert.assertEquals("physical db count != 4", 4, topology.size());
-
             // For each DN, perform a ddl statement
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < topology.size(); i++) {
                 if (unexpectedError.get()) {
                     return;
                 }
@@ -392,7 +411,7 @@ public class DeadlockTest extends CrudBasedLockTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         // Create a partition table
-        sql = "create table " + tableName + " (id int primary key)" + (single ? "" : " dbpartition by hash(id)" );
+        sql = "create table " + tableName + " (id int primary key)" + (single ? "" : " dbpartition by hash(id)");
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 

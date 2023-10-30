@@ -20,9 +20,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
+import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlDuration;
 import com.alibaba.polardbx.executor.mdl.MdlKey;
+import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
+import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -66,6 +69,65 @@ public class GsiStatusChangeSyncAction implements ISyncAction {
     public ResultCursor sync() {
         syncForPolarDbX();
         return null;
+    }
+
+    private void syncForDrds() {
+        // Reload GSI table first and then primary table;
+        if (gsiTableName != null) {
+            try {
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().reload(gsiTableName);
+            } catch (Exception e) {
+                assert e.getMessage().contains("ERR_UNKNOWN_TABLE");
+                try {
+                    OptimizerContext.getContext(schemaName).getLatestSchemaManager().invalidate(gsiTableName);
+                } catch (Exception ignore) {
+                }
+            }
+        }
+        if (primaryTableName != null) {
+            try {
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().reload(primaryTableName);
+            } catch (Exception e) {
+                assert e.getMessage().contains("ERR_UNKNOWN_TABLE");
+                try {
+                    OptimizerContext.getContext(schemaName).getLatestSchemaManager().invalidate(primaryTableName);
+                } catch (Exception ignore) {
+                }
+            }
+        }
+
+        // Note: Invalidate plan cache is still necessary,
+        // because non-multi-write plan for simple table may be cached.
+        PlanManager.getInstance().invalidateCache();
+
+        final Long trxId = 1L; // Any trxId is ok. We use connId to control the lifecycle.
+
+        // Can not use connId from ServerConnection for AsyncDDLPureMode
+        final Long uniqueConnId = connId + Long.MAX_VALUE;
+
+        // Lock and unlock MDL on primary table to clear cross status transaction.
+        final MdlContext context = MdlManager.addContext(uniqueConnId);
+        try {
+            MdlContext.updateMetaVersion(schemaName, primaryTableName);
+            final MdlTicket  ticket;
+            ticket = context.acquireLock(new MdlRequest(trxId,
+                MdlKey.getTableKeyWithLowerTableName(schemaName, primaryTableName),
+                MdlType.MDL_EXCLUSIVE,
+                MdlDuration.MDL_TRANSACTION));
+
+            SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                "[{0}] Mdl write lock acquired table[{1}] connId[{2,number,#}] uniqueConnId[{3,number,#}] "
+                    + "trxId[{4,number,#}]",
+                traceId,
+                primaryTableName,
+                connId,
+                uniqueConnId,
+                trxId));
+            context.releaseLock(trxId, ticket);
+        } finally {
+            context.releaseAllTransactionalLocks();
+            MdlManager.removeContext(context);
+        }
     }
 
     private void syncForPolarDbX() {

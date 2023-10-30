@@ -23,7 +23,7 @@ import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.aliyun.oss.common.utils.CRC64;
+import java.util.zip.CRC32;
 
 import java.util.List;
 
@@ -53,7 +53,7 @@ public class CheckSumAccumulator extends AbstractAggregator {
     @Override
     public void accumulate(int groupId, Chunk inputChunk, int position) {
         // get crc result
-        CRC64 crc = new CRC64();
+        CRC32 crc = new CRC32();
 
         for (int i = 0; i < aggIndexInChunk.length; i++) {
             Block inputBlock = inputChunk.getBlock(aggIndexInChunk[i]);
@@ -61,7 +61,8 @@ public class CheckSumAccumulator extends AbstractAggregator {
                 crc.update(NULL_TAG);
             } else {
                 int checksum = inputBlock.checksum(position);
-                crc.update(checksum);
+                crc.update(new byte[] {
+                    (byte) (checksum >>> 24), (byte) (checksum >>> 16), (byte) (checksum >>> 8), (byte) checksum});
             }
             crc.update(SEPARATOR_TAG);
         }

@@ -37,6 +37,7 @@ public enum LogPattern {
         + "max d-value:%s,current d-value:%s, currentCardinality:%s, d-value-ratio:%s"),
     NDV_SKETCH_NOT_READY("ndv sketch failed cause by sketch bytes not ready:%s"),
     UNEXPECTED("%s ended with unexpected error: %s"),
+    CHECK_FAIL("%s check failed: %s"),
     REMOVE("%s remove: %s");
 
     private final String pattern;

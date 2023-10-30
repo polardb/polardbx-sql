@@ -27,19 +27,19 @@ import java.util.List;
 public class SQLDecimalExpr extends SQLNumericLiteralExpr implements SQLValuableExpr, Comparable<SQLDecimalExpr> {
     public final static SQLDataType DATA_TYPE = new SQLDataTypeImpl("DECIMAL");
 
-    private           BigDecimal value;
-    private transient String     literal;
+    private BigDecimal value;
+    private transient String literal;
 
-    public SQLDecimalExpr(){
+    public SQLDecimalExpr() {
 
     }
 
-    public SQLDecimalExpr(BigDecimal value){
+    public SQLDecimalExpr(BigDecimal value) {
         super();
         this.value = value;
     }
 
-    public SQLDecimalExpr(String value){
+    public SQLDecimalExpr(String value) {
         super();
         this.value = new BigDecimal(value);
         this.literal = value;
@@ -76,6 +76,7 @@ public class SQLDecimalExpr extends SQLNumericLiteralExpr implements SQLValuable
 
         visitor.endVisit(this);
     }
+
     @Override
     public int hashCode() {
         final int prime = 31;

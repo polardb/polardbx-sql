@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;

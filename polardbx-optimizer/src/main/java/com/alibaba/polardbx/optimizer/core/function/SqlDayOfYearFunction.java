@@ -27,7 +27,7 @@ public class SqlDayOfYearFunction extends SqlFunction {
     public SqlDayOfYearFunction(String funcName) {
         super(funcName,
             SqlKind.OTHER_FUNCTION,
-            ReturnTypes.INTEGER,
+            ReturnTypes.BIGINT_NULLABLE,
             null,
             OperandTypes.ANY,
             SqlFunctionCategory.TIMEDATE

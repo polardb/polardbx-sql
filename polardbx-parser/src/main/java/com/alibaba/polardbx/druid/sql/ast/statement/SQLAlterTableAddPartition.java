@@ -25,10 +25,13 @@ import java.util.List;
 
 public class SQLAlterTableAddPartition extends SQLObjectImpl implements SQLAlterTableItem, SQLAlterTableGroupItem {
 
-    private boolean               ifNotExists = false;
-    private final List<SQLObject> partitions  = new ArrayList<SQLObject>(4);
-    private SQLExpr               partitionCount;
-    private SQLExpr               location; // hive
+    private boolean ifNotExists = false;
+    private final List<SQLObject> partitions = new ArrayList<SQLObject>(4);
+    private SQLExpr partitionCount;
+    private SQLExpr location; // hive
+
+    private boolean isSubPartition = false;
+    private String algorithm = null;
 
     public List<SQLObject> getPartitions() {
         return partitions;
@@ -69,6 +72,22 @@ public class SQLAlterTableAddPartition extends SQLObjectImpl implements SQLAlter
             x.setParent(this);
         }
         this.location = x;
+    }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public void setSubPartition(boolean subPartition) {
+        isSubPartition = subPartition;
+    }
+
+    public String getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(String algorithm) {
+        this.algorithm = algorithm;
     }
 
     @Override

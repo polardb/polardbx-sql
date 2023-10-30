@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -107,6 +108,13 @@ public class GroupSequentialCursor extends AbstractCursor {
 
     private void executeSequentially(List<RelNode> plans) {
         int numObjectsCountedOnInstance = 0;
+        int delay = executionContext.getParamManager().getInt(ConnectionParams.EMIT_PHY_TABLE_DDL_DELAY);
+        if (delay > 0) {
+            try {
+                Thread.sleep(delay * 1000);
+            } catch (InterruptedException e) {
+            }
+        }
         for (RelNode plan : plans) {
             GenericPhyObjectRecorder phyObjectRecorder =
                 CrossEngineValidator.getPhyObjectRecorder(plan, executionContext);
@@ -139,12 +147,16 @@ public class GroupSequentialCursor extends AbstractCursor {
                     numObjectsCountedOnInstance++;
                 }
             } catch (Throwable t) {
+                try {
+                    if (!phyObjectRecorder.checkIfIgnoreException(t)) {
+                        exceptions.add(t);
+                    }
+                } catch (Throwable checkError) {
+                    exceptions.add(checkError);
+                }
+
                 numObjectsSkipped.incrementAndGet();
                 numObjectsCountedOnInstance++;
-
-                if (!phyObjectRecorder.checkIfIgnoreException(t)) {
-                    exceptions.add(t);
-                }
 
                 if (CrossEngineValidator.isJobInterrupted(executionContext)) {
                     // Skip the rest of objects.
@@ -153,6 +165,7 @@ public class GroupSequentialCursor extends AbstractCursor {
                     return;
                 }
             }
+
         }
     }
 

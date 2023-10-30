@@ -17,7 +17,12 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.server.statistics.utils.SessionUtils;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.NIOProcessor;
+import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -34,6 +39,11 @@ import java.util.List;
  * @since 5.1.0
  */
 public class ShowStatsSyncAction implements ISyncAction {
+
+    /**
+     * 对应 recordTime 的列
+     */
+    private static final int RECORD_TIME_IDX = 20;
 
     private String db;
 
@@ -87,16 +97,26 @@ public class ShowStatsSyncAction implements ISyncAction {
         result.addColumn("transCountBestEffort", DataTypes.LongType);
         result.addColumn("transCountTSO", DataTypes.LongType);
         result.addColumn("backfillRows", DataTypes.LongType);
+        result.addColumn("changeSetDeleteRows", DataTypes.LongType);
+        result.addColumn("changeSetReplaceRows", DataTypes.LongType);
         result.addColumn("checkedRows", DataTypes.LongType);
 
         result.initMeta();
+
+        if (TStringUtil.equals(SystemDbHelper.DEFAULT_DB_NAME, db)) {
+            // polardbx schema下返回所有库的聚合信息
+            getAllDbStats(result);
+            return result;
+        }
+
         TDataSource ds = CobarServer.getInstance().getConfig().getSchemas().get(db).getDataSource();
         MatrixStatistics stats = ds.getStatistics();
+        MatrixStatistics prevStats = stats.getPreviosStatistics();
 
         stats.recordTime = System.currentTimeMillis();
 
         result.addRow(getRow(stats, ds));
-        result.addRow(getRow(stats.getPreviosStatistics(), ds));
+        result.addRow(getRow(prevStats, ds));
 
         return result;
     }
@@ -107,8 +127,8 @@ public class ShowStatsSyncAction implements ISyncAction {
         List<Object> list = LogicalShowHtcHandler.getHostInfo4Manager(null);
         if (list.size() > 8) {
             return new Object[] {
-                SessionUtils.getActiveConnectionsNum(ds.getSchemaName()), stats.aggregateMultiDBCount,
-                SessionUtils.getConnectionsNum(ds.getSchemaName()),
+                getActiveConnectionsNum(ds.getSchemaName()), stats.aggregateMultiDBCount,
+                getConnectionsNum(ds.getSchemaName()),
                 stats.delete, stats.errorCount, stats.hintCount, stats.insert,
                 stats.integrityConstraintViolationErrorCount, stats.joinMultiDBCount, stats.multiDBCount, stats.netIn,
                 stats.netOut, stats.physicalRequest.get(), stats.physicalTimeCost.get(), stats.query, stats.replace,
@@ -120,11 +140,13 @@ public class ShowStatsSyncAction implements ISyncAction {
                 stats.getTransactionStats().countBestEffort.get(),
                 stats.getTransactionStats().countTSO.get(),
                 stats.backfillRows.get(),
+                stats.changeSetDeleteRows.get(),
+                stats.changeSetReplaceRows.get(),
                 stats.checkedRows.get()};
         } else {
             return new Object[] {
-                SessionUtils.getActiveConnectionsNum(ds.getSchemaName()), stats.aggregateMultiDBCount,
-                SessionUtils.getConnectionsNum(ds.getSchemaName()),
+                getActiveConnectionsNum(ds.getSchemaName()), stats.aggregateMultiDBCount,
+                getConnectionsNum(ds.getSchemaName()),
                 stats.delete, stats.errorCount, stats.hintCount, stats.insert,
                 stats.integrityConstraintViolationErrorCount, stats.joinMultiDBCount, stats.multiDBCount, stats.netIn,
                 stats.netOut, stats.physicalRequest.get(), stats.physicalTimeCost.get(), stats.query, stats.replace,
@@ -136,8 +158,106 @@ public class ShowStatsSyncAction implements ISyncAction {
                 stats.getTransactionStats().countBestEffort.get(),
                 stats.getTransactionStats().countTSO.get(),
                 stats.backfillRows.get(),
+                stats.changeSetDeleteRows.get(),
+                stats.changeSetReplaceRows.get(),
                 stats.checkedRows.get()};
         }
+    }
 
+    /**
+     * 累加所有 Schema 的 stat指标
+     * 最终结果的平均rt是根据 totalTimeCost/totalRequest 进行计算的
+     */
+    private void getAllDbStats(ArrayResultCursor result) {
+        long curTimeMillis = System.currentTimeMillis();
+        Object[] currentTotal = null, prevTotal = null;
+        for (SchemaConfig schema : CobarServer.getInstance().getConfig().getSchemas().values()) {
+            if (!schema.getDataSource().isInited()) {
+                continue;
+            }
+            if (SystemDbHelper.CDC_DB_NAME.equalsIgnoreCase(schema.getName())
+                || SystemDbHelper.DEFAULT_DB_NAME.equalsIgnoreCase(schema.getName())) {
+                continue;
+            }
+            TDataSource ds = schema.getDataSource();
+            MatrixStatistics stats = ds.getStatistics();
+            MatrixStatistics prevStats = stats.getPreviosStatistics();
+            stats.recordTime = curTimeMillis;
+
+            Object[] curResult = getRow(stats, ds);
+            Object[] prevResult = getRow(prevStats, ds);
+            if (currentTotal == null) {
+                currentTotal = curResult;
+                prevTotal = prevResult;
+                continue;
+            }
+            addTotal(currentTotal, curResult);
+            addTotal(prevTotal, prevResult);
+        }
+
+        if (currentTotal != null && prevTotal != null) {
+            result.addRow(currentTotal);
+            result.addRow(prevTotal);
+        }
+    }
+
+    /**
+     * 将当前 schema 的统计结果累加到总和中
+     */
+    private static void addTotal(Object[] currentTotal, Object[] curResult) {
+        for (int i = 0; i < currentTotal.length; i++) {
+            if (i == RECORD_TIME_IDX) {
+                continue;
+            }
+            currentTotal[i] = addNumber((Number) currentTotal[i], (Number) curResult[i]);
+        }
+    }
+
+    private static Number addNumber(Number x, Number y) {
+        if (x.getClass() != y.getClass()) {
+            throw new IllegalArgumentException("Failed to do add operation: " + x.getClass().getSimpleName()
+                + " and " + y.getClass().getSimpleName());
+        }
+        if (x instanceof Double) {
+            return x.doubleValue() + y.doubleValue();
+        } else if (x instanceof Float) {
+            return x.floatValue() + y.floatValue();
+        } else if (x instanceof Long) {
+            return x.longValue() + y.longValue();
+        } else if (x instanceof Integer) {
+            return x.intValue() + y.intValue();
+        } else {
+            throw new IllegalArgumentException("Failed to do add operation: " + x.getClass().getSimpleName());
+        }
+    }
+
+    private static long getActiveConnectionsNum(String schema) {
+        long count = 0L;
+        for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
+            for (FrontendConnection fc : p.getFrontends().values()) {
+                if (fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
+                    ServerConnection sc = (ServerConnection) fc;
+                    boolean isStmtExecuting = sc.isStatementExecuting().get();
+                    if (isStmtExecuting) {
+                        count++;
+                    }
+                }
+
+            }
+        }
+        return count;
+    }
+
+    private static long getConnectionsNum(String schema) {
+        long count = 0L;
+        for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
+            for (FrontendConnection fc : p.getFrontends().values()) {
+                if (fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
+                    count++;
+                }
+
+            }
+        }
+        return count;
     }
 }

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -26,12 +24,16 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.InsertWriter;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -61,6 +63,7 @@ public class LogicalInsertIgnore extends LogicalInsert {
     protected final List<List<String>> ukColumnNamesList;
     protected final List<List<Integer>> afterUkMapping;
     protected final List<List<Integer>> beforeUkMapping;
+    protected final List<Integer> afterUgsiUkIndex;
     protected final List<Integer> selectInsertColumnMapping;
     protected final List<String> pkColumnNames;
     protected final List<Integer> beforePkMapping;
@@ -82,6 +85,9 @@ public class LogicalInsertIgnore extends LogicalInsert {
 
     // All columns in UK and ColumnMeta
     protected final Map<String, ColumnMeta> columnMetaMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    protected boolean ukContainGeneratedColumn = false;
+
     protected boolean usePartFieldChecker = false;
 
     /**
@@ -121,7 +127,15 @@ public class LogicalInsertIgnore extends LogicalInsert {
             insert.getPushDownInsertWriter(),
             insert.getGsiInsertIgnoreWriters(),
             insert.getPrimaryDeleteWriter(),
-            insert.getGsiDeleteWriters()
+            insert.getGsiDeleteWriters(),
+            insert.getEvalRowColMetas(),
+            insert.getGenColRexNodes(),
+            insert.getInputToEvalFieldsMapping(),
+            insert.getDefaultExprColMetas(),
+            insert.getDefaultExprColRexNodes(),
+            insert.getDefaultExprEvalFieldsMapping(),
+            insert.isPushablePrimaryKeyCheck(),
+            insert.isPushableForeignConstraintCheck()
         );
     }
 
@@ -135,10 +149,16 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                List<ColumnMeta> tableColumnMetas, LogicalDynamicValues logicalDynamicValues,
                                List<RexNode> unOpitimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                                List<InsertWriter> gsiInsertIgnoreWriters, DistinctWriter primaryDeleteWriter,
-                               List<DistinctWriter> gsiDeleteWriters) {
+                               List<DistinctWriter> gsiDeleteWriters, List<ColumnMeta> evalRowColMetas,
+                               List<RexNode> genColRexNodes, List<Integer> inputToEvalFieldsMapping,
+                               List<ColumnMeta> defaultExprColMetas, List<RexNode> defaultExprColRexNodes,
+                               List<Integer> defaultExprEvalFieldsMapping, boolean pushablePrimaryKeyCheck,
+                               boolean pushableForeignConstraintCheck) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
-            gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList);
+            gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList,
+            evalRowColMetas, genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck);
         ExecutionContext ec = PlannerContext.getPlannerContext(cluster).getExecutionContext();
 
         // Ignore DELETE_ONLY UK
@@ -146,6 +166,7 @@ public class LogicalInsertIgnore extends LogicalInsert {
             tm -> GlobalIndexMeta.canWrite(ec, tm), ec);
         this.beforeUkMapping = initBeforeUkMapping(this.ukColumnNamesList, selectListForDuplicateCheck);
         this.afterUkMapping = initAfterUkMapping(this.ukColumnNamesList, insertRowType.getFieldNames());
+        this.afterUgsiUkIndex = initAfterUgsiUkMapping(this.ukColumnNamesList, ec);
         this.selectInsertColumnMapping =
             initSelectInsertRowMapping(selectListForDuplicateCheck, insertRowType.getFieldNames());
         this.pkColumnNames = GlobalIndexMeta.getPrimaryKeys(getLogicalTableName(), getSchemaName(), ec);
@@ -169,9 +190,10 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                SqlNodeList hints, TableInfo tableInfo, InsertWriter primaryInsertWriter,
                                List<InsertWriter> gsiInsertWriters, List<Integer> autoIncParamIndex,
                                List<List<String>> ukColumnNamesList, List<List<Integer>> beforeUkMapping,
-                               List<List<Integer>> afterUkMapping, List<Integer> selectInsertColumnMapping,
-                               List<String> pkColumnNames, List<Integer> beforePkMapping, List<Integer> afterPkMapping,
-                               Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
+                               List<List<Integer>> afterUkMapping, List<Integer> afterUgsiUkIndex,
+                               List<Integer> selectInsertColumnMapping, List<String> pkColumnNames,
+                               List<Integer> beforePkMapping, List<Integer> afterPkMapping, Set<String> allUkSet,
+                               Map<String, Map<String, Set<String>>> tableUkMap,
                                Map<String, List<List<String>>> ukGroupByTable,
                                Map<String, List<String>> localIndexPhyName, List<ColumnMeta> rowColumnMetas,
                                List<ColumnMeta> tableColumnMetas, List<String> selectListForDuplicateCheck,
@@ -180,14 +202,21 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                List<RexNode> unOpitimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                                List<InsertWriter> gsiInsertIgnoreWriters, DistinctWriter primaryDeleteWriter,
                                List<DistinctWriter> gsiDeleteWriters, boolean usePartFieldChecker,
-                               Map<String, ColumnMeta> columnMetaMap) {
+                               Map<String, ColumnMeta> columnMetaMap, boolean ukContainGeneratedColumn,
+                               List<ColumnMeta> evalRowColMetas, List<RexNode> genColRexNodes,
+                               List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
+                               List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
+                               boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
-            gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList);
+            gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList,
+            evalRowColMetas, genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck);
 
         this.ukColumnNamesList = ukColumnNamesList;
         this.beforeUkMapping = beforeUkMapping;
         this.afterUkMapping = afterUkMapping;
+        this.afterUgsiUkIndex = afterUgsiUkIndex;
         this.selectInsertColumnMapping = selectInsertColumnMapping;
         this.pkColumnNames = pkColumnNames;
         this.beforePkMapping = beforePkMapping;
@@ -208,11 +237,12 @@ public class LogicalInsertIgnore extends LogicalInsert {
         this.gsiDeleteWriters = gsiDeleteWriters;
         this.usePartFieldChecker = usePartFieldChecker;
         this.columnMetaMap.putAll(columnMetaMap);
+        this.ukContainGeneratedColumn = ukContainGeneratedColumn;
     }
 
     @Override
     public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
-        return new LogicalInsertIgnore(getCluster(),
+        LogicalInsertIgnore newInsertIgnore = new LogicalInsertIgnore(getCluster(),
             traitSet,
             getTable(),
             getCatalogReader(),
@@ -232,6 +262,7 @@ public class LogicalInsertIgnore extends LogicalInsert {
             getUkColumnNamesList(),
             getBeforeUkMapping(),
             getAfterUkMapping(),
+            getAfterUgsiUkIndex(),
             getSelectInsertColumnMapping(),
             getPkColumnNames(),
             getBeforePkMapping(),
@@ -253,8 +284,18 @@ public class LogicalInsertIgnore extends LogicalInsert {
             getPrimaryDeleteWriter(),
             getGsiDeleteWriters(),
             isUsePartFieldChecker(),
-            getColumnMetaMap()
+            getColumnMetaMap(),
+            isUkContainGeneratedColumn(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck()
         );
+        return newInsertIgnore;
     }
 
     protected static List<ColumnMeta> initColumnMeta(LogicalInsert insert) {
@@ -306,6 +347,39 @@ public class LogicalInsertIgnore extends LogicalInsert {
             ukColumnMetas.add(ukColumns.stream().map(rowColumnMeta::get).collect(Collectors.toList()));
         }
         return ukColumnMetas;
+    }
+
+    public List<Integer> initAfterUgsiUkMapping(List<List<String>> ukList, ExecutionContext ec) {
+        String schema = getSchemaName();
+        String table = getLogicalTableName();
+
+        List<TableMeta> ugsiMetas = GlobalIndexMeta.getIndex(table, schema, ec).stream()
+            .filter(tm -> GlobalIndexMeta.canWrite(ec, tm) && (tm.hasGsiImplicitPrimaryKey()))
+            .collect(Collectors.toList());
+
+        List<List<String>> ugsiUkList = new ArrayList<>();
+        for (TableMeta ugsiMeta : ugsiMetas) {
+            ugsiUkList.add(ugsiMeta.getGsiTableMetaBean().gsiMetaBean.indexColumns.stream().map(cmb -> cmb.columnName)
+                .collect(Collectors.toList()));
+        }
+
+        List<Set<String>> ukSet = ukList.stream().map(l -> {
+            Set<String> set = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            set.addAll(l);
+            return set;
+        }).collect(Collectors.toList());
+
+        List<Integer> results = new ArrayList<>();
+        for (List<String> ugsiUk : ugsiUkList) {
+            for (int i = 0; i < ukSet.size(); i++) {
+                if (ukSet.get(i).size() == ugsiUk.size() && ukSet.get(i).containsAll(ugsiUk)) {
+                    results.add(i);
+                    break;
+                }
+            }
+        }
+
+        return results;
     }
 
     public static List<List<Integer>> initAfterUkMapping(List<List<String>> ukColumnNamesList,
@@ -366,7 +440,10 @@ public class LogicalInsertIgnore extends LogicalInsert {
             insert.getInsertRowType(), Lists.newArrayList(keywords), insert.getDuplicateKeyUpdateList(),
             insert.getBatchSize(), insert.getAppendedColumnIndex(), insert.getHints(), insert.getTableInfo(), null,
             new ArrayList<>(), insert.getAutoIncParamIndex(), insert.getUnOptimizedLogicalDynamicValues(),
-            insert.getUnOptimizedDuplicateKeyUpdateList());
+            insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
+            insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
+            insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
+            insert.isPushableForeignConstraintCheck());
 
         final InsertWriter insertIgnoreWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return insertIgnoreWriter.getInput(executionContext);
@@ -413,6 +490,35 @@ public class LogicalInsertIgnore extends LogicalInsert {
         return ukMap.keySet().containsAll(getAllUkSet());
     }
 
+    @Override
+    public String explainNodeName() {
+        if (isReplace()) {
+            return "LogicalReplace";
+        } else if (withDuplicateKeyUpdate()) {
+            return "LogicalUpsert";
+        }
+        return "LogicalInsertIgnore";
+    }
+
+    @Override
+    public RelWriter explainTermsForDisplay(RelWriter pw) {
+        pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
+        final boolean isSourceSelect = isSourceSelect();
+        if (isSourceSelect) {
+            pw.item("table", getLogicalTableName());
+            pw.item("columns", getInsertRowType());
+        } else {
+            pw.item("sql", getSqlTemplate().toString().replace("\n", " "));
+        }
+        pw.item("uniqueKeySelect",
+            ukGroupByTable.entrySet().stream().map(e -> "select " + e.getValue() + " on " + e.getKey())
+                .collect(Collectors.toList()));
+        if (isSourceSelect) {
+            pw.item("mode", insertSelectMode);
+        }
+        return pw;
+    }
+
     public List<List<String>> getUkColumnNamesList() {
         return ukColumnNamesList;
     }
@@ -423,6 +529,10 @@ public class LogicalInsertIgnore extends LogicalInsert {
 
     public List<List<Integer>> getAfterUkMapping() {
         return afterUkMapping;
+    }
+
+    public List<Integer> getAfterUgsiUkIndex() {
+        return afterUgsiUkIndex;
     }
 
     public List<Integer> getSelectInsertColumnMapping() {
@@ -467,6 +577,14 @@ public class LogicalInsertIgnore extends LogicalInsert {
 
     public void setUsePartFieldChecker(boolean usePartFieldChecker) {
         this.usePartFieldChecker = usePartFieldChecker;
+    }
+
+    public boolean isUkContainGeneratedColumn() {
+        return ukContainGeneratedColumn;
+    }
+
+    public void setUkContainGeneratedColumn(boolean ukContainGeneratedColumn) {
+        this.ukContainGeneratedColumn = ukContainGeneratedColumn;
     }
 
     public Map<String, ColumnMeta> getColumnMetaMap() {

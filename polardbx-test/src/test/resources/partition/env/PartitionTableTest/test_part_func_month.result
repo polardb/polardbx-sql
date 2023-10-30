@@ -134,82 +134,357 @@ SELECT part_route('', 't1', dt) AS part
 FROM t1;
 part
 p1
-DROP TABLE IF EXISTS tbl_month;
-CREATE TABLE tbl_month (
-	id int,
-	tm date
-)
-PARTITION BY RANGE (month(tm)) (
+## test hash
+CREATE TABLE `m1` (
+	`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH (MONTH(`d`)) PARTITIONS 16;
+SHOW CREATE TABLE m1;
+Table,Create Table
+m1,CREATE TABLE `m1` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(MONTH(`d`))
+PARTITIONS 16
+INSERT INTO m1
+VALUES ('2022-01-01'),
+	('2020-02-01'),
+	('2021-03-01'),
+	('2024-04-01');
+SELECT *
+FROM m1
+WHERE d = '2022-01-01';
+d
+2022-01-01
+SELECT *
+FROM m1
+WHERE d = '2020-02-01';
+d
+2020-02-01
+SELECT *
+FROM m1
+WHERE d = '2021-03-01';
+d
+2021-03-01
+SELECT *
+FROM m1
+WHERE d = '2024-04-01';
+d
+2024-04-01
+EXPLAIN SELECT *
+FROM m1
+WHERE d = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="m1[p1]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m1
+WHERE d = '2020-02-01';
+Logical ExecutionPlan
+LogicalView(tables="m1[p6]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m1
+WHERE d = '2021-03-01';
+Logical ExecutionPlan
+LogicalView(tables="m1[p14]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m1
+WHERE d = '2024-04-01';
+Logical ExecutionPlan
+LogicalView(tables="m1[p7]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+SELECT *
+FROM m1
+WHERE (d > '2020-02-01'
+		AND d < '2022-01-01')
+	OR d BETWEEN '2021-03-01' AND '2022-01-01'
+ORDER BY d;
+d
+2021-03-01
+2022-01-01
+SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+ORDER BY d;
+d
+2022-01-01
+2024-04-01
+EXPLAIN SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` > ?) ORDER BY `d`")
+SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+	AND d < '2050-01-01'
+ORDER BY d;
+d
+2022-01-01
+2024-04-01
+EXPLAIN SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+	AND d < '2050-01-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `m1` AS `m1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+	AND d <= '2022-01-01'
+ORDER BY d;
+d
+2022-01-01
+EXPLAIN SELECT *
+FROM m1
+WHERE d > '2021-03-01'
+	AND d <= '2022-01-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m1[p1,p3,p4,p7,p9,p11,p12,p14,p16]", shardCount=9, sql="SELECT `d` FROM `m1` AS `m1` WHERE ((`d` > ?) AND (`d` <= ?)) ORDER BY `d`")
+## test range
+CREATE TABLE `m2` (
+	`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE (MONTH(`d`)) (
 	PARTITION p0 VALUES LESS THAN (3),
 	PARTITION p1 VALUES LESS THAN (6),
-	PARTITION pd VALUES LESS THAN MAXVALUE
+	PARTITION p2 VALUES LESS THAN (9),
+	PARTITION p3 VALUES LESS THAN MAXVALUE
 );
-INSERT INTO tbl_month
-VALUES (0, '20220201');
-INSERT INTO tbl_month
-VALUES (0, '20220301');
-INSERT INTO tbl_month
-VALUES (0, '20220601');
+SHOW CREATE TABLE m2;
+Table,Create Table
+m2,CREATE TABLE `m2` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(MONTH(`d`))
+(PARTITION p0 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (6) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+INSERT INTO m2
+VALUES ('2022-01-01'),
+	('2020-03-01'),
+	('2021-06-01'),
+	('2024-09-01');
 SELECT *
-FROM tbl_month
-ORDER BY tm;
-id,tm
-0,2022-02-01
-0,2022-03-01
-0,2022-06-01
-SELECT *
-FROM tbl_month
-WHERE tm < '2022-03-02'
-ORDER BY tm;
-id,tm
-0,2022-02-01
-0,2022-03-01
-SELECT *
-FROM tbl_month
-WHERE tm <= '2022-03-02'
-ORDER BY tm;
-id,tm
-0,2022-02-01
-0,2022-03-01
-SELECT *
-FROM tbl_month
-WHERE tm < '2022-03-01'
-ORDER BY tm;
-id,tm
-0,2022-02-01
-SELECT *
-FROM tbl_month
-WHERE tm <= '2022-03-01'
-ORDER BY tm;
-id,tm
-0,2022-02-01
-0,2022-03-01
-SELECT *
-FROM tbl_month
-WHERE tm < '2022-03-01'
-	AND tm >= '2022-02-01'
-ORDER BY tm;
-id,tm
-0,2022-02-01
-CREATE TABLE list_month (
-	dt date
-)
-PARTITION BY LIST (month(dt)) (
-	PARTITION p1 VALUES IN (1),
-	PARTITION p2 VALUES IN (2),
-	PARTITION pd VALUES IN (3)
-);
-INSERT INTO list_month
-VALUES ('20210101'),
-	('20220101'),
-	('20220201'),
-	('20220301');
-SELECT *
-FROM list_month
-WHERE dt <= '20230101'
-ORDER BY dt;
-dt
-2021-01-01
+FROM m2
+WHERE d = '2022-01-01';
+d
 2022-01-01
-2022-02-01
-2022-03-01
+SELECT *
+FROM m2
+WHERE d = '2020-03-01';
+d
+2020-03-01
+SELECT *
+FROM m2
+WHERE d = '2021-06-01';
+d
+2021-06-01
+SELECT *
+FROM m2
+WHERE d = '2024-09-01';
+d
+2024-09-01
+EXPLAIN SELECT *
+FROM m2
+WHERE d = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="m2[p0]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m2
+WHERE d = '2020-03-01';
+Logical ExecutionPlan
+LogicalView(tables="m2[p1]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m2
+WHERE d = '2021-06-01';
+Logical ExecutionPlan
+LogicalView(tables="m2[p2]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m2
+WHERE d = '2024-09-01';
+Logical ExecutionPlan
+LogicalView(tables="m2[p3]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+SELECT *
+FROM m2
+WHERE (d > '2020-03-01'
+		AND d < '2022-01-01')
+	OR d BETWEEN '2021-06-01' AND '2022-01-01'
+ORDER BY d;
+d
+2021-06-01
+2022-01-01
+SELECT *
+FROM m2
+WHERE d > '2020-03-01'
+ORDER BY d;
+d
+2021-06-01
+2022-01-01
+2024-09-01
+EXPLAIN SELECT *
+FROM m2
+WHERE d > '2020-03-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m2[p0,p1,p2,p3]", shardCount=4, sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` > ?) ORDER BY `d`")
+SELECT *
+FROM m2
+WHERE d > '2020-03-01'
+	AND d < '2024-09-01'
+ORDER BY d;
+d
+2021-06-01
+2022-01-01
+EXPLAIN SELECT *
+FROM m2
+WHERE d > '2020-03-01'
+	AND d < '2024-09-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m2[p0,p1,p2,p3]", shardCount=4, sql="SELECT `d` FROM `m2` AS `m2` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+SELECT *
+FROM m2
+WHERE d > '2020-02-01'
+	AND d < '2020-06-01'
+ORDER BY d;
+d
+2020-03-01
+EXPLAIN SELECT *
+FROM m2
+WHERE d > '2020-02-01'
+	AND d < '2020-06-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m2[p0,p1,p2]", shardCount=3, sql="SELECT `d` FROM `m2` AS `m2` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## test list
+CREATE TABLE `m3` (
+	`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST (MONTH(`d`)) (
+	PARTITION p0 VALUES IN (1, 2, 3),
+	PARTITION p1 VALUES IN (4, 5, 6),
+	PARTITION p2 VALUES IN (7, 8, 9),
+	PARTITION pd VALUES IN (DEFAULT)
+);
+SHOW CREATE TABLE m3;
+Table,Create Table
+m3,CREATE TABLE `m3` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(MONTH(`d`))
+(PARTITION p0 VALUES IN (1,2,3) ENGINE = InnoDB,
+ PARTITION p1 VALUES IN (4,5,6) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (7,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+INSERT INTO m3
+VALUES ('2022-01-01'),
+	('2020-04-01'),
+	('2021-07-01'),
+	('2024-12-31');
+SELECT *
+FROM m3
+WHERE d = '2022-01-01';
+d
+2022-01-01
+SELECT *
+FROM m3
+WHERE d = '2020-04-01';
+d
+2020-04-01
+SELECT *
+FROM m3
+WHERE d = '2021-07-01';
+d
+2021-07-01
+SELECT *
+FROM m3
+WHERE d = '2024-12-31';
+d
+2024-12-31
+EXPLAIN SELECT *
+FROM m3
+WHERE d = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="m3[p0]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m3
+WHERE d = '2020-04-01';
+Logical ExecutionPlan
+LogicalView(tables="m3[p1]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m3
+WHERE d = '2021-07-01';
+Logical ExecutionPlan
+LogicalView(tables="m3[p2]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+EXPLAIN SELECT *
+FROM m3
+WHERE d = '2024-12-31';
+Logical ExecutionPlan
+LogicalView(tables="m3[pd]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+SELECT *
+FROM m3
+WHERE (d > '2020-04-01'
+		AND d < '2022-01-01')
+	OR d BETWEEN '2021-07-01' AND '2024-12-31'
+ORDER BY d;
+d
+2021-07-01
+2022-01-01
+2024-12-31
+SELECT *
+FROM m3
+WHERE d > '2021-07-01'
+ORDER BY d;
+d
+2022-01-01
+2024-12-31
+EXPLAIN SELECT *
+FROM m3
+WHERE d > '2021-07-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m3[p0,p1,p2,pd]", shardCount=4, sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` > ?) ORDER BY `d`")
+SELECT *
+FROM m3
+WHERE d > '2020-04-01'
+	AND d < '2024-12-31'
+ORDER BY d;
+d
+2021-07-01
+2022-01-01
+EXPLAIN SELECT *
+FROM m3
+WHERE d > '2020-04-01'
+	AND d < '2024-12-31'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m3[p0,p1,p2,pd]", shardCount=4, sql="SELECT `d` FROM `m3` AS `m3` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+SELECT *
+FROM m3
+WHERE d > '2020-01-01'
+	AND d < '2020-05-01'
+ORDER BY d;
+d
+2020-04-01
+EXPLAIN SELECT *
+FROM m3
+WHERE d > '2020-01-01'
+	AND d < '2020-05-01'
+ORDER BY d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="m3[p0,p1]", shardCount=2, sql="SELECT `d` FROM `m3` AS `m3` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")

@@ -28,6 +28,7 @@ import java.util.List;
  * 
  * @Description: create procedure parameter type support
  * @date 2015-9-14
+ * @author zz email:455910092@qq.com
  * @version V1.0
  */
 public class MySqlCreateProcedureTest7 extends MysqlTest {
@@ -57,8 +58,8 @@ public class MySqlCreateProcedureTest7 extends MysqlTest {
         String output = SQLUtils.toMySqlString(stmt);
         Assert.assertEquals("CREATE DEFINER = 'test'@'%' PROCEDURE test11111 ()\n"
             + "CONTAINS SQL\n"
-            + "SQL SECURITY DEFINER"
-            + "\nBEGIN"
+            + "SQL SECURITY DEFINER\n"
+            + "BEGIN"
             + "\n\tDECLARE v_a date DEFAULT '2007-4-10';"
             + "\n\tDECLARE v_b date DEFAULT '2007-4-11';"
             + "\n\tDECLARE v_c datetime DEFAULT '2004-4-9 0:0:0';"

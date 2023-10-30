@@ -1,11 +1,12 @@
 storageList: [$dn1, $dn2]
 # move partition, split partition, merge partition, rename partition
-dbName: "test_db1"
+dbName: "test_locality_first_simple"
 testCases:
   - prepareDDls:
-      - "drop database if exists test_db1"
-      - "create database test_db1 mode = auto locality = 'dn=$dn1,$dn2'"
-      - "use test_db1;"
+      - "use polardbx"
+      - "drop database if exists test_locality_first_simple"
+      - "create database test_locality_first_simple mode = auto"
+      - "use test_locality_first_simple;"
       - "
       create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality ='dn=$dn1, $dn2';
       "
@@ -14,12 +15,12 @@ testCases:
       "
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t1 table $dn1,$dn2
         - c0 table $dn2
-        - test_db1 database $dn1,$dn2
+        - test_locality_first_simple database ""
       tableGroupMatchCheck:
         - t1 $tg1 $dn1,$dn2
         - c0 $tg2 $dn2
@@ -49,13 +50,13 @@ testCases:
         message: "not compatebale with partition [$tg2].[p3] locality"
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t1 table $dn1,$dn2
         - t2 table $dn1,$dn2
-        - c0 table ""
-        - test_db1 database $dn1,$dn2
+        - c0 table $dn2
+        - test_locality_first_simple database ""
       tableGroupMatchCheck:
         - t1,t2 $tg1 $dn1,$dn2
         - c0 $tg2 ""
@@ -80,13 +81,13 @@ testCases:
       - " alter tablegroup $tg2 merge partitions p7,p3 to p9; " # expected p9 locality ""
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t1 table $dn1,$dn2
         - t2 table $dn1,$dn2
         - c0 table $dn2
-        - test_db1 database $dn1,$dn2
+        - test_locality_first_simple database ""
       tableGroupMatchCheck:
         - t1,t2 $tg1 $dn1,$dn2
         - c0 $tg2 $dn2
@@ -99,13 +100,13 @@ testCases:
       - " alter tablegroup $tg2 rename partition p9 to p2;"
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t1 table $dn1,$dn2
         - t2 table $dn1,$dn2
         - c0 table $dn2
-        - test_db1 database $dn1,$dn2
+        - test_locality_first_simple database ""
       tableGroupMatchCheck:
         - t1,t2 $tg1 $dn1,$dn2
         - c0 $tg2 $dn2
@@ -117,13 +118,13 @@ testCases:
       - " alter tablegroup $tg2 merge partitions p1,p2 to p3; " # expected p1 locality ""
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t1 table $dn1,$dn2
         - t2 table $dn1,$dn2
         - c0 table $dn2
-        - test_db1 database $dn1,$dn2
+        - test_locality_first_simple database ""
       tableGroupMatchCheck:
         - t1,t2 $tg1 $dn1,$dn2
         - c0 $tg2 $dn2
@@ -132,4 +133,5 @@ testCases:
       topologyCheck:
 cleanupDDls:
   - "use polardbx;"
-  - "drop database if exists test_db1;"
+  - "use polardbx;"
+  - "drop database if exists test_locality_first_simple;"

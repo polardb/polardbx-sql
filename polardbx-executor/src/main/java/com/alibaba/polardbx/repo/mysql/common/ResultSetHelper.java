@@ -24,6 +24,7 @@ import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
@@ -33,13 +34,23 @@ import java.util.List;
 
 public class ResultSetHelper {
 
-    public static List<Object[]> filterOutHiddenColumns(String schemaName, String tableName, List<Object[]> rows,
-                                                        ExecutionContext ec) {
+    public static List<Object[]> processColumnInfos(String schemaName, String tableName, List<Object[]> rows,
+                                                    ExecutionContext ec) {
         List<Object[]> result = new ArrayList<>();
-        for (Object[] row: rows) {
-            if (!TableColumnUtils.isHiddenColumn(ec, schemaName, tableName, String.valueOf(row[0]))) {
-                result.add(row);
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+        for (Object[] row : rows) {
+            String columnName = String.valueOf(row[0]);
+            // Filter out hidden columns
+            if (TableColumnUtils.isHiddenColumn(ec, schemaName, tableName, columnName)) {
+                continue;
             }
+
+            // Add extra info for logical generated column
+            if (tableMeta.getColumn(columnName).isLogicalGeneratedColumn()) {
+                row[row.length == 6 ? 5 : 6] = "LOGICAL GENERATED";
+            }
+
+            result.add(row);
         }
         return result;
     }

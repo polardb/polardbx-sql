@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.datatype;
 
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.VarcharField;
 import com.google.common.base.Preconditions;
@@ -32,7 +32,7 @@ public class VarcharPartitionField extends CharPartitionField {
     @Override
     public int compareTo(PartitionField o) {
         Preconditions.checkArgument(mysqlStandardFieldType() == o.mysqlStandardFieldType());
-        Preconditions.checkArgument(packetLength() == o.packetLength());
+        //Preconditions.checkArgument(packetLength() == o.packetLength());
         Preconditions.checkArgument(field.dataType().getCollationName() == o.dataType().getCollationName()
             || (field.dataType().isUtf8Encoding() && o.dataType().isUtf8Encoding()));
 

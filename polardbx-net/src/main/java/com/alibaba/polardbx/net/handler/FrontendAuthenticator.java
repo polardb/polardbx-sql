@@ -18,19 +18,13 @@ package com.alibaba.polardbx.net.handler;
 
 import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.Commands;
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.common.audit.AuditAction;
-import com.alibaba.polardbx.common.audit.AuditUtils;
-import com.alibaba.polardbx.net.util.AuditUtil;
-import com.taobao.tddl.common.privilege.EncrptPassword;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.metadb.audit.AuditLogAccessor;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -39,12 +33,16 @@ import com.alibaba.polardbx.net.packet.AuthPacket;
 import com.alibaba.polardbx.net.packet.AuthSwitchRequestPacket;
 import com.alibaba.polardbx.net.packet.AuthSwitchResponsePacket;
 import com.alibaba.polardbx.net.packet.QuitPacket;
+import com.alibaba.polardbx.net.util.AuditUtil;
 import com.taobao.tddl.common.privilege.EncrptPassword;
 import org.apache.commons.lang3.StringUtils;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.Set;
+
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_OTHER;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_BAD_DB_ERROR;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_DBACCESS_DENIED_ERROR;
+import static com.alibaba.polardbx.net.util.PrivilegeUtil.checkSchema;
 
 /**
  * 前端认证处理器
@@ -156,19 +154,28 @@ public class FrontendAuthenticator implements NIOHandler {
         // succeed, for non-java driver, this action may cause failure because
         // of null schema
         setSchema(auth, trustLogin);
+        checkSchemaPrivilege(trustLogin);
+    }
 
+    protected void checkSchemaPrivilege(boolean trustLogin) {
         // check schema
-        switch (checkSchema(auth.database, auth.user, trustLogin)) {
-        case ErrorCode.ER_BAD_DB_ERROR:
-            failure(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + auth.database + "'", null);
+        ErrorCode errorCode =
+            checkSchema(auth.database, auth.user, source.getHost(), trustLogin, source.getPrivileges());
+        if (errorCode == null) {
+            success(auth, trustLogin);
+            return;
+        }
+        switch (errorCode) {
+        case ER_BAD_DB_ERROR:
+            failure(ER_BAD_DB_ERROR, "Unknown database '" + auth.database + "'", null);
             break;
-        case ErrorCode.ER_DBACCESS_DENIED_ERROR:
+        case ER_DBACCESS_DENIED_ERROR:
             String s = "Access denied for user '" + auth.user + "'@'" + source.getHost() + "' to database '"
                 + auth.database + "'";
-            failure(ErrorCode.ER_DBACCESS_DENIED_ERROR, s, null);
+            failure(ER_DBACCESS_DENIED_ERROR, s, null);
             break;
         default:
-            success(auth, trustLogin);
+            failure(ERR_OTHER, "Unknown privilege error", null);
         }
     }
 
@@ -251,28 +258,6 @@ public class FrontendAuthenticator implements NIOHandler {
         }
     }
 
-    protected int checkSchema(String schema, String user, boolean trustLogin) {
-        if (schema == null) {
-            return 0;
-        }
-
-        Privileges privileges = source.getPrivileges();
-        if (!privileges.schemaExists(schema)) {
-            return ErrorCode.ER_BAD_DB_ERROR;
-        }
-
-        if (trustLogin) {
-            return 0;
-        }
-
-        Set<String> schemas = privileges.getUserSchemas(user);
-        if (schemas == null || schemas.size() == 0 || schemas.contains(schema)) {
-            return 0;
-        } else {
-            return ErrorCode.ER_DBACCESS_DENIED_ERROR;
-        }
-    }
-
     protected boolean isAuthSwitchResponsePacket(byte[] data) {
         // response of mysql_native_password always comes with a total packet
         // length of 24 and a packet id of 3 (if ssl enabled the packet id would
@@ -306,6 +291,9 @@ public class FrontendAuthenticator implements NIOHandler {
             }
             logger.info(s.toString());
         }
+
+        AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
+            AuditAction.LOGIN);
 
         /**
          * 表示server接受此链接，如果不接受压缩就报错，通过抓包看 不论压缩还是非压缩都是 Login
@@ -343,9 +331,9 @@ public class FrontendAuthenticator implements NIOHandler {
         authSwitchRequestPacket.write(proxy);
     }
 
-    protected void failure(int errno, String info, String cause) {
+    protected void failure(ErrorCode errno, String info, String cause) {
         source.clearMDC();
-        if (errno == ErrorCode.ER_DBACCESS_DENIED_ERROR || errno == ErrorCode.ER_ACCESS_DENIED_ERROR) {
+        if (errno == ER_DBACCESS_DENIED_ERROR || errno == ErrorCode.ER_ACCESS_DENIED_ERROR) {
             incrementLoginErrorCount(auth.user, source.getHost());
             AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
                 AuditAction.LOGIN_ERR);
@@ -361,15 +349,15 @@ public class FrontendAuthenticator implements NIOHandler {
         }
         if (source.isSslEnable()) {
             if (authMethodSwitched) {
-                source.writeErrMessage((byte) 5, errno, null, info);
+                source.writeErrMessage((byte) 5, errno.getCode(), null, info);
             } else {
-                source.writeErrMessage((byte) 3, errno, null, info);
+                source.writeErrMessage((byte) 3, errno.getCode(), null, info);
             }
         } else {
             if (authMethodSwitched) {
-                source.writeErrMessage((byte) 4, errno, null, info);
+                source.writeErrMessage((byte) 4, errno.getCode(), null, info);
             } else {
-                source.writeErrMessage((byte) 2, errno, null, info);
+                source.writeErrMessage((byte) 2, errno.getCode(), null, info);
             }
         }
     }

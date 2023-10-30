@@ -60,6 +60,9 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
     // the logical plan that produce the current phy relnode
     protected RelNode logicalPlan;
 
+    // Whether this plan is executed successfully.
+    private boolean successExecuted = true;
+
     protected BaseTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet, null, null, null);
     }
@@ -220,5 +223,13 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
 
     public List<Integer> getParamIndex() {
         return paramIndex;
+    }
+
+    public void setSuccessExecuted(boolean successExecuted) {
+        this.successExecuted = successExecuted;
+    }
+
+    public boolean isSuccessExecuted() {
+        return successExecuted;
     }
 }

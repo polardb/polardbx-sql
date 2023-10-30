@@ -19,6 +19,7 @@ package org.apache.calcite.sql;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.commons.lang.StringUtils;
 
@@ -113,7 +114,7 @@ public class OptimizerHint extends SqlNodeList {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
         if (!(node instanceof OptimizerHint)) {
             return litmus.fail("{} != {}", this, node);
         }

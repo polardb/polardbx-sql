@@ -48,7 +48,6 @@ import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.group.jdbc.DataSourceFetcher;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.stats.MatrixStatistics;
@@ -58,6 +57,7 @@ import com.google.common.collect.Sets;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -67,6 +67,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.topology.StorageInfoRecord.INST_KIND_MASTER;
+import static com.alibaba.polardbx.gms.topology.StorageInfoRecord.INST_KIND_SLAVE;
 
 /**
  * Not thread safe, due to the OptimizedGroupConfigManager maybe manager multi readHAStorageIds.
@@ -95,50 +96,14 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
     }
 
     /**
-     * @param dsWeightCommaStr : 例如 db0:rwp1q1i0, db1:rwp0q0i1
-     */
-    public static List<DataSourceWrapper> buildDataSourceWrapper(String dsWeightCommaStr, DataSourceFetcher fetcher) {
-        String[] dsWeightArray = dsWeightCommaStr.split(","); // 逗号分隔：db0:rwp1q1i0,
-        // db1:rwp0q0i1
-        List<DataSourceWrapper> dss = new ArrayList<DataSourceWrapper>(dsWeightArray.length);
-        for (int i = 0; i < dsWeightArray.length; i++) {
-            String[] dsAndWeight = dsWeightArray[i].split(":"); // 冒号分隔：db0:rwp1q1i0
-            String dsKey = dsAndWeight[0].trim();
-            String weightStr = dsAndWeight.length == 2 ? dsAndWeight[1] : null;
-
-            try {
-                DataSourceWrapper dsw = buildDataSourceWrapper(dsKey, weightStr, i, fetcher);
-                dss.add(dsw);
-            } catch (Throwable e) {
-
-                LoggerInit.TDDL_DYNAMIC_CONFIG.error(String
-                    .format("[buildDataSourceWrapper] failed, dsKey is [%s], weightStr is [%s] ", dsKey, weightStr), e);
-
-                throw GeneralUtil.nestedException(String
-                    .format("[buildDataSourceWrapper] failed, dsKey is [%s], weightStr is [%s] ", dsKey, weightStr), e);
-            }
-
-        }
-        return dss;
-    }
-
-    protected static DataSourceWrapper buildDataSourceWrapper(String dsKey, String weightStr, int index,
-                                                              DataSourceFetcher fetcher) {
-
-        // 如果多个group复用一个真实dataSource，会造成所有group引用
-        // 这个dataSource的配置 会以最后一个dataSource的配置为准
-        TAtomDataSource dataSource = fetcher.getDataSource(dsKey);
-        DataSourceWrapper dsw = new DataSourceWrapper(dsKey, weightStr, dataSource, index);
-        return dsw;
-    }
-
-    /**
      * 从Diamond配置中心提取信息，构造TAtomDataSource、构造有优先级信息的读写DBSelector ---add by
      * mazhidan.pt
      */
     @Override
     public void doInit() {
         if (ConfigDataMode.isFastMock()) {
+            // mock weight comma str
+            mockDataSourceWrapper();
             return;
         }
 
@@ -153,7 +118,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         if (ServerInstIdManager.getInstance().isMasterInst()) {
             //ignore the buildInDB which needn't the separation of reading and writing!
             if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName())) {
-                instIds.addAll(ServerInstIdManager.getInstance().getAllReadOnlyInstIdSet());
+                instIds.addAll(ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet());
             }
         } else {
             instIds.add(InstIdUtil.getMasterInstId());
@@ -216,7 +181,6 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                 String.format("Failed to release read lock of dn[%s], err is %s",
                                     haParams.storageInstId, ex.getMessage()), ex);
                         }
-
                     }
                 }
             } catch (Throwable ex) {
@@ -226,10 +190,24 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
     }
 
-    private synchronized void registerStorageHaTasks() {
+    /**
+     * load group datasource by mock
+     */
+    private void mockDataSourceWrapper() {
+        TAtomDsConfDO atomDsConf = new TAtomDsConfDO();
+        TAtomDataSource atomDs = new TAtomDataSource(TAtomDataSource.AtomSourceFrom.MASTER_DB, "");
+        String dsLeaderKey = GroupInfoUtil.buildAtomKey(groupDataSource.getDbGroupKey(), "", null, null);
+        atomDs.init(groupDataSource.getAppName(), groupDataSource.getDbGroupKey(), dsLeaderKey, "", atomDsConf);
+        this.groupDataSourceHolder = new MasterSlaveGroupDataSourceHolder(atomDs, Collections.emptyList());
+    }
 
+    private synchronized void registerStorageHaTasks(Set<String> needCareHaStorageIds) {
+
+        //calculate the need care storageIds
         Set<String> storageIds = dataSourceWrapperMap.entrySet().stream().map(
             t -> t.getValue().getStorageId()).collect(Collectors.toSet());
+        storageIds.addAll(needCareHaStorageIds);
+
         //remove the old switchers!
         unregisterHaSwitcher();
 
@@ -278,9 +256,13 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         Set<String> careStorageInstIds = new HashSet<>();
 
         if (ServerInstIdManager.getInstance().isMasterInst()) {
+            Set<String> htapIds = ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet();
             ServerInstIdManager.getInstance().getInstId2StorageIds().entrySet().stream().forEach(t -> {
-                    careInstIds.add(t.getKey());
-                    careStorageInstIds.addAll(t.getValue());
+                    String inst = t.getKey();
+                    if (inst.equalsIgnoreCase(InstIdUtil.getInstId()) || htapIds.contains(inst)) {
+                        careInstIds.add(t.getKey());
+                        careStorageInstIds.addAll(t.getValue());
+                    }
                 }
             );
         } else {
@@ -341,6 +323,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         }
 
         Set<String> storageIdsInstIdListOfExistGroup = new HashSet<>();
+        Set<String> needCareHaStorageId = new HashSet<>();
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
             groupDetailInfoAccessor.setConnection(metaDbConn);
@@ -348,6 +331,10 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
             storageIdsInstIdListOfExistGroup =
                 groupDetailInfoAccessor.getStorageInstIdListByStorageIdAndDbNameAndGroupName(
                     buildStorageInstIds, dbName, group);
+            //get the ha cared-storages, some storage maybe not in dataSourceWrapperMap.
+            needCareHaStorageId =
+                groupDetailInfoAccessor.getStorageInstIdListByStorageIdAndDbNameAndGroupName(
+                    careStorageInstIds, dbName, group);
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
         }
@@ -363,7 +350,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
             cleanUselessSourceWrapper(removeStorageInstIds);
         }
         //only dataSourceWrapperMap changed, here update the HA tasks;
-        registerStorageHaTasks();
+        registerStorageHaTasks(needCareHaStorageId);
     }
 
     /**
@@ -388,8 +375,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
             if (ServerInstIdManager.getInstance().isMasterInst()) {
                 //ignore the buildInDB which needn't the separation of reading and writing!
                 if (!SystemDbHelper.isDBBuildIn(dbName)) {
-                    ServerInstIdManager.getInstance().getInstId2StorageIds().entrySet().stream().forEach(t -> {
-                        careInstIds.add(t.getKey());
+                    ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet().stream().forEach(t -> {
+                        careInstIds.add(t);
                     });
                 }
             } else {
@@ -483,7 +470,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                 DataSourceWrapper newSlaveVal = curDsWrappers.get(slaveKey);
                                 if (newSlaveVal != null && newSlaveVal.getWeightStr()
                                     .equalsIgnoreCase(slaveWeightStr)) {
-                                    if (DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
+                                    if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName())
+                                        && DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
                                         dswList.add(curDsWrappers.get(slaveKey));
                                     } else {
                                         //need remove slave datasources;
@@ -491,7 +479,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                     }
                                 } else {
                                     //只有leader节点开启xport后, slave节点才开启
-                                    if (DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
+                                    if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName())
+                                        && DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
                                         int xport = -1;
                                         if (haSwitchParams.xport > 0) {
                                             xport = haInfo.getXPort();
@@ -516,12 +505,13 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                                     }
 
                                 }
-
                             }
+
                         }
                     }
                 }
             }
+
             if (!dswList.isEmpty() && needDoSwitch) {
                 resetByPolarDBXDataSourceWrapper(dswList);
             }
@@ -533,7 +523,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
     protected List<Pair<HaSwitchParams, List<DataSourceWrapper>>> buildDataSource(
         String appName, String unitName, Set<String> instIds, String dbName, String groupName,
-        List<HaSwitchParams> outputHaSwitchParamsWithReadLock) {
+        List<HaSwitchParams> outputHaSwitchParamsWithReadLock, boolean ignoreSlaveException) {
         StorageHaManager.getInstance()
             .getStorageHaSwitchParamsForInitGroupDs(instIds, dbName, groupName, outputHaSwitchParamsWithReadLock);
         List<HaSwitchParams> haSwitchParamsList = outputHaSwitchParamsWithReadLock;
@@ -555,50 +545,64 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                     continue;
                 }
             }
-            String dsLeaderKey =
-                GroupInfoUtil.buildAtomKey(groupName, haSwitchParams.storageInstId, availableAddr,
-                    haSwitchParams.phyDbName);
+            try {
+                String dsLeaderKey =
+                    GroupInfoUtil.buildAtomKey(groupName, haSwitchParams.storageInstId, availableAddr,
+                        haSwitchParams.phyDbName);
 
-            DataSourceWrapper newDsw = null;
-            String weightStr;
-            TAtomDataSource.AtomSourceFrom flag = TAtomDataSource.AtomSourceFrom.MASTER_DB;
-            if (ServerInstIdManager.getInstance().isMasterInstId(haSwitchParams.instId)) {
-                weightStr = GroupInfoUtil.buildWeightStr(10, 10);
-            } else {
-                weightStr = GroupInfoUtil.buildWeightStr(10, 0);
-                flag = TAtomDataSource.AtomSourceFrom.LEARNER_DB;
-            }
+                DataSourceWrapper newDsw = null;
+                String weightStr;
+                TAtomDataSource.AtomSourceFrom flag = TAtomDataSource.AtomSourceFrom.MASTER_DB;
+                if (ServerInstIdManager.getInstance().isMasterInstId(haSwitchParams.instId)) {
+                    weightStr = GroupInfoUtil.buildWeightStr(10, 10);
+                } else {
+                    weightStr = GroupInfoUtil.buildWeightStr(10, 0);
+                    flag = TAtomDataSource.AtomSourceFrom.LEARNER_DB;
+                }
 
-            if (dataSourceWrapperMap.get(dsLeaderKey) != null && !DynamicConfig.getInstance()
-                .forceCreateGroupDataSource()) {
-                logger.warn("Needn't create the new DataSourceWrapper for " + dsLeaderKey);
-                newDsw = dataSourceWrapperMap.get(dsLeaderKey);
-            } else {
-                TAtomDsConfDO atomDsConf = TAtomDsGmsConfigHelper
-                    .buildAtomDsConfByGms(availableAddr, haSwitchParams.xport, haSwitchParams.userName,
-                        haSwitchParams.passwdEnc, haSwitchParams.phyDbName, haSwitchParams.storageConnPoolConfig,
-                        dbName);
-                TAtomDataSource atomDs = new TAtomDataSource(flag, haSwitchParams.storageInstId);
-                try {
-                    atomDs.init(appName, groupName, dsLeaderKey, unitName, atomDsConf);
-                } catch (Throwable t) {
-                    if (ConfigDataMode.isMasterMode() && !ServerInstIdManager.getInstance()
-                        .isMasterInstId(haSwitchParams.instId)) {
-                        //catch the Exception in order to avoid effect the master connections.
-                        logger.error("init the datasource failed for " + dsLeaderKey, t);
-                        continue;
+                if (dataSourceWrapperMap.get(dsLeaderKey) != null && !DynamicConfig.getInstance()
+                    .forceCreateGroupDataSource()) {
+                    logger.warn("Needn't create the new DataSourceWrapper for " + dsLeaderKey);
+                    newDsw = dataSourceWrapperMap.get(dsLeaderKey);
+                } else {
+                    TAtomDsConfDO atomDsConf = TAtomDsGmsConfigHelper
+                        .buildAtomDsConfByGms(availableAddr, haSwitchParams.xport, haSwitchParams.userName,
+                            haSwitchParams.passwdEnc, haSwitchParams.phyDbName, haSwitchParams.storageConnPoolConfig,
+                            dbName);
+                    TAtomDataSource atomDs = new TAtomDataSource(flag, haSwitchParams.storageInstId);
+                    try {
+                        atomDs.init(appName, groupName, dsLeaderKey, unitName, atomDsConf);
+                    } catch (Throwable t) {
+                        if (ConfigDataMode.isMasterMode() && !ServerInstIdManager.getInstance()
+                            .isMasterInstId(haSwitchParams.instId)) {
+                            //catch the Exception in order to avoid effect the master connections.
+                            logger.error("init the datasource failed for " + dsLeaderKey, t);
+                            continue;
+                        }
+                        throw new RuntimeException(t);
                     }
+                    newDsw = new DataSourceWrapper(
+                        haSwitchParams.storageInstId, dsLeaderKey, weightStr, atomDs, 0);
+                }
+                rets.add(new Pair<>(haSwitchParams, Lists.newArrayList(newDsw)));
+            } catch (Throwable t) {
+                if (haSwitchParams != null && haSwitchParams.storageKind == INST_KIND_SLAVE && ignoreSlaveException) {
+                    MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.warn(
+                        String.format("storageInst[%s] init connection failed! ", haSwitchParams.storageInstId), t);
+                } else {
                     throw new RuntimeException(t);
                 }
-                newDsw = new DataSourceWrapper(
-                    haSwitchParams.storageInstId, dsLeaderKey, weightStr, atomDs, 0);
             }
-            rets.add(new Pair<>(haSwitchParams, Lists.newArrayList(newDsw)));
         }
 
         return rets;
     }
 
+    /**
+     * If the connection pool fails to load, it may result in startup failure.
+     * However, for the primary instance, if the connection pool of the read-only instance is loaded,
+     * even if it fails, we should ignore the error message.
+     */
     protected List<Pair<HaSwitchParams, List<DataSourceWrapper>>> buildDataSourceWrapperByGms(Set<String> instIds,
                                                                                               List<HaSwitchParams> outputHaSwitchParamsWithReadLock) {
         String unitName = "";
@@ -610,13 +614,15 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
             // build DatasourceWrapper for the instIds
             dataSourceWrapperLists =
-                buildDataSource(appName, unitName, instIds, dbName, groupName, outputHaSwitchParamsWithReadLock);
+                buildDataSource(appName, unitName, instIds, dbName, groupName, outputHaSwitchParamsWithReadLock,
+                    ServerInstIdManager.getInstance().isMasterInst());
             if (dataSourceWrapperLists.size() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                     String.format("instId[%s] is NOT available", instIds));
             }
 
-            if (DynamicConfig.getInstance().enableFollowReadForPolarDBX() && ConfigDataMode.isMasterMode()) {
+            if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName()) && DynamicConfig.getInstance()
+                .enableFollowReadForPolarDBX() && ConfigDataMode.isMasterMode()) {
                 for (Pair<HaSwitchParams, List<DataSourceWrapper>> dataSourceWrapperPair : dataSourceWrapperLists) {
                     HaSwitchParams haSwitchParams = dataSourceWrapperPair.getKey();
                     if (haSwitchParams.storageKind == INST_KIND_MASTER) {

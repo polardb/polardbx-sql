@@ -37,6 +37,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -49,6 +50,7 @@ import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushModifyRule;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
@@ -103,6 +105,7 @@ import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.RecursiveCTE;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableModify.TableInfoNode;
@@ -194,6 +197,13 @@ public class RelUtils {
         RelMetadataQuery relMetadataQuery = relNode.getCluster().getMetadataQuery();
         synchronized (relMetadataQuery) {
             return relMetadataQuery.getRowCount(relNode);
+        }
+    }
+
+    public static Double getDistinctKeyCount(RelNode relNode, ImmutableBitSet groupKey, RexNode predicate) {
+        RelMetadataQuery relMetadataQuery = relNode.getCluster().getMetadataQuery();
+        synchronized (relMetadataQuery) {
+            return relMetadataQuery.getDistinctRowCount(relNode, groupKey, predicate);
         }
     }
 
@@ -727,7 +737,7 @@ public class RelUtils {
         return buildAndTree(equalNodes);
     }
 
-    private static SqlNode buildAndTree(List<SqlNode> subClauses) {
+    public static SqlNode buildAndTree(List<SqlNode> subClauses) {
         if (subClauses.size() == 0) {
             return null;
         }
@@ -994,6 +1004,21 @@ public class RelUtils {
         return false;
     }
 
+    public static boolean containGeneratedColumn(Map<String, TableProperties> tablePropertiesMap,
+                                                 List<String> tableNames, ExecutionContext ec) {
+        for (String tableName : tableNames) {
+            TableProperties tableProperties = tablePropertiesMap.get(tableName);
+            if (tableProperties == null) {
+                continue;
+            }
+            if (GeneratedColumnUtil.containLogicalGeneratedColumn(tableProperties.getSchemaName(), tableName, ec)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static boolean containsGsiTable(Map<String, TableProperties> tablePropertiesMap, List<String> tableNames) {
         boolean result = false;
 
@@ -1217,6 +1242,7 @@ public class RelUtils {
         private PartitionInfo partInfo;
         private Engine engine = Engine.INNODB;
         private ExecutionContext ec;
+        private Map<Long, String> storageIds = null;
 
         public TableProperties(String tableName, TddlRule tddlRule, String schemaName,
                                ExecutionContext ec) {
@@ -1226,10 +1252,13 @@ public class RelUtils {
             this.tableRule = tddlRule.getTable(tableName);
             boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
             if (isNewPartDb) {
+                TddlRuleManager ruleManager = ec.getSchemaManager(schemaName).getTddlRuleManager();
                 this.partInfo =
                     ec.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager()
                         .getPartitionInfo(tableName);
+                this.storageIds = ruleManager.getTableGroupInfoManager().getPartitionDNs(partInfo.getTableGroupId());
             }
+
             this.engine = ec.getSchemaManager(schemaName).getTable(tableName).getEngine();
             this.ec = ec;
         }
@@ -1257,6 +1286,30 @@ public class RelUtils {
         }
 
         /**
+         * without considering broadcast tables.
+         */
+        public boolean isSingleTable() {
+            if (partInfo != null) {
+                return partInfo.isSingleTable();
+            } else {
+                if (tableRule != null) {
+                    if (tableRule.getActualTopology().size() == 1) {
+                        for (Map.Entry<String, Set<String>> dbEntry : tableRule.getActualTopology().entrySet()) {
+                            if (dbEntry.getValue().size() > 1) { // multi tables
+                                return false;
+                            }
+                        }
+                        return true;
+                    } else { // multi groups
+                        return false;
+                    }
+                } else { // single table
+                    return true;
+                }
+            }
+        }
+
+        /**
          * If table has more than one db index return null
          */
         public String getSingleDbIndex() {
@@ -1274,7 +1327,7 @@ public class RelUtils {
                     }
                     // for single table / partitioned(or gsi) table with only one partitions
                     // return the group index of its first partitions
-                    return partInfo.getPartitionBy().getPartitions().get(0).getLocation().getGroupKey();
+                    return partInfo.getPartitionBy().getPhysicalPartitions().get(0).getLocation().getGroupKey();
                 }
             }
 
@@ -1318,6 +1371,22 @@ public class RelUtils {
 
         public String getSchemaName() {
             return schemaName;
+        }
+
+        public TableRule getTableRule() {
+            return tableRule;
+        }
+
+        public TddlRule getTddlRule() {
+            return tddlRule;
+        }
+
+        public PartitionInfo getPartInfo() {
+            return partInfo;
+        }
+
+        public Map<Long, String> getStorageIds() {
+            return storageIds;
         }
     }
 
@@ -1509,7 +1578,7 @@ public class RelUtils {
         } else if (plan instanceof LogicalView || plan instanceof PhyTableOperation
             || plan instanceof PhyQueryOperation || plan instanceof VirtualView) {
             return true;
-        } else if (plan instanceof DirectTableOperation) {
+        } else if (plan instanceof DirectTableOperation || plan instanceof DirectMultiDBTableOperation) {
             return true;
         } else if (plan instanceof SingleTableOperation) {
             return true;
@@ -1736,6 +1805,8 @@ public class RelUtils {
                 return isSimpleQueryPlan(plan.getInput(0));
             }
         } else if (plan instanceof LogicalValues) {
+            return true;
+        } else if (plan instanceof RecursiveCTE) {
             return true;
         } else if (plan instanceof DynamicValues) {
             return true;

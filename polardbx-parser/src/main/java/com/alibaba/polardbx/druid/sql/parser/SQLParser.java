@@ -24,9 +24,9 @@ import java.util.TimeZone;
 
 public class SQLParser {
     protected final Lexer lexer;
-    protected DbType      dbType;
+    protected DbType dbType;
 
-    public SQLParser(ByteString sql, DbType dbType, SQLParserFeature... features){
+    public SQLParser(ByteString sql, DbType dbType, SQLParserFeature... features) {
         this(new Lexer(sql, null, dbType), dbType);
         for (SQLParserFeature feature : features) {
             config(feature, true);
@@ -35,18 +35,18 @@ public class SQLParser {
         this.lexer.nextToken();
     }
 
-    public SQLParser(ByteString sql){
+    public SQLParser(ByteString sql) {
         this(sql, null);
     }
 
-    public SQLParser(Lexer lexer){
+    public SQLParser(Lexer lexer) {
         this(lexer, null);
         if (dbType == null) {
             dbType = lexer.dbType;
         }
     }
 
-    public SQLParser(Lexer lexer, DbType dbType){
+    public SQLParser(Lexer lexer, DbType dbType) {
         this.lexer = lexer;
         this.dbType = dbType;
     }
@@ -79,10 +79,10 @@ public class SQLParser {
     protected String tableAlias(boolean must) {
         final Token token = lexer.token;
         if (token == Token.CONNECT
-                || token == Token.START
-                || token == Token.SELECT
-                || token == Token.FROM
-                || token == Token.WHERE) {
+            || token == Token.START
+            || token == Token.SELECT
+            || token == Token.FROM
+            || token == Token.WHERE) {
             if (must) {
                 throw new ParserException("illegal alias. " + lexer.info());
             }
@@ -97,11 +97,11 @@ public class SQLParser {
             }
 
             if (hash == FnvHash.Constants.START
-                    || hash == FnvHash.Constants.CONNECT
-                    || hash == FnvHash.Constants.NATURAL
-                    || hash == FnvHash.Constants.CROSS
-                    || hash == FnvHash.Constants.OFFSET
-                    || hash == FnvHash.Constants.LIMIT) {
+                || hash == FnvHash.Constants.CONNECT
+                || hash == FnvHash.Constants.NATURAL
+                || hash == FnvHash.Constants.CROSS
+                || hash == FnvHash.Constants.OFFSET
+                || hash == FnvHash.Constants.LIMIT) {
                 if (must) {
                     throw new ParserException("illegal alias. " + lexer.info());
                 }
@@ -109,15 +109,15 @@ public class SQLParser {
                 Lexer.SavePoint mark = lexer.mark();
                 lexer.nextToken();
                 switch (lexer.token) {
-                    case EOF:
-                    case COMMA:
-                    case WHERE:
-                    case INNER:
-                    case ON:
-                        return ident;
-                    default:
-                        lexer.reset(mark);
-                        break;
+                case EOF:
+                case COMMA:
+                case WHERE:
+                case INNER:
+                case ON:
+                    return ident;
+                default:
+                    lexer.reset(mark);
+                    break;
                 }
 
                 return null;
@@ -128,10 +128,10 @@ public class SQLParser {
                     Lexer.SavePoint mark = lexer.mark();
                     lexer.nextToken();
                     if (lexer.token == Token.PARTITION
-                            || lexer.token == Token.UNION
-                            || lexer.identifierEquals(FnvHash.Constants.DIMENSION)
-                            || lexer.identifierEquals(FnvHash.Constants.IGNORE)
-                            || lexer.identifierEquals(FnvHash.Constants.KEEP)) {
+                        || lexer.token == Token.UNION
+                        || lexer.identifierEquals(FnvHash.Constants.DIMENSION)
+                        || lexer.identifierEquals(FnvHash.Constants.IGNORE)
+                        || lexer.identifierEquals(FnvHash.Constants.KEEP)) {
                         lexer.reset(mark);
                         return null;
                     }
@@ -145,8 +145,8 @@ public class SQLParser {
                     }
                     return ident;
                 } else if (hash == FnvHash.Constants.DISTRIBUTE
-                        || hash == FnvHash.Constants.SORT
-                        || hash == FnvHash.Constants.CLUSTER) {
+                    || hash == FnvHash.Constants.SORT
+                    || hash == FnvHash.Constants.CLUSTER) {
                     Lexer.SavePoint mark = lexer.mark();
                     lexer.nextToken();
                     if (lexer.token == Token.BY) {
@@ -196,17 +196,17 @@ public class SQLParser {
                 case GRANT:
                     break;
                 case TABLE:
-                    break;
-                case SHOW:
-                case REPEAT:
-                case USE:
-                case OUT: {
-                    String strVal = lexer.stringVal();
-                    lexer.nextToken();
-                    return strVal;
-                }
-                default:
-                    break;
+                break;
+            case SHOW:
+            case REPEAT:
+            case USE:
+            case OUT: {
+                String strVal = lexer.stringVal();
+                lexer.nextToken();
+                return strVal;
+            }
+            default:
+                break;
             }
         }
 
@@ -268,38 +268,38 @@ public class SQLParser {
             lexer.nextToken();
         } else {
             switch (lexer.token) {
-                case CASE:
-                case USER:
-                case ROLE:
-                case LOB:
-                case END:
-                case DEFERRED:
-                case OUTER:
-                case DO:
-                case STORE:
-                case MOD:
-                case ANY:
-                case BEGIN:
-                case CAST:
-                case COMPUTE:
-                case ESCAPE:
-                case FULL:
-                case MERGE:
-                case OPEN:
-                case SOME:
-                case TRUNCATE:
-                case UNTIL:
-                case VIEW:
-                case KILL:
-                case COMMENT:
-                    alias = lexer.stringVal();
-                    lexer.nextToken();
-                    break;
-                case INTERSECT:
-                case EXCEPT:
-                case DESC:
-                case MINUS: {
-                    alias = lexer.stringVal();
+            case CASE:
+            case USER:
+            case ROLE:
+            case LOB:
+            case END:
+            case DEFERRED:
+            case OUTER:
+            case DO:
+            case STORE:
+            case MOD:
+            case ANY:
+            case BEGIN:
+            case CAST:
+            case COMPUTE:
+            case ESCAPE:
+            case FULL:
+            case MERGE:
+            case OPEN:
+            case SOME:
+            case TRUNCATE:
+            case UNTIL:
+            case VIEW:
+            case KILL:
+            case COMMENT:
+                alias = lexer.stringVal();
+                lexer.nextToken();
+                break;
+            case INTERSECT:
+            case EXCEPT:
+            case DESC:
+            case MINUS: {
+                alias = lexer.stringVal();
 
                     Lexer.SavePoint mark = lexer.mark();
                     lexer.nextToken();
@@ -319,21 +319,21 @@ public class SQLParser {
                     break;
                 case GROUP:
                 case ORDER:
-                    break;
-                default:
-                    break;
+                break;
+            default:
+                break;
             }
         }
 
         switch (lexer.token) {
-            case KEY:
-            case INTERVAL:
-            case CONSTRAINT:
-                alias = lexer.token.name();
-                lexer.nextToken();
-                return alias;
-            default:
-                break;
+        case KEY:
+        case INTERVAL:
+        case CONSTRAINT:
+            alias = lexer.token.name();
+            lexer.nextToken();
+            return alias;
+        default:
+            break;
         }
 
         if (isEnabled(SQLParserFeature.IgnoreNameQuotes) && alias != null && alias.length() > 1) {
@@ -355,123 +355,123 @@ public class SQLParser {
             lexer.nextToken();
         } else {
             switch (lexer.token) {
-                case KEY:
-                case INDEX:
-                case CASE:
+            case KEY:
+            case INDEX:
+            case CASE:
 //                case MODEL:
-                case PCTFREE:
-                case INITRANS:
-                case MAXTRANS:
-                case SEGMENT:
-                case CREATION:
-                case IMMEDIATE:
-                case DEFERRED:
-                case STORAGE:
-                case NEXT:
-                case MINEXTENTS:
-                case MAXEXTENTS:
-                case MAXSIZE:
-                case PCTINCREASE:
-                case FLASH_CACHE:
-                case CELL_FLASH_CACHE:
-                case NONE:
-                case LOB:
-                case STORE:
-                case ROW:
-                case CHUNK:
-                case CACHE:
-                case NOCACHE:
-                case LOGGING:
-                case NOCOMPRESS:
-                case KEEP_DUPLICATES:
-                case EXCEPTIONS:
-                case PURGE:
-                case INITIALLY:
-                case END:
-                case COMMENT:
-                case ENABLE:
-                case DISABLE:
-                case SEQUENCE:
-                case USER:
-                case ROLE:
-                case ANALYZE:
-                case OPTIMIZE:
-                case GRANT:
-                case REVOKE:
-                case FULL:
-                case TO:
-                case NEW:
-                case INTERVAL:
-                case LOCK:
-                case LIMIT:
-                case IDENTIFIED:
-                case PASSWORD:
-                case BINARY:
-                case WINDOW:
-                case OFFSET:
-                case SHARE:
-                case START:
-                case CONNECT:
-                case MATCHED:
-                case ERRORS:
-                case REJECT:
-                case UNLIMITED:
-                case BEGIN:
-                case EXCLUSIVE:
-                case MODE:
-                case ADVISE:
-                case TYPE:
-                case CLOSE:
-                case OPEN:
-                case ANY:
-                case CAST:
-                case COMPUTE:
-                case ESCAPE:
-                case INTERSECT:
-                case MERGE:
-                case MINUS:
-                case SOME:
-                case TRUNCATE:
-                case UNTIL:
-                case VIEW:
-                case FUNCTION:
-                case DESC:
-                case KILL:
-                case SHOW:
-                case NULL:
-                case ORDER:
-                case GROUP:
-                case ALL:
-                case CONSTRAINT:
-                case INNER:
-                case LEFT:
-                case RIGHT:
-                case VALUES:
-                case SCHEMA:
-                case PARTITION:
-                case UPDATE:
-                case DO:
-                case REPEAT:
-                case DEFAULT:
-                case LIKE:
-                case IS:
-                case UNIQUE:
-                case CHECK:
-                case INOUT:
-                case DECLARE:
-                case TABLE:
-                case TRIGGER:
-                case IN:
-                case OUT:
-                case BY:
-                    alias = lexer.stringVal();
-                    lexer.nextToken();
-                    return alias;
-                case QUES:
-                    alias = "?";
-                    lexer.nextToken();
-                default:
-                    break;
+            case PCTFREE:
+            case INITRANS:
+            case MAXTRANS:
+            case SEGMENT:
+            case CREATION:
+            case IMMEDIATE:
+            case DEFERRED:
+            case STORAGE:
+            case NEXT:
+            case MINEXTENTS:
+            case MAXEXTENTS:
+            case MAXSIZE:
+            case PCTINCREASE:
+            case FLASH_CACHE:
+            case CELL_FLASH_CACHE:
+            case NONE:
+            case LOB:
+            case STORE:
+            case ROW:
+            case CHUNK:
+            case CACHE:
+            case NOCACHE:
+            case LOGGING:
+            case NOCOMPRESS:
+            case KEEP_DUPLICATES:
+            case EXCEPTIONS:
+            case PURGE:
+            case INITIALLY:
+            case END:
+            case COMMENT:
+            case ENABLE:
+            case DISABLE:
+            case SEQUENCE:
+            case USER:
+            case ROLE:
+            case ANALYZE:
+            case OPTIMIZE:
+            case GRANT:
+            case REVOKE:
+            case FULL:
+            case TO:
+            case NEW:
+            case INTERVAL:
+            case LOCK:
+            case LIMIT:
+            case IDENTIFIED:
+            case PASSWORD:
+            case BINARY:
+            case WINDOW:
+            case OFFSET:
+            case SHARE:
+            case START:
+            case CONNECT:
+            case MATCHED:
+            case ERRORS:
+            case REJECT:
+            case UNLIMITED:
+            case BEGIN:
+            case EXCLUSIVE:
+            case MODE:
+            case ADVISE:
+            case TYPE:
+            case CLOSE:
+            case OPEN:
+            case ANY:
+            case CAST:
+            case COMPUTE:
+            case ESCAPE:
+            case INTERSECT:
+            case MERGE:
+            case MINUS:
+            case SOME:
+            case TRUNCATE:
+            case UNTIL:
+            case VIEW:
+            case FUNCTION:
+            case DESC:
+            case KILL:
+            case SHOW:
+            case NULL:
+            case ORDER:
+            case GROUP:
+            case ALL:
+            case CONSTRAINT:
+            case INNER:
+            case LEFT:
+            case RIGHT:
+            case VALUES:
+            case SCHEMA:
+            case PARTITION:
+            case UPDATE:
+            case DO:
+            case REPEAT:
+            case DEFAULT:
+            case LIKE:
+            case IS:
+            case UNIQUE:
+            case CHECK:
+            case INOUT:
+            case DECLARE:
+            case TABLE:
+            case TRIGGER:
+            case IN:
+            case OUT:
+            case BY:
+                alias = lexer.stringVal();
+                lexer.nextToken();
+                return alias;
+            case QUES:
+                alias = "?";
+                lexer.nextToken();
+            default:
+                break;
             }
         }
         return alias;
@@ -516,17 +516,17 @@ public class SQLParser {
         // + token + ", actual " + lexer.token + " "
         // + lexer.stringVal() + ", pos " + this.lexer.pos());
         StringBuilder buf = new StringBuilder()
-                .append("syntax error, error in :'")
-                .append(arround);
+            .append("syntax error, error in :'")
+            .append(arround);
         if (token != lexer.token) {
             buf.append("', expect ")
-                    .append(token.name)
-                    .append(", actual ")
-                    .append(lexer.token.name);
+                .append(token.name)
+                .append(", actual ")
+                .append(lexer.token.name);
         }
         buf.append(", ")
-                .append(
-                        lexer.info());
+            .append(
+                lexer.info());
 
         throw new ParserException(buf.toString());
     }
@@ -553,14 +553,14 @@ public class SQLParser {
             return intVal;
         } else {
             throw new ParserException("syntax error, expect int, actual " + lexer.token + " "
-                    + lexer.info());
+                + lexer.info());
         }
     }
 
     public void match(Token token) {
         if (lexer.token != token) {
             throw new ParserException("syntax error, expect " + token + ", actual " + lexer.token + " "
-                                      + lexer.info());
+                + lexer.info());
         }
     }
 
@@ -575,7 +575,6 @@ public class SQLParser {
     public void config(SQLParserFeature feature, boolean state) {
         this.lexer.config(feature, state);
     }
-
 
     public TimeZone getTimeZone() {
         return lexer.getTimeZone();

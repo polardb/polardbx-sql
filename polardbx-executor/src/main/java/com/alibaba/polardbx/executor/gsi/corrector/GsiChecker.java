@@ -25,7 +25,6 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -35,9 +34,9 @@ import lombok.Value;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * @version 1.0
@@ -107,17 +106,19 @@ public class GsiChecker extends Checker {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName);
+        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false, true);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
             .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),
                 indexTableMeta.hasGsiImplicitPrimaryKey() ? null : "PRIMARY");
 
-        final List<DataType> columnTypes = indexTableMeta.getAllColumns()
-            .stream()
-            .map(ColumnMeta::getDataType)
-            .collect(Collectors.toList());
+        final List<DataType> columnTypes = new ArrayList<>(info.getTargetTableColumns().size());
+
+        for (String column : info.getTargetTableColumns()) {
+            columnTypes.add(indexTableMeta.getColumnIgnoreCase(column).getDataType());
+        }
+
         final Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator = (o1, o2) -> {
             for (int idx : info.getPrimaryKeysId()) {
                 int n = ExecUtils

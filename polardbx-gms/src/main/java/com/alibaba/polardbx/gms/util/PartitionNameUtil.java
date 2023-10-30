@@ -18,10 +18,12 @@ package com.alibaba.polardbx.gms.util;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
@@ -39,7 +41,10 @@ import java.util.Set;
 public class PartitionNameUtil {
 
     static final int MAX_PART_NAME_LENGTH = 16;
+    static final int MAX_SUBPART_NAME_LENGTH = MAX_PART_NAME_LENGTH * 2;
+
     static final String PART_NAME_TEMPLATE = "p%s";
+    static final String SUBPART_NAME_TEMPLATE = "sp%s";
     static final String SUB_PART_NAME_TEMPLATE = "p%ssp%s";
     public static String PART_PHYSICAL_TABLENAME_PATTERN = "%s_%05d";
     public static final int MAX_PART_POSTFIX_NUM = 99999;
@@ -57,6 +62,26 @@ public class PartitionNameUtil {
         return toLowerCase(partName);
     }
 
+    public static String autoBuildSubPartitionTemplateName(Long partPosi) {
+        String partName = String.format(SUBPART_NAME_TEMPLATE, partPosi);
+        return toLowerCase(partName);
+    }
+
+    public static String autoBuildSubPartitionName(String partName, String subPartName) {
+        StringBuilder sb = new StringBuilder("");
+        sb.append(partName).append(subPartName);
+        return toLowerCase(sb.toString());
+    }
+
+    public static String getTemplateName(String logicalPartName, String fullSubPartName) {
+        if (fullSubPartName.length() <= logicalPartName.length()) {
+            return fullSubPartName;
+        }
+        if (fullSubPartName.indexOf(logicalPartName) == 0) {
+            return fullSubPartName.substring(logicalPartName.length());
+        }
+        return fullSubPartName;
+    }
 
     public static String getPartitionPhysicalTableNamePattern(String phyTablePrefixStr) {
         String tbNamePattern = phyTablePrefixStr + "_{00000}";// xxx_%05d
@@ -85,12 +110,13 @@ public class PartitionNameUtil {
         return toLowerCase(subPartName);
     }
 
-    public static String autoBuildPartitionPhyTableName(String logTbName, Long phyTblIdex) {
-        String partName = String.format(PART_PHYSICAL_TABLENAME_PATTERN, logTbName, phyTblIdex);
+    public static String autoBuildPartitionPhyTableName(String logTbName, Long phyTblIdx) {
+        String partName = String.format(PART_PHYSICAL_TABLENAME_PATTERN, logTbName, phyTblIdx);
         return partName;
     }
 
-    public static List<String> autoGeneratePartitionNames(TableGroupConfig tableGroupConfig, int newNameCount) {
+    public static List<String> autoGeneratePartitionNames(TableGroupConfig tableGroupConfig, int newNameCount,
+                                                          Set<String> existsNewName, boolean forSubPart) {
         List<String> newPartitionNames = new ArrayList<>();
 
         TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
@@ -99,15 +125,39 @@ public class PartitionNameUtil {
                 TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
         boolean isBroadCastTg = (tableGroupType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG);
         Set<Integer> existingPostfix = new HashSet<>();
-        for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-            int curIndex = 0;
-            try {
-                curIndex = Integer.parseInt(record.partition_name.substring(1));
-            } catch (NumberFormatException e) {
-                curIndex = 0;
+
+        if (!tableGroupConfig.isEmpty()) {
+            List<TablePartitionRecord> partitionRecords = tableGroupConfig.getTables().get(0).getPartitionRecList();
+            List<TablePartitionRecord> subPartitionRecords =
+                tableGroupConfig.getTables().get(0).getSubPartitionRecList();
+            for (TablePartitionRecord record : GeneralUtil.emptyIfNull(partitionRecords)) {
+                int curIndex = 0;
+                try {
+                    curIndex = Integer.parseInt(record.partName.substring(1));
+                } catch (NumberFormatException e) {
+                    curIndex = 0;
+                }
+                existingPostfix.add(curIndex);
+                existsNewName.add(record.partName);
             }
-            existingPostfix.add(curIndex);
+            for (TablePartitionRecord record : GeneralUtil.emptyIfNull(subPartitionRecords)) {
+                if (StringUtils.isEmpty(record.partName) || record.partName.length() < 2) {
+                    continue;
+                }
+                int curIndex = 0;
+                try {
+                    curIndex = Integer.parseInt(record.partName.substring(2));
+                } catch (NumberFormatException e) {
+                    curIndex = 0;
+                }
+                existingPostfix.add(curIndex);
+                existsNewName.add(record.partName);
+                if (StringUtils.isNotEmpty(record.partTempName)) {
+                    existsNewName.add(record.partTempName);
+                }
+            }
         }
+
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             try {
                 conn.setAutoCommit(false);
@@ -132,7 +182,17 @@ public class PartitionNameUtil {
                     if (existingPostfix.contains(nextPostfix)) {
                         continue;
                     }
-                    newPartitionNames.add(autoBuildPartitionName(Long.valueOf(nextPostfix)));
+                    String newPartName;
+                    if (forSubPart) {
+                        newPartName = autoBuildSubPartitionTemplateName(Long.valueOf(nextPostfix));
+                    } else {
+                        newPartName = autoBuildPartitionName(Long.valueOf(nextPostfix));
+                    }
+
+                    if (existsNewName.contains(newPartName)) {
+                        continue;
+                    }
+                    newPartitionNames.add(newPartName);
                     newNameCount--;
                 }
 
@@ -160,12 +220,27 @@ public class PartitionNameUtil {
         return newPartitionNames;
     }
 
-    public static boolean validatePartName(String partName, boolean isKeyWords) {
+//    public static boolean validatePartName(String partName, boolean isKeyWords) {
+//        return validatePartName(partName, isKeyWords, false);
+//    }
 
-        if (partName.length() > MAX_PART_NAME_LENGTH) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                String
-                    .format("Failed to execute this command because the length of partName[%s] is too long", partName));
+    public static boolean validatePartName(String partName, boolean isKeyWords, boolean isSubPartName) {
+        if (isSubPartName) {
+            if (partName.length() > MAX_SUBPART_NAME_LENGTH) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                    String
+                        .format(
+                            "Failed to execute this command because the length of subpartName[%s] is too long, max length is %s",
+                            partName, MAX_SUBPART_NAME_LENGTH));
+            }
+        } else {
+            if (partName.length() > MAX_PART_NAME_LENGTH) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                    String
+                        .format(
+                            "Failed to execute this command because the length of partName[%s] is too long, max length is %s",
+                            partName, MAX_PART_NAME_LENGTH));
+            }
         }
 
         for (int i = 0; i < partName.length(); i++) {

@@ -28,22 +28,22 @@ import java.util.List;
 
 public class SQLCharacterDataType extends SQLDataTypeImpl {
 
-    private String             charSetName;
-    private String             collate;
+    private String charSetName;
+    private String collate;
 
-    private String             charType;
-    private boolean            hasBinary;
+    private String charType;
+    private boolean hasBinary;
 
     public List<SQLCommentHint> hints;
 
     public final static String CHAR_TYPE_BYTE = "BYTE";
     public final static String CHAR_TYPE_CHAR = "CHAR";
 
-    public SQLCharacterDataType(String name){
+    public SQLCharacterDataType(String name) {
         super(name);
     }
 
-    public SQLCharacterDataType(String name, int precision){
+    public SQLCharacterDataType(String name, int precision) {
         super(name, precision);
     }
 
@@ -129,7 +129,6 @@ public class SQLCharacterDataType extends SQLDataTypeImpl {
         visitor.endVisit(this);
     }
 
-
     public SQLCharacterDataType clone() {
         SQLCharacterDataType x = new SQLCharacterDataType(getName());
 
@@ -160,8 +159,8 @@ public class SQLCharacterDataType extends SQLDataTypeImpl {
         }
 
         if (nameNash == FnvHash.Constants.VARCHAR
-                || nameNash == FnvHash.Constants.VARCHAR2
-                || nameNash == FnvHash.Constants.STRING) {
+            || nameNash == FnvHash.Constants.VARCHAR2
+            || nameNash == FnvHash.Constants.STRING) {
             return Types.VARCHAR;
         }
 

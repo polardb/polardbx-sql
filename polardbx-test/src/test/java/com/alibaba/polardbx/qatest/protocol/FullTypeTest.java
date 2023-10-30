@@ -182,6 +182,7 @@ public class FullTypeTest extends ReadBaseTestCase {
         if (usingNewPartDb()) {
             return;
         }
+
         System.out.println("table:\n" + FULL_TYPE_TABLE);
         System.out.println();
         for (Map.Entry<String, List<String>> entry : FULL_TYPE_TEST_INSERTS.entrySet()) {
@@ -202,6 +203,10 @@ public class FullTypeTest extends ReadBaseTestCase {
 
                 if (sameResult(tddlConnection, mysqlConnection, sql) > 0) {
                     try {
+                        // ignore when use jdbc protocal
+                        if (!useXproto(tddlConnection) && entry.getKey().equalsIgnoreCase("c_bit_64")) {
+                            return;
+                        }
                         selectContentSameAssert(
                             "select `" + entry.getKey() + "` from `" + PRIMARY_TABLE_NAME + "`", null, mysqlConnection,
                             tddlConnection);

@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -38,8 +41,9 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.util.Util;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableAddPartition extends BaseDdlOperation {
@@ -55,12 +59,22 @@ public class LogicalAlterTableAddPartition extends BaseDdlOperation {
         assert notIncludeGsiName;
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        String logicalTableName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + logicalTableName);
+    }
+
     public void preparedData(ExecutionContext ec) {
         AlterTable alterTable = (AlterTable) relDdl;
         SqlAlterTable sqlAlterTable = (SqlAlterTable) alterTable.getSqlNode();
-        assert sqlAlterTable.getAlters().size() == 1;
 
-        assert sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableAddPartition;
         SqlAlterTableAddPartition sqlAlterTableAddPartition =
             (SqlAlterTableAddPartition) sqlAlterTable.getAlters().get(0);
 
@@ -83,35 +97,43 @@ public class LogicalAlterTableAddPartition extends BaseDdlOperation {
         preparedData.setTableName(tableName);
         preparedData.setWithHint(targetTablesHintCache != null);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData
-            .setNewPartitions(sqlAlterTableAddPartition.getPartitions().stream().map(o -> (SqlPartition) o).collect(
-                Collectors.toList()));
+
+        preparedData.setPartBoundExprInfoByLevel(sqlAlterTable.getPartRexInfoCtxByLevel());
+
+        preparedData.setNewPartitions(
+            sqlAlterTableAddPartition.getPartitions().stream().map(o -> (SqlPartition) o).collect(Collectors.toList()),
+            partitionInfo.getPartitionBy(), tableGroupConfig, sqlAlterTableAddPartition.isSubPartition());
+
         preparedData.setOldPartitionNames(ImmutableList.of());
 
         preparedData.prepareInvisiblePartitionGroup();
-        preparedData.setPartBoundExprInfo(alterTable.getAllRexExprInfo());
+
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
         preparedData.setTableName(logicalTableName);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION);
 
         List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        List<Pair<String, String>> mockOrderedTargetTableLocations = new ArrayList<>(newPartitionGroups.size());
-        int i = 0;
-        for (int j = 0; j < newPartitionGroups.size(); j++) {
-            GroupDetailInfoExRecord groupDetailInfoExRecord =
-                preparedData.getTargetGroupDetailInfoExRecords().get(i++);
-
+        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
+        for (int i = 0; i < newPartitionGroups.size(); i++) {
             String mockTableName = "";
-            mockOrderedTargetTableLocations.add(new Pair<>(mockTableName, groupDetailInfoExRecord.getGroupName()));
-            if (i >= preparedData.getTargetGroupDetailInfoExRecords().size()) {
-                i = 0;
-            }
+            mockOrderedTargetTableLocations.put(newPartitionGroups.get(i).partition_name, new Pair<>(mockTableName,
+                GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(i).partition_name)));
         }
 
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForAddPartition(partitionInfo, preparedData.getInvisiblePartitionGroups(),
+            .getNewPartitionInfo(
+                preparedData,
+                partitionInfo,
+                false,
                 sqlAlterTableAddPartition,
-                mockOrderedTargetTableLocations, preparedData.getPartBoundExprInfo(), ec);
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                preparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                mockOrderedTargetTableLocations,
+                ec);
+
         List<SqlPartition> sqlPartitions =
             sqlAlterTableAddPartition.getPartitions().stream().map(o -> (SqlPartition) o).collect(Collectors.toList());
         int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;

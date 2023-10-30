@@ -58,7 +58,6 @@ import static com.alibaba.polardbx.rpc.result.XResultUtil.ZERO_TIMESTAMP_LONG_VA
 
 /**
  * @author chenzilin
- * @date 2022/1/11 16:56
  */
 public class TimestampColumnProvider implements ColumnProvider<Long> {
 
@@ -70,7 +69,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         LongColumnVector longColumnVector = (LongColumnVector) vector;
         for (int i = startIndex; i < endIndex; i++) {
             int idx = i;
@@ -84,7 +84,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                     ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(ZERO_DATE_TIME);
                 } else {
                     MySQLTimeVal mySQLTimeVal = XResultUtil.longToTimeValue(longColumnVector.vector[idx]);
-                    MysqlDateTime mysqlDateTime = MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
+                    MysqlDateTime mysqlDateTime =
+                        MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
                     ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(mysqlDateTime);
                 }
             }
@@ -92,7 +93,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         LongColumnVector longColumnVector = (LongColumnVector) vector;
         for (int i = 0; i < selSize; i++) {
             int idx = selection[i];
@@ -106,7 +108,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                     ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(ZERO_DATE_TIME);
                 } else {
                     MySQLTimeVal mySQLTimeVal = XResultUtil.longToTimeValue(longColumnVector.vector[idx]);
-                    MysqlDateTime mysqlDateTime = MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
+                    MysqlDateTime mysqlDateTime =
+                        MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
                     ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(mysqlDateTime);
                 }
             }
@@ -130,10 +133,12 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, timezone, dataType.getScale(), accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    timezone, dataType.getScale(), accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -142,17 +147,18 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
             if (timestamp == null) {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
-                ((BytesColumnVector) columnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
+                ((LongColumnVector) columnVector).vector[rowNumber] = 0;
                 accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
 
                 MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                        timestamp,
-                        Types.TIMESTAMP,
-                        TimeParserFlags.FLAG_TIME_FUZZY_DATE | TimeParserFlags.FLAG_TIME_NO_DATE_FRAC_WARN);
+                    timestamp,
+                    Types.TIMESTAMP,
+                    TimeParserFlags.FLAG_TIME_FUZZY_DATE | TimeParserFlags.FLAG_TIME_NO_DATE_FRAC_WARN);
 
                 TimeParseStatus timeParseStatus = new TimeParseStatus();
-                MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus, timezone);
+                MySQLTimeVal timeVal =
+                    MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus, timezone);
                 if (timeVal == null) {
                     // for error time value, set to zero.
                     timeVal = new MySQLTimeVal();
@@ -164,7 +170,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics, Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
+    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics,
+                               Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
         return OssOrcFilePruner.pruneLong(predicateLeaf, columnStatistics, stripeColumnMetaMap);
     }
 
@@ -175,7 +182,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder, DataType dataType, SessionProperties sessionProperties) {
+    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder,
+                                DataType dataType, SessionProperties sessionProperties) {
         IntegerColumnStatistics integerColumnStatistics = (IntegerColumnStatistics) columnStatistics;
         if (integerColumnStatistics.getNumberOfValues() == 0) {
             blockBuilder.appendNull();
@@ -198,7 +206,8 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
         }
 
         case SUM: {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, new UnsupportedOperationException(), "unsupported sum type.");
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, new UnsupportedOperationException(),
+                "unsupported sum type.");
         }
         }
     }

@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.index;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
@@ -31,12 +34,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -61,6 +62,7 @@ public class CandidateIndex {
 
     private static final String ADVISE_INDEX_PREFIX = "__advise_index_";
 
+    public static final int INDEX_LENGTH = 58;
     private String schemaName;
 
     private String tableName;
@@ -94,6 +96,8 @@ public class CandidateIndex {
     private Integer tbCount;
 
     private boolean changePartitionPolicy = false;
+
+    private boolean containGsiColOfUnsupportedDataType = false;
 
     private static Set<String> datePartitionPolicySet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
     private static Set<String> specialHashPartitionPolicySet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
@@ -133,20 +137,32 @@ public class CandidateIndex {
         // default gsi partition policy
         PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         if (partitionInfoManager.isNewPartDbTable(tableName)) {
-            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
-            PartitionByDefinition partitionByDefinition = partitionInfo.getPartitionBy();
-            this.partitionByDefinition = partitionByDefinition.copy();
-
-            // use column as default partition expr
-            List<SqlNode> partitionExprList =
-                columnNames.stream().map(x -> new SqlIdentifier(x, SqlParserPos.ZERO)).collect(Collectors.toList());
-            this.partitionByDefinition.setPartitionExprList(partitionExprList);
-            this.partitionByDefinition.setPartitionColumnNameList(columnNames);
-            this.partitionByDefinition.setPartitionFieldList(
-                columnNames.stream().map(x -> getTableMeta().getColumnIgnoreCase(x)).collect(Collectors.toList()));
-
-            // use KEY partition as default partition
-            this.partitionByDefinition.setStrategy(PartitionStrategy.KEY);
+//            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
+//            PartitionInfo tmpPartInfo = partitionInfo.copy();
+//            PartitionByDefinition partitionByDefinition = tmpPartInfo.getPartitionBy();
+//            this.partitionByDefinition = partitionByDefinition.copy();
+//
+//            // use column as default partition expr
+//            List<SqlNode> partitionExprList =
+//                columnNames.stream().map(x -> new SqlIdentifier(x, SqlParserPos.ZERO)).collect(Collectors.toList());
+//            this.partitionByDefinition.setPartitionExprList(partitionExprList);
+//            this.partitionByDefinition.setPartitionColumnNameList(columnNames);
+//            this.partitionByDefinition.setPartitionFieldList(
+//                columnNames.stream().map(x -> getTableMeta().getColumnIgnoreCase(x)).collect(Collectors.toList()));
+//
+//            // use KEY partition as default partition
+//            this.partitionByDefinition.setStrategy(PartitionStrategy.KEY);
+//            this.partitionByDefinition.setPartitions(new ArrayList<>());
+            List<String> newGsiAllCols = new ArrayList<>();
+            newGsiAllCols.addAll(columnNames);
+            newGsiAllCols.addAll(coveringColumns);
+            TableMeta primaryTblMeta =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+            long hashPartCnt = primaryTblMeta.getPartitionInfo().getPartitionBy().getPartitions().size();
+            PartitionInfo newGsiPartInfo =
+                PartitionInfoBuilder.buildPartInfoWithKeyStrategyForNewGsiMeta(schemaName, tableName, primaryTblMeta,
+                    newGsiAllCols, columnNames, hashPartCnt);
+            this.partitionByDefinition = newGsiPartInfo.getPartitionBy();
 
             // clear dbpartition and tbpartition
             this.dbCount = 0;
@@ -184,6 +200,14 @@ public class CandidateIndex {
 
     public List<String> getColumnNames() {
         return columnNames;
+    }
+
+    public boolean isContainGsiPartColOfUnsupportedDataType() {
+        return containGsiColOfUnsupportedDataType;
+    }
+
+    public void setContainGsiColOfUnsupportedDataType(boolean containGsiColOfUnsupportedDataType) {
+        this.containGsiColOfUnsupportedDataType = containGsiColOfUnsupportedDataType;
     }
 
     public TableMeta getTableMeta() {
@@ -233,9 +257,10 @@ public class CandidateIndex {
 
         String indexNameForUser = getIndexNameForUser();
 
+        // for gsi, the index table will add suffix "_$xxxx" automatically
         sql.append(schemaName)
             .append("`.`").append(tableName).append("` ADD ").append(gsi ? "GLOBAL" : "").append(" INDEX `")
-            .append(indexNameForUser.substring(0, Math.min(64, indexNameForUser.length()))).append("`(")
+            .append(indexNameForUser.substring(0, Math.min(INDEX_LENGTH, indexNameForUser.length()))).append("`(")
             .append(String.join(",",
                 columnNames.stream().map(name -> "`" + name + "`").collect(Collectors.toList())))
             .append(")");
@@ -285,14 +310,34 @@ public class CandidateIndex {
         long indexCardinality = 1;
         for (String columnName : columnNames) {
             StatisticResult statisticResult =
-                StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true);
+                StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true, false);
             long cardinality = statisticResult.getLongValue();
             if (cardinality <= 0) {
                 return false;
             }
             indexCardinality *= cardinality;
         }
-        StatisticResult statisticResult = StatisticManager.getInstance().getRowCount(schemaName, tableName);
+
+        // reject low cardinality sharding key for gsi
+        if (isGsi() || getTableMeta().isAutoPartition()) {
+            String columnName = columnNames.get(0);
+            StatisticResult statisticResult =
+                StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true, false);
+            long cardinality = statisticResult.getLongValue();
+
+            long partitions;
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                partitions = OptimizerContext.getContext(schemaName).
+                    getLatestSchemaManager().getTddlRuleManager().getPartitionInfoManager().getPartitionInfo(tableName)
+                    .getPartitionBy().getPartitions().size();
+            } else {
+                partitions = OptimizerContext.getContext(schemaName).
+                    getLatestSchemaManager().getTddlRuleManager().getTableRule(tableName).getActualDbCount();
+            }
+            int base = Math.min(1, InstConfUtil.getInt(ConnectionParams.INDEX_ADVISOR_CARDINALITY_BASE));
+            return isHighCardinality = cardinality >= partitions * base;
+        }
+        StatisticResult statisticResult = StatisticManager.getInstance().getRowCount(schemaName, tableName, false);
         long rowCount = statisticResult.getLongValue();
         return isHighCardinality = indexCardinality > rowCount * 0.0000001;
     }
@@ -413,11 +458,13 @@ public class CandidateIndex {
     }
 
     public boolean changeByPartitionInfo(PartitionInfo partitionInfo) {
-        // FIXME: support sub partition
-        if (partitionInfo.getSubPartitionBy() != null) {
+
+        if (partitionInfo.getPartitionBy() == null) {
             return false;
         }
-        if (partitionInfo.getPartitionBy() == null) {
+
+        // FIXME: support sub partition
+        if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
             return false;
         }
 
@@ -463,13 +510,14 @@ public class CandidateIndex {
         }
 
         this.originPartitionInfo = partitionInfo;
-        this.partitionByDefinition = partitionByDefinition.copy();
-        List<SqlNode> partitionExprList =
-            columnNames.stream().map(x -> new SqlIdentifier(x, SqlParserPos.ZERO)).collect(Collectors.toList());
-        this.partitionByDefinition.setPartitionExprList(partitionExprList);
-        this.partitionByDefinition.setPartitionColumnNameList(columnNames);
-        this.partitionByDefinition.setPartitionFieldList(
-            columnNames.stream().map(x -> getTableMeta().getColumnIgnoreCase(x)).collect(Collectors.toList()));
+
+//        this.partitionByDefinition = partitionByDefinition.copy();
+//        List<SqlNode> partitionExprList =
+//            columnNames.stream().map(x -> new SqlIdentifier(x, SqlParserPos.ZERO)).collect(Collectors.toList());
+//        this.partitionByDefinition.setPartitionExprList(partitionExprList);
+//        this.partitionByDefinition.setPartitionColumnNameList(columnNames);
+//        this.partitionByDefinition.setPartitionFieldList(
+//            columnNames.stream().map(x -> getTableMeta().getColumnIgnoreCase(x)).collect(Collectors.toList()));
 
         // clear dbpartition and tbpartition
         this.dbCount = 0;

@@ -181,7 +181,6 @@ public class TddlRuleManager extends AbstractLifecycle {
     public TargetDB shardAny(String logicTable) {
 
         if (partitionInfoManager.isNewPartDbTable(logicTable)) {
-            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(logicTable);
             PhysicalPartitionInfo prunedPartitionInfo = partitionInfoManager.getFirstPhysicalPartition(logicTable);
             TargetDB target = new TargetDB();
             target.setDbIndex(prunedPartitionInfo.getGroupKey());
@@ -283,7 +282,7 @@ public class TddlRuleManager extends AbstractLifecycle {
         if (partitionInfoManager.isNewPartDbTable(logicTable)) {
             if (partitionInfoManager.isPartitionedTable(logicTable)) {
                 PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logicTable);
-                return PartitionInfoUtil.getActualPartitionColumns(partInfo);
+                return PartitionInfoUtil.getAllLevelActualPartColumnsAsNoDuplicatedList(partInfo);
             } else {
                 return new ArrayList<>();
             }

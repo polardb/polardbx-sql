@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.datatype;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 
 /**
  * 针对mysql中特殊的year type
@@ -57,6 +59,9 @@ public class YearType extends LongType {
     }
 
     private Long fixedReturnValue(Long value) {
+        if (!InstConfUtil.getBool(ConnectionParams.STRICT_YEAR_CONVERT)) {
+            return value;
+        }
         if (value >= SHORT_VALUE_LOWER_BOUND && value <= SHORT_VALUE_SPLIT_POINT) {
             return value + 2000;
         } else if (value > SHORT_VALUE_SPLIT_POINT && value <= SHORT_VALUE_UPPER_BOUND) {

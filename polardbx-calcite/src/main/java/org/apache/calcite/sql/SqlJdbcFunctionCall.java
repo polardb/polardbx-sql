@@ -370,7 +370,7 @@ public class SqlJdbcFunctionCall extends SqlFunction {
   private static final String STRING_FUNCTIONS = constructFuncList(
       "ASCII", "CHAR", "CONCAT", "DIFFERENCE", "INSERT", "LCASE",
       "LEFT", "LENGTH", "LOCATE", "LTRIM", "REPEAT", "REPLACE",
-      "RIGHT", "RTRIM", "SOUNDEX", "SPACE", "SUBSTRING", "UCASE");
+      "RIGHT", "RTRIM", "SOUNDEX", "SPACE", "SUBSTRING", "UCASE", "UPDATEXML", "EXTRACTVALUE");
       // "ASCII", "CHAR", "DIFFERENCE", "LOWER",
       // "LEFT", "TRIM", "REPEAT", "REPLACE",
       // "RIGHT", "SPACE", "SUBSTRING", "UPPER", "INITCAP", "OVERLAY"
@@ -763,6 +763,8 @@ public class SqlJdbcFunctionCall extends SqlFunction {
               return super.createCall(pos, operands[0], jdbcType.createDataType(typeOperand.pos));
             }
           });
+      map.put("UPDATEXML", simple(SqlStdOperatorTable.UPDATEXML));
+      map.put("EXTRACTVALUE", simple(SqlStdOperatorTable.EXTRACTVALUE));
       this.map = map.build();
     }
 

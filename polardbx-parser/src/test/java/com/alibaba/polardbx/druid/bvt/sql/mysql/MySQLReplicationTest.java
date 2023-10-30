@@ -6,6 +6,9 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ *
+ */
 public class MySQLReplicationTest extends MysqlTest {
     @Test
     public void test_0() {

@@ -37,7 +37,6 @@ public class ConcurrentDDLTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql2);
         String command1 = String.format("alter table %s split partition p1;", tableName1);
         String command2 = String.format("alter table %s modify partition p1 drop values(2);", tableName2);
-
         int parallel = 2;
         ExecutorService ddlPool = Executors.newFixedThreadPool(parallel);
         final List<Future> tasks = new ArrayList<>();

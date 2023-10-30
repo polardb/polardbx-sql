@@ -36,3 +36,51 @@
 
     Gather(concurrent=true)
       LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0`, `test_hash_tb1`.`id` AS `id1`, `test_hash_tb1`.`name` AS `name1`, `test_hash_tb1`.`create_time` AS `create_time1` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) INNER JOIN `test_hash_tb` AS `test_hash_tb1` ON ((`test_hash_tb`.`id` = `test_hash_tb1`.`id`) AND (`test_hash_tb0`.`id` = `test_hash_tb1`.`id`))")
+
+-
+  sql: |
+    SELECT
+      COUNT(DISTINCT(id2))
+    FROM
+      (
+        SELECT
+          tb2.id as id2,
+          tb1.id as id1
+        FROM
+          test_hash_tb4 tb1
+          JOIN test_hash_tb2 tb2 ON tb1.int_col1 = tb2.id
+          LEFT JOIN test_hash_tb3 tb3 ON tb1.id = tb3.id
+        WHERE
+          (
+            SELECT
+              COUNT(1)
+            FROM
+              test_hash_tb4
+            WHERE
+              int_col1 = tb2.id
+              AND int_col2 = 1
+          ) > 1
+          AND tb3.name IS NULL
+      ) a
+    LIMIT
+      0, 1000;
+
+  plan: |
+    
+    limit(offset=0, fetch=1000)
+      hashagg(count(distinct id2)="count(id0)")
+        hashagg(group="id0")
+          project(id0="id1")
+            filter(condition="case(is null($6), 0, $5) > 1")
+              hashjoin(condition="int_col1 = id1", type="left")
+                filter(condition="is null(name)")
+                  project(id="id", int_col1="int_col1", id1="id1", id0="id0", name="name")
+                    hashjoin(condition="id = int_col1", type="inner")
+                      gather(concurrent=true)
+                        logicalview(tables="[0000-0003].test_hash_tb4,test_hash_tb3", shardcount=4, sql="select `test_hash_tb4`.`id`, `test_hash_tb4`.`int_col1`, `t`.`id` as `id0`, `t`.`name` from `test_hash_tb4` as `test_hash_tb4` left join (select `id`, `name` from `test_hash_tb3` as `test_hash_tb3`) as `t` on (`test_hash_tb4`.`id` = `t`.`id`)")
+                      gather(concurrent=true)
+                        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2`")
+                project(count(1)="count(1)", int_col1="int_col1")
+                  hashagg(group="int_col1", count(1)="sum(count(1))")
+                    gather(concurrent=true)
+                      logicalview(tables="[0000-0003].test_hash_tb4", shardcount=4, sql="select `int_col1`, count(*) as `count(1)` from `test_hash_tb4` as `test_hash_tb4` where (`int_col2` = 1) group by `int_col1`")

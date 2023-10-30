@@ -137,10 +137,8 @@
         a.id>5;
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_tb_shard_by_hash_id_strhash_name_[0,1],test_tb3_shard_by_hash_id_strhash_sk_[0,1]", shardCount=8, sql="SELECT `test_tb_shard_by_hash_id_strhash_name`.`id`, `test_tb_shard_by_hash_id_strhash_name`.`name`, `test_tb_shard_by_hash_id_strhash_name`.`sk`, `test_tb_shard_by_hash_id_strhash_name`.`create_time`, `test_tb3_shard_by_hash_id_strhash_sk`.`id` AS `id0`, `test_tb3_shard_by_hash_id_strhash_sk`.`name` AS `name0`, `test_tb3_shard_by_hash_id_strhash_sk`.`sk` AS `sk0`, `test_tb3_shard_by_hash_id_strhash_sk`.`create_time` AS `create_time0` FROM `test_tb_shard_by_hash_id_strhash_name` AS `test_tb_shard_by_hash_id_strhash_name` INNER JOIN `test_tb3_shard_by_hash_id_strhash_sk` AS `test_tb3_shard_by_hash_id_strhash_sk` ON (((`test_tb_shard_by_hash_id_strhash_name`.`id` = `test_tb3_shard_by_hash_id_strhash_sk`.`id`) AND (`test_tb_shard_by_hash_id_strhash_name`.`name` = `test_tb3_shard_by_hash_id_strhash_sk`.`sk`)) AND (`test_tb_shard_by_hash_id_strhash_name`.`id` > 5))")
-
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_tb_shard_by_hash_id_strhash_name_[0,1],test_tb3_shard_by_hash_id_strhash_sk_[0,1]", shardcount=8, sql="select `test_tb_shard_by_hash_id_strhash_name`.`id`, `test_tb_shard_by_hash_id_strhash_name`.`name`, `test_tb_shard_by_hash_id_strhash_name`.`sk`, `test_tb_shard_by_hash_id_strhash_name`.`create_time`, `test_tb3_shard_by_hash_id_strhash_sk`.`id` as `id0`, `test_tb3_shard_by_hash_id_strhash_sk`.`name` as `name0`, `test_tb3_shard_by_hash_id_strhash_sk`.`sk` as `sk0`, `test_tb3_shard_by_hash_id_strhash_sk`.`create_time` as `create_time0` from `test_tb_shard_by_hash_id_strhash_name` as `test_tb_shard_by_hash_id_strhash_name` inner join `test_tb3_shard_by_hash_id_strhash_sk` as `test_tb3_shard_by_hash_id_strhash_sk` on ((`test_tb_shard_by_hash_id_strhash_name`.`id` = `test_tb3_shard_by_hash_id_strhash_sk`.`id`) and (`test_tb_shard_by_hash_id_strhash_name`.`name` = `test_tb3_shard_by_hash_id_strhash_sk`.`sk`) and (`test_tb_shard_by_hash_id_strhash_name`.`id` > 5))")
 
 
 - sql: |
@@ -156,9 +154,8 @@
         a.id>5;
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_tb_shard_by_hash_id_yyyymm_create_[0,1],test_tb2_shard_by_hash_id_yyyymm_modify_[0,1]", shardCount=8, sql="SELECT `test_tb_shard_by_hash_id_yyyymm_create`.`id`, `test_tb_shard_by_hash_id_yyyymm_create`.`name`, `test_tb_shard_by_hash_id_yyyymm_create`.`sk`, `test_tb_shard_by_hash_id_yyyymm_create`.`create_time`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`id` AS `id0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`name` AS `name0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`sk` AS `sk0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`modify_time` FROM `test_tb_shard_by_hash_id_yyyymm_create` AS `test_tb_shard_by_hash_id_yyyymm_create` INNER JOIN `test_tb2_shard_by_hash_id_yyyymm_modify` AS `test_tb2_shard_by_hash_id_yyyymm_modify` ON (((`test_tb_shard_by_hash_id_yyyymm_create`.`id` = `test_tb2_shard_by_hash_id_yyyymm_modify`.`id`) AND (`test_tb_shard_by_hash_id_yyyymm_create`.`create_time` = `test_tb2_shard_by_hash_id_yyyymm_modify`.`modify_time`)) AND (`test_tb_shard_by_hash_id_yyyymm_create`.`id` > 5))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_tb_shard_by_hash_id_yyyymm_create_[0,1],test_tb2_shard_by_hash_id_yyyymm_modify_[0,1]", shardcount=8, sql="select `test_tb_shard_by_hash_id_yyyymm_create`.`id`, `test_tb_shard_by_hash_id_yyyymm_create`.`name`, `test_tb_shard_by_hash_id_yyyymm_create`.`sk`, `test_tb_shard_by_hash_id_yyyymm_create`.`create_time`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`id` as `id0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`name` as `name0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`sk` as `sk0`, `test_tb2_shard_by_hash_id_yyyymm_modify`.`modify_time` from `test_tb_shard_by_hash_id_yyyymm_create` as `test_tb_shard_by_hash_id_yyyymm_create` inner join `test_tb2_shard_by_hash_id_yyyymm_modify` as `test_tb2_shard_by_hash_id_yyyymm_modify` on ((`test_tb_shard_by_hash_id_yyyymm_create`.`id` = `test_tb2_shard_by_hash_id_yyyymm_modify`.`id`) and (`test_tb_shard_by_hash_id_yyyymm_create`.`create_time` = `test_tb2_shard_by_hash_id_yyyymm_modify`.`modify_time`) and (`test_tb_shard_by_hash_id_yyyymm_create`.`id` > 5))")
 
 - sql: |
     /*+TDDL:cmd_extra(enable_hash_join=false,enable_sort_merge_join=false,enable_nl_join=false)*/
@@ -194,9 +191,8 @@
         a.id>5;
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_tb_shard_by_hash_id_mm_create_[00-11],test_tb2_shard_by_hash_id_mm_modify_[00-11]", shardCount=48, sql="SELECT `test_tb_shard_by_hash_id_mm_create`.`id`, `test_tb_shard_by_hash_id_mm_create`.`name`, `test_tb_shard_by_hash_id_mm_create`.`sk`, `test_tb_shard_by_hash_id_mm_create`.`create_time`, `test_tb2_shard_by_hash_id_mm_modify`.`id` AS `id0`, `test_tb2_shard_by_hash_id_mm_modify`.`name` AS `name0`, `test_tb2_shard_by_hash_id_mm_modify`.`sk` AS `sk0`, `test_tb2_shard_by_hash_id_mm_modify`.`modify_time` FROM `test_tb_shard_by_hash_id_mm_create` AS `test_tb_shard_by_hash_id_mm_create` INNER JOIN `test_tb2_shard_by_hash_id_mm_modify` AS `test_tb2_shard_by_hash_id_mm_modify` ON (((`test_tb_shard_by_hash_id_mm_create`.`id` = `test_tb2_shard_by_hash_id_mm_modify`.`id`) AND (`test_tb_shard_by_hash_id_mm_create`.`create_time` = `test_tb2_shard_by_hash_id_mm_modify`.`modify_time`)) AND (`test_tb_shard_by_hash_id_mm_create`.`id` > 5))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_tb_shard_by_hash_id_mm_create_[00-11],test_tb2_shard_by_hash_id_mm_modify_[00-11]", shardcount=48, sql="select `test_tb_shard_by_hash_id_mm_create`.`id`, `test_tb_shard_by_hash_id_mm_create`.`name`, `test_tb_shard_by_hash_id_mm_create`.`sk`, `test_tb_shard_by_hash_id_mm_create`.`create_time`, `test_tb2_shard_by_hash_id_mm_modify`.`id` as `id0`, `test_tb2_shard_by_hash_id_mm_modify`.`name` as `name0`, `test_tb2_shard_by_hash_id_mm_modify`.`sk` as `sk0`, `test_tb2_shard_by_hash_id_mm_modify`.`modify_time` from `test_tb_shard_by_hash_id_mm_create` as `test_tb_shard_by_hash_id_mm_create` inner join `test_tb2_shard_by_hash_id_mm_modify` as `test_tb2_shard_by_hash_id_mm_modify` on ((`test_tb_shard_by_hash_id_mm_create`.`id` = `test_tb2_shard_by_hash_id_mm_modify`.`id`) and (`test_tb_shard_by_hash_id_mm_create`.`create_time` = `test_tb2_shard_by_hash_id_mm_modify`.`modify_time`) and (`test_tb_shard_by_hash_id_mm_create`.`id` > 5))")
 
 - sql: |
     /*+TDDL:BKA_JOIN(test_hash_tb, test_tb2_shard_by_hash_id_mm_modify)*/
@@ -278,9 +274,8 @@
         a.id>5;
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_tb_shard_by_hash_id_yyyymm_create_[0,1],test_tb_broadcast", shardCount=8, sql="SELECT `test_tb_shard_by_hash_id_yyyymm_create`.`id`, `test_tb_shard_by_hash_id_yyyymm_create`.`name`, `test_tb_shard_by_hash_id_yyyymm_create`.`sk`, `test_tb_shard_by_hash_id_yyyymm_create`.`create_time`, `test_tb_broadcast`.`id` AS `id0`, `test_tb_broadcast`.`name` AS `name0`, `test_tb_broadcast`.`sk` AS `sk0`, `test_tb_broadcast`.`create_time` AS `create_time0`, `test_tb_broadcast`.`modify_time` FROM `test_tb_shard_by_hash_id_yyyymm_create` AS `test_tb_shard_by_hash_id_yyyymm_create` INNER JOIN `test_tb_broadcast` AS `test_tb_broadcast` ON (((`test_tb_shard_by_hash_id_yyyymm_create`.`id` = `test_tb_broadcast`.`id`) AND (`test_tb_shard_by_hash_id_yyyymm_create`.`create_time` = `test_tb_broadcast`.`modify_time`)) AND (`test_tb_shard_by_hash_id_yyyymm_create`.`id` > 5))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_tb_shard_by_hash_id_yyyymm_create_[0,1],test_tb_broadcast", shardcount=8, sql="select `test_tb_shard_by_hash_id_yyyymm_create`.`id`, `test_tb_shard_by_hash_id_yyyymm_create`.`name`, `test_tb_shard_by_hash_id_yyyymm_create`.`sk`, `test_tb_shard_by_hash_id_yyyymm_create`.`create_time`, `test_tb_broadcast`.`id` as `id0`, `test_tb_broadcast`.`name` as `name0`, `test_tb_broadcast`.`sk` as `sk0`, `test_tb_broadcast`.`create_time` as `create_time0`, `test_tb_broadcast`.`modify_time` from `test_tb_shard_by_hash_id_yyyymm_create` as `test_tb_shard_by_hash_id_yyyymm_create` inner join `test_tb_broadcast` as `test_tb_broadcast` on ((`test_tb_shard_by_hash_id_yyyymm_create`.`id` = `test_tb_broadcast`.`id`) and (`test_tb_shard_by_hash_id_yyyymm_create`.`create_time` = `test_tb_broadcast`.`modify_time`) and (`test_tb_shard_by_hash_id_yyyymm_create`.`id` > 5))")
 
 - sql: |
     select *
@@ -295,10 +290,8 @@
         a.id>5;
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_tb_uni_name,test_tb_uni_sk", shardCount=4, sql="SELECT `test_tb_uni_name`.`id`, `test_tb_uni_name`.`name`, `test_tb_uni_name`.`sk`, `test_tb_uni_name`.`create_time`, `test_tb_uni_name`.`modify_time`, `test_tb_uni_sk`.`id` AS `id0`, `test_tb_uni_sk`.`name` AS `name0`, `test_tb_uni_sk`.`sk` AS `sk0`, `test_tb_uni_sk`.`create_time` AS `create_time0`, `test_tb_uni_sk`.`modify_time` AS `modify_time0` FROM `test_tb_uni_name` AS `test_tb_uni_name` INNER JOIN `test_tb_uni_sk` AS `test_tb_uni_sk` ON (((`test_tb_uni_name`.`id` = `test_tb_uni_sk`.`id`) AND (`test_tb_uni_name`.`name` = `test_tb_uni_sk`.`sk`)) AND (`test_tb_uni_name`.`id` > 5))")
-
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_tb_uni_name,test_tb_uni_sk", shardcount=4, sql="select `test_tb_uni_name`.`id`, `test_tb_uni_name`.`name`, `test_tb_uni_name`.`sk`, `test_tb_uni_name`.`create_time`, `test_tb_uni_name`.`modify_time`, `test_tb_uni_sk`.`id` as `id0`, `test_tb_uni_sk`.`name` as `name0`, `test_tb_uni_sk`.`sk` as `sk0`, `test_tb_uni_sk`.`create_time` as `create_time0`, `test_tb_uni_sk`.`modify_time` as `modify_time0` from `test_tb_uni_name` as `test_tb_uni_name` inner join `test_tb_uni_sk` as `test_tb_uni_sk` on ((`test_tb_uni_name`.`id` = `test_tb_uni_sk`.`id`) and (`test_tb_uni_name`.`name` = `test_tb_uni_sk`.`sk`) and (`test_tb_uni_name`.`id` > 5))")
 
 - sql: |
     /*+TDDL:cmd_extra(enable_hash_join=false,enable_sort_merge_join=false,enable_nl_join=false)*/

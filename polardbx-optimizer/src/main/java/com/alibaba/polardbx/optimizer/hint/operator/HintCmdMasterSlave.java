@@ -68,6 +68,9 @@ public class HintCmdMasterSlave extends BaseHintOperator implements HintCmdOpera
         case CMD_SLAVE:
             current.getExtraCmd().put("SLAVE", true);
             break;
+        case CMD_FOLLOWER:
+            current.getExtraCmd().put("FOLLOWER", true);
+            break;
         default:
             break;
         }

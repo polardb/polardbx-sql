@@ -172,7 +172,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -194,7 +194,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -221,7 +221,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -243,7 +243,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -270,7 +270,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -292,7 +292,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -315,7 +315,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -337,7 +337,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -365,7 +365,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -387,7 +387,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -411,7 +411,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -433,7 +433,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
     }
@@ -465,7 +465,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -486,7 +486,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -509,7 +509,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -530,7 +530,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(MessageFormat
-            .format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -562,7 +562,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -583,7 +583,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(
-            MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -606,7 +606,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("GLOBAL INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -627,7 +627,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE GLOBAL INDEX "));
         Assert.assertTrue(res.contains(
-            MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -659,7 +659,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -680,7 +680,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -703,7 +703,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -724,7 +724,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(
-            MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -756,7 +756,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -777,7 +777,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res.contains(
-            MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -800,7 +800,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 
@@ -821,7 +821,7 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
             .contains(MessageFormat.format("UNIQUE KEY `{0}` ({1})", INDEX_NAME, indexColumn)));
         Assert.assertTrue(res.contains("UNIQUE CLUSTERED INDEX "));
         Assert.assertTrue(res
-            .contains(MessageFormat.format("`{0}` ({1}) PARTITION BY ", INDEX_NAME, indexColumn)));
+            .contains(MessageFormat.format("`{0}` ({1}) \n\t\tPARTITION BY ", INDEX_NAME, indexColumn)));
 
         insertAndAssertSame("");
 

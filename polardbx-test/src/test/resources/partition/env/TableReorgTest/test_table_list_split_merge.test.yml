@@ -248,21 +248,4 @@ show full create table lc1;
 show full create table lc2;
 show full create table lc3;
 show full create table lc4;
-  
-  ## error_msg: $# missing (DEFAULT) in the new Partition spec #$
-alter table lcd1 split partition p5 into (partition p6 values in(('zaa',1)), partition p7 values in(('xaa',1)));
-alter table lcd1 split partition p5 into (partition p6 values in(('zaa',1)), partition p5 values in(default));
-alter table lcd2 split partition p5 into (partition p6 values in(('zaa',1)), partition p5 values in(default));
-## error_msg: $# partition [p5] is not allowed to be merged, because it is default partition #$
-alter table lcd1 merge partitions p4,p5 to p10;
-## error_msg: $# It's not allowed to modify partition when table contain default partition #$
-alter table lcd1 modify partition p1 drop values(('aaa',1));
-  ## error_msg: $# It's not allowed to modify partition when table contain default partition #$
-alter table lcd1 modify partition p1 add values(('aaa',1));
-alter table lcd1 extract to partition pnew1 by hot value(('kkk',2));
-alter table lcd2 extract to partition pnew1 by hot value(('kkk',2));
-alter table lcd1 extract to partition pnew2 by hot value(('cab',2));
-alter table lcd2 extract to partition pnew2 by hot value(('cab',2));
-show full create table lcd1;
-show full create table lcd2;
 

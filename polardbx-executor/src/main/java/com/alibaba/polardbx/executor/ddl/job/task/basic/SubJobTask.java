@@ -46,6 +46,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -135,6 +136,24 @@ public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTas
             LOGGER.info(String.format("Execute subjob %d success: %s", subJobId, subJobDdlContext.getDdlStmt()));
             return;
         } else {
+            if (subJobDdlContext.getState() == DdlState.RUNNING) {
+                DdlEngineSchedulerManager scheduler = new DdlEngineSchedulerManager();
+                List<DdlEngineRecord> records =
+                    scheduler.fetchRecords(Collections.singletonList(subJobId));
+
+                if (!CollectionUtils.isEmpty(records)) {
+                    DdlEngineRecord record = records.get(0);
+                    if (DdlState.PAUSED.name().equalsIgnoreCase(record.state)
+                        || DdlState.ROLLBACK_TO_READY.name().equalsIgnoreCase(record.state)) {
+                        this.setExceptionAction(DdlExceptionAction.PAUSE);
+                    }
+                    // skip subjob
+                    if (DdlState.ROLLBACK_TO_READY.name().equalsIgnoreCase(record.state) && record.isSkipSubjob()) {
+                        LOGGER.info(String.format("subjob is skipped, SUBJOB:%s", record.jobId));
+                        return;
+                    }
+                }
+            }
             final String errMsg = subJobDdlContext.getErrorMessage();
             if (errMsg != null) {
                 throw DdlHelper.logAndThrowError(LOGGER, errMsg);
@@ -240,7 +259,7 @@ public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTas
         while (!ddlContext.isInterrupted() && !rollbackSubJobSubmitted()) {
             try {
                 rollbackSubJobId = DdlHelper.getServerConfigManager()
-                    .submitSubDDL(schemaName, ddlContext, getJobId(), getTaskId(), true, ddlStmt, paramManager);
+                    .submitSubDDL(schemaName, ddlContext, getJobId(), getTaskId(), true, rollbackDdlStmt, paramManager);
                 LOGGER.info(String.format("Create rollback subjob %d", rollbackSubJobId));
                 if (rollbackSubJobId == 0L) {
                     throw new TddlNestableRuntimeException("submit rollback subjob error");
@@ -399,5 +418,11 @@ public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTas
     @Override
     public CostInfo getCostInfo() {
         return costInfo;
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        return new ArrayList<>();
+
     }
 }

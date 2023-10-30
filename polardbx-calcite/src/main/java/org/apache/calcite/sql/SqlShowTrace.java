@@ -83,10 +83,12 @@ public class SqlShowTrace extends SqlShow {
             columns.add(new RelDataTypeFieldImpl("TYPE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("GROUP_NAME", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("DBKEY_NAME", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
             columns.add(new RelDataTypeFieldImpl("TIME_COST(ms)", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("CONNECTION_TIME_COST(ms)",
                 7,
                 typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
             columns.add(new RelDataTypeFieldImpl("ROWS", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
             columns.add(new RelDataTypeFieldImpl("STATEMENT", 9, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("PARAMS", 10, typeFactory.createSqlType(SqlTypeName.VARCHAR)));

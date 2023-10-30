@@ -20,14 +20,14 @@ CREATE TABLE `t_order` (
 show create table `t_order`;
 show full create table `t_order`;
 
-show create table `i_0`;
-show full create table `i_0`;
-show create table `i_1`;
-show full create table `i_1`;
-show create table `i_2`;
-show full create table `i_2`;
-show create table `i_3`;
-show full create table `i_3`;
+show create table `y`;
+show full create table `y`;
+show create table `y_2`;
+show full create table `y_2`;
+show create table `y_3`;
+show full create table `y_3`;
+show create table `y_4`;
+show full create table `y_4`;
 
 create index `agsi_0` on `t_order`(x,y);
 create unique index `agsi_1` on `t_order`(y,z,d);

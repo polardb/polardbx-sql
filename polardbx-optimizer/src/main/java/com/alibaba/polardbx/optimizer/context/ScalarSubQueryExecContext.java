@@ -81,7 +81,7 @@ public class ScalarSubQueryExecContext {
         if (!(subQueryResult instanceof List)) {
             return subQueryResult;
         }
-        Object tarVal = (((List)subQueryResult).get(nextPruningRowNum));
+        Object tarVal = (((List) subQueryResult).get(nextPruningRowNum));
         return tarVal;
     }
 
@@ -89,8 +89,9 @@ public class ScalarSubQueryExecContext {
         return subQueryResult;
     }
 
-    public void setSubQueryResult(Object subQueryResult) {
+    public ScalarSubQueryExecContext setSubQueryResult(Object subQueryResult) {
         this.subQueryResult = subQueryResult;
+        return this;
     }
 
     public boolean isMaxOneRow() {

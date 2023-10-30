@@ -19,15 +19,14 @@ package com.alibaba.polardbx.qatest.ddl.sharding.scaleout;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.calcite.util.Pair;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import net.jcip.annotations.NotThreadSafe;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -38,7 +37,7 @@ import static org.hamcrest.Matchers.is;
 /**
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
 public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
@@ -1369,7 +1368,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "delete from " + tableName + " where a = 1",
             "delete from " + tableName + " where b=1",
             "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where 1=1 limit 6",};
+            "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -1432,7 +1431,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "delete from " + tableName + " where c=1",
             "delete from " + tableName + " where a = 1 and b=1",
             "delete from " + tableName + " where a = 1 and b=1 and c=1",
-            "delete from " + tableName + " where 1=1 limit 6",};
+            "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -1494,7 +1493,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "delete from " + tableName + " where a = 2",
             "delete from " + tableName + " where b=1",
             "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where 1=1 limit 6",};
+            "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
@@ -1547,7 +1546,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "delete from " + tableName + " where c=1",
             "delete from " + tableName + " where a = 1 and b=1",
             "delete from " + tableName + " where a = 1 and b=1 and c=1",
-            "delete from " + tableName + " where 1=1 limit 6",};
+            "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
@@ -1612,9 +1611,9 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "update " + tableName + " set a=a-1 where b=1",
             "update " + tableName + " set b=b-1 where b=1",//15
             "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 limit 6",
-            "update " + tableName + " set a=a-1 where a<>3 limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 limit 6",};
+            "update " + tableName + " set k=k+1 order by a limit 6",
+            "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
+            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         int dbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb + singledb
@@ -1714,9 +1713,9 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "update " + tableName + " set a=a-1 where b=1",
             "update " + tableName + " set b=b-1 where b=1",//15
             "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 limit 6",
-            "update " + tableName + " set a=a-1 where a<>3 limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 limit 6",
+            "update " + tableName + " set k=k+1 order by a limit 6",
+            "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
+            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
             "update " + tableName + " set c=c-1 where b=1",
             "update " + tableName + " set c=c-1 where a=1",
         };
@@ -1826,9 +1825,9 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "update " + tableName + " set a=a-1 where b=1",
             "update " + tableName + " set b=b-1 where b=1",//15
             "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 limit 6",
-            "update " + tableName + " set a=a+10 where a<>3 limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 limit 6",};
+            "update " + tableName + " set k=k+1 order by a limit 6",
+            "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
+            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
@@ -1922,9 +1921,9 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             "update " + tableName + " set a=a-1 where b=1",
             "update " + tableName + " set b=b-1 where b=1",//15
             "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 limit 6",
-            "update " + tableName + " set a=a+10 where a<>3 limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 limit 6",
+            "update " + tableName + " set k=k+1 order by a limit 6",
+            "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
+            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
             "update " + tableName + " set c=c-1 where b=1",//20
             "update " + tableName + " set c=c-1 where a=1",
         };

@@ -39,6 +39,8 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJoinGroup;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateJoinGroup;
 import org.apache.commons.collections.CollectionUtils;
@@ -82,7 +84,7 @@ public class LogicalCreateJoinGroupHandler extends HandlerCommon {
 
         // validate the locality
         if (TStringUtil.isNotBlank(locality)) {
-            LocalityDesc desc = LocalityDesc.parse(locality);
+            LocalityDesc desc = LocalityInfoUtils.parse(locality);
 
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
                 StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();

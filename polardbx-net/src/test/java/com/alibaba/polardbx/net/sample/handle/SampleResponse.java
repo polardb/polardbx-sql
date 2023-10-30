@@ -61,9 +61,11 @@ public class SampleResponse {
         }
 
         // eof
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = ++packetId;
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++packetId;
+            proxy = eof.write(proxy);
+        }
 
         // rows
         RowDataPacket row = new RowDataPacket(header.fieldCount);

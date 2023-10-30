@@ -16,19 +16,30 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.constants.SystemTables;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TreeMaps;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
+import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
+import org.apache.calcite.sql.type.SqlTypeName;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
 import static com.alibaba.polardbx.gms.metadb.table.ColumnsRecord.FLAG_BINARY_DEFAULT;
+import static com.alibaba.polardbx.gms.metadb.table.ColumnsRecord.FLAG_GENERATED_COLUMN;
+import static com.alibaba.polardbx.gms.metadb.table.ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN;
+import static com.alibaba.polardbx.optimizer.view.InformationSchemaStorageStatus.STORAGE_STATUS_ITEM;
 
 /**
  * @author dylan
@@ -38,24 +49,30 @@ public class InformationSchemaViewManager extends ViewManager {
     // viewName -> (column, viewDefinition)
     private Map<String, Pair<List<String>, String>> informationSchemaViews;
 
-    private static final InformationSchemaViewManager INSTANCE;
+    private static final InformationSchemaViewManager INSTANCE = new InformationSchemaViewManager();
 
-    static {
-        INSTANCE = new InformationSchemaViewManager();
-        INSTANCE.init();
-    }
+    private volatile boolean enableLower;
 
     private InformationSchemaViewManager() {
         super(null, null, null);
     }
 
     public static InformationSchemaViewManager getInstance() {
+        if (!INSTANCE.isInited()) {
+            synchronized (INSTANCE) {
+                if (!INSTANCE.isInited()) {
+                    MetaDbInstConfigManager.getInstance();
+                    INSTANCE.init();
+                }
+            }
+        }
         return INSTANCE;
     }
 
     @Override
     protected void doInit() {
-        informationSchemaViews = TreeMaps.caseInsensitiveMap();
+        informationSchemaViews = new ConcurrentSkipListMap<>(String::compareToIgnoreCase);
+        enableLower = InstConfUtil.getBool(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
         definePolarXView();
     }
 
@@ -109,22 +126,7 @@ public class InformationSchemaViewManager extends ViewManager {
     private void definePolarXView() {
         defineCommonView();
 
-        defineView("views", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "VIEW_DEFINITION",
-                "CHECK_OPTION",
-                "IS_UPDATABLE",
-                "DEFINER",
-                "SECURITY_TYPE",
-                "CHARACTER_SET_CLIENT",
-                "COLLATION_CONNECTION"
-            },
-            "select 'def', t.schema_name, t.view_name, t.view_definition," +
-                " 'NONE', 'NO', t.definer, 'DEFINER', 'utf8', 'utf8_general_ci' " +
-                " from " + MetaDbSchema.NAME + "." + PolarDbXSystemTableView.TABLE_NAME + " as t " +
-                "where can_access_table(schema_name, view_name) ");
+        defineCaseSensitiveView(InstConfUtil.getBool(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES));
 
         defineView("CHARACTER_SETS", null, String.format("select * from %s.CHARACTER_SETS", MetaDbSchema.NAME));
 
@@ -204,127 +206,6 @@ public class InformationSchemaViewManager extends ViewManager {
                 , MetaDbSchema.NAME, MetaDbSchema.NAME)
         );
 
-        defineView("TABLES", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "TABLE_TYPE",
-                "ENGINE",
-                "VERSION",
-                "ROW_FORMAT",
-                "TABLE_ROWS",
-                "AVG_ROW_LENGTH",
-                "DATA_LENGTH",
-                "MAX_DATA_LENGTH",
-                "INDEX_LENGTH",
-                "DATA_FREE",
-                "AUTO_INCREMENT",
-                "CREATE_TIME",
-                "UPDATE_TIME",
-                "CHECK_TIME",
-                "TABLE_COLLATION",
-                "CHECKSUM",
-                "CREATE_OPTIONS",
-                "TABLE_COMMENT",
-                "AUTO_PARTITION"
-            },
-            String.format(
-                "select T.TABLE_CATALOG, T.TABLE_SCHEMA, T.TABLE_NAME, T.TABLE_TYPE, T.ENGINE, T.VERSION, T.ROW_FORMAT, "
-                    + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
-                    + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
-                    + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.flag & 0x2)!=0 then 'YES' else 'NO' end AUTO_PARTITION  from %s.TABLES AS T Join %s.TABLES_EXT AS E ON T.TABLE_SCHEMA"
-                    + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TABLE_TYPE != 3 AND can_access_table"
-                    + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
-                    + "UNION ALL "
-                    + "select T.TABLE_CATALOG, T.TABLE_SCHEMA, T.TABLE_NAME, T.TABLE_TYPE, T.ENGINE, T.VERSION, T"
-                    + ".ROW_FORMAT, "
-                    + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
-                    + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
-                    + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT * FROM %s.TABLE_PARTITIONS "
-                    + "GROUP BY TABLE_SCHEMA, TABLE_NAME) AS E ON T"
-                    + ".TABLE_SCHEMA"
-                    + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND can_access_table"
-                    + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
-                    + "UNION ALL "
-                    + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
-                    + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
-                    + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
-                    + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
-                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
-        );
-
-        defineView("COLUMNS", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "COLUMN_NAME",
-                "ORDINAL_POSITION",
-                "COLUMN_DEFAULT",
-                "IS_NULLABLE",
-                "DATA_TYPE",
-                "CHARACTER_MAXIMUM_LENGTH",
-                "CHARACTER_OCTET_LENGTH",
-                "NUMERIC_PRECISION",
-                "NUMERIC_SCALE",
-                "DATETIME_PRECISION",
-                "CHARACTER_SET_NAME",
-                "COLLATION_NAME",
-                "COLUMN_TYPE",
-                "COLUMN_KEY",
-                "EXTRA",
-                "PRIVILEGES",
-                "COLUMN_COMMENT",
-                "GENERATION_EXPRESSION"
-            },
-            String.format(
-                "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
-                    + "IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
-                    + "  IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
-                    + "  IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
-                    + "    IF(C.DATETIME_PRECISION > 0, "
-                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
-                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
-                    + "    ), "
-                    + "    C.COLUMN_DEFAULT"
-                    + "  )"
-                    + ") AS COLUMN_DEFAULT, "
-                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
-                    + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
-                    + "C.COLUMN_TYPE, C.COLUMN_KEY, C.EXTRA, C.PRIVILEGES, C.COLUMN_COMMENT, C.GENERATION_EXPRESSION "
-                    + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
-                    + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 "
-                    + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
-                    + "UNION ALL "
-                    + "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
-                    + "IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
-                    + "  IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
-                    + "  IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
-                    + "    IF(C.DATETIME_PRECISION > 0, "
-                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
-                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
-                    + "    ), "
-                    + "    C.COLUMN_DEFAULT"
-                    + "  )"
-                    + ") AS COLUMN_DEFAULT, "
-                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
-                    + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
-                    + "C.COLUMN_TYPE, C.COLUMN_KEY, C.EXTRA, C.PRIVILEGES, C.COLUMN_COMMENT, C.GENERATION_EXPRESSION "
-                    + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
-                    + " AS E ON C"
-                    + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 "
-                    + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
-                    + "UNION ALL "
-                    + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, "
-                    + "COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
-                    + "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME, "
-                    + "COLUMN_TYPE, COLUMN_KEY, EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
-                    + "from information_schema.information_schema_columns",
-                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME,
-                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME)
-        );
-
         defineView("KEY_COLUMN_USAGE", new String[] {
                 "CONSTRAINT_CATALOG",
                 "CONSTRAINT_SCHEMA",
@@ -340,118 +221,109 @@ public class InformationSchemaViewManager extends ViewManager {
                 "REFERENCED_COLUMN_NAME"
             },
             String.format("select CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_CATALOG, " +
-                "TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, POSITION_IN_UNIQUE_CONSTRAINT, " +
-                "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME " +
-                "from %s.KEY_COLUMN_USAGE", MetaDbSchema.NAME)
+                    "TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, POSITION_IN_UNIQUE_CONSTRAINT, " +
+                    "REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME " +
+                    "from %s.KEY_COLUMN_USAGE"
+                    + "UNION ALL"
+                    + "select 'def', SCHEMA_NAME, CONSTRAINT_NAME, 'def', SCHEMA_NAME, TABLE_NAME, "
+                    + "FOR_COL_NAME, POS+1, POS+1, REF_SCHEMA_NAME, REF_TABLE_NAME, REF_COL_NAME"
+                    + "from  %s.foreign_key as a join %s.foreign_key_cols as b on "
+                    + "a.SCHEMA_NAME = b.SCHEMA_NAME and a.TABLE_NAME = b.TABLE_NAME and a.INDEX_NAME = b.INDEX_NAME"
+                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
         );
 
-        defineView("PARTITIONS", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "PARTITION_NAME",
-                "SUBPARTITION_NAME",
-                "PARTITION_ORDINAL_POSITION",
-                "SUBPARTITION_ORDINAL_POSITION",
-                "PARTITION_METHOD",
-                "SUBPARTITION_METHOD",
-                "PARTITION_EXPRESSION",
-                "SUBPARTITION_EXPRESSION",
-                "PARTITION_DESCRIPTION",
-                "TABLE_ROWS",
-                "AVG_ROW_LENGTH",
-                "DATA_LENGTH",
-                "MAX_DATA_LENGTH",
-                "INDEX_LENGTH",
-                "DATA_FREE",
-                "CREATE_TIME",
-                "UPDATE_TIME",
-                "CHECK_TIME",
-                "CHECKSUM",
-                "PARTITION_COMMENT",
-                "NODEGROUP",
-                "TABLESPACE_NAME"
-            },
-            String.format("SELECT\n"
-                    + "'def' as TABLE_CATALOG,\n"
-                    + "table_partitions.table_schema as TABLE_SCHEMA,\n"
-                    + "table_partitions.table_name as TABLE_NAME,\n"
-                    + "table_partitions.part_name as PARTITION_NAME,\n"
-                    + "null as SUBPARTITION_NAME,\n"
-                    + "table_partitions.part_position as PARTITION_ORDINAL_POSITION,\n"
-                    + "null as SUBPARTITION_ORDINAL_POSITION,\n"
-                    + "table_partitions.part_method as PARTITION_METHOD,\n"
-                    + "null as SUBPARTITION_METHOD,\n"
-                    + "table_partitions.part_expr as PARTITION_EXPRESSION,\n"
-                    + "null as SUBPARTITION_EXPRESSION,\n"
-                    + "null as PARTITION_DESCRIPTION,\n"
-                    + "TABLE_DETAIL.TABLE_ROWS as TABLE_ROWS,\n"
-                    + "round(TABLE_DETAIL.DATA_LENGTH / TABLE_DETAIL.TABLE_ROWS) as AVG_ROW_LENGTH,\n"
-                    + "TABLE_DETAIL.DATA_LENGTH as DATA_LENGTH,\n"
-                    + "0 as MAX_DATA_LENGTH,\n"
-                    + "TABLE_DETAIL.INDEX_LENGTH as INDEX_LENGTH,\n"
-                    + "0 as DATA_FREE,\n"
-                    + "table_partitions.create_time as CREATE_TIME,\n"
-                    + "table_partitions.update_time as UPDATE_TIME,\n"
-                    + "null as CHECK_TIME,\n"
-                    + "null as CHECKSUM,\n"
-                    + "table_partitions.part_comment as PARTITION_COMMENT,\n"
-                    + "'default' as NODEGROUP,\n"
-                    + "null as TABLESPACE_NAME\n"
-                    + "FROM %s.TABLE_DETAIL join %s.table_partitions \n"
-                    + "on TABLE_DETAIL.TABLE_SCHEMA = table_partitions.table_schema\n"
-                    + "and TABLE_DETAIL.TABLE_NAME = table_partitions.table_name\n"
-                    + "and TABLE_DETAIL.PARTITION_NAME = table_partitions.part_name\n"
-                    + "where table_partitions.tbl_type != 1\n"
-                    + "union all\n"
-                    + "select \n"
-                    + "'def' as TABLE_CATALOG,\n"
-                    + "tables.table_schema as TABLE_SCHEMA,\n"
-                    + "tables.table_name as TABLE_NAME,\n"
-                    + "null as PARTITION_NAME,\n"
-                    + "null as SUBPARTITION_NAME,\n"
-                    + "null as PARTITION_ORDINAL_POSITION,\n"
-                    + "null as SUBPARTITION_ORDINAL_POSITION,\n"
-                    + "null as PARTITION_METHOD,\n"
-                    + "null as SUBPARTITION_METHOD,\n"
-                    + "null as PARTITION_EXPRESSION,\n"
-                    + "null as SUBPARTITION_EXPRESSION,\n"
-                    + "null as PARTITION_DESCRIPTION,\n"
-                    + "tables.TABLE_ROWS as TABLE_ROWS,\n"
-                    + "tables.AVG_ROW_LENGTH as AVG_ROW_LENGTH,\n"
-                    + "tables.DATA_LENGTH as DATA_LENGTH,\n"
-                    + "tables.MAX_DATA_LENGTH as MAX_DATA_LENGTH,\n"
-                    + "tables.INDEX_LENGTH as INDEX_LENGTH,\n"
-                    + "tables.DATA_FREE as DATA_FREE,\n"
-                    + "tables.create_time as CREATE_TIME,\n"
-                    + "tables.update_time as UPDATE_TIME,\n"
-                    + "tables.check_time as CHECK_TIME,\n"
-                    + "tables.checksum as CHECKSUM,\n"
-                    + "tables.table_comment as PARTITION_COMMENT,\n"
-                    + "'default' as NODEGROUP,\n"
-                    + "null as TABLESPACE_NAME\n"
-                    + "from %s.tables \n"
-                    + "where (table_schema,table_name) not in \n"
-                    + "(select table_schema,table_name from %s.table_partitions where parent_id = -1 and "
-                    + "table_partitions.tbl_type != 1)",
-                InformationSchema.NAME, MetaDbSchema.NAME, InformationSchema.NAME, MetaDbSchema.NAME)
-        );
-
-        defineView("TABLE_CONSTRAINTS", new String[] {
-                "CONSTRAINT_CATALOG",
-                "CONSTRAINT_SCHEMA",
-                "CONSTRAINT_NAME",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "CONSTRAINT_TYPE",
-                "ENFORCED"
-            },
-            String.format(
-                "select 'def', index_schema, if(db_info.db_type = 4 and index_name like '_local_%%', substring(index_name, 8), index_name), index_schema, table_name, "
-                    + "if(index_name='PRIMARY', 'PRIMARY KEY','UNIQUE') as CONSTRAINT_TYPE, 'yes' as ENFORCED "
-                    + "from %s.indexes join %s.db_info on db_info.db_name = indexes.table_schema where non_unique = 0 and (db_info.db_type != 4 or indexes.index_location = 0); ",
-                MetaDbSchema.NAME, MetaDbSchema.NAME)
-        );
+//        defineView("PARTITIONS", new String[] {
+//                "TABLE_CATALOG",
+//                "TABLE_SCHEMA",
+//                "TABLE_NAME",
+//                "PARTITION_NAME",
+//                "SUBPARTITION_NAME",
+//                "PARTITION_ORDINAL_POSITION",
+//                "SUBPARTITION_ORDINAL_POSITION",
+//                "PARTITION_METHOD",
+//                "SUBPARTITION_METHOD",
+//                "PARTITION_EXPRESSION",
+//                "SUBPARTITION_EXPRESSION",
+//                "PARTITION_DESCRIPTION",
+//                "SUBPARTITION_DESCRIPTION",
+//                "TABLE_ROWS",
+//                "AVG_ROW_LENGTH",
+//                "DATA_LENGTH",
+//                "MAX_DATA_LENGTH",
+//                "INDEX_LENGTH",
+//                "DATA_FREE",
+//                "CREATE_TIME",
+//                "UPDATE_TIME",
+//                "CHECK_TIME",
+//                "CHECKSUM",
+//                "PARTITION_COMMENT",
+//                "NODEGROUP",
+//                "TABLESPACE_NAME"
+//            },
+//            String.format("SELECT\n"
+//                    + "'def' as TABLE_CATALOG,\n"
+//                    + "table_partitions.table_schema as TABLE_SCHEMA,\n"
+//                    + "table_partitions.table_name as TABLE_NAME,\n"
+//                    + "table_partitions.part_name as PARTITION_NAME,\n"
+//                    + "null as SUBPARTITION_NAME,\n"
+//                    + "table_partitions.part_position as PARTITION_ORDINAL_POSITION,\n"
+//                    + "null as SUBPARTITION_ORDINAL_POSITION,\n"
+//                    + "table_partitions.part_method as PARTITION_METHOD,\n"
+//                    + "null as SUBPARTITION_METHOD,\n"
+//                    + "table_partitions.part_expr as PARTITION_EXPRESSION,\n"
+//                    + "null as SUBPARTITION_EXPRESSION,\n"
+//                    + "null as PARTITION_DESCRIPTION,\n"
+//                    + "TABLE_DETAIL.TABLE_ROWS as TABLE_ROWS,\n"
+//                    + "round(TABLE_DETAIL.DATA_LENGTH / TABLE_DETAIL.TABLE_ROWS) as AVG_ROW_LENGTH,\n"
+//                    + "TABLE_DETAIL.DATA_LENGTH as DATA_LENGTH,\n"
+//                    + "0 as MAX_DATA_LENGTH,\n"
+//                    + "TABLE_DETAIL.INDEX_LENGTH as INDEX_LENGTH,\n"
+//                    + "0 as DATA_FREE,\n"
+//                    + "table_partitions.create_time as CREATE_TIME,\n"
+//                    + "table_partitions.update_time as UPDATE_TIME,\n"
+//                    + "null as CHECK_TIME,\n"
+//                    + "null as CHECKSUM,\n"
+//                    + "table_partitions.part_comment as PARTITION_COMMENT,\n"
+//                    + "'default' as NODEGROUP,\n"
+//                    + "null as TABLESPACE_NAME\n"
+//                    + "FROM %s.TABLE_DETAIL join %s.table_partitions \n"
+//                    + "on TABLE_DETAIL.TABLE_SCHEMA = table_partitions.table_schema\n"
+//                    + "and TABLE_DETAIL.TABLE_NAME = table_partitions.table_name\n"
+//                    + "and TABLE_DETAIL.PARTITION_NAME = table_partitions.part_name\n"
+//                    + "where table_partitions.tbl_type != 1\n"
+//                    + "union all\n"
+//                    + "select \n"
+//                    + "'def' as TABLE_CATALOG,\n"
+//                    + "tables.table_schema as TABLE_SCHEMA,\n"
+//                    + "tables.table_name as TABLE_NAME,\n"
+//                    + "null as PARTITION_NAME,\n"
+//                    + "null as SUBPARTITION_NAME,\n"
+//                    + "null as PARTITION_ORDINAL_POSITION,\n"
+//                    + "null as SUBPARTITION_ORDINAL_POSITION,\n"
+//                    + "null as PARTITION_METHOD,\n"
+//                    + "null as SUBPARTITION_METHOD,\n"
+//                    + "null as PARTITION_EXPRESSION,\n"
+//                    + "null as SUBPARTITION_EXPRESSION,\n"
+//                    + "null as PARTITION_DESCRIPTION,\n"
+//                    + "tables.TABLE_ROWS as TABLE_ROWS,\n"
+//                    + "tables.AVG_ROW_LENGTH as AVG_ROW_LENGTH,\n"
+//                    + "tables.DATA_LENGTH as DATA_LENGTH,\n"
+//                    + "tables.MAX_DATA_LENGTH as MAX_DATA_LENGTH,\n"
+//                    + "tables.INDEX_LENGTH as INDEX_LENGTH,\n"
+//                    + "tables.DATA_FREE as DATA_FREE,\n"
+//                    + "tables.create_time as CREATE_TIME,\n"
+//                    + "tables.update_time as UPDATE_TIME,\n"
+//                    + "tables.check_time as CHECK_TIME,\n"
+//                    + "tables.checksum as CHECKSUM,\n"
+//                    + "tables.table_comment as PARTITION_COMMENT,\n"
+//                    + "'default' as NODEGROUP,\n"
+//                    + "null as TABLESPACE_NAME\n"
+//                    + "from %s.tables \n"
+//                    + "where (table_schema,table_name) not in \n"
+//                    + "(select table_schema,table_name from %s.table_partitions where parent_id = -1 and "
+//                    + "table_partitions.tbl_type != 1)",
+//                InformationSchema.NAME, MetaDbSchema.NAME, InformationSchema.NAME, MetaDbSchema.NAME)
+//        );
 
         defineView("REFERENTIAL_CONSTRAINTS", new String[] {
                 "CONSTRAINT_CATALOG",
@@ -466,10 +338,10 @@ public class InformationSchemaViewManager extends ViewManager {
                 "TABLE_NAME",
                 "REFERENCED_TABLE_NAME"
             },
-            String.format("select CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, " +
-                "UNIQUE_CONSTRAINT_CATALOG, UNIQUE_CONSTRAINT_SCHEMA, UNIQUE_CONSTRAINT_NAME, " +
-                "MATCH_OPTION, UPDATE_RULE, DELETE_RULE, TABLE_NAME, REFERENCED_TABLE_NAME " +
-                "from %s.REFERENTIAL_CONSTRAINTS", MetaDbSchema.NAME)
+            String.format("select 'def', SCHEMA_NAME, CONSTRAINT_NAME, " +
+                "'def', REF_SCHEMA_NAME, REF_INDEX_NAME, " +
+                "'NONE', UPDATE_RULE, DELETE_RULE, TABLE_NAME, REF_TABLE_NAME " +
+                "from %s.foreign_key", MetaDbSchema.NAME)
         );
 
         defineVirtualView(VirtualViewType.GLOBAL_VARIABLES, new String[] {
@@ -496,35 +368,6 @@ public class InformationSchemaViewManager extends ViewManager {
             "REFERENCED_TABLE_NAME",
             "REFERENCED_COLUMN_NAME"
         });
-
-        defineView("STATISTICS", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "NON_UNIQUE",
-                "INDEX_SCHEMA",
-                "INDEX_NAME",
-                "SEQ_IN_INDEX",
-                "COLUMN_NAME",
-                "COLLATION",
-                "CARDINALITY",
-                "SUB_PART",
-                "PACKED",
-                "NULLABLE",
-                "INDEX_TYPE",
-                "COMMENT",
-                "INDEX_COMMENT"
-            },
-            "select I.TABLE_CATALOG, I.TABLE_SCHEMA, I.TABLE_NAME, I.NON_UNIQUE, I.INDEX_SCHEMA, if(db_info.db_type = 4 and I.INDEX_NAME like '_local_%%', substring(I.INDEX_NAME, 8), I.INDEX_NAME), "
-                + "I.SEQ_IN_INDEX, I.COLUMN_NAME, I.COLLATION, IFNULL(S.CARDINALITY, 0), I.SUB_PART, I.PACKED, "
-                + "I.NULLABLE, I.INDEX_TYPE, I.COMMENT, I.INDEX_COMMENT from "
-                + MetaDbSchema.NAME + ".indexes I "
-                + "left join " + MetaDbSchema.NAME + "." + GmsSystemTables.COLUMN_STATISTICS + " S "
-                + "on S.SCHEMA_NAME = I.TABLE_SCHEMA and S.TABLE_NAME = I.TABLE_NAME and I.COLUMN_NAME = S.COLUMN_NAME join "
-                + MetaDbSchema.NAME + ".db_info on db_info.db_name = I.table_schema "
-                + "where I.COLUMN_NAME != '" + IMPLICIT_COL_NAME
-                + "' AND I.INDEX_TYPE IN ('BTREE', 'HASH', 'FULLTEXT') and (I.TABLE_SCHEMA, I.TABLE_NAME) IN "
-                + "(select T.TABLE_SCHEMA, T.TABLE_NAME from " + InformationSchema.NAME + ".tables T)");
 
         defineView("COLUMN_STATISTICS", new String[] {
                 "SCHEMA_NAME",
@@ -588,6 +431,12 @@ public class InformationSchemaViewManager extends ViewManager {
             "select FILE_ID, FILE_NAME, FILE_TYPE, TABLESPACE_NAME, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, LOGFILE_GROUP_NAME, LOGFILE_GROUP_NUMBER, ENGINE, FULLTEXT_KEYS, DELETED_ROWS, UPDATE_COUNT, FREE_EXTENTS, TOTAL_EXTENTS, EXTENT_SIZE, INITIAL_SIZE, MAXIMUM_SIZE, AUTOEXTEND_SIZE, CREATION_TIME, LAST_UPDATE_TIME, LAST_ACCESS_TIME, RECOVER_TIME, TRANSACTION_COUNTER, VERSION, ROW_FORMAT, TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, CREATE_TIME, UPDATE_TIME, CHECK_TIME, CHECKSUM, STATUS, EXTRA, task_id, life_cycle, local_path, logical_schema_name, logical_table_name, commit_ts, remove_ts from "
                 + MetaDbSchema.NAME + ".files where life_cycle != 2");
 
+        defineVirtualView(VirtualViewType.OPTIMIZER_ALERT, new String[] {
+            "COMPUTE_NODE",
+            "ALERT_TYPE",
+            "COUNT"
+        });
+
         defineVirtualView(VirtualViewType.FILE_STORAGE, new String[] {
             "URI",
             "ENGINE",
@@ -595,11 +444,647 @@ public class InformationSchemaViewManager extends ViewManager {
             "READ_LOCK_COUNT",
             "WRITE_LOCK_COUNT"
         });
+
         defineVirtualView(VirtualViewType.FILE_STORAGE_FILES_META, new String[] {
             "ENGINE",
             "DATA_PATH",
             "COMMIT_TS",
             "REMOVE_TS",
+        });
+
+        defineVirtualView(VirtualViewType.REPLICA_STAT, new String[] {
+            "TASK_ID",
+            "TASK_TYPE",
+            "CHANNEL",
+            "SUB_CHANNEL",
+            "IN_EPS",
+            "OUT_RPS",
+            "IN_BPS",
+            "OUT_BPS",
+            "OUT_INSERT_RPS",
+            "OUT_UPDATE_RPS",
+            "OUT_DELETE_RPS",
+            "APPLY_COUNT",
+            "RECEIVE_DELAY",
+            "PROCESS_DELAY",
+            "MERGE_BATCH_SIZE",
+            "RT",
+            "SKIP_COUNTER",
+            "SKIP_EXCEPTION_COUNTER",
+            "PERSIST_MSG_COUNTER",
+            "MSG_CACHE_SIZE",
+            "CPU_USE_RATIO",
+            "MEM_USE_RATIO",
+            "FULL_GC_COUNT",
+            "WORKER_IP",
+            "UPDATE_TIME"
+        });
+    }
+
+    public synchronized void defineCaseSensitiveView(boolean currentEnableLower) {
+
+        defineView("views", new String[] {
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "VIEW_DEFINITION",
+                "CHECK_OPTION",
+                "IS_UPDATABLE",
+                "DEFINER",
+                "SECURITY_TYPE",
+                "CHARACTER_SET_CLIENT",
+                "COLLATION_CONNECTION"
+            },
+            currentEnableLower ? "select 'def', LOWER(t.schema_name), LOWER(t.view_name), t.view_definition," +
+                " 'NONE', 'NO', t.definer, 'DEFINER', 'utf8', 'utf8_general_ci' " +
+                " from " + MetaDbSchema.NAME + "." + PolarDbXSystemTableView.TABLE_NAME + " as t " +
+                "where can_access_table(schema_name, view_name) "
+                : "select 'def', t.schema_name, t.view_name, t.view_definition," +
+                " 'NONE', 'NO', t.definer, 'DEFINER', 'utf8', 'utf8_general_ci' " +
+                " from " + MetaDbSchema.NAME + "." + PolarDbXSystemTableView.TABLE_NAME + " as t " +
+                "where can_access_table(schema_name, view_name) ");
+
+        defineView("TABLES", new String[] {
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "TABLE_TYPE",
+                "ENGINE",
+                "VERSION",
+                "ROW_FORMAT",
+                "TABLE_ROWS",
+                "AVG_ROW_LENGTH",
+                "DATA_LENGTH",
+                "MAX_DATA_LENGTH",
+                "INDEX_LENGTH",
+                "DATA_FREE",
+                "AUTO_INCREMENT",
+                "CREATE_TIME",
+                "UPDATE_TIME",
+                "CHECK_TIME",
+                "TABLE_COLLATION",
+                "CHECKSUM",
+                "CREATE_OPTIONS",
+                "TABLE_COMMENT",
+                "AUTO_PARTITION"
+            },
+            String.format(
+                currentEnableLower ?
+                    "select T.TABLE_CATALOG, LOWER(T.TABLE_SCHEMA), LOWER(T.TABLE_NAME), T.TABLE_TYPE, T.ENGINE, T.VERSION, T.ROW_FORMAT, "
+                        + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
+                        + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.flag & 0x2)!=0 then 'YES' else 'NO' end AUTO_PARTITION  from %s.TABLES AS T Join %s.TABLES_EXT AS E ON T.TABLE_SCHEMA"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TABLE_TYPE != 3 AND can_access_table"
+                        + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
+                        + "UNION ALL "
+                        + "select T.TABLE_CATALOG, LOWER(T.TABLE_SCHEMA), LOWER(T.TABLE_NAME), T.TABLE_TYPE, T.ENGINE, T.VERSION, T"
+                        + ".ROW_FORMAT, "
+                        + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
+                        + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT * FROM %s.TABLE_PARTITIONS "
+                        + "GROUP BY TABLE_SCHEMA, TABLE_NAME) AS E ON T"
+                        + ".TABLE_SCHEMA"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND can_access_table"
+                        + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
+                        + "UNION ALL "
+                        + "select TABLE_CATALOG, LOWER(TABLE_SCHEMA), LOWER(TABLE_NAME), TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
+                        + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
+                        + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
+                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
+                    :
+                    "select T.TABLE_CATALOG, T.TABLE_SCHEMA, T.TABLE_NAME, T.TABLE_TYPE, T.ENGINE, T.VERSION, T.ROW_FORMAT, "
+                        + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
+                        + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.flag & 0x2)!=0 then 'YES' else 'NO' end AUTO_PARTITION  from %s.TABLES AS T Join %s.TABLES_EXT AS E ON T.TABLE_SCHEMA"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TABLE_TYPE != 3 AND can_access_table"
+                        + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
+                        + "UNION ALL "
+                        + "select T.TABLE_CATALOG, T.TABLE_SCHEMA, T.TABLE_NAME, T.TABLE_TYPE, T.ENGINE, T.VERSION, T"
+                        + ".ROW_FORMAT, "
+                        + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
+                        + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT * FROM %s.TABLE_PARTITIONS "
+                        + "GROUP BY TABLE_SCHEMA, TABLE_NAME) AS E ON T"
+                        + ".TABLE_SCHEMA"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND can_access_table"
+                        + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
+                        + "UNION ALL "
+                        + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
+                        + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
+                        + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
+                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
+                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
+        );
+
+        defineView("COLUMNS", new String[] {
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "ORDINAL_POSITION",
+                "COLUMN_DEFAULT",
+                "IS_NULLABLE",
+                "DATA_TYPE",
+                "CHARACTER_MAXIMUM_LENGTH",
+                "CHARACTER_OCTET_LENGTH",
+                "NUMERIC_PRECISION",
+                "NUMERIC_SCALE",
+                "DATETIME_PRECISION",
+                "CHARACTER_SET_NAME",
+                "COLLATION_NAME",
+                "COLUMN_TYPE",
+                "COLUMN_KEY",
+                "EXTRA",
+                "PRIVILEGES",
+                "COLUMN_COMMENT",
+                "GENERATION_EXPRESSION"
+            },
+            String.format(
+                currentEnableLower ?
+                    "select C.TABLE_CATALOG, LOWER(C.TABLE_SCHEMA), LOWER(C.TABLE_NAME), C.COLUMN_NAME, C.ORDINAL_POSITION, "
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + ") | (C.FLAG & " + FLAG_GENERATED_COLUMN
+                        + "),NULL,"
+                        + "  IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                        + "    IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                        + "    IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                        + "      IF(C.DATETIME_PRECISION > 0, "
+                        + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                        + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                        + "      ), "
+                        + "      C.COLUMN_DEFAULT"
+                        + "    )"
+                        + "  )"
+                        + ") AS COLUMN_DEFAULT, "
+                        + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                        + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
+                        + "C.COLUMN_TYPE, C.COLUMN_KEY,"
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + "),'LOGICAL GENERATED',C.EXTRA) AS EXTRA, "
+                        + "C.PRIVILEGES, C.COLUMN_COMMENT, "
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
+                        + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
+                        + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
+                        + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
+                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 "
+                        + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
+                        + "UNION ALL "
+                        + "select C.TABLE_CATALOG, LOWER(C.TABLE_SCHEMA), LOWER(C.TABLE_NAME), C.COLUMN_NAME, C.ORDINAL_POSITION, "
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + ") | (C.FLAG & " + FLAG_GENERATED_COLUMN
+                        + "),NULL,"
+                        + "  IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                        + "    IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                        + "    IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                        + "      IF(C.DATETIME_PRECISION > 0, "
+                        + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                        + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                        + "      ), "
+                        + "      C.COLUMN_DEFAULT"
+                        + "    )"
+                        + "  )"
+                        + ") AS COLUMN_DEFAULT, "
+                        + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                        + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
+                        + "C.COLUMN_TYPE, C.COLUMN_KEY,"
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + "),'LOGICAL GENERATED',C.EXTRA) AS EXTRA, "
+                        + "C.PRIVILEGES, C.COLUMN_COMMENT, "
+                        + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
+                        + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
+                        + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
+                        + " AS E ON C"
+                        + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
+                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 "
+                        + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
+                        + "UNION ALL "
+                        + "select TABLE_CATALOG, LOWER(TABLE_SCHEMA), LOWER(TABLE_NAME), COLUMN_NAME, ORDINAL_POSITION, "
+                        + "COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
+                        + "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME, "
+                        + "COLUMN_TYPE, COLUMN_KEY, EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
+                        + "from information_schema.information_schema_columns"
+                    : "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + ") | (C.FLAG & " + FLAG_GENERATED_COLUMN
+                    + "),NULL,"
+                    + "  IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                    + "    IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                    + "    IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                    + "      IF(C.DATETIME_PRECISION > 0, "
+                    + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                    + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                    + "      ), "
+                    + "      C.COLUMN_DEFAULT"
+                    + "    )"
+                    + "  )"
+                    + ") AS COLUMN_DEFAULT, "
+                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                    + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
+                    + "C.COLUMN_TYPE, C.COLUMN_KEY,"
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + "),'LOGICAL GENERATED',C.EXTRA) AS EXTRA, "
+                    + "C.PRIVILEGES, C.COLUMN_COMMENT, "
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
+                    + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
+                    + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
+                    + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
+                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 "
+                    + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
+                    + "UNION ALL "
+                    + "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + ") | (C.FLAG & " + FLAG_GENERATED_COLUMN
+                    + "),NULL,"
+                    + "  IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                    + "    IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                    + "    IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                    + "      IF(C.DATETIME_PRECISION > 0, "
+                    + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                    + "         DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                    + "      ), "
+                    + "      C.COLUMN_DEFAULT"
+                    + "    )"
+                    + "  )"
+                    + ") AS COLUMN_DEFAULT, "
+                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                    + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
+                    + "C.COLUMN_TYPE, C.COLUMN_KEY,"
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN + "),'LOGICAL GENERATED',C.EXTRA) AS EXTRA, "
+                    + "C.PRIVILEGES, C.COLUMN_COMMENT, "
+                    + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
+                    + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
+                    + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
+                    + " AS E ON C"
+                    + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
+                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 "
+                    + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
+                    + "UNION ALL "
+                    + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, "
+                    + "COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
+                    + "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME, "
+                    + "COLUMN_TYPE, COLUMN_KEY, EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
+                    + "from information_schema.information_schema_columns",
+                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME,
+                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME)
+        );
+
+        defineView("STATISTICS", new String[] {
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "NON_UNIQUE",
+                "INDEX_SCHEMA",
+                "INDEX_NAME",
+                "SEQ_IN_INDEX",
+                "COLUMN_NAME",
+                "COLLATION",
+                "CARDINALITY",
+                "SUB_PART",
+                "PACKED",
+                "NULLABLE",
+                "INDEX_TYPE",
+                "COMMENT",
+                "INDEX_COMMENT"
+            },
+            currentEnableLower ?
+                "select I.TABLE_CATALOG, LOWER(I.TABLE_SCHEMA), LOWER(I.TABLE_NAME), I.NON_UNIQUE, LOWER(I.INDEX_SCHEMA), if(db_info.db_type = 4 and I.INDEX_NAME like '_local_%%', substring(I.INDEX_NAME, 8), I.INDEX_NAME), "
+                    + "I.SEQ_IN_INDEX, I.COLUMN_NAME, I.COLLATION, IFNULL(S.CARDINALITY, 0), I.SUB_PART, I.PACKED, "
+                    + "I.NULLABLE, I.INDEX_TYPE, I.COMMENT, I.INDEX_COMMENT from "
+                    + MetaDbSchema.NAME + ".indexes I "
+                    + "left join " + MetaDbSchema.NAME + "." + GmsSystemTables.COLUMN_STATISTICS + " S "
+                    + "on S.SCHEMA_NAME = I.TABLE_SCHEMA and S.TABLE_NAME = I.TABLE_NAME and I.COLUMN_NAME = S.COLUMN_NAME join "
+                    + MetaDbSchema.NAME + ".db_info on db_info.db_name = I.table_schema "
+                    + "where I.COLUMN_NAME != '" + IMPLICIT_COL_NAME
+                    + "' AND I.INDEX_TYPE IN ('BTREE', 'HASH', 'FULLTEXT') and (I.TABLE_SCHEMA, I.TABLE_NAME) IN "
+                    + "(select T.TABLE_SCHEMA, T.TABLE_NAME from " + InformationSchema.NAME + ".tables T)"
+                :
+                "select I.TABLE_CATALOG, I.TABLE_SCHEMA, I.TABLE_NAME, I.NON_UNIQUE, I.INDEX_SCHEMA, if(db_info.db_type = 4 and I.INDEX_NAME like '_local_%%', substring(I.INDEX_NAME, 8), I.INDEX_NAME), "
+                    + "I.SEQ_IN_INDEX, I.COLUMN_NAME, I.COLLATION, IFNULL(S.CARDINALITY, 0), I.SUB_PART, I.PACKED, "
+                    + "I.NULLABLE, I.INDEX_TYPE, I.COMMENT, I.INDEX_COMMENT from "
+                    + MetaDbSchema.NAME + ".indexes I "
+                    + "left join " + MetaDbSchema.NAME + "." + GmsSystemTables.COLUMN_STATISTICS + " S "
+                    + "on S.SCHEMA_NAME = I.TABLE_SCHEMA and S.TABLE_NAME = I.TABLE_NAME and I.COLUMN_NAME = S.COLUMN_NAME join "
+                    + MetaDbSchema.NAME + ".db_info on db_info.db_name = I.table_schema "
+                    + "where I.COLUMN_NAME != '" + IMPLICIT_COL_NAME
+                    + "' AND I.INDEX_TYPE IN ('BTREE', 'HASH', 'FULLTEXT') and (I.TABLE_SCHEMA, I.TABLE_NAME) IN "
+                    + "(select T.TABLE_SCHEMA, T.TABLE_NAME from " + InformationSchema.NAME + ".tables T)");
+
+        defineView("TABLE_CONSTRAINTS", new String[] {
+                "CONSTRAINT_CATALOG",
+                "CONSTRAINT_SCHEMA",
+                "CONSTRAINT_NAME",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "CONSTRAINT_TYPE",
+                "ENFORCED"
+            },
+            String.format(
+                currentEnableLower ?
+                    "select 'def', LOWER(index_schema), if(db_info.db_type = 4 and index_name like '_local_%%', substring(index_name, 8), index_name), LOWER(index_schema), LOWER(table_name), "
+                        + "if(index_name='PRIMARY', 'PRIMARY KEY','UNIQUE') as CONSTRAINT_TYPE, 'yes' as ENFORCED "
+                        + "from %s.indexes join %s.db_info on db_info.db_name = indexes.table_schema where non_unique = 0 "
+                        + "and indexes.COLUMN_NAME != '%s' "
+                        + "and indexes.seq_in_index = 1 and (db_info.db_type != 4 or indexes.index_location = 0) and "
+                        + "(indexes.TABLE_SCHEMA, indexes.TABLE_NAME) in (select T.TABLE_SCHEMA, T.TABLE_NAME from "
+                        + InformationSchema.NAME + ".tables T)"
+                    :
+                    "select 'def', index_schema, if(db_info.db_type = 4 and index_name like '_local_%%', substring(index_name, 8), index_name), index_schema, table_name, "
+                        + "if(index_name='PRIMARY', 'PRIMARY KEY','UNIQUE') as CONSTRAINT_TYPE, 'yes' as ENFORCED "
+                        + "from %s.indexes join %s.db_info on db_info.db_name = indexes.table_schema where non_unique = 0 "
+                        + "and indexes.COLUMN_NAME != '%s' "
+                        + "and indexes.seq_in_index = 1 and (db_info.db_type != 4 or indexes.index_location = 0) and "
+                        + "(indexes.TABLE_SCHEMA, indexes.TABLE_NAME) in (select T.TABLE_SCHEMA, T.TABLE_NAME from "
+                        + InformationSchema.NAME + ".tables T)",
+                MetaDbSchema.NAME, MetaDbSchema.NAME, IMPLICIT_COL_NAME)
+        );
+
+        if (this.enableLower != currentEnableLower) {
+            PlanManager.getInstance().invalidateSchema(TddlConstants.INFORMATION_SCHEMA);
+            this.enableLower = currentEnableLower;
+        }
+    }
+
+    private void defineDrdsView() {
+        defineCommonView();
+
+        defineView("views", new String[] {
+                "TABLE_CATALOG",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "VIEW_DEFINITION",
+                "CHECK_OPTION",
+                "IS_UPDATABLE",
+                "DEFINER",
+                "SECURITY_TYPE",
+                "CHARACTER_SET_CLIENT",
+                "COLLATION_CONNECTION"
+            },
+            "select 'def', t.schema_name, t.view_name, t.view_definition," +
+                " 'NONE', 'NO', t.definer, 'DEFINER', 'utf8', 'utf8_general_ci' " +
+                " from " + SystemTables.DRDS_SYSTABLE_VIEW + " as t " +
+                "where can_access_table(schema_name, view_name) ");
+
+        defineVirtualView(VirtualViewType.CHARACTER_SETS, new String[] {
+            "CHARACTER_SET_NAME",
+            "DEFAULT_COLLATE_NAME",
+            "DESCRIPTION",
+            "MAXLEN"
+        });
+
+        defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
+            "COLLATION_NAME",
+            "CHARACTER_SET_NAME"
+        });
+
+        defineVirtualView(VirtualViewType.COLLATIONS, new String[] {
+            "COLLATION_NAME",
+            "CHARACTER_SET_NAME",
+            "ID",
+            "IS_DEFAULT",
+            "IS_COMPILED",
+            "SORTLEN",
+            "PAD_ATTRIBUTE"
+        });
+
+        defineVirtualView(VirtualViewType.ENGINES, new String[] {
+            "ENGINE",
+            "SUPPORT",
+            "COMMENT",
+            "TRANSACTIONS",
+            "XA",
+            "SAVEPOINTS"
+        });
+
+        defineVirtualView(VirtualViewType.GLOBAL_VARIABLES, new String[] {
+            "VARIABLE_NAME",
+            "VARIABLE_VALUE"
+        });
+
+        defineVirtualView(VirtualViewType.SESSION_VARIABLES, new String[] {
+            "VARIABLE_NAME",
+            "VARIABLE_VALUE"
+        });
+
+        defineVirtualView(VirtualViewType.STATISTICS, new String[] {
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "NON_UNIQUE",
+            "INDEX_SCHEMA",
+            "INDEX_NAME",
+            "SEQ_IN_INDEX",
+            "COLUMN_NAME",
+            "COLLATION",
+            "CARDINALITY",
+            "SUB_PART",
+            "PACKED",
+            "NULLABLE",
+            "INDEX_TYPE",
+            "COMMENT",
+            "INDEX_COMMENT"
+        });
+
+        defineVirtualView(VirtualViewType.SCHEMATA, new String[] {
+            "CATALOG_NAME",
+            "SCHEMA_NAME",
+            "DEFAULT_CHARACTER_SET_NAME",
+            "DEFAULT_COLLATION_NAME",
+            "SQL_PATH",
+            "DEFAULT_ENCRYPTION"
+        });
+
+        defineVirtualView(VirtualViewType.TABLES, new String[] {
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "TABLE_TYPE",
+            "ENGINE",
+            "VERSION",
+            "ROW_FORMAT",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "AUTO_INCREMENT",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "TABLE_COLLATION",
+            "CHECKSUM",
+            "CREATE_OPTIONS",
+            "TABLE_COMMENT"
+        });
+
+        defineVirtualView(VirtualViewType.COLUMNS, new String[] {
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "ORDINAL_POSITION",
+            "COLUMN_DEFAULT",
+            "IS_NULLABLE",
+            "DATA_TYPE",
+            "CHARACTER_MAXIMUM_LENGTH",
+            "CHARACTER_OCTET_LENGTH",
+            "NUMERIC_PRECISION",
+            "NUMERIC_SCALE",
+            "DATETIME_PRECISION",
+            "CHARACTER_SET_NAME",
+            "COLLATION_NAME",
+            "COLUMN_TYPE",
+            "COLUMN_KEY",
+            "EXTRA",
+            "PRIVILEGES",
+            "COLUMN_COMMENT",
+            "GENERATION_EXPRESSION"
+        });
+
+        defineVirtualView(VirtualViewType.KEY_COLUMN_USAGE, new String[] {
+            "CONSTRAINT_CATALOG",
+            "CONSTRAINT_SCHEMA",
+            "CONSTRAINT_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "ORDINAL_POSITION",
+            "POSITION_IN_UNIQUE_CONSTRAINT",
+            "REFERENCED_TABLE_SCHEMA",
+            "REFERENCED_TABLE_NAME",
+            "REFERENCED_COLUMN_NAME"
+        });
+
+//        defineView("PARTITIONS", new String[] {
+//            "TABLE_CATALOG",
+//            "TABLE_SCHEMA",
+//            "TABLE_NAME",
+//            "PARTITION_NAME",
+//            "SUBPARTITION_NAME",
+//            "PARTITION_ORDINAL_POSITION",
+//            "SUBPARTITION_ORDINAL_POSITION",
+//            "PARTITION_METHOD",
+//            "SUBPARTITION_METHOD",
+//            "PARTITION_EXPRESSION",
+//            "SUBPARTITION_EXPRESSION",
+//            "PARTITION_DESCRIPTION",
+//            "TABLE_ROWS",
+//            "AVG_ROW_LENGTH",
+//            "DATA_LENGTH",
+//            "MAX_DATA_LENGTH",
+//            "INDEX_LENGTH",
+//            "DATA_FREE",
+//            "CREATE_TIME",
+//            "UPDATE_TIME",
+//            "CHECK_TIME",
+//            "CHECKSUM",
+//            "PARTITION_COMMENT",
+//            "NODEGROUP",
+//            "TABLESPACE_NAME"
+//        }, String.format("select \n"
+//            + "'def' as TABLE_CATALOG,\n"
+//            + "tables.table_schema as TABLE_SCHEMA,\n"
+//            + "tables.table_name as TABLE_NAME,\n"
+//            + "null as PARTITION_NAME,\n"
+//            + "null as SUBPARTITION_NAME,\n"
+//            + "null as PARTITION_ORDINAL_POSITION,\n"
+//            + "null as SUBPARTITION_ORDINAL_POSITION,\n"
+//            + "null as PARTITION_METHOD,\n"
+//            + "null as SUBPARTITION_METHOD,\n"
+//            + "null as PARTITION_EXPRESSION,\n"
+//            + "null as SUBPARTITION_EXPRESSION,\n"
+//            + "null as PARTITION_DESCRIPTION,\n"
+//            + "tables.TABLE_ROWS as TABLE_ROWS,\n"
+//            + "tables.AVG_ROW_LENGTH as AVG_ROW_LENGTH,\n"
+//            + "tables.DATA_LENGTH as DATA_LENGTH,\n"
+//            + "tables.MAX_DATA_LENGTH as MAX_DATA_LENGTH,\n"
+//            + "tables.INDEX_LENGTH as INDEX_LENGTH,\n"
+//            + "tables.DATA_FREE as DATA_FREE,\n"
+//            + "tables.create_time as CREATE_TIME,\n"
+//            + "tables.update_time as UPDATE_TIME,\n"
+//            + "tables.check_time as CHECK_TIME,\n"
+//            + "tables.checksum as CHECKSUM,\n"
+//            + "tables.table_comment as PARTITION_COMMENT,\n"
+//            + "'default' as NODEGROUP,\n"
+//            + "null as TABLESPACE_NAME\n"
+//            + "from %s.tables \n", InformationSchema.NAME));
+
+        defineVirtualView(VirtualViewType.TABLE_CONSTRAINTS, new String[] {
+            "CONSTRAINT_CATALOG",
+            "CONSTRAINT_SCHEMA",
+            "CONSTRAINT_NAME",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "CONSTRAINT_TYPE",
+            "ENFORCED"
+        });
+
+        defineVirtualView(VirtualViewType.REFERENTIAL_CONSTRAINTS, new String[] {
+            "CONSTRAINT_CATALOG",
+            "CONSTRAINT_SCHEMA",
+            "CONSTRAINT_NAME",
+            "UNIQUE_CONSTRAINT_CATALOG",
+            "UNIQUE_CONSTRAINT_SCHEMA",
+            "UNIQUE_CONSTRAINT_NAME",
+            "MATCH_OPTION",
+            "UPDATE_RULE",
+            "DELETE_RULE",
+            "TABLE_NAME",
+            "REFERENCED_TABLE_NAME"
+        });
+
+        defineVirtualView(VirtualViewType.COLUMNS, new String[] {
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "ORDINAL_POSITION",
+            "COLUMN_DEFAULT",
+            "IS_NULLABLE",
+            "DATA_TYPE",
+            "CHARACTER_MAXIMUM_LENGTH",
+            "CHARACTER_OCTET_LENGTH",
+            "NUMERIC_PRECISION",
+            "NUMERIC_SCALE",
+            "DATETIME_PRECISION",
+            "CHARACTER_SET_NAME",
+            "COLLATION_NAME",
+            "COLUMN_TYPE",
+            "COLUMN_KEY",
+            "EXTRA",
+            "PRIVILEGES",
+            "COLUMN_COMMENT",
+            "GENERATION_EXPRESSION"
+        });
+
+        defineVirtualView(VirtualViewType.COLUMN_STATISTICS, new String[] {
+            "SCHEMA_NAME",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "HISTOGRAM"
+        });
+
+        defineVirtualView(VirtualViewType.ENGINES, new String[] {
+            "ENGINE",
+            "SUPPORT",
+            "COMMENT",
+            "TRANSACTIONS",
+            "XA",
+            "SAVEPOINTS"
+        });
+
+        defineVirtualView(VirtualViewType.KEYWORDS, new String[] {
+            "WORD",
+            "RESERVED"
+        });
+
+        defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
+            "COLLATION_NAME",
+            "CHARACTER_SET_NAME"
+        });
+
+        defineVirtualView(VirtualViewType.COLLATIONS, new String[] {
+            "COLLATION_NAME",
+            "CHARACTER_SET_NAME",
+            "ID",
+            "IS_DEFAULT",
+            "IS_COMPILED",
+            "SORTLEN",
+            "PAD_ATTRIBUTE"
         });
     }
 
@@ -770,6 +1255,25 @@ public class InformationSchemaViewManager extends ViewManager {
             "DATABASE_COLLATION"
         });
 
+        defineVirtualView(VirtualViewType.CHECK_ROUTINES, new String[] {
+            "ROUTINE_SCHEMA",
+            "ROUTINE_NAME",
+            "ROUTINE_TYPE",
+            "ROUTINE_CONTENT",
+            "PARSE_RESULT"
+        });
+
+        defineVirtualView(VirtualViewType.JAVA_FUNCTIONS, new String[] {
+            "FUNCTION_NAME",
+            "CLASS_NAME",
+            "CODE",
+            "CODE_LANGUAGE",
+            "INPUT_TYPES",
+            "RETURN_TYPE",
+            "IS_NO_STATE",
+            "CREATE_TIME"
+        });
+
         defineVirtualView(VirtualViewType.COLUMN_PRIVILEGES, new String[] {
             "GRANTEE",
             "TABLE_CATALOG",
@@ -790,6 +1294,26 @@ public class InformationSchemaViewManager extends ViewManager {
             "TRACE",
             "MISSING_BYTES_BEYOND_MAX_MEM_SIZE",
             "INSUFFICIENT_PRIVILEGES"
+        });
+
+        defineVirtualView(VirtualViewType.TRACE, new String[] {
+            "ID",
+            "NODE_ID",
+            "TIMESTAMP",
+            "TYPE",
+            "GROUP_NAME",
+            "DBKEY_NAME",
+
+            "TIME_COST",
+            "CONNECTION_TIME_COST",
+            "TOTAL_TIME_COST",
+            "CLOSE_TIME_COST",
+            "ROWS",
+
+            "STATEMENT",
+            "PARAMS",
+            "GROUP_CONN_ID",
+            "TRACE_ID"
         });
 
         defineVirtualView(VirtualViewType.PARAMETERS, new String[] {
@@ -1374,6 +1898,8 @@ public class InformationSchemaViewManager extends ViewManager {
             "ACTIVE"
         });
 
+        defineVirtualView(VirtualViewType.STORAGE_STATUS, STORAGE_STATUS_ITEM);
+
         defineVirtualView(VirtualViewType.STORAGE_REPLICAS, new String[] {
             "STORAGE_INST_ID",
             "LEADER_NODE",
@@ -1482,10 +2008,13 @@ public class InformationSchemaViewManager extends ViewManager {
             "PHYSICAL_TABLE",
             "PARTITION_SEQ",
             "PARTITION_NAME",
+            "SUBPARTITION_NAME",
+            "SUBPARTITION_TEMPLATE_NAME",
             "TABLE_ROWS",
             "DATA_LENGTH",
             "INDEX_LENGTH",
             "BOUND_VALUE",
+            "SUB_BOUND_VALUE",
             "PERCENT",
             "STORAGE_INST_ID",
             "GROUP_NAME",
@@ -1495,14 +2024,91 @@ public class InformationSchemaViewManager extends ViewManager {
             "ROWS_DELETED",
         });
 
+        defineVirtualView(VirtualViewType.PARTITIONS, new String[] {
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "PARTITION_NAME",
+            "SUBPARTITION_NAME",
+            "PARTITION_ORDINAL_POSITION",
+            "SUBPARTITION_ORDINAL_POSITION",
+            "PARTITION_METHOD",
+            "SUBPARTITION_METHOD",
+            "PARTITION_EXPRESSION",
+            "SUBPARTITION_EXPRESSION",
+            "PARTITION_DESCRIPTION",
+            "SUBPARTITION_DESCRIPTION",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "CHECKSUM",
+            "PARTITION_COMMENT",
+            "NODEGROUP",
+            "TABLESPACE_NAME"
+        });
+
+        defineVirtualView(VirtualViewType.PARTITIONS_META, new String[] {
+            "PART_NUM",
+
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "INDEX_NAME",
+            "PRIM_TABLE",
+            "TABLE_TYPE",
+            "TG_NAME",
+
+            "PART_METHOD",
+            "PART_COL",
+            "PART_COL_TYPE",
+            "PART_EXPR",
+            //"PART_BOUND_TYPE",
+            "PART_NAME",
+            "PART_POSI",
+            "PART_DESC",
+
+            "SUBPART_METHOD",
+            "SUBPART_COL",
+            "SUBPART_COL_TYPE",
+            "SUBPART_EXPR",
+            //"SUBPART_BOUND_TYPE",
+            "SUBPART_NAME",
+            "SUBPART_TEMP_NAME",
+            "SUBPART_POSI",
+            "SUBPART_DESC",
+
+            "PG_NAME",
+            "PHY_GROUP",
+            "PHY_DB",
+            "PHY_TB",
+            "RW_DN"
+        });
+
         defineVirtualView(VirtualViewType.LOCALITY_INFO, new String[] {
-            "ID",
+            "DB_NAME",
             "OBJECT_TYPE",
             "OBJECT_NAME",
+            "OBJECT_ID",
             "PRIMARY_ZONE",
             "LOCALITY",
-            "CREATED",
-            "MODIFIED"
+            "GROUP_ELEMENT",
+            "LOCATION"
+        });
+
+        defineVirtualView(VirtualViewType.STORAGE_POOL_INFO, new String[] {
+            "ID",
+            "NAME",
+            "DN_ID_LIST",
+            "IDLE_DN_ID_LIST",
+            "UNDELETABLE_DN_ID",
+            "EXTRAS",
+            "GMT_CREATED",
+            "GMT_MODIFIED"
         });
 
         defineVirtualView(VirtualViewType.MOVE_DATABASE, new String[] {
@@ -1721,7 +2327,7 @@ public class InformationSchemaViewManager extends ViewManager {
             "TYPE",
             "REQUEST_STATUS",
             "FETCH_COUNT",
-            "TOKEN_COUNT",
+            "TOKEN_SIZE",
             "TIME_SINCE_REQUEST",
             "DATA_PKT_RESPONSE_TIME",
             "RESPONSE_TIME",
@@ -1732,6 +2338,47 @@ public class InformationSchemaViewManager extends ViewManager {
             "RESULT_CHUNK",
             "RETRANSMIT",
             "USE_CACHE"
+        });
+
+        defineVirtualView(VirtualViewType.FILES, new String[] {
+            "FILE_ID",
+            "FILE_NAME",
+            "FILE_TYPE",
+            "TABLESPACE_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "LOGFILE_GROUP_NAME",
+            "LOGFILE_GROUP_NUMBER",
+            "ENGINE",
+            "FULLTEXT_KEYS",
+            "DELETED_ROWS",
+            "UPDATE_COUNT",
+            "FREE_EXTENTS",
+            "TOTAL_EXTENTS",
+            "EXTENT_SIZE",
+            "INITIAL_SIZE",
+            "MAXIMUM_SIZE",
+            "AUTOEXTEND_SIZE",
+            "CREATION_TIME",
+            "LAST_UPDATE_TIME",
+            "LAST_ACCESS_TIME",
+            "RECOVER_TIME",
+            "TRANSACTION_COUNTER",
+            "VERSION",
+            "ROW_FORMAT",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "CHECKSUM",
+            "STATUS",
+            "EXTRA"
         });
 
         defineVirtualView(VirtualViewType.FILES, new String[] {
@@ -1788,6 +2435,31 @@ public class InformationSchemaViewManager extends ViewManager {
             "APPROXIMATE_TOTAL_ROWS"
         });
 
+        defineVirtualView(VirtualViewType.CREATE_DATABASE_AS_BACKFILL, new String[] {
+            "DDL_JOB_ID",
+            "BACKFILL_ID",
+            "SOURCE_SCHEMA",
+            "TARGET_SCHEMA",
+            "TABLE",
+            "START_TIME",
+            "STATUS",
+            "CURRENT_SPEED(ROWS/SEC)",
+            "AVERAGE_SPEED(ROWS/SEC)",
+            "FINISHED_ROWS",
+            "APPROXIMATE_TOTAL_ROWS"
+        });
+
+        defineVirtualView(VirtualViewType.CREATE_DATABASE, new String[] {
+            "DDL_JOB_ID",
+            "SOURCE_SCHEMA",
+            "TARGET_SCHEMA",
+            "TABLE/SEQ",
+            "STAGE",
+            "STATUS",
+            "DETAIL",
+            "SQL_SRC",
+            "SQL_DST"
+        });
         defineVirtualView(VirtualViewType.STATEMENTS_SUMMARY, new String[] {
             "BEGIN_TIME",
             "SCHEMA",
@@ -1958,5 +2630,40 @@ public class InformationSchemaViewManager extends ViewManager {
             "ID",
             "FUNCTION"
         });
+
+        defineVirtualView(VirtualViewType.TABLE_ACCESS, new String[] {
+            "CLOSURE_KEY",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "OTHER_SCHEMA",
+            "OTHER_TABLE",
+            "ACCESS_COUNT",
+            "TEMPLATE_COUNT"
+        });
+
+        defineVirtualView(VirtualViewType.TABLE_JOIN_CLOSURE, new String[] {
+            "JOIN_CLOSURE_KEY",
+            "JOIN_CLOSURE_SET",
+            "JOIN_CLOSURE_SIZE",
+            "ACCESS_COUNT",
+            "TEMPLATE_COUNT"
+        });
+
+        defineVirtualView(VirtualViewType.POLARDBX_TRX,
+            InformationSchemaPolardbxTrx.COLUMNS.stream().map(column -> column.name).toArray(String[]::new));
+
+        defineVirtualView(VirtualViewType.STORAGE_PROPERTIES, new String[] {
+            "PROPERTIES",
+            "STATUS"
+        });
+
+        defineVirtualView(VirtualViewType.PREPARED_TRX_BRANCH, new String[] {
+            "DN_INSTANCE_ID",
+            "FORMAT_ID",
+            "GTRID_LENGTH",
+            "BQUAL_LENGTH",
+            "DATA"
+        });
     }
+
 }

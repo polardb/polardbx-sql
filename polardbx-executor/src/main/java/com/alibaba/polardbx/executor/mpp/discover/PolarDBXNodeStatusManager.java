@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.mpp.discover;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -178,6 +180,44 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
     }
 
     @Override
+    public boolean forceToBeLeader() {
+        boolean ret = false;
+        if (ConfigDataMode.needInitMasterModeResource() && !localNode.isLeader()) {
+            try (Connection conn = MetaDbUtil.getConnection()) {
+                try {
+                    if (tryGetLock(conn, 2 * ACTIVE_LEASE)) {
+                        try (Statement statement = conn.createStatement()) {
+                            conn.setAutoCommit(false);
+                            //to be leader
+                            markLeader(statement);
+                            localNode.setLeader(true);
+                            ret = true;
+                        } catch (Throwable t) {
+                            conn.rollback();
+                        } finally {
+                            conn.setAutoCommit(true);
+                        }
+                    }
+                } catch (SQLException e) {
+                    logger.warn("force to be leader error!", e);
+                } finally {
+                    releaseLock(conn);
+                }
+            } catch (SQLException e) {
+                logger.warn("get gms connection!", e);
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+            }
+
+            //notify all nodes
+            ExecUtils.syncNodeStatus(SystemDbHelper.DEFAULT_DB_NAME);
+        }
+        if (localNode.isLeader()) {
+            ret = true;
+        }
+        return ret;
+    }
+
+    @Override
     protected void checkLeader(Connection conn, String leaderId) {
         //只有PolarDB-X主实例才选主
         if (ConfigDataMode.isMasterMode()) {
@@ -185,7 +225,7 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
                 //先清除自己leader角色,重新竞选
                 resetLeaderStatus();
                 try {
-                    if (tryGetLock(conn)) {
+                    if (tryGetLock(conn, 0)) {
                         tryMarkLeader(conn);
                     }
                 } catch (SQLException e) {
@@ -215,9 +255,10 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
         }
     }
 
-    private boolean tryGetLock(Connection conn) {
+    private boolean tryGetLock(Connection conn, long timeout) {
         try (Statement statement = conn.createStatement();
-            ResultSet lockRs = statement.executeQuery("SELECT GET_LOCK('" + localNode.getCluster() + "', 0) ")) {
+            ResultSet lockRs = statement.executeQuery(
+                String.format("SELECT GET_LOCK('" + localNode.getCluster() + "', %d) ", timeout))) {
             return lockRs.next() && lockRs.getInt(1) == 1;
         } catch (Throwable e) {
             logger.warn("tryGetLock error", e);
@@ -241,12 +282,7 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
             ResultSet rs = statement.executeQuery(checkLeaderSql);
             boolean beLeader = false;
             if (!rs.next()) {
-                logger.warn("setLeader:" + localNode);
-                statement.executeUpdate(deleteLeaderSql);
-                synchronized (this) {
-                    statement.executeUpdate(insertOrUpdateTableMetaSql(localNode, ROLE_LEADER));
-                    beLeader = true;
-                }
+                markLeader(statement);
             } else {
                 String nodeId = rs.getString("NODEID");
                 if (localNode.getNodeIdentifier().equalsIgnoreCase(nodeId)) {
@@ -266,4 +302,11 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
         }
     }
 
+    private void markLeader(Statement statement) throws SQLException {
+        logger.warn("setLeader:" + localNode);
+        statement.executeUpdate(deleteLeaderSql);
+        synchronized (this) {
+            statement.executeUpdate(insertOrUpdateTableMetaSql(localNode, ROLE_LEADER));
+        }
+    }
 }

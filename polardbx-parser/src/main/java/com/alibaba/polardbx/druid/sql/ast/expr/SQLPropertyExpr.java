@@ -41,35 +41,35 @@ import java.util.Collections;
 import java.util.List;
 
 public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLReplaceable, Comparable<SQLPropertyExpr> {
-    private   SQLExpr             owner;
-    private   String              name;
+    private SQLExpr owner;
+    private String name;
 
-    protected long                nameHashCod64;
-    protected long                hashCode64;
+    protected long nameHashCod64;
+    protected long hashCode64;
 
-    protected SQLObject           resolvedColumn;
-    protected SQLObject           resolvedOwnerObject;
+    protected SQLObject resolvedColumn;
+    protected SQLObject resolvedOwnerObject;
 
-    public SQLPropertyExpr(String owner2, String owner, String name){
+    public SQLPropertyExpr(String owner2, String owner, String name) {
         this(new SQLPropertyExpr(owner2, owner), name);
     }
 
-    public SQLPropertyExpr(String owner, String name){
+    public SQLPropertyExpr(String owner, String name) {
         this(new SQLIdentifierExpr(owner), name);
     }
 
-    public SQLPropertyExpr(SQLExpr owner, String name){
+    public SQLPropertyExpr(SQLExpr owner, String name) {
         setOwner(owner);
         this.name = name;
     }
 
-    public SQLPropertyExpr(SQLExpr owner, String name, long nameHashCod64){
+    public SQLPropertyExpr(SQLExpr owner, String name, long nameHashCod64) {
         setOwner(owner);
         this.name = name;
         this.nameHashCod64 = nameHashCod64;
     }
 
-    public SQLPropertyExpr(){
+    public SQLPropertyExpr() {
 
     }
 
@@ -119,7 +119,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
 
             hash ^= '.';
             hash *= FnvHash.PRIME;
-        } else if (owner == null){
+        } else if (owner == null) {
             hash = FnvHash.BASIC;
         } else {
             hash = FnvHash.fnv1a_64_lower(owner.toString());
@@ -188,7 +188,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
     @Override
     public int hashCode() {
         long hash = hashCode64();
-        return (int)(hash ^ (hash >>> 32));
+        return (int) (hash ^ (hash >>> 32));
     }
 
     public long hashCode64() {
@@ -209,9 +209,9 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
         }
 
         return resolvedOwnerObject != null
-                && resolvedOwnerObject == other.getResolvedOwnerObject()
-                && resolvedColumn != null
-                && resolvedColumn == other.getResolvedColumn();
+            && resolvedOwnerObject == other.getResolvedOwnerObject()
+            && resolvedColumn != null
+            && resolvedColumn == other.getResolvedColumn();
     }
 
     @Override
@@ -238,7 +238,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
         } else if (!owner.equals(other.owner)) {
             return false;
         }
-        
+
         return true;
     }
 
@@ -267,7 +267,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
 
     public long nameHashCode64() {
         if (nameHashCod64 == 0
-                && name != null) {
+            && name != null) {
             nameHashCod64 = FnvHash.hashCode64(name);
         }
         return nameHashCod64;
@@ -301,7 +301,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
                 return ((SQLPropertyExpr) expr).getResolvedColumn();
             }
         }
-        
+
         return null;
     }
 
@@ -347,12 +347,12 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
 
     public SQLDataType computeDataType() {
         if (resolvedColumn instanceof SQLColumnDefinition
-                && resolvedColumn != null) {
+            && resolvedColumn != null) {
             return ((SQLColumnDefinition) resolvedColumn).getDataType();
         }
 
         if (resolvedColumn instanceof SQLSelectItem
-                && resolvedColumn != null) {
+            && resolvedColumn != null) {
             return ((SQLSelectItem) resolvedColumn).computeDataType();
         }
 
@@ -371,7 +371,8 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
                 return selectItem.computeDataType();
             }
         } else if (resolvedOwnerObject instanceof SQLUnionQueryTableSource) {
-            SQLSelectQueryBlock queryBlock = ((SQLUnionQueryTableSource) resolvedOwnerObject).getUnion().getFirstQueryBlock();
+            SQLSelectQueryBlock queryBlock =
+                ((SQLUnionQueryTableSource) resolvedOwnerObject).getUnion().getFirstQueryBlock();
             if (queryBlock == null) {
                 return null;
             }

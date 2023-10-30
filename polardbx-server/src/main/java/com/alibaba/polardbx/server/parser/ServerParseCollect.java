@@ -19,9 +19,19 @@ package com.alibaba.polardbx.server.parser;
 import com.alibaba.polardbx.server.util.ParseUtil;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class ServerParseCollect {
     public static final int OTHER = -1;
     public static final int STATISTIC = 1;
+
+    public static final Set<Integer> PREPARE_UNSUPPORTED_COLLECT_TYPE;
+
+    static {
+        PREPARE_UNSUPPORTED_COLLECT_TYPE = new HashSet<>();
+        PREPARE_UNSUPPORTED_COLLECT_TYPE.add(ServerParseCollect.STATISTIC);
+    }
 
     public static int parse(ByteString stmt, int offset) {
         int i = offset;

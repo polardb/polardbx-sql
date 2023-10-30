@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.rel.core;
 
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Streams;
@@ -45,6 +46,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
 import java.util.HashMap;
@@ -131,7 +133,7 @@ public abstract class TableModify extends SingleRel {
   /**
    * The table definition.
    */
-  protected final RelOptTable table;
+  protected RelOptTable table;
   private final Operation operation;
   private final List<String> updateColumnList;
   private final List<RexNode> sourceExpressionList;
@@ -155,6 +157,13 @@ public abstract class TableModify extends SingleRel {
   protected final TableInfo tableInfo;
   protected final List<String> sourceTableNames;
   protected final List<String> targetTableNames;
+
+  /**
+   * Foreign key cascade plans
+   * schema -> table -> fk constraint -> plan
+   */
+  private final Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> foreignKeyPlans =
+    new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
   //~ Constructors -----------------------------------------------------------
 
@@ -359,6 +368,10 @@ public abstract class TableModify extends SingleRel {
     return table;
   }
 
+  public void setTable(RelOptTable table) {
+    this.table = table;
+  }
+
   public List<String> getUpdateColumnList() {
     return updateColumnList;
   }
@@ -546,6 +559,17 @@ public abstract class TableModify extends SingleRel {
     return targetTableNames;
   }
 
+  public void putFkPlan(String schema, String table, String fkIndex, RelNode plan, int depth) {
+    Map<String, Map<String, Pair<Integer, RelNode>>> tables =
+        foreignKeyPlans.computeIfAbsent(schema, x -> new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+    Map<String, Pair<Integer, RelNode>> fks = tables.computeIfAbsent(table, x -> new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+    fks.put(fkIndex, new Pair<>(depth, plan));
+  }
+
+  public Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> getFkPlans() {
+      return foreignKeyPlans;
+  }
+
   public static class TableInfo {
     /**
      * <pre>
@@ -709,7 +733,7 @@ public abstract class TableModify extends SingleRel {
      * For subquery, there might be multi element, represents the meta of all tables referenced in subquery
      * </pre>
      */
-    private final List<RelOptTable> refTables;
+    private List<RelOptTable> refTables;
 
     /**
      * Output columns count of table or subquery
@@ -741,6 +765,10 @@ public abstract class TableModify extends SingleRel {
 
     public List<RelOptTable> getRefTables() {
       return refTables;
+    }
+
+    public void setRefTables(List<RelOptTable> refTables) {
+      this.refTables = refTables;
     }
 
     public RelOptTable getRefTable() {

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.qatest.failpoint.recoverable.newpartition;
 
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.ddl.auto.partition.PartitionTestBase;
 import org.junit.Test;

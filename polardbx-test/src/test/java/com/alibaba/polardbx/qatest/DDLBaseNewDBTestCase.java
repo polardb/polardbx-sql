@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexColumnType;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexRecord;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -48,6 +49,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlIndexDefinition.SqlIndexResiding;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
@@ -72,6 +74,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -106,6 +110,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     protected Connection infomationSchemaDbConnection;
 
     protected boolean crossSchema;
+
+    protected boolean auto;
     protected String tddlDatabase2;
     protected String schemaPrefix;
     protected String mysqlDatabase2;
@@ -164,6 +170,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         }
     }
 
+    private Connection connection;
+
     private static String getDdlDbCustomPrefix() {
         String value = System.getProperty("ddl_db_custom_prefix");
         String result = StringUtils.isBlank(value) ? "" : (value.endsWith("_") ? value : value + "_");
@@ -214,22 +222,29 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 //        cleanDataBase();
 //    }
 
-    private Connection createTddlDb(String db) {
+    protected Connection createTddlDb(String db) {
         Connection connection = null;
+        connection = super.getPolardbxConnection();
+        String dbName = "";
+        //sometime create db will be faile when get metaDataLock timeout
+        int retryCount = 3;
         try {
-            connection = super.getPolardbxConnection();
-            if (!usingNewPartDb()) {
-                JdbcUtil.createDatabase(connection, db, DB_HINT);
-            } else {
-                JdbcUtil.createPartDatabase(connection, db);
+            while (!dbName.equalsIgnoreCase(db) && retryCount > 0) {
+                retryCount--;
+                if (!usingNewPartDb()) {
+                    JdbcUtil.createDatabase(connection, db, DB_HINT);
+                } else {
+                    JdbcUtil.createPartDatabase(connection, db);
+                }
+                dbName = connection.getSchema();
             }
-        } catch (Throwable t) {
-            //ignore
+        } catch (Exception e) {
+            logger.error(e.getMessage());
         }
         return connection;
     }
 
-    private Connection createMysqlDb(String db) {
+    protected Connection createMysqlDb(String db) {
         Connection connection = null;
         try {
             connection = super.getMysqlConnection();
@@ -243,6 +258,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     protected Connection getTddlConnection1() {
         if (tddlConnection == null) {
             String database1 = getTestDBName(DDL1_DB_PREFIX);
+            databaseForDDLTest = database1;
             String myDatabase1 = database1 + "_mysql";
             this.tddlConnection = createTddlDb(database1);
             this.mysqlConnection = createMysqlDb(myDatabase1);
@@ -251,6 +267,16 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             this.infomationSchemaDbConnection = getMysqlConnection("information_schema");
         }
         return tddlConnection;
+    }
+
+    private String databaseForDDLTest;
+
+    protected Connection getNewTddlConnection1() throws SQLException {
+        Connection newConn = getPolardbxConnection();
+        try (Statement stmt = newConn.createStatement()) {
+            stmt.execute("use " + databaseForDDLTest);
+        }
+        return newConn;
     }
 
     protected String getTestDBName(String schemaPrefix) {
@@ -278,13 +304,14 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
     protected void cleanDataBase() {
         if (!StringUtils.isEmpty(tddlDatabase1)) {
-            JdbcUtil.dropDatabase(tddlConnection, tddlDatabase1);
+            //retry when drop db error
+            JdbcUtil.dropDatabaseWithRetry(tddlConnection, tddlDatabase1, 3);
             JdbcUtil.dropDatabase(mysqlConnection, mysqlDatabase1);
             this.tddlDatabase1 = null;
         }
 
         if (!StringUtils.isEmpty(tddlDatabase2)) {
-            JdbcUtil.dropDatabase(tddlConnection2, tddlDatabase2);
+            JdbcUtil.dropDatabaseWithRetry(tddlConnection2, tddlDatabase2, 3);
             JdbcUtil.dropDatabase(mysqlConnection2, mysqlDatabase2);
             this.tddlDatabase2 = null;
         }
@@ -299,7 +326,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
         if (PropertiesUtil.dnCount > 1) {
             for (String grpName : grpNameList) {
-                Set<String> storageAddress = getStorageAddressByGroupName(grpName);
+                String storageAddress = getStorageAddressByGroupName(grpName);
                 String phyDbName = groupInfos.groupAndPhyDbMaps.get(grpName);
                 Connection shardDbConn = getMysqlConnectionByAddress(storageAddress, phyDbName);
                 physicalDbConnList.add(shardDbConn);
@@ -317,26 +344,26 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     public Connection getMySQLPhysicalConnectionByGroupName(String db, String grpName) {
         DefaultDBInfo.ShardGroupInfo groupInfos =
             DefaultDBInfo.getInstance().getShardGroupListByMetaDb(db, usingNewPartDb()).getValue();
-        Set<String> storageAddress = getStorageAddressByGroupName(grpName);
+        String storageAddress = getStorageAddressByGroupName(grpName);
         String phyDbName = groupInfos.groupAndPhyDbMaps.get(grpName);
         Connection shardDbConn = getMysqlConnectionByAddress(storageAddress, phyDbName);
         return shardDbConn;
     }
 
-    private Set<String> getStorageAddressByGroupName(String grpName) {
-        Set<String> address = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    private String getStorageAddressByGroupName(String grpName) {
         try (Connection metaDbConn = ConnectionManager.getInstance().getDruidMetaConnection()) {
             JdbcUtil.useDb(metaDbConn, PropertiesUtil.getMetaDB);
             String instanceId = PropertiesUtil.configProp.getProperty("instanceId");
             try (Statement stmt = metaDbConn.createStatement()) {
                 stmt.execute(String.format("select s.ip,s.port from group_detail_info d,storage_info s where "
-                        + "d.storage_inst_id = s.storage_inst_id and  d.group_name = '%s' and d.inst_id = '%s'",
+                        + "d.storage_inst_id = s.storage_inst_id and  d.group_name = '%s' and d.inst_id = '%s'"
+                        + " and is_vip = 1",
                     grpName, instanceId));
                 try (ResultSet rs = stmt.getResultSet()) {
                     while (rs.next()) {
                         String ip = rs.getString("ip");
                         String port = rs.getString("port");
-                        address.add(ip + ":" + port);
+                        return ip + ":" + port;
                     }
 
                 } catch (Throwable ex) {
@@ -348,11 +375,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } catch (Throwable ex) {
             throw new RuntimeException(ex);
         }
-        if (address.isEmpty()) {
-            throw new RuntimeException("can`t find storage info for group " + grpName);
-        }
-
-        return address;
+        throw new RuntimeException("can`t find storage info for group " + grpName);
     }
 
     protected static int[] gsiBatchUpdate(Connection tddlConnection, Connection mysqlConnection, String insert,
@@ -421,15 +444,23 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                                           List<Pair<String, Exception>> failedList, boolean insertMySql,
                                           boolean compareWithMySql)
         throws SQLSyntaxErrorException {
+        return gsiExecuteUpdate(tddlConnection, mysqlConnection, insert, insert, failedList, insertMySql,
+            compareWithMySql, true);
+    }
+
+    protected static int gsiExecuteUpdate(Connection tddlConnection, Connection mysqlConnection, String insert,
+                                          String tddlInsert, List<Pair<String, Exception>> failedList,
+                                          boolean insertMySql, boolean compareWithMySql, boolean compareWithMySqlErr)
+        throws SQLSyntaxErrorException {
         int result = 0;
 
         Pair<String, Exception> failed = null;
         try (Statement stmt = tddlConnection.createStatement()) {
-            result = stmt.executeUpdate(insert);
+            result = stmt.executeUpdate(tddlInsert);
         } catch (SQLSyntaxErrorException msee) {
             throw msee;
         } catch (SQLException e) {
-            failed = Pair.of(insert, e);
+            failed = Pair.of(tddlInsert, e);
             failedList.add(failed);
         }
 
@@ -457,8 +488,11 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                     if (msg.startsWith(prefix)) {
                         msg = msg.substring(prefix.length());
                     }
-                    assertWithMessage("DRDS/MySQL 错误不一致, Sql：\n " + failed.left).that(failed.right.getMessage())
-                        .contains(msg);
+                    if (compareWithMySqlErr) {
+                        assertWithMessage("DRDS/MySQL 错误不一致, Sql：\n " + failed.left).that(
+                                failed.right.getMessage())
+                            .contains(msg);
+                    }
                 }
             } else {
                 assertWithMessage("DRDS 正常，MySQL 报错, Sql：" + insert + "\n cause: " + e.getMessage()).fail();
@@ -513,6 +547,19 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     public void dropTableIfExistsInMySql(String tableName) {
         String sql = "drop table if exists " + tableName;
         JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+    }
+
+    public void dropFunctionIfExists(String funcName) {
+        dropFunctionIfExists(tddlConnection, funcName);
+    }
+
+    public void dropFunctionIfExistsInMySql(String funcName) {
+        dropFunctionIfExists(mysqlConnection, funcName);
+    }
+
+    public void dropFunctionIfExists(Connection conn, String funcName) {
+        String sql = "drop function if exists " + funcName;
+        JdbcUtil.executeUpdateSuccess(conn, sql);
     }
 
     public void clearIndex(String tableName, String index) {
@@ -668,7 +715,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         try {
             assertThat(rs.next()).isTrue();
             if (isMySQL80()) {
-                return rs.getString("Create Table").replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
+                return rs.getString("Create Table").replaceAll(" CHARACTER SET \\w+", "")
+                    .replaceAll(" COLLATE \\w+", "")
+                    .replaceAll(" DEFAULT COLLATE = \\w+", "");
             }
             return rs.getString("Create Table").replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
         } catch (SQLException e) {
@@ -729,18 +778,6 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         }
 
         return tables;
-    }
-
-    public int getNodeNum(Connection conn) {
-        int count = 0;
-        try (ResultSet rs = JdbcUtil.executeQuery("show node", conn)) {
-            while (rs.next()) {
-                count++;
-            }
-        } catch (Throwable e) {
-            com.alibaba.polardbx.common.utils.Assert.fail();
-        }
-        return count;
     }
 
     public int getDataNumFromTable(Connection conn, String tableName) {
@@ -1168,7 +1205,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                     indexResiding.getValue(),
                     indexName,
                     IndexStatus.PUBLIC.getValue(),
-                    0l, 0l));
+                    0l, 0l,
+                    IndexVisibility.VISIBLE.getValue()));
             }
             Assert.assertFalse(rows.isEmpty());
             return new ShowIndexChecker(rows);
@@ -1634,8 +1672,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
          */
         private boolean identicalIndexDef(Pair<SqlIdentifier, SqlIndexDefinition> expected,
                                           Pair<SqlIdentifier, SqlIndexDefinition> actual) {
-            return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE)
-                && expected.getValue().equalsDeep(actual.getValue(), Litmus.IGNORE);
+            return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)
+                && expected.getValue()
+                .equalsDeep(actual.getValue(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
 
         /**
@@ -1671,8 +1710,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
          */
         private boolean identicalColumnDef(Pair<SqlIdentifier, SqlColumnDeclaration> expected,
                                            Pair<SqlIdentifier, SqlColumnDeclaration> actual) {
-            return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE)
-                && expected.getValue().equalsDeep(actual.getValue(), Litmus.IGNORE);
+            return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)
+                && expected.getValue()
+                .equalsDeep(actual.getValue(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
     }
 
@@ -1883,7 +1923,12 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     public static void checkGsi(Connection tddlConnection, String gsiName) throws SQLException {
-        try (final ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "CHECK GLOBAL INDEX " + gsiName)) {
+        checkGsi(tddlConnection, "", gsiName);
+    }
+
+    public static void checkGsi(Connection tddlConnection, String hint, String gsiName) throws SQLException {
+        try (final ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+            hint + " CHECK GLOBAL INDEX " + gsiName)) {
             int count = 0;
             while (rs.next()) {
                 count++;
@@ -1991,6 +2036,19 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return null;
     }
 
+    public static void rollbackDdl(String schemaName, String tableName, Connection conn) {
+        try {
+            String state = findDdlStateByTable(schemaName, tableName, conn);
+            Assert.assertEquals("PAUSED", state);
+            String jobId = findDdlByTable(schemaName, tableName, conn);
+            JdbcUtil.executeUpdateSuccess(conn, "rollback ddl " + jobId);
+            state = findDdlStateByTable(schemaName, tableName, conn);
+            Assert.assertTrue(state.equalsIgnoreCase("") || state.equalsIgnoreCase("ROLLBACK_COMPLETED"));
+        } catch (SQLException e) {
+            Assert.fail(e.getMessage());
+        }
+    }
+
     public static void execDdlWithRetry(String schemaName, String tableName, String ddl, Connection conn) {
         try {
             try {
@@ -1999,20 +2057,25 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             } catch (SQLException e) {
                 String msg = e.getMessage();
                 System.out.println(msg);
-                if (!(msg.contains("Deadlock found") || msg.contains("check status") || msg.contains(
-                    "Query timeout"))) {
+                if (!(msg.contains("Deadlock found") || msg.contains("check status") || msg.contains("Query timeout")
+                    || msg.contains("ALGORITHM=INSTANT") || msg.contains(
+                    "update Global Secondary Index meta failed!"))) {
                     throw e;
-                }
-                // get ddl job id
-                String jobId = findDdlByTable(schemaName, tableName, conn);
-                if (jobId.isEmpty()) {
-                    return;
                 }
                 // retry 5 times
                 int retryCnt = 0;
                 while (true) {
                     try {
-                        JdbcUtil.executeUpdateSuccess(conn, "continue ddl " + jobId);
+                        // get ddl job id
+                        String jobId = findDdlByTable(schemaName, tableName, conn);
+                        if (jobId.isEmpty()) {
+                            if (!checkDdlResultByTable(schemaName, tableName, conn)) {
+                                // Could have been rollback
+                                JdbcUtil.executeUpdateSuccess(conn, ddl);
+                            }
+                        } else {
+                            JdbcUtil.executeUpdateSuccess(conn, "continue ddl " + jobId);
+                        }
                         break;
                     } catch (Throwable e1) {
                         if (StringUtils.containsIgnoreCase(e1.getMessage(), "in RUNNING state")) {
@@ -2021,12 +2084,18 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                                 String state = findDdlStateByTable(schemaName, tableName, conn);
                                 if (state.isEmpty()) {
                                     // finish
-                                    return;
+                                    if (checkDdlResultByTable(schemaName, tableName, conn)) {
+                                        // success
+                                        return;
+                                    } else {
+                                        // rollback, retry
+                                        break;
+                                    }
                                 } else if (!state.equalsIgnoreCase("RUNNING")) {
                                     // pause for some reason, retry
                                     break;
                                 }
-                                System.out.println("wait ddl job " + jobId + " to finish");
+                                System.out.println("wait ddl " + ddl + " to finish");
                                 Thread.sleep(1000);
                             }
                         }
@@ -2043,6 +2112,23 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } catch (Throwable e) {
             Assert.fail(e.getMessage());
         }
+    }
+
+    private static boolean checkDdlResultByTable(String schemaName, String tableName, Connection conn)
+        throws SQLException {
+        ResultSet rs = JdbcUtil.executeQuery("show ddl result", conn);
+        SortedMap<Long, String> results = new TreeMap<>();
+        while (rs.next()) {
+            if (rs.getString("SCHEMA_NAME").equalsIgnoreCase(schemaName) && rs.getString("OBJECT_NAME")
+                .equalsIgnoreCase(tableName)) {
+                results.put(rs.getLong("JOB_ID"), rs.getString("RESULT_TYPE"));
+                break;
+            }
+        }
+        if (!results.isEmpty()) {
+            return results.get(results.lastKey()).equalsIgnoreCase("SUCCESS");
+        }
+        return false;
     }
 
     private static String findDdlByTable(String schemaName, String tableName, Connection conn) throws SQLException {
@@ -2068,5 +2154,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             }
         }
         return "";
+    }
+
+    protected boolean useXproto() {
+        return useXproto(tddlConnection);
     }
 }

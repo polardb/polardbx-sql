@@ -25,8 +25,8 @@ import java.util.List;
 
 public class MySqlAnalyzeStatement extends SQLAnalyzeTableStatement implements MySqlStatement {
 
-    private boolean                          noWriteToBinlog = false;
-    private boolean                          local           = false;
+    private boolean noWriteToBinlog = false;
+    private boolean local = false;
 
     public MySqlAnalyzeStatement() {
         super.dbType = DbType.mysql;

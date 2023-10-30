@@ -18,7 +18,17 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 public class RenameLocalIndexPreparedData extends DdlPreparedData {
 
+    private String orgIndexName;
+
     private String newIndexName;
+
+    public String getOrgIndexName() {
+        return orgIndexName;
+    }
+
+    public void setOrgIndexName(String orgIndexName) {
+        this.orgIndexName = orgIndexName;
+    }
 
     public String getNewIndexName() {
         return newIndexName;

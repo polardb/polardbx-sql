@@ -126,18 +126,23 @@ public abstract class PacketStreamOutputProxy extends PacketOutputProxyCommon {
     }
 
     @Override
-    public void writeLength(long length) {
-        if (length < 251) {
-            waitForCompressStream.write((byte) length);
-        } else if (length < 0x10000L) {
+    public void writeLength(long l) {
+        /**
+         * l should be compared as unsigned long
+         * refer: com.google.common.primitives.UnsignedLong.compare
+         */
+        long flipL = l ^ Long.MIN_VALUE;
+        if (flipL < (251 ^ Long.MIN_VALUE)) {
+            waitForCompressStream.write((byte) l);
+        } else if (flipL < (0x10000L ^ Long.MIN_VALUE)) {
             waitForCompressStream.write((byte) 252);
-            writeUB2((int) length);
-        } else if (length < 0x1000000L) {
+            writeUB2((int) l);
+        } else if (flipL < (0x1000000L ^ Long.MIN_VALUE)) {
             waitForCompressStream.write((byte) 253);
-            writeUB3((int) length);
+            writeUB3((int) l);
         } else {
             waitForCompressStream.write((byte) 254);
-            writeLong(length);
+            writeLong(l);
         }
     }
 

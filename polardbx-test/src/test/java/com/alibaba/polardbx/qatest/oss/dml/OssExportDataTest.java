@@ -6,6 +6,7 @@ import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -43,6 +44,7 @@ public class OssExportDataTest extends BaseTestCase {
         rootName = Paths.get("../../spill/temp/").toAbsolutePath() + "/";
     }
 
+    @Ignore("Not compatible with cdc")
     @Test
     public void testExportData() throws Exception {
         if (PropertiesUtil.usePrepare()) {
@@ -84,7 +86,7 @@ public class OssExportDataTest extends BaseTestCase {
         executeOnMysqlOrTddl(polardbXConnection, loadSql, null);
 
         String exportSql = ENABLE_SELECT_INTO_FILE +
-            "select pk,  into outfile " + "'" + fileName + "' " + "from " + baseOneTableName;
+            "select pk, integer_test, timestamp_test, datetime_test, float_test  into outfile " + "'" + fileName + "' " + "from " + baseOneTableName;
 
         Statement stmt = polardbXConnection.createStatement();
         stmt.execute(exportSql);

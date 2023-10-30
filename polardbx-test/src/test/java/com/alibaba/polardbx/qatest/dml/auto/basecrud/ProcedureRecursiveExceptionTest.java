@@ -21,7 +21,7 @@ public class ProcedureRecursiveExceptionTest extends BaseTestCase {
     static final String TABLE_NAME1 = "tbl_recur_exception_handle_1";
     static final String TABLE_NAME2 = "tbl_recur_exception_handle_2";
     static final String CREATE_PROCEDURE_OUTER = "create procedure %s(xx int)\n"
-        + "declare continue handler for 4518 begin create table %s(a int); insert into %s values (xx); end;\n"
+        + "declare continue handler for 4006 begin create table %s(a int); insert into %s values (xx); end;\n"
         + "select 1;\n"
         + "start transaction;\n"
         + "drop table if exists %s;\n"
@@ -31,7 +31,7 @@ public class ProcedureRecursiveExceptionTest extends BaseTestCase {
         + "call %s()";
     static final String CREATE_PROCEDURE_INNER = "create procedure %s()\n"
         + "begin\n"
-        + "declare exit handler for 4518 set @test4 = 2;\n"
+        + "declare exit handler for 4006 set @test4 = 2;\n"
         + "start transaction;\n"
         + "drop table if exists %s;\n"
         + "create table %s(a int);\n"

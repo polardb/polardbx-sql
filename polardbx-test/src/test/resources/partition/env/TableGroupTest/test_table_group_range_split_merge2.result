@@ -173,13 +173,13 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
 tablegroup = `mytg23`
 alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
-## error_msg: $# not all the tables in tablegroup #$
+## error_msg: $# the column count[3] of bound values of partition p2_1 is more than the full partition columns count[2] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
 );
-not all the tables in tablegroup
+the column count[3] of bound values of partition p2_1 is more than the full partition columns count[2]
 alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh'),
@@ -295,20 +295,20 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
 tablegroup = `mytg23`
-## error_msg: $# not all the tables in tablegroup #$
+## error_msg: $# the column count[5] of bound values of partition p2_1 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue)
 );
-not all the tables in tablegroup
-## error_msg: $# not all the tables in tablegroup #$
+the column count[5] of bound values of partition p2_1 is more than the full partition columns count[3]
+## error_msg: $# the column count[6] of bound values of partition p2_1 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue,maxvalue)
 );
-not all the tables in tablegroup
+the column count[6] of bound values of partition p2_1 is more than the full partition columns count[3]
 alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn'),
 PARTITION p5 VALUES LESS THAN ('oqp')
@@ -401,8 +401,8 @@ PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
  PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
 tablegroup = `mytg23`
-## error_msg: $# not all the tables in tablegroup #$
+## error_msg: $# the column count[4] of bound values of partition p6 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 add partition (
 PARTITION p6 VALUES LESS THAN ('rst',100,100,100)
 );
-not all the tables in tablegroup
+the column count[4] of bound values of partition p6 is more than the full partition columns count[3]

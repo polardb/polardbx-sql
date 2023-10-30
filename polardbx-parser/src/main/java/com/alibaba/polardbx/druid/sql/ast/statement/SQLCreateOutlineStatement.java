@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLCreateOutlineStatement extends SQLStatementImpl {
@@ -81,5 +82,10 @@ public class SQLCreateOutlineStatement extends SQLStatementImpl {
             x.setParent(this);
         }
         this.where = x;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

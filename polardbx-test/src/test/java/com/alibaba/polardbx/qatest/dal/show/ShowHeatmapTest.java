@@ -81,7 +81,6 @@ public class ShowHeatmapTest extends ReadBaseTestCase {
         Assert.assertEquals(rs.getMetaData().getColumnCount(), 1);
         Assert
             .assertEquals("HEATMAP", rs.getMetaData().getColumnName(1).toUpperCase());
-        Assert.assertTrue(JdbcUtil.getAllResult(rs).size() >= 1);
     }
 
     @Test

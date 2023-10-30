@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core;
 
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -96,5 +97,15 @@ public class TddlValidator extends SqlValidatorImpl {
             return;
         }
         super.checkNullable(node, targetRowType, rowConstructor);
+    }
+
+    @Override
+    protected boolean checkTargetTableUpdatable(RelOptTable targetTable) {
+        if (null == targetTable) {
+            return false;
+        }
+
+        // View is not updatable
+        return null != CBOUtil.getTableMeta(targetTable);
     }
 }

@@ -44,4 +44,14 @@ public class LogicalCreateProcedure extends BaseDdlOperation {
             setSchemaName(((SQLPropertyExpr) procedureName).getOwnerName());
         }
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
@@ -30,22 +30,48 @@ import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionSpecConfig;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
+import com.alibaba.polardbx.optimizer.partition.boundspec.HashBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.HashPartBoundValBuilder;
+import com.alibaba.polardbx.optimizer.partition.boundspec.KeyPartBoundValBuilder;
+import com.alibaba.polardbx.optimizer.partition.boundspec.MultiValuePartitionBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartBoundValBuilder;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.common.BuildAllPartSpecsFromAstParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildAllPartSpecsFromMetaDbParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildPartByDefFromAstParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildPartByDefFromMetaDbParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildPartInfoFromAstParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildPartInfoFromMetaDbParams;
+import com.alibaba.polardbx.optimizer.partition.common.BuildPartSpecFromAstParams;
+import com.alibaba.polardbx.optimizer.partition.common.PartInfoSessionVars;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartFuncMonotonicityUtil;
@@ -54,6 +80,7 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionRouter;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
@@ -74,8 +101,16 @@ import org.apache.calcite.sql.SqlPartitionBy;
 import org.apache.calcite.sql.SqlPartitionByHash;
 import org.apache.calcite.sql.SqlPartitionByList;
 import org.apache.calcite.sql.SqlPartitionByRange;
+import org.apache.calcite.sql.SqlPartitionByUdfHash;
 import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
+import org.apache.calcite.sql.SqlSubPartition;
+import org.apache.calcite.sql.SqlSubPartitionBy;
+import org.apache.calcite.sql.SqlSubPartitionByHash;
+import org.apache.calcite.sql.SqlSubPartitionByList;
+import org.apache.calcite.sql.SqlSubPartitionByRange;
+import org.apache.calcite.sql.SqlSubPartitionByUdfHash;
+import org.apache.calcite.sql.fun.SqlSubstringFunction;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.lang.StringUtils;
@@ -84,36 +119,34 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.tablegroup.TableGroupLocation.getFullOrderedGroupList;
 import static com.alibaba.polardbx.gms.tablegroup.TableGroupLocation.getOrderedGroupList;
+import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildGroupNameFromPhysicalDb;
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_PARTITION;
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION;
 
 /**
  * @author chenghui.lch
  */
 public class PartitionInfoBuilder {
 
-    static Set<String> supportedFunctions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-
-    static {
-        supportedFunctions.addAll(PartitionPrunerUtils.getAllSupportedPartitionIntFunctions());
-    }
-
     public static class PartSpecSortedQueue extends PriorityQueue<PartitionSpec> {
         public PartSpecSortedQueue() {
             super(new Comparator<PartitionSpec>() {
                 @Override
                 public int compare(PartitionSpec o1, PartitionSpec o2) {
-                    Long o1Posi = o1.getPosition();
-                    Long o2Posi = o2.getPosition();
+                    Long o1Posi = o1.getPhyPartPosition();
+                    Long o2Posi = o2.getPhyPartPosition();
                     if (o1Posi > o2Posi) {
                         return 1;
                     } else if (o1Posi < o2Posi) {
@@ -159,10 +192,6 @@ public class PartitionInfoBuilder {
         }
     }
 
-    public static boolean isSupportedPartitionFunctions(String funcName) {
-        return supportedFunctions.contains(funcName);
-    }
-
     public static boolean isSupportedPartitionDataType(DataType dataType) {
         boolean isSupportedDataType = true;
         try {
@@ -181,72 +210,80 @@ public class PartitionInfoBuilder {
     public static PartitionInfo buildPartitionInfoByMetaDbConfig(TablePartitionConfig tbPartConf,
                                                                  List<ColumnMeta> allColumnMetas,
                                                                  Map<Long, PartitionGroupRecord> partitionGroupRecordsMap) {
-
-        PartitionInfo partitionInfo = new PartitionInfo();
-
-        TablePartitionRecord logTableConfig = tbPartConf.getTableConfig();
-
-        String tableSchema = logTableConfig.tableSchema;
-        String tableName = logTableConfig.tableName;
-        Long tblGroupId = logTableConfig.groupId;
-        Long metaDbVersion = logTableConfig.metaVersion;
-        Integer spTempFlag = logTableConfig.spTempFlag;
-        Integer logTbStatus = logTableConfig.partStatus;
-        Integer autoFlag = logTableConfig.autoFlag;
-        Long partFlags = logTableConfig.partFlags;
-        Integer tableType = logTableConfig.tblType;
-        ExtraFieldJSON partExtras = logTableConfig.partExtras;
-
-        partitionInfo.tableSchema = tableSchema;
-        partitionInfo.tableName = tableName;
-        partitionInfo.tableGroupId = tblGroupId;
-        partitionInfo.metaVersion = metaDbVersion;
-        partitionInfo.spTemplateFlag = spTempFlag;
-        partitionInfo.status = logTbStatus;
-        partitionInfo.autoFlag = autoFlag;
-        partitionInfo.partFlags = partFlags;
-        partitionInfo.tableType = PartitionTableType.getTypeByIntVal(tableType);
-        if (logTableConfig.partExtras != null) {
-            partitionInfo.locality = logTableConfig.partExtras.locality;
-        }
-
-        PartInfoSessionVars sessionVars = new PartInfoSessionVars();
-        if (partExtras != null) {
-            String tablePattern = partExtras.getPartitionPattern();
-            if (StringUtils.isEmpty(tablePattern)) {
-                partitionInfo.setRandomTableNamePatternEnabled(false);
-            } else {
-                partitionInfo.setTableNamePattern(tablePattern);
-            }
-            if (partExtras.getTimeZone() != null) {
-                sessionVars.setTimeZone(partExtras.getTimeZone());
-            }
-            if (partExtras.getCharset() != null) {
-                sessionVars.setCharset(partExtras.getCharset());
-            }
-            if (partExtras.getCollation() != null) {
-                sessionVars.setCollation(partExtras.getCollation());
-            }
-        } else {
-            partitionInfo.setRandomTableNamePatternEnabled(false);
-        }
-        partitionInfo.setSessionVars(sessionVars);
-
-        List<TablePartitionSpecConfig> partSpecConfigs = tbPartConf.getPartitionSpecConfigs();
-
-        PartitionByDefinition partitionBy =
-            buildPartitionByDef(partSpecConfigs, logTableConfig, allColumnMetas, partitionGroupRecordsMap);
-        partitionInfo.setPartitionBy(partitionBy);
-
-        if (partitionInfo.spTemplateFlag == TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED) {
-            partitionInfo.setSubPartitionBy(null);
-        }
-
-        //partitionInfo.setPartSpecSearcher(PartSpecSearcher.buildPartSpecSearcher(partitionInfo.getTableType(),partitionInfo.getPartitionBy()));
-        partitionInfo.initPartSpecSearcher();
-
+        BuildPartInfoFromMetaDbParams buildParams = new BuildPartInfoFromMetaDbParams();
+        buildParams.setTbPartConf(tbPartConf);
+        buildParams.setAllColumnMetas(allColumnMetas);
+        buildParams.setPartitionGroupRecordsMap(partitionGroupRecordsMap);
+        PartitionInfo partitionInfo = buildPartInfoByMetaDbParams(buildParams);
         return partitionInfo;
     }
+
+//    public static PartitionInfo buildPartitionInfoByMetaDbConfigBackup(TablePartitionConfig tbPartConf,
+//                                                                       List<ColumnMeta> allColumnMetas,
+//                                                                       Map<Long, PartitionGroupRecord> partitionGroupRecordsMap) {
+//
+//        PartitionInfo partitionInfo = new PartitionInfo();
+//
+//        TablePartitionRecord logTableConfig = tbPartConf.getTableConfig();
+//
+//        String tableSchema = logTableConfig.tableSchema;
+//        String tableName = logTableConfig.tableName;
+//        Long tblGroupId = logTableConfig.groupId;
+//        Long metaDbVersion = logTableConfig.metaVersion;
+//        Integer spTempFlag = logTableConfig.spTempFlag;
+//        Integer logTbStatus = logTableConfig.partStatus;
+//        Integer autoFlag = logTableConfig.autoFlag;
+//        Long partFlags = logTableConfig.partFlags;
+//        Integer tableType = logTableConfig.tblType;
+//        ExtraFieldJSON partExtras = logTableConfig.partExtras;
+//
+//        partitionInfo.tableSchema = tableSchema;
+//        partitionInfo.tableName = tableName;
+//        partitionInfo.tableGroupId = tblGroupId;
+//        partitionInfo.metaVersion = metaDbVersion;
+//        partitionInfo.spTemplateFlag = spTempFlag;
+//        partitionInfo.status = logTbStatus;
+//        partitionInfo.autoFlag = autoFlag;
+//        partitionInfo.partFlags = partFlags;
+//        partitionInfo.tableType = PartitionTableType.getTypeByIntVal(tableType);
+//        partitionInfo.locality = logTableConfig.partExtras.locality;
+//
+//        PartInfoSessionVars sessionVars = new PartInfoSessionVars();
+//        if (partExtras != null) {
+//            String tablePattern = partExtras.getPartitionPattern();
+//            if (StringUtils.isEmpty(tablePattern)) {
+//                partitionInfo.setRandomTableNamePatternEnabled(false);
+//            } else {
+//                partitionInfo.setTableNamePattern(tablePattern);
+//            }
+//            if (partExtras.getTimeZone() != null) {
+//                sessionVars.setTimeZone(partExtras.getTimeZone());
+//            }
+//            if (partExtras.getCharset() != null) {
+//                sessionVars.setCharset(partExtras.getCharset());
+//            }
+//            if (partExtras.getCollation() != null) {
+//                sessionVars.setCollation(partExtras.getCollation());
+//            }
+//        } else {
+//            partitionInfo.setRandomTableNamePatternEnabled(false);
+//        }
+//        partitionInfo.setSessionVars(sessionVars);
+//
+//        List<TablePartitionSpecConfig> partSpecConfigs = tbPartConf.getPartitionSpecConfigs();
+//
+//        PartitionByDefinition partitionBy =
+//            buildPartitionByDef(partSpecConfigs, logTableConfig, allColumnMetas, partitionGroupRecordsMap);
+//        partitionInfo.setPartitionBy(partitionBy);
+//
+//        if (partitionInfo.spTemplateFlag == TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED) {
+//            partitionInfo.getPartitionBy().setSubPartitionBy(null);
+//        }
+//
+//        partitionInfo.initPartSpecSearcher();
+//
+//        return partitionInfo;
+//    }
 
     public static PartitionInfo buildPartitionInfoByPartDefAst(String schemaName,
                                                                String tableName,
@@ -273,343 +310,54 @@ public class PartitionInfoBuilder {
                                                                PartitionTableType tblType,
                                                                ExecutionContext ec,
                                                                LocalityDesc locality) {
-
-        PartitionInfo partitionInfo = new PartitionInfo();
-
-        String tbName = tableName;
-        String tbSchema = schemaName;
-        String tgName = tableGroupName;
-        PartitionByDefinition partitionByDef = new PartitionByDefinition();
-        boolean isKey;
-        boolean isUnique;
-        SqlNode hashPartitonCntSqlNode = null;
-        List<SqlNode> columns = new ArrayList<>();
-        PartitionStrategy strategy = null;
-        Long hashPartCnt = 0L;
-
-        List<SqlNode> partitions = new ArrayList<>();
-        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
-
-            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String
-                    .format("Failed to create partition tables on db[%s] with mode='drds'", schemaName));
-            }
-
-            if (null == sqlPartitionBy) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String
-                    .format("Failed to create sharding tables on db[%s] with mode='auto'",
-                        schemaName));
-            }
-
-            columns = sqlPartitionBy.getColumns();
-            partitions = sqlPartitionBy.getPartitions();
-            if (sqlPartitionBy instanceof SqlPartitionByRange) {
-                boolean isColumns = ((SqlPartitionByRange) sqlPartitionBy).isColumns();
-                strategy = PartitionStrategy.RANGE;
-                if (isColumns) {
-                    strategy = PartitionStrategy.RANGE_COLUMNS;
-                }
-
-            } else if (sqlPartitionBy instanceof SqlPartitionByList) {
-                boolean isColumns = ((SqlPartitionByList) sqlPartitionBy).isColumns();
-                strategy = PartitionStrategy.LIST;
-                if (isColumns) {
-                    strategy = PartitionStrategy.LIST_COLUMNS;
-                }
-            } else if (sqlPartitionBy instanceof SqlPartitionByHash) {
-                strategy = PartitionStrategy.HASH;
-                isKey = ((SqlPartitionByHash) (sqlPartitionBy)).isKey();
-                isUnique = ((SqlPartitionByHash) (sqlPartitionBy)).isUnique();
-                hashPartitonCntSqlNode = sqlPartitionBy.getPartitionsCount();
-                if (isKey) {
-                    strategy = PartitionStrategy.KEY;
-                }
-            }
-
-            Map<String, ColumnMeta> allColMetaMap = new HashMap<>();
-            for (int j = 0; j < allColMetas.size(); j++) {
-                ColumnMeta cm = allColMetas.get(j);
-                allColMetaMap.put(cm.getOriginColumnName().toLowerCase(), cm);
-            }
-
-            List<SqlNode> partExprList = partitionByDef.getPartitionExprList();
-            List<String> partColList = partitionByDef.getPartitionColumnNameList();
-            List<ColumnMeta> partColMetaList = partitionByDef.getPartitionFieldList();
-            if (!columns.isEmpty()) {
-                for (int i = 0; i < columns.size(); i++) {
-                    SqlNode colExpr = columns.get(i);
-                    partExprList.add(colExpr);
-                    String colName = PartitionInfoUtil.findPartitionColumn(colExpr);
-                    if (colName == null) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                            String.format("No found the column[%s] from Create Table DDL", colName));
-                    }
-                    partColList.add(colName.toLowerCase());
-                    ColumnMeta partColMeta = allColMetaMap.get(colName.toLowerCase());
-                    if (partColMeta == null) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                            String.format("No found the column[%s] from Create Table DDL", colName));
-                    }
-                    partColMetaList.add(partColMeta);
-                }
-            } else {
-                if (strategy == PartitionStrategy.KEY) {
-                    // convert to "partition by key()" to "partition by key(cols of primary key)"
-                    initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
-                } else {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format("No found any columns in Creating Table"));
-                }
-            }
-
-            int maxPartColCnt = ec.getParamManager().getInt(ConnectionParams.MAX_PARTITION_COLUMN_COUNT);
-            if (partColList.size() > maxPartColCnt) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String.format(
-                        "Use too many partition column during create table[%s], the allowed max partition column is %s",
-                        tableName, maxPartColCnt));
-            }
-
-        } else if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
-            // Construct partition info for single table
-            strategy = PartitionStrategy.KEY;
-            hashPartCnt = 1L;
-
-            List<SqlNode> partExprList = partitionByDef.getPartitionExprList();
-            List<String> partColList = partitionByDef.getPartitionColumnNameList();
-            List<ColumnMeta> partColMetaList = partitionByDef.getPartitionFieldList();
-            initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
-        } else {
-            // tblType == PartitionTableType.BROADCAST_TABLE
-
-            // Construct partition info for broadcast table
-            strategy = PartitionStrategy.KEY;
-            List<String> phyGrpList = HintUtil.allGroup(schemaName);
-            hashPartCnt = Long.valueOf(phyGrpList.size());
-            List<SqlNode> partExprList = partitionByDef.getPartitionExprList();
-            List<String> partColList = partitionByDef.getPartitionColumnNameList();
-            List<ColumnMeta> partColMetaList = partitionByDef.getPartitionFieldList();
-            initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
-        }
-
-        List<SqlNode> partExprList = partitionByDef.getPartitionExprList();
-        List<ColumnMeta> partColMetaList = partitionByDef.getPartitionFieldList();
-        List<RelDataType> partExprTypeList = PartitionInfoBuilder.inferPartExprDataTypes(partExprList, partColMetaList);
-        partitionByDef.setPartitionExprTypeList(partExprTypeList);
-        partitionByDef.setStrategy(strategy);
-
-        SearchDatumComparator querySpaceComparator =
-            PartitionByDefinition.getQuerySpaceComparator(partitionByDef.getPartitionFieldList());
-        partitionByDef.setQuerySpaceComparator(querySpaceComparator);
-
-        SearchDatumComparator pruningSpaceComparator =
-            PartitionByDefinition.getPruningSpaceComparator(partitionByDef.getPartitionExprTypeList());
-        partitionByDef.setPruningSpaceComparator(pruningSpaceComparator);
-
-        SearchDatumComparator boundSpaceComparator =
-            PartitionByDefinition.getBoundSpaceComparator(pruningSpaceComparator, partitionByDef.getStrategy());
-        partitionByDef.setBoundSpaceComparator(boundSpaceComparator);
-
-        SearchDatumHasher hasher = PartitionByDefinition
-            .getHasher(strategy, partitionByDef.getPartitionFieldList(), partitionByDef.getPartitionExprTypeList());
-        partitionByDef.setHasher(hasher);
-
-        Map<SqlNode, RexNode> partBoundExprInfo = boundExprInfo;
-        SqlOperator partFuncOp = getPartFuncSqlOperator(strategy, partitionByDef.getPartitionExprList());
-        if (partFuncOp != null && !supportedFunctions.contains(partFuncOp.getName())) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                String.format("Unsupported to use partition function '%s'", partFuncOp.getName()));
-        }
-        partitionByDef.setPartIntFuncOperator(partFuncOp);
-        if (partFuncOp != null) {
-            partitionByDef.setPartIntFunc(PartitionIntFunction.create(partFuncOp));
-            partitionByDef.setPartIntFuncMonotonicity(PartFuncMonotonicityUtil
-                .getPartFuncMonotonicity(partFuncOp, partColMetaList.get(0).getField().getRelType()));
-        } else {
-            /**
-             *  No use part func, convert all "partition by hash(col)" to "partition by key(col)"
-             */
-            if (strategy == PartitionStrategy.HASH && columns.size() == 1) {
-                strategy = PartitionStrategy.KEY;
-                partitionByDef.setStrategy(strategy);
-            }
-        }
-        PartitionIntFunction partIntFunc = partitionByDef.getPartIntFunc();
-        partitionByDef.setNeedEnumRange(
-            checkNeedDoEnumRange(strategy, partitionByDef.getPartitionFieldList(), partFuncOp));
-
-        /**
-         * Validate and check partition columns for partition tbl and gsi table
-         */
-        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
-            PartitionInfoUtil.validatePartitionColumns(partitionByDef);
-        }
-
-        List<PartitionSpec> partSpecList = partitionByDef.getPartitions();
-        Integer maxPhysicalPartitions = Integer.valueOf(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT.getDefault());
-        if (ec != null) {
-            maxPhysicalPartitions = ec.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
-        }
-
-        if (!(strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY)) {
-            if (partitions.size() > maxPhysicalPartitions) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String
-                        .format("Too many partitions [%s] (including subpartitions) were defined", partitions.size()));
-            }
-
-            for (int i = 0; i < partitions.size(); i++) {
-                SqlPartition partSpecAst = (SqlPartition) partitions.get(i);
-                PartitionSpec partSpec =
-                    buildPartitionSpecByPartSpecAst(ec, partColMetaList, partIntFunc, pruningSpaceComparator,
-                        partBoundExprInfo,
-                        null,
-                        partSpecAst,
-                        strategy, i + 1, PartitionInfoUtil.FULL_PART_COL_COUNT);
-                partSpecList.add(partSpec);
-            }
-
-            if (strategy == PartitionStrategy.LIST_COLUMNS || strategy == PartitionStrategy.LIST) {
-                //only allow at most one default partition
-                int defaultPartSpecCnt = 0;
-                for (PartitionSpec spec : partSpecList) {
-                    if (spec.getIsDefaultPartition()) {
-                        defaultPartSpecCnt++;
-                    }
-                }
-                if (defaultPartSpecCnt > 1) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        "Only at most one default partition is allowed");
-                }
-            }
-
-        } else {
-
-            if (hashPartitonCntSqlNode == null && (tblType == PartitionTableType.GSI_TABLE
-                || tblType == PartitionTableType.PARTITION_TABLE)) {
-
-                /**
-                 * Create Table ddl does NOT specify partition count for hash/key partition strategy
-                 */
-                hashPartCnt = ec.getParamManager().getLong(ConnectionParams.AUTO_PARTITION_PARTITIONS);
-
-            } else if ((hashPartitonCntSqlNode != null) && (hashPartitonCntSqlNode instanceof SqlLiteral)) {
-                hashPartCnt = ((SqlLiteral) hashPartitonCntSqlNode).getValueAs(Long.class);
-            }
-
-            if (hashPartCnt > maxPhysicalPartitions) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String.format("Too many partitions [%s] (including subpartitions) were defined", hashPartCnt));
-            } else if (hashPartCnt <= 0) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    String.format("partitions [%s] (including subpartitions) can not be less then 1", hashPartCnt));
-            }
-            if (partitions.size() == 0) {
-
-                boolean isMultiCol = partColMetaList.size() > 1;
-                PartBoundValBuilder boundValBuilder = null;
-                if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCol)) {
-                    boundValBuilder = new HashPartBoundValBuilder(hashPartCnt.intValue());
-                } else {
-                    boundValBuilder = new KeyPartBoundValBuilder(hashPartCnt.intValue(), partColMetaList.size());
-                }
-
-                for (int i = 0; i < hashPartCnt; i++) {
-                    PartitionSpec partSpec =
-                        buildPartitionSpecByPartSpecAst(ec, partColMetaList, partIntFunc, pruningSpaceComparator,
-                            partBoundExprInfo,
-                            boundValBuilder,
-                            null, strategy, i + 1, PartitionInfoUtil.FULL_PART_COL_COUNT);
-                    //TODO: we would support locality for partition group
-                    partSpecList.add(partSpec);
-                }
-
-            } else {
-                if (partitions.size() != hashPartCnt) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        String.format(
-                            "the count[%s] of the manual defined hash partitions mismatch the count[%s] of `PARTITIONS`",
-                            partitions.size(), hashPartCnt));
-                }
-
-                for (int i = 0; i < partitions.size(); i++) {
-                    SqlPartition partSpecAst = (SqlPartition) partitions.get(i);
-                    PartitionSpec partSpec =
-                        buildPartitionSpecByPartSpecAst(ec, partColMetaList, partIntFunc, pruningSpaceComparator,
-                            partBoundExprInfo,
-                            null,
-                            partSpecAst,
-                            strategy, i + 1, PartitionInfoUtil.FULL_PART_COL_COUNT);
-                    partSpecList.add(partSpec);
-                }
-            }
-        }
-        /**
-         * Prebuild router for dynamic pruning
-         */
-        Long dbId = DbInfoManager.getInstance().getDbInfo(schemaName).id;
-        LocalityInfo dbLocalityInfo = LocalityManager.getInstance().getLocalityOfDb(dbId);
-        LocalityDesc dbLocalityDesc = new LocalityDesc();
-        if (dbLocalityInfo != null) {
-            dbLocalityDesc = LocalityDesc.parse(dbLocalityInfo.getLocality());
-        }
-        Set<String> fullStorageList = new HashSet<>();
-        for (GroupDetailInfoExRecord groupDetailInfoExRecord : getFullOrderedGroupList(schemaName)) {
-            String storageInstId = groupDetailInfoExRecord.getStorageInstId();
-            fullStorageList.add(storageInstId);
-        }
-        List<String> storageList =
-            getOrderedGroupList(schemaName).stream().map(o -> o.getStorageInstId()).collect(Collectors.toList());
-
-        if (locality != null) {
-            if (!fullStorageList.containsAll(locality.getDnList())) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    " Table locality definition contains illegal storage ID: " + String.join(",",
-                        locality.getDnList()));
-            }
-            if (!dbLocalityDesc.compactiableWith(locality) || !storageList.containsAll(locality.getDnList())) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    " Table locality definition is not compatible with database locality! ");
-            }
-        }
-        for (PartitionSpec partitionSpec : partitionByDef.getPartitions()) {
-            LocalityDesc partitionLocality = LocalityDesc.parse(partitionSpec.getLocality());
-            if (!fullStorageList.containsAll(partitionLocality.getDnList())) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    " Partition locality definition contains illegal storage ID: " + String.join(",",
-                        partitionLocality.getDnList()));
-            }
-            if (!dbLocalityDesc.compactiableWith(partitionLocality) || !storageList.containsAll(
-                partitionLocality.getDnList())) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    " Partition locality definition is not compatible with database locality! ");
-            }
-        }
-
-        PartitionRouter router = PartitionByDefinition.getPartRouter(partitionByDef);
-        partitionByDef.setRouter(router);
-
-        partitionInfo.setPartitionBy(partitionByDef);
-        partitionInfo.setSubPartitionBy(null);
-        partitionInfo.setMetaVersion(1L);
-        partitionInfo.setSpTemplateFlag(TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED);
-        partitionInfo.setTableGroupId(TableGroupRecord.INVALID_TABLE_GROUP_ID);
-        partitionInfo.setTableName(tbName);
-        partitionInfo.setTableSchema(tbSchema);
-        partitionInfo.setAutoFlag(TablePartitionRecord.PARTITION_AUTO_BALANCE_DISABLE);
-        partitionInfo.setPartFlags(0L);
-        partitionInfo.setTableType(tblType);
-        partitionInfo.setRandomTableNamePatternEnabled(ec.isRandomPhyTableEnabled());
-        partitionInfo.setSessionVars(saveSessionVars(ec));
-        partitionInfo.setLocality(locality.getDnString());
-        partitionInfo.setBuildNoneDefaultSingleGroup(false);
-        PartitionInfoUtil.generateTableNamePattern(partitionInfo, tbName);
-        PartitionInfoUtil.generatePartitionLocation(partitionInfo, tableGroupName, joinGroupName, ec, locality);
-
-        //partitionInfo.setPartSpecSearcher(PartSpecSearcher.buildPartSpecSearcher(partitionInfo.getTableType(),partitionInfo.getPartitionBy()));
-        partitionInfo.initPartSpecSearcher();
-        PartitionInfoUtil.validatePartitionInfoForDdl(partitionInfo, ec);
+        BuildPartInfoFromAstParams buildParams = new BuildPartInfoFromAstParams();
+        buildParams.setSchemaName(schemaName);
+        buildParams.setTableName(tableName);
+        buildParams.setTableGroupName(tableGroupName);
+        buildParams.setJoinGroupName(joinGroupName);
+        buildParams.setSqlPartitionBy(sqlPartitionBy);
+        buildParams.setBoundExprInfo(boundExprInfo);
+        buildParams.setPkColMetas(pkColMetas);
+        buildParams.setAllColMetas(allColMetas);
+        buildParams.setTblType(tblType);
+        buildParams.setEc(ec);
+        buildParams.setLocality(locality);
+        PartitionInfo partitionInfo = buildPartInfoByAstParams(buildParams);
         return partitionInfo;
+    }
+
+    private static void initPartFunc(List<SqlNode> partExprs,
+                                     List<ColumnMeta> partColMetaList,
+                                     SqlOperator partFuncOp,
+                                     PartitionByDefinition partitionByDef) {
+        if (partFuncOp instanceof SqlSubstringFunction) {
+            // SUBSTR is the same as SUBSTRING
+            partFuncOp = TddlOperatorTable.SUBSTR;
+        }
+
+        PartitionFunctionBuilder.validatePartitionFunction(partFuncOp.getName());
+        if (partExprs.size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                String.format("multi columns with using partition functions are not allowed"));
+        }
+
+        SqlNode partFnExpr = partExprs.get(0);
+        SqlCall call = (SqlCall) partFnExpr;
+        List<SqlNode> opList = call.getOperandList();
+        List<DataType> partColDataTypes = new ArrayList<>();
+        for (int i = 0; i < partColMetaList.size(); i++) {
+            partColDataTypes.add(partColMetaList.get(i).getDataType());
+        }
+        PartitionFunctionBuilder.checkIfPartColDataTypesMatchUdfInputDataTypes(call, partColDataTypes);
+
+        /**
+         * Create PartitionIntFunction by partFuncOp and operands
+         */
+        PartitionIntFunction partFn = PartitionFunctionBuilder.create(partFuncOp, opList);
+        partitionByDef.setPartIntFuncOperator(partFuncOp);
+        partitionByDef.setPartIntFunc(partFn);
+        partitionByDef.setPartIntFuncMonotonicity(PartFuncMonotonicityUtil
+            .getPartFuncMonotonicity(partFn, partColMetaList.get(0).getField().getRelType()));
     }
 
     private static void initPartColMetasByPkColMetas(List<ColumnMeta> pkColMetas, List<SqlNode> partExprList,
@@ -651,175 +399,175 @@ public class PartitionInfoBuilder {
         return sessionVars;
     }
 
-    /**
-     * Build a new PartitionSpec from new astNode(partSpecAst) by specifying prefix partition columns
-     * <pre>
-     *     When prefixPartColCnt is specified ( prefixPartColCnt > 0 ),
-     *     this method will only check and validate the data-type and bound-value of the prefix partition columns
-     * </pre>
-     */
-    public static PartitionSpec buildPartitionSpecByPartSpecAst(ExecutionContext context,
-                                                                List<ColumnMeta> partColMetaList,
-                                                                PartitionIntFunction partIntFunc,
-                                                                SearchDatumComparator pruningComparator,
-                                                                Map<SqlNode, RexNode> partBoundExprInfo,
-                                                                PartBoundValBuilder partBoundValBuilder,
-                                                                SqlPartition partSpecAst,
-                                                                PartitionStrategy strategy,
-                                                                long partPosition,
-                                                                int prefixPartColCnt) {
-        PartitionSpec partSpec = new PartitionSpec();
-        String partName = null;
-        SqlPartitionValue value = null;
-        List<SqlPartitionValueItem> itemsOfVal = null;
-        int partColCnt = partColMetaList.size();
-        boolean isMultiCols = partColCnt > 1;
-        RelDataTypeFactory typeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
-        List<SearchDatumInfo> partBoundValues = new ArrayList<>();
+//    /**
+//     * Build a new PartitionSpec from new astNode(partSpecAst) by specifying prefix partition columns
+//     * <pre>
+//     *     When prefixPartColCnt is specified ( prefixPartColCnt > 0 ),
+//     *     this method will only check and validate the data-type and bound-value of the prefix partition columns
+//     * </pre>
+//     */
+//    public static PartitionSpec buildPartitionSpecByPartSpecAst(ExecutionContext context,
+//                                                                List<ColumnMeta> partColMetaList,
+//                                                                PartitionIntFunction partIntFunc,
+//                                                                SearchDatumComparator pruningComparator,
+//                                                                Map<SqlNode, RexNode> partBoundExprInfo,
+//                                                                PartBoundValBuilder partBoundValBuilder,
+//                                                                SqlPartition partSpecAst,
+//                                                                PartitionStrategy strategy,
+//                                                                long partPosition,
+//                                                                int prefixPartColCnt) {
+//        PartitionSpec partSpec = new PartitionSpec();
+//        String partName = null;
+//        SqlPartitionValue value = null;
+//        List<SqlPartitionValueItem> itemsOfVal = null;
+//        int partColCnt = partColMetaList.size();
+//        boolean isMultiCols = partColCnt > 1;
+//        RelDataTypeFactory typeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+//        List<SearchDatumInfo> partBoundValues = new ArrayList<>();
+//
 
-
-        if (partSpecAst != null) {
-            SqlIdentifier partNameId = (SqlIdentifier) partSpecAst.getName();
-            partName = partNameId.toString();
-
-            // all part name should convert to lower case
-            partName = PartitionNameUtil.toLowerCase(partName);
-
-            value = partSpecAst.getValues();
-            itemsOfVal = value.getItems();
-
-            PartitionInfoUtil.validatePartitionValueFormats(strategy, partColCnt, prefixPartColCnt, partName,
-                partSpecAst);
-            if (strategy == PartitionStrategy.LIST_COLUMNS && isMultiCols) {
-
-                // each item is SqlCall of ROW, such "p1 values in ( (2+1,'a','1999-01-01'), (4, 'b', '2000-01-01') )"
-                // which each operand of the SqlCall
-                // will be SqlCall (such as "2+1" ) or SqlLiteral(such as '2000-01-01' )
-                for (int i = 0; i < itemsOfVal.size(); i++) {
-                    SqlCall item = (SqlCall) itemsOfVal.get(i).getValue();
-                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
-                    // The item must be SqlCall of ROW,
-                    // So bndExprRex also must be RexCall of ROW
-                    if (item.getKind() != SqlKind.DEFAULT) {
-                        RexCall bndExprRex = (RexCall) partBoundExprInfo.get(item);
-                        List<RexNode> bndRexValsOfOneItem = bndExprRex.getOperands();
-                        for (int j = 0; j < bndRexValsOfOneItem.size(); j++) {
-                            RexNode oneBndExpr = bndRexValsOfOneItem.get(j);
-                            RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[j];
-                            PartitionInfoUtil.validateBoundValueExpr(oneBndExpr, bndValDt, partIntFunc, strategy);
-                            PartitionBoundVal bndVal =
-                                PartitionPrunerUtils.getBoundValByRexExpr(oneBndExpr, bndValDt,
-                                    PartFieldAccessType.DDL_EXECUTION, context);
-                            oneBndVal.add(bndVal);
-                        }
-                    } else {
-                        partSpec.setIsDefaultPartition(true);
-                        PartitionBoundVal bndVal = PartitionBoundVal.createDefaultValue();
-                        oneBndVal.add(bndVal);
-                    }
-
-                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
-                    partBoundValues.add(datum);
-                }
-
-            } else {
-                // each item is SqlNode may be the SqlCall like Func(const) or the SqlLiteral of const
-
-                if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
-                    RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[0];
-                    for (int i = 0; i < itemsOfVal.size(); i++) {
-                        SqlNode item = itemsOfVal.get(i).getValue();
-                        RexNode bndExprRex = partBoundExprInfo.get(item);
-                        PartitionBoundVal bndVal;
-                        if (item != null && item.getKind() == SqlKind.DEFAULT) {
-                            partSpec.setIsDefaultPartition(true);
-                            bndVal = PartitionBoundVal.createDefaultValue();
-                        } else {
-                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
-                            bndVal = PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
-                                PartFieldAccessType.DDL_EXECUTION, context);
-                        }
-                        List<PartitionBoundVal> oneBndVal = Collections.singletonList(bndVal);
-                        SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
-                        partBoundValues.add(datum);
-                    }
-
-                } else {
-                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
-                    int itemsValCnt = itemsOfVal.size();
-                    for (int i = 0; i < itemsValCnt; i++) {
-                        SqlNode item = itemsOfVal.get(i).getValue();
-                        RexNode bndExprRex = partBoundExprInfo.get(item);
-                        RelDataType cmpValDt = pruningComparator.getDatumRelDataTypes()[i];
-                        RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, cmpValDt);
-
-                        PartitionBoundVal bndVal;
-                        if (!itemsOfVal.get(i).isMaxValue()) {
-                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
-                            bndVal =
-                                PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
-                                    PartFieldAccessType.DDL_EXECUTION, context);
-                        } else {
-                            bndVal = PartitionBoundVal.createMaxValue();
-                        }
-                        oneBndVal.add(bndVal);
-                    }
-                    if (itemsValCnt < partColCnt && prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT
-                        && partColCnt > 1) {
-                        /**
-                         * Auto make up maxvalue for the columns after prefix part columns
-                         */
-                        for (int i = itemsValCnt; i < partColCnt; i++) {
-                            PartitionBoundVal maxVal = PartitionBoundVal.createMaxValue();
-                            oneBndVal.add(maxVal);
-                        }
-                    }
-
-                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
-                    partBoundValues.add(datum);
-                }
-            }
-            if (!StringUtils.isEmpty(partSpecAst.getLocality())) {
-                partSpec.setLocality(partSpecAst.getLocality());
-            } else {
-                partSpec.setLocality("");
-            }
-        } else {
-
-            // auto build hash partition name
-            partName = PartitionNameUtil.autoBuildPartitionName(partPosition);
-            RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, null);
-
-            SearchDatumInfo datum = null;
-            if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCols)) {
-                // auto build hash partition boundVal
-                Long bndJavaVal = (Long) partBoundValBuilder.getPartBoundVal((int) partPosition);
-                PartitionBoundVal boundVal =
-                    buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
-                datum = new SearchDatumInfo(boundVal);
-            } else {
-                // build bound value for multi-column key
-                Long[] bndJavaVals = (Long[]) partBoundValBuilder.getPartBoundVal((int) partPosition);
-                PartitionBoundVal boundVals[] = new PartitionBoundVal[bndJavaVals.length];
-                for (int i = 0; i < bndJavaVals.length; i++) {
-                    Long bndJavaVal = bndJavaVals[i];
-                    PartitionBoundVal bndValForOneCol =
-                        buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
-                    boundVals[i] = bndValForOneCol;
-                }
-                datum = new SearchDatumInfo(boundVals);
-            }
-            partBoundValues.add(datum);
-        }
-        PartitionBoundSpec boundSpec = createPartitionBoundSpec(strategy, value, partBoundValues);
-        partSpec.setBoundSpec(boundSpec);
-        partSpec.setComment("");
-        partSpec.setStrategy(strategy);
-        partSpec.setName(partName);
-        partSpec.setPosition(partPosition);
-        partSpec.setBoundSpaceComparator(PartitionByDefinition.getBoundSpaceComparator(pruningComparator, strategy));
-        return partSpec;
-    }
+//        if (partSpecAst != null) {
+//            SqlIdentifier partNameId = (SqlIdentifier) partSpecAst.getName();
+//            partName = partNameId.toString();
+//
+//            // all part name should convert to lower case
+//            partName = PartitionNameUtil.toLowerCase(partName);
+//
+//            value = partSpecAst.getValues();
+//            itemsOfVal = value.getItems();
+//
+//            PartitionInfoUtil.validatePartitionValueFormats(strategy, partColCnt, prefixPartColCnt, partName,
+//                partSpecAst.getValues());
+//            if (strategy == PartitionStrategy.LIST_COLUMNS && isMultiCols) {
+//
+//                // each item is SqlCall of ROW, such "p1 values in ( (2+1,'a','1999-01-01'), (4, 'b', '2000-01-01') )"
+//                // which each operand of the SqlCall
+//                // will be SqlCall (such as "2+1" ) or SqlLiteral(such as '2000-01-01' )
+//                for (int i = 0; i < itemsOfVal.size(); i++) {
+//                    SqlCall item = (SqlCall) itemsOfVal.get(i).getValue();
+//                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
+//                    // The item must be SqlCall of ROW,
+//                    // So bndExprRex also must be RexCall of ROW
+//                    if (item.getKind() != SqlKind.DEFAULT) {
+//                        RexCall bndExprRex = (RexCall) partBoundExprInfo.get(item);
+//                        List<RexNode> bndRexValsOfOneItem = bndExprRex.getOperands();
+//                        for (int j = 0; j < bndRexValsOfOneItem.size(); j++) {
+//                            RexNode oneBndExpr = bndRexValsOfOneItem.get(j);
+//                            RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[j];
+//                            PartitionInfoUtil.validateBoundValueExpr(oneBndExpr, bndValDt, partIntFunc, strategy);
+//                            PartitionBoundVal bndVal =
+//                                PartitionPrunerUtils.getBoundValByRexExpr(oneBndExpr, bndValDt,
+//                                    PartFieldAccessType.DDL_EXECUTION, context);
+//                            oneBndVal.add(bndVal);
+//                        }
+//                    } else {
+//                        partSpec.setDefaultPartition(true);
+//                        PartitionBoundVal bndVal = PartitionBoundVal.createDefaultValue();
+//                        oneBndVal.add(bndVal);
+//                    }
+//
+//                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+//                    partBoundValues.add(datum);
+//                }
+//
+//            } else {
+//                // each item is SqlNode may be the SqlCall like Func(const) or the SqlLiteral of const
+//
+//                if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
+//                    RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[0];
+//                    for (int i = 0; i < itemsOfVal.size(); i++) {
+//                        SqlNode item = itemsOfVal.get(i).getValue();
+//                        RexNode bndExprRex = partBoundExprInfo.get(item);
+//                        PartitionBoundVal bndVal;
+//                        if (item != null && item.getKind() == SqlKind.DEFAULT) {
+//                            partSpec.setDefaultPartition(true);
+//                            bndVal = PartitionBoundVal.createDefaultValue();
+//                        } else {
+//                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
+//                            bndVal = PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
+//                                PartFieldAccessType.DDL_EXECUTION, context);
+//                        }
+//                        List<PartitionBoundVal> oneBndVal = Collections.singletonList(bndVal);
+//                        SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+//                        partBoundValues.add(datum);
+//                    }
+//
+//                } else {
+//                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
+//                    int itemsValCnt = itemsOfVal.size();
+//                    for (int i = 0; i < itemsValCnt; i++) {
+//                        SqlNode item = itemsOfVal.get(i).getValue();
+//                        RexNode bndExprRex = partBoundExprInfo.get(item);
+//                        RelDataType cmpValDt = pruningComparator.getDatumRelDataTypes()[i];
+//                        RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, cmpValDt);
+//
+//                        PartitionBoundVal bndVal;
+//                        if (!itemsOfVal.get(i).isMaxValue()) {
+//                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
+//                            bndVal =
+//                                PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
+//                                    PartFieldAccessType.DDL_EXECUTION, context);
+//                        } else {
+//                            bndVal = PartitionBoundVal.createMaxValue();
+//                        }
+//                        oneBndVal.add(bndVal);
+//                    }
+//                    if (itemsValCnt < partColCnt && prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT
+//                        && partColCnt > 1) {
+//                        /**
+//                         * Auto make up maxvalue for the columns after prefix part columns
+//                         */
+//                        for (int i = itemsValCnt; i < partColCnt; i++) {
+//                            PartitionBoundVal maxVal = PartitionBoundVal.createMaxValue();
+//                            oneBndVal.add(maxVal);
+//                        }
+//                    }
+//
+//                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+//                    partBoundValues.add(datum);
+//                }
+//            }
+//            if (!StringUtils.isEmpty(partSpecAst.getLocality())) {
+//                partSpec.setLocality(partSpecAst.getLocality());
+//            } else {
+//                partSpec.setLocality("");
+//            }
+//        } else {
+//
+//            // auto build hash partition name
+//            partName = PartitionNameUtil.autoBuildPartitionName(partPosition);
+//            RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, null);
+//
+//            SearchDatumInfo datum = null;
+//            if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCols)) {
+//                // auto build hash partition boundVal
+//                Long bndJavaVal = (Long) partBoundValBuilder.getPartBoundVal((int) partPosition);
+//                PartitionBoundVal boundVal =
+//                    buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
+//                datum = new SearchDatumInfo(boundVal);
+//            } else {
+//                // build bound value for multi-column key
+//                Long[] bndJavaVals = (Long[]) partBoundValBuilder.getPartBoundVal((int) partPosition);
+//                PartitionBoundVal boundVals[] = new PartitionBoundVal[bndJavaVals.length];
+//                for (int i = 0; i < bndJavaVals.length; i++) {
+//                    Long bndJavaVal = bndJavaVals[i];
+//                    PartitionBoundVal bndValForOneCol =
+//                        buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
+//                    boundVals[i] = bndValForOneCol;
+//                }
+//                datum = new SearchDatumInfo(boundVals);
+//            }
+//            partBoundValues.add(datum);
+//        }
+//        PartitionBoundSpec boundSpec = createPartitionBoundSpec(strategy, value, partBoundValues);
+//        partSpec.setBoundSpec(boundSpec);
+//        partSpec.setComment("");
+//        partSpec.setStrategy(strategy);
+//        partSpec.setName(partName);
+//        partSpec.setPosition(partPosition);
+//        partSpec.setBoundSpaceComparator(PartitionByDefinition.buildBoundSpaceComparator(pruningComparator, strategy));
+//        return partSpec;
+//    }
 
     public static PartitionBoundVal buildOneHashBoundValByLong(ExecutionContext context,
                                                                Long bndJavaVal, RelDataType bndValDt,
@@ -833,145 +581,510 @@ public class PartitionInfoBuilder {
 
     public static PartitionInfo buildNewPartitionInfoByAddingPartition(ExecutionContext context,
                                                                        PartitionInfo partitionInfo,
+                                                                       boolean isAlterTableGroup,
                                                                        SqlAlterTableAddPartition addPartition,
-                                                                       Map<SqlNode, RexNode> partBoundExprInfo,
-                                                                       List<PartitionGroupRecord> unVisiablePartitionGroupRecords,
-                                                                       List<Pair<String, String>> physicalTableAndGroupPairs) {
-        assert physicalTableAndGroupPairs.size() == unVisiablePartitionGroupRecords.size();
-        assert addPartition.getPartitions().size() == unVisiablePartitionGroupRecords.size();
+                                                                       Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                                                       List<PartitionGroupRecord> invisiblePartitionGroupRecords,
+                                                                       Map<String, Pair<String, String>> physicalTableAndGroupPairs) {
+        assert physicalTableAndGroupPairs.size() == invisiblePartitionGroupRecords.size();
+        assert addPartition.getPartitions().size() == invisiblePartitionGroupRecords.size();
 
-        List<ColumnMeta> partColMetaList = partitionInfo.getPartitionBy().getPartitionFieldList();
-        SearchDatumComparator comparator = partitionInfo.getPartitionBy().getPruningSpaceComparator();
-        int partitionPos = partitionInfo.getPartitionBy().getPartitions().size() + 1;
-        int i = 0;
-        List<PartitionSpec> existingPartSpecs = partitionInfo.getPartitionBy().copy().getPartitions();
-        List<PartitionSpec> newPartitionSpecs = new ArrayList<>();
-        PartitionIntFunction partIntFunc = partitionInfo.getPartitionBy().getPartIntFunc();
-        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
-        List<SqlPartition> newPartitionsAst = new ArrayList<>();
+        Map<String, PartitionGroupRecord> invisiblePartitionGroupRecordMap = new HashMap<>();
+        for (PartitionGroupRecord partGroupRecord : invisiblePartitionGroupRecords) {
+            invisiblePartitionGroupRecordMap.put(partGroupRecord.getPartition_name(), partGroupRecord);
+        }
+
+        PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+
+        int partitionPos = partByDef.getPartitions().size() + 1;
+        AtomicInteger phyPartCounter = new AtomicInteger(partitionPos);
+        AtomicInteger partPosCounter = new AtomicInteger(partitionPos);
+
+        List<SqlPartition> newPartitions = new ArrayList<>();
         for (SqlNode sqlNode : addPartition.getPartitions()) {
             SqlPartition newSqlPartition = (SqlPartition) sqlNode;
-            newPartitionsAst.add(newSqlPartition);
+            newPartitions.add(newSqlPartition);
         }
-        int fullPartColCnt = partColMetaList.size();
-        int actualPartColCnt = PartitionInfoUtil.getActualPartitionColumns(partitionInfo).size();
-        int newPrefixColCnt =
-            PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(fullPartColCnt, actualPartColCnt, strategy,
-                newPartitionsAst);
-        for (SqlPartition newSqlPartition : newPartitionsAst) {
-            PartitionSpec newPartitionSpec = PartitionInfoBuilder
-                .buildPartitionSpecByPartSpecAst(
-                    context,
-                    partColMetaList,
-                    partIntFunc,
-                    comparator,
-                    partBoundExprInfo,
-                    null,
-                    newSqlPartition,
-                    partitionInfo.getPartitionBy().getStrategy(),
-                    partitionPos++,
-                    newPrefixColCnt);
 
-            PartitionInfoUtil.validateAddPartition(partitionInfo,
-                existingPartSpecs,
-                newPartitionSpec);
+        List<Integer> newActualPartColCnts =
+            PartitionInfoUtil.getNewAllLevelPrefixPartColCntByPartInfoAndNewParts(isAlterTableGroup, partitionInfo,
+                newPartitions, false);
 
-            Pair<String, String> physicalTableAndGroupPair = physicalTableAndGroupPairs.get(i);
-            PartitionLocation location =
-                new PartitionLocation(physicalTableAndGroupPair.getValue(), physicalTableAndGroupPair.getKey(),
-                    unVisiablePartitionGroupRecords.get(i).id);
-            newPartitionSpec.setLocation(location);
-            location.setVisiable(false);
+        boolean isExistingPartitionModified = false;
+        List<PartitionSpec> existingPartSpecs = partByDef.copy().getPartitions();
+        List<PartitionSpec> newPartitionSpecs = new ArrayList<>();
+
+        boolean isNewSubPartSpecAdded = false;
+        List<PartitionSpec> existingSubPartSpecs = null;
+        if (subPartByDef != null) {
+            existingSubPartSpecs = subPartByDef.copy().getPartitions();
+        }
+        List<PartitionSpec> newSubPartitionSpecs = new ArrayList<>();
+
+        boolean isAddSubPartitions = subPartByDef != null && addPartition.isSubPartition();
+
+        for (int i = 0; i < newPartitions.size(); i++) {
+            SqlPartition newSqlPartition = newPartitions.get(i);
+
+            PartitionSpec newPartitionSpec = null;
+            if (!isAddSubPartitions) {
+                newPartitionSpec =
+                    buildPartSpec(newSqlPartition, partByDef, newActualPartColCnts, partBoundExprInfoByLevel,
+                        phyPartCounter, partPosCounter, context);
+            }
+
+            if (subPartByDef != null) {
+                // Two-level Partitioned Table
+                if (subPartByDef.isUseSubPartTemplate()) {
+                    // Templated Subpartition
+                    if (addPartition.isSubPartition()) {
+                        assert newPartitions.size() == 1;
+                        assert newSqlPartition.getName() == null;
+                        assert GeneralUtil.isNotEmpty(newSqlPartition.getSubPartitions());
+
+                        // ADD SUBPARTITION
+                        for (PartitionSpec partitionSpec : partByDef.getPartitions()) {
+                            PartitionSpec partSpecWithNewSubParts = partitionSpec.copy();
+
+                            // Add new subpartitions to all existing partitions
+                            List<PartitionSpec> newSubPartSpecs =
+                                buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
+                                    partSpecWithNewSubParts, newActualPartColCnts,
+                                    partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
+                                    physicalTableAndGroupPairs, context);
+
+                            if (!isNewSubPartSpecAdded) {
+                                PartitionInfoUtil.validateAddSubPartitions(partitionInfo, existingSubPartSpecs,
+                                    newSubPartitionSpecs);
+
+                                List<PartitionSpec> newSubPartSpecsTemplate = new ArrayList<>();
+                                for (PartitionSpec newSubPartSpec : newSubPartSpecs) {
+                                    PartitionSpec copy = newSubPartSpec.copy();
+                                    copy.setName(copy.getTemplateName());
+                                    newSubPartSpecsTemplate.add(copy);
+                                }
+
+                                newSubPartitionSpecs.addAll(newSubPartSpecsTemplate);
+
+                                isNewSubPartSpecAdded = true;
+                            }
+
+                            newPartitionSpecs.add(partSpecWithNewSubParts);
+                        }
+
+                        isExistingPartitionModified = true;
+
+                        break;
+                    } else {
+                        // ADD PARTITION
+                        // Add all subpartitions from spec to new partitions.
+                        for (int j = 0; j < subPartByDef.getPartitions().size(); j++) {
+                            PartitionSpec subPartSpec = partByDef.getPartitions().get(0).getSubPartitions().get(j);
+                            PartitionSpec newSubPartSpec = subPartSpec.copy();
+
+                            newSubPartSpec.setName(
+                                PartitionNameUtil.autoBuildSubPartitionName(newPartitionSpec.getName(),
+                                    subPartSpec.getTemplateName()));
+                            newSubPartSpec.setId(null);
+                            newSubPartSpec.setParentId(null);
+                            newSubPartSpec.setLogical(false);
+
+                            if (newSubPartSpec.getLocality() == null) {
+                                newSubPartSpec.setLocality("");
+                            }
+
+                            Pair<String, String> physicalTableAndGroupPair =
+                                physicalTableAndGroupPairs.get(newSubPartSpec.getName());
+
+                            PartitionLocation location =
+                                new PartitionLocation(physicalTableAndGroupPair.getValue(),
+                                    physicalTableAndGroupPair.getKey(),
+                                    invisiblePartitionGroupRecordMap.get(newSubPartSpec.getName()).id);
+                            location.setVisiable(false);
+
+                            newSubPartSpec.setLocation(location);
+
+                            newPartitionSpec.getSubPartitions().add(newSubPartSpec);
+                        }
+                    }
+                } else {
+                    // Non-Templated Subpartition
+                    if (addPartition.isSubPartition()) {
+                        assert newPartitions.size() == 1;
+                        assert newSqlPartition.getName() != null;
+                        assert GeneralUtil.isNotEmpty(newSqlPartition.getSubPartitions());
+
+                        // MODIFY PARTITION ADD SUBPARTITION
+                        for (PartitionSpec partitionSpec : partByDef.getPartitions()) {
+                            if (partitionSpec.getName().equalsIgnoreCase(newSqlPartition.getName().toString())) {
+                                PartitionSpec partSpecWithNewSubParts = partitionSpec.copy();
+
+                                // Add new subpartitions to a specified existing partition.
+                                List<PartitionSpec> newSubPartSpecs =
+                                    buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
+                                        partSpecWithNewSubParts, newActualPartColCnts,
+                                        partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
+                                        physicalTableAndGroupPairs, context);
+
+                                newSubPartitionSpecs.addAll(newSubPartSpecs);
+                                newPartitionSpecs.add(partSpecWithNewSubParts);
+                            } else {
+                                newPartitionSpecs.add(partitionSpec);
+                            }
+                        }
+
+                        isExistingPartitionModified = true;
+
+                        break;
+                    } else {
+                        // ADD PARTITION
+                        if (GeneralUtil.isEmpty(newSqlPartition.getSubPartitions())) {
+                            // We should already add default subpartition before, so this is unexpected.
+                            throw new TddlRuntimeException(ErrorCode.ERR_ADD_PARTITION, "default subpartition missed");
+                        } else {
+                            // Add new partitions with new subpartitions
+                            List<PartitionSpec> newSubPartSpecs =
+                                buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
+                                    newPartitionSpec, newActualPartColCnts,
+                                    partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
+                                    physicalTableAndGroupPairs, context);
+                            newSubPartitionSpecs.addAll(newSubPartSpecs);
+                        }
+                    }
+                }
+            } else {
+                // One-level Partitioned Table
+                Pair<String, String> physicalTableAndGroupPair =
+                    physicalTableAndGroupPairs.get(newPartitionSpec.getName());
+                PartitionLocation location =
+                    new PartitionLocation(physicalTableAndGroupPair.getValue(), physicalTableAndGroupPair.getKey(),
+                        invisiblePartitionGroupRecordMap.get(newPartitionSpec.getName()).id);
+                newPartitionSpec.setLocation(location);
+                location.setVisiable(false);
+            }
+
+            PartitionInfoUtil.validateAddPartition(partitionInfo, existingPartSpecs, newPartitionSpec);
+
             existingPartSpecs.add(newPartitionSpec);
             newPartitionSpecs.add(newPartitionSpec);
-            i++;
         }
+
         PartitionInfo newPartInfo = partitionInfo.copy();
+
+        if (isExistingPartitionModified) {
+            newPartInfo.getPartitionBy().getPartitions().clear();
+        }
+
         newPartInfo.getPartitionBy().getPartitions().addAll(newPartitionSpecs);
+
+        if (subPartByDef != null && subPartByDef.isUseSubPartTemplate()) {
+            newPartInfo.getPartitionBy().getSubPartitionBy().getPartitions().addAll(newSubPartitionSpecs);
+        }
+
+        newPartInfo.getPartitionBy().getPhysicalPartitions().clear();
+
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, context);
 
         return newPartInfo;
     }
 
+    public static List<PartitionSpec> buildAllSubPartSpec(List<SqlNode> newSubPartitions,
+                                                          PartitionByDefinition subPartByDef,
+                                                          PartitionSpec parentPartitionSpec,
+                                                          List<Integer> newActualPartColCnts,
+                                                          Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                                          Map<String, PartitionGroupRecord> invisiblePartitionGroupRecordMap,
+                                                          Map<String, Pair<String, String>> physicalTableAndGroupPairs,
+                                                          ExecutionContext context) {
+        List<PartitionSpec> newSubPartitionSpecs = new ArrayList<>();
+
+        int newSubPartPos;
+        if (subPartByDef.isUseSubPartTemplate()) {
+            newSubPartPos = subPartByDef.getPartitions().size() + 1;
+        } else {
+            newSubPartPos = parentPartitionSpec.getSubPartitions().size() + 1;
+        }
+
+        AtomicInteger phySubPartCounter = new AtomicInteger(newSubPartPos);
+        AtomicInteger subPartPosCounter = new AtomicInteger(newSubPartPos);
+
+        PartitionStrategy subStrategy = subPartByDef.getStrategy();
+
+        PartBoundValBuilder boundValBuilder = null;
+        if (subStrategy == PartitionStrategy.HASH) {
+            boundValBuilder = new HashPartBoundValBuilder(newSubPartitions.size());
+        } else if (subStrategy == PartitionStrategy.KEY) {
+            boundValBuilder =
+                new KeyPartBoundValBuilder(newSubPartitions.size(), subPartByDef.getPartitionExprList().size());
+        }
+
+        for (SqlNode sqlNode : newSubPartitions) {
+            SqlSubPartition newSubPartition = (SqlSubPartition) sqlNode;
+
+            PartitionSpec newSubPartSpec;
+            if (subStrategy == PartitionStrategy.KEY || subStrategy == PartitionStrategy.HASH) {
+
+                newSubPartSpec = buildSubPartSpecForKey(
+                    newSubPartition,
+                    subPartByDef,
+                    partBoundExprInfoByLevel,
+                    boundValBuilder,
+                    parentPartitionSpec,
+                    phySubPartCounter,
+                    subPartPosCounter,
+                    context
+                );
+            } else if (subStrategy == PartitionStrategy.RANGE || subStrategy == PartitionStrategy.RANGE_COLUMNS
+                || subStrategy == PartitionStrategy.LIST || subStrategy == PartitionStrategy.LIST_COLUMNS) {
+                newSubPartSpec = buildSubPartSpecForRangeOrList(
+                    newSubPartition,
+                    subPartByDef,
+                    newActualPartColCnts,
+                    partBoundExprInfoByLevel,
+                    parentPartitionSpec,
+                    phySubPartCounter,
+                    subPartPosCounter,
+                    context
+                );
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_ADD_PARTITION,
+                    "Unsupported subpartition strategy: " + subStrategy);
+            }
+
+            if (subPartByDef.isUseSubPartTemplate()) {
+                newSubPartSpec.setTemplateName(newSubPartSpec.getName());
+                newSubPartSpec.setName(PartitionNameUtil.autoBuildSubPartitionName(parentPartitionSpec.getName(),
+                    newSubPartSpec.getName()));
+            } else {
+                newSubPartSpec.setName(newSubPartSpec.getName());
+            }
+
+            Pair<String, String> physicalTableAndGroupPair = physicalTableAndGroupPairs.get(newSubPartSpec.getName());
+
+            PartitionLocation location =
+                new PartitionLocation(physicalTableAndGroupPair.getValue(),
+                    physicalTableAndGroupPair.getKey(),
+                    invisiblePartitionGroupRecordMap.get(newSubPartSpec.getName()).id);
+            location.setVisiable(false);
+
+            newSubPartSpec.setLocation(location);
+
+            newSubPartitionSpecs.add(newSubPartSpec);
+            parentPartitionSpec.getSubPartitions().add(newSubPartSpec);
+        }
+
+        return newSubPartitionSpecs;
+    }
+
     public static PartitionInfo buildNewPartitionInfoByDroppingPartition(PartitionInfo partitionInfo,
                                                                          SqlAlterTableDropPartition dropPartition,
-                                                                         List<PartitionGroupRecord> unVisiablePartitionGroupRecords,
-                                                                         List<Pair<String, String>> physicalTableAndGroupPairs) {
-        Set<String> oldPartitionName = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        Set<String> newPartitionName = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                                                                         List<String> oldPartitionNameList,
+                                                                         List<String> newPartitionNameList,
+                                                                         List<PartitionGroupRecord> invisiblePartitionGroupRecords,
+                                                                         Map<String, Pair<String, String>> physicalTableAndGroupPairs,
+                                                                         ExecutionContext context) {
+        Set<String> origDroppedPartNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> oldPartitionNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> newPartitionNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
-        oldPartitionName
-            .addAll(dropPartition.getPartitionNames().stream().map(o -> ((SqlIdentifier) o).getLastName()).collect(
-                Collectors.toList()));
-        if (GeneralUtil.isNotEmpty(unVisiablePartitionGroupRecords)) {
-            assert physicalTableAndGroupPairs.size() == unVisiablePartitionGroupRecords.size();
-            newPartitionName.addAll(unVisiablePartitionGroupRecords.stream().map(o -> o.getPartition_name()).collect(
-                Collectors.toList()));
+        origDroppedPartNames.addAll(
+            dropPartition.getPartitionNames().stream().map(o -> ((SqlIdentifier) o).getLastName())
+                .collect(Collectors.toList()));
+        oldPartitionNames.addAll(oldPartitionNameList);
+        newPartitionNames.addAll(newPartitionNameList);
+
+        if (GeneralUtil.isNotEmpty(invisiblePartitionGroupRecords)) {
+            assert physicalTableAndGroupPairs.size() == invisiblePartitionGroupRecords.size();
         }
 
         PartitionInfo newPartInfo = partitionInfo.copy();
-        List<PartitionSpec> oldPartSpecList = newPartInfo.getPartitionBy().getPartitions();
+
+        PartitionByDefinition partByDef = newPartInfo.getPartitionBy();
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+
         List<PartitionSpec> newPartSpecList = new ArrayList<>();
-        int index = 0;
-        for (int i = 0; i < oldPartSpecList.size(); i++) {
-            PartitionSpec spec = oldPartSpecList.get(i);
-            if (oldPartitionName.contains(spec.getName())) {
-                continue;
-            } else if (newPartitionName.contains(spec.getName())) {
-                Pair<String, String> phyTableAndGroup = physicalTableAndGroupPairs.get(index++);
-                spec.getLocation().setVisiable(false);
-                spec.getLocation().setPhyTableName(phyTableAndGroup.getKey());
-                spec.getLocation().setGroupKey(phyTableAndGroup.getValue());
+
+        if (subPartByDef != null) {
+            for (PartitionSpec spec : partByDef.getPartitions()) {
+                List<PartitionSpec> newSubPartSpecList = new ArrayList<>();
+
+                int subPartsDropped = 0;
+
+                for (PartitionSpec subSpec : spec.getSubPartitions()) {
+                    String subPartName = subSpec.getName();
+
+                    if (oldPartitionNames.contains(subPartName)) {
+                        subPartsDropped++;
+                        continue;
+                    }
+
+                    if (newPartitionNames.contains(subPartName)) {
+                        Pair<String, String> phyTableAndGroup = physicalTableAndGroupPairs.get(subPartName);
+                        subSpec.getLocation().setVisiable(false);
+                        subSpec.getLocation().setPhyTableName(phyTableAndGroup.getKey());
+                        subSpec.getLocation().setGroupKey(phyTableAndGroup.getValue());
+                    }
+
+                    newSubPartSpecList.add(subSpec);
+                }
+
+                if (subPartsDropped >= spec.getSubPartitions().size()) {
+                    // The whole partition will be dropped.
+                    continue;
+                }
+
+                spec.setSubPartitions(newSubPartSpecList);
+
+                newPartSpecList.add(spec);
             }
-            newPartSpecList.add(spec);
+
+            List<PartitionSpec> oldSubPartSpecTemplate = subPartByDef.getPartitions();
+            List<PartitionSpec> newSubPartSpecTemplate = new ArrayList<>();
+
+            if (oldSubPartSpecTemplate != null && dropPartition.isSubPartition()) {
+                // Update subpartition templated as well
+                for (PartitionSpec subSpec : oldSubPartSpecTemplate) {
+                    if (origDroppedPartNames.contains(subSpec.getName())) {
+                        continue;
+                    }
+                    newSubPartSpecTemplate.add(subSpec);
+                }
+                subPartByDef.setPartitions(newSubPartSpecTemplate);
+            }
+        } else {
+            // DROP PARTITION
+            for (PartitionSpec spec : partByDef.getPartitions()) {
+                String partName = spec.getName();
+
+                if (oldPartitionNames.contains(partName)) {
+                    continue;
+                }
+
+                if (newPartitionNames.contains(partName)) {
+                    Pair<String, String> phyTableAndGroup = physicalTableAndGroupPairs.get(partName);
+                    spec.getLocation().setVisiable(false);
+                    spec.getLocation().setPhyTableName(phyTableAndGroup.getKey());
+                    spec.getLocation().setGroupKey(phyTableAndGroup.getValue());
+                }
+
+                newPartSpecList.add(spec);
+            }
         }
-        newPartInfo.getPartitionBy().setPartitions(newPartSpecList);
+
+        partByDef.setPartitions(newPartSpecList);
+
+        newPartInfo.getPartitionBy().getPhysicalPartitions().clear();
+
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, context);
 
         return newPartInfo;
     }
 
     public static PartitionInfo buildNewPartitionInfoByModifyingPartitionValues(PartitionInfo partitionInfo,
-                                                                                SqlAlterTableModifyPartitionValues modifyValues,
+                                                                                SqlNode modifyValuesAst,
                                                                                 Map<SqlNode, RexNode> allRexExprInfo,
                                                                                 ExecutionContext context,
-                                                                                PartitionSpec[] outputNewPartSpec) {
+                                                                                PartitionSpec[] outputNewPhyPartSpec) {
+        SqlIdentifier partNameAst = null;
+        SqlPartitionValue listValues = null;
+        SqlAlterTableModifyPartitionValues moddifyPartValues = (SqlAlterTableModifyPartitionValues) modifyValuesAst;
+        boolean isModifySubPart = moddifyPartValues.isSubPartition();
+        boolean isAddValues = moddifyPartValues.isAdd();
+        SqlPartition targetModifyPart = moddifyPartValues.getPartition();
+        SqlSubPartition targetModifySubPart = null;
+        boolean useSubPartTemp = false;
+        boolean useSubPart = false;
+        if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+            useSubPart = true;
+            useSubPartTemp = partitionInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
+        }
 
-        SqlPartition targetModifyPart = modifyValues.getPartition();
-        boolean isAddValues = modifyValues.isAdd();
-        SqlIdentifier partNameAst = (SqlIdentifier) targetModifyPart.getName();
+        PartitionByDefinition targetPartByDef =
+            !isModifySubPart ? partitionInfo.getPartitionBy() : partitionInfo.getPartitionBy().getSubPartitionBy();
+
+//        if (modifyValuesAst instanceof SqlAlterTableModifyPartitionValues) {
+//            SqlAlterTableModifyPartitionValues modifyValues = (SqlAlterTableModifyPartitionValues) modifyValuesAst;
+//            isAddValues = modifyValues.isAdd();
+//            SqlPartition targetModifyPart = modifyValues.getPartition();
+//            partNameAst = (SqlIdentifier) targetModifyPart.getName();
+//            listValues = targetModifyPart.getValues();
+//        } else if (modifyValuesAst instanceof SqlAlterTableModifySubPartitionValues) {
+//            SqlAlterTableModifySubPartitionValues modifyValues =
+//                (SqlAlterTableModifySubPartitionValues) modifyValuesAst;
+//            isAddValues = modifyValues.isAdd();
+//            SqlSubPartition targetModifyPart = modifyValues.getSubPartition();
+//            partNameAst = (SqlIdentifier) targetModifyPart.getName();
+//            listValues = targetModifyPart.getValues();
+//        }
+
+        /**
+         * Fetch the target values to be added or dropped from ast
+         */
+        if (!isModifySubPart) {
+            partNameAst = (SqlIdentifier) targetModifyPart.getName();
+            listValues = targetModifyPart.getValues();
+        } else {
+            targetModifySubPart = (SqlSubPartition) targetModifyPart.getSubPartitions().get(0);
+            partNameAst = (SqlIdentifier) targetModifySubPart.getName();
+            listValues = targetModifySubPart.getValues();
+        }
+
+        boolean isMultiCols = targetPartByDef.getPartitionColumnNameList().size() > 1;
         String partNameToBeModified = partNameAst.getLastName();
-        boolean isMultiCols = partitionInfo.getPartitionBy().getPartitionColumnNameList().size() > 1;
-        PartitionInfo newPartInfo = partitionInfo.copy();
-        List<PartitionSpec> partSpecList = newPartInfo.getPartitionBy().getPartitions();
 
-        PartitionStrategy strategy = newPartInfo.getPartitionBy().getStrategy();
+        PartitionInfo newPartInfo = partitionInfo.copy();
+        PartitionByDefinition newTargetPartByDef =
+            !isModifySubPart ? newPartInfo.getPartitionBy() : newPartInfo.getPartitionBy().getSubPartitionBy();
+
+        PartitionStrategy strategy = newTargetPartByDef.getStrategy();
         if (strategy != PartitionStrategy.LIST && strategy != PartitionStrategy.LIST_COLUMNS) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                 String.format("Not support to do this operation for the table [%s]", partitionInfo.getTableName()));
         }
 
         /**
-         * Find the target partition by partition name
+         * Find the target partition by partition name which is to validate its bound values
          */
-        PartitionSpec tarSpec = null;
+        PartitionSpec tarNewSpec = null;
+        List<PartitionSpec> partSpecList = null;
+        if (isModifySubPart) {
+            if (useSubPartTemp) {
+                /**
+                 * For the modification of templated subpart, use its template part spec to do bound value validation
+                 */
+                partSpecList = newPartInfo.getPartitionBy().getSubPartitionBy().getPartitions();
+            } else {
+                PartitionSpec targetSubPartSpec =
+                    newPartInfo.getPartSpecSearcher().getPartSpecByPartName(partNameToBeModified);
+                PartitionSpec parentSpec = newPartInfo.getPartitionBy().getPartitions()
+                    .get(targetSubPartSpec.getParentPartPosi().intValue() - 1);
+                partSpecList = parentSpec.getSubPartitions();
+            }
+        } else {
+            partSpecList = newPartInfo.getPartitionBy().getPartitions();
+        }
+
         for (int i = 0; i < partSpecList.size(); i++) {
             PartitionSpec pSpec = partSpecList.get(i);
-            if (pSpec.getName().equals(partNameToBeModified)) {
-                tarSpec = pSpec;
+            if (pSpec.getName().equalsIgnoreCase(partNameToBeModified)) {
+                tarNewSpec = pSpec;
                 break;
             }
         }
-        if (tarSpec == null) {
+
+        if (tarNewSpec == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String
                 .format("No found the partition[%s] in table [%s]", partNameToBeModified,
                     partitionInfo.getTableName()));
         }
 
         /**
-         * Convert new list/listCols vals into SearchDatumInfo and put it into TreeSet
+         * Convert new list/listCols values into SearchDatumInfo and put it into a new TreeSet
          */
-        SearchDatumComparator cmp = partitionInfo.getPartitionBy().getPruningSpaceComparator();
+        SearchDatumComparator cmp = targetPartByDef.getPruningSpaceComparator();
         TreeSet<SearchDatumInfo> newListColValSet = new TreeSet<>(cmp);
-        List<SqlPartitionValueItem> itemsOfVals = targetModifyPart.getValues().getItems();
+        List<SqlPartitionValueItem> itemsOfVals = listValues.getItems();
         for (int i = 0; i < itemsOfVals.size(); i++) {
             SqlNode oneItem = itemsOfVals.get(i).getValue();
             RexNode bndRexValsOfOneItem = allRexExprInfo.get(oneItem);
@@ -1018,7 +1131,7 @@ public class PartitionInfoBuilder {
          * 1. For addValues: check if has duplicate values of adding in target partition;
          * 2. For dropValues: check if can find value to be dropped in target partition.
          */
-        List<SearchDatumInfo> originalDatums = tarSpec.getBoundSpec().getMultiDatums();
+        List<SearchDatumInfo> originalDatums = tarNewSpec.getBoundSpec().getMultiDatums();
         List<SearchDatumInfo> newDatums = new ArrayList<>();
         boolean isFoundTargetVal = false;
         if (isAddValues) {
@@ -1080,18 +1193,64 @@ public class PartitionInfoBuilder {
         /**
          * Update the partition config of metadb
          */
-        PartitionBoundSpec boundSpec = tarSpec.getBoundSpec();
-
-        // TODO(moyi) write a builder to add/drop values from BoundSpec
+        PartitionBoundSpec boundSpec = tarNewSpec.getBoundSpec();
         if (isAddValues) {
             boundSpec.setMultiDatums(newDatums);
         } else {
             boundSpec.setMultiDatums(newDatums);
         }
 
-        if (outputNewPartSpec != null && outputNewPartSpec.length == 1) {
-            outputNewPartSpec[0] = tarSpec;
+        List<PartitionSpec> phyPartSpecs = new ArrayList<>();
+        if (isModifySubPart) {
+            if (useSubPartTemp) {
+                /**
+                 * For the modification of templated subpart, should update the bound values of all its physical subpartitions
+                 */
+                String targetPartTempName = partNameToBeModified;
+                PartitionSpec subPartSpecTemp = tarNewSpec;
+                PartitionBoundSpec boundSpecTemp = subPartSpecTemp.getBoundSpec();
+                phyPartSpecs = newPartInfo.getPartitionBy().getPhysicalPartitionsBySubPartTempName(targetPartTempName);
+                for (int i = 0; i < phyPartSpecs.size(); i++) {
+                    PartitionSpec phyPart = phyPartSpecs.get(i);
+                    phyPart.setBoundSpec(boundSpecTemp.copy());
+                }
+            } else {
+                phyPartSpecs.add(tarNewSpec);
+            }
+        } else {
+            if (useSubPart) {
+                /**
+                 * For the modification of part with subparts, should update the bound values of all its physical subpartitions
+                 */
+                PartitionSpec targetPartSpec = tarNewSpec;
+                List<PartitionSpec> phyPartSpecsOfTargetPartSpec = targetPartSpec.getSubPartitions();
+                phyPartSpecs.addAll(phyPartSpecsOfTargetPartSpec);
+            } else {
+                phyPartSpecs.add(tarNewSpec);
+            }
         }
+
+//        if (useSubPartTemp) {
+//            String targetPartTempName = partNameToBeModified;
+//            PartitionSpec subPartSpecTemp = tarSpec;
+//            PartitionBoundSpec boundSpecTemp = subPartSpecTemp.getBoundSpec();
+//            phyPartSpecs = newPartInfo.getPartitionBy().getPhysicalPartitionsBySubPartTempName(targetPartTempName);
+//            for (int i = 0; i < phyPartSpecs.size(); i++) {
+//                PartitionSpec phyPart = phyPartSpecs.get(i);
+//                phyPart.setBoundSpec(boundSpecTemp.copy());
+//            }
+//        } else {
+//            phyPartSpecs.add(tarSpec);
+//        }
+
+        if (outputNewPhyPartSpec != null && outputNewPhyPartSpec.length == phyPartSpecs.size()) {
+            //outputNewPartSpec[0] = tarSpec;
+            for (int i = 0; i < outputNewPhyPartSpec.length; i++) {
+                outputNewPhyPartSpec[i] = phyPartSpecs.get(i);
+            }
+        }
+
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, context);
         return newPartInfo;
     }
 
@@ -1100,8 +1259,8 @@ public class PartitionInfoBuilder {
     /**
      * The the data type of a bound value
      */
-    protected static RelDataType getDataTypeForBoundVal(RelDataTypeFactory typeFactory, PartitionStrategy strategy,
-                                                        RelDataType partExprRelDataType) {
+    public static RelDataType getDataTypeForBoundVal(RelDataTypeFactory typeFactory, PartitionStrategy strategy,
+                                                     RelDataType partExprRelDataType) {
         RelDataType boundValDataType = null;
         switch (strategy) {
         case HASH:
@@ -1144,6 +1303,15 @@ public class PartitionInfoBuilder {
              *
              */
             boundValDataType = partExprRelDataType;
+        }
+        break;
+        case UDF_HASH: {
+            /**
+             * For UDF_HASH, the colExpr (a col or fun(col)) will be hashed as an LONG,
+             * so the relDataType of boundVal SqlLiteral stored in metaDb must be
+             * an BIGINT( javaType: long ) after computing hashCode.
+             */
+            boundValDataType = typeFactory.createSqlType(SqlTypeName.BIGINT);
         }
         break;
         }
@@ -1193,190 +1361,18 @@ public class PartitionInfoBuilder {
         return boundSpec;
     }
 
-    private static PartitionByDefinition buildPartitionByDef(List<TablePartitionSpecConfig> partitionSpecConfigs,
-                                                             TablePartitionRecord parentConfig,
-                                                             List<ColumnMeta> allColumnMetas,
-                                                             Map<Long, PartitionGroupRecord> partitionGroupRecordsMap) {
-        TablePartitionRecord p0Config = partitionSpecConfigs.get(0).getSpecConfigInfo();
-
-        PartitionByDefinition partitionBy = new PartitionByDefinition();
-        String partMethod = p0Config.partMethod;
-        String partExprStr = p0Config.partExpr;
-
-        PartitionStrategy partStrategy = PartitionStrategy.valueOf(partMethod);
-        partitionBy.setStrategy(partStrategy);
-
-        /**
-         * The raw partition expression from create tbl ddl or meta db
-         */
-        List<SqlPartitionValueItem> partitionExprList = PartitionInfoUtil.buildPartitionExprByString(partExprStr);
-
-        /**
-         * list of column name of partition fields
-         */
-        List<String> partitionColumnNameList = new ArrayList<>();
-        for (int i = 0; i < partitionExprList.size(); i++) {
-            SqlNode partExpr = partitionExprList.get(i).getValue();
-            String colName = PartitionInfoUtil.findPartitionColumn(partExpr);
-            partitionColumnNameList.add(colName.toLowerCase());
-        }
-
-        /**
-         * find all the column fields according to the list of partition column names
-         */
-        List<ColumnMeta> partColFldList = new ArrayList<>();
-        if (allColumnMetas != null && !allColumnMetas.isEmpty()) {
-            for (int i = 0; i < partitionColumnNameList.size(); i++) {
-                String partColName = partitionColumnNameList.get(i);
-                ColumnMeta cm = null;
-                for (int j = 0; j < allColumnMetas.size(); j++) {
-                    ColumnMeta colMeta = allColumnMetas.get(j);
-                    if (colMeta.getOriginColumnName().equalsIgnoreCase(partColName)) {
-                        cm = colMeta;
-                        break;
-                    }
-                }
-                if (cm == null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                        "Failed to init the column field for the partition key " + partColName);
-                }
-                partColFldList.add(cm);
-            }
-        }
-        partitionBy.setPartitionFieldList(partColFldList);
-
-        List<RelDataType> exprTypeList = PartitionInfoBuilder
-            .inferPartExprDataTypes(partitionExprList.stream().map(o -> o.getValue()).collect(Collectors.toList()),
-                partColFldList);
-        partitionBy
-            .setPartitionExprList(partitionExprList.stream().map(o -> o.getValue()).collect(Collectors.toList()));
-        partitionBy.setPartitionExprTypeList(exprTypeList);
-        partitionBy.setPartitionColumnNameList(partitionColumnNameList);
-
-        SearchDatumComparator querySpaceComparator =
-            PartitionByDefinition.getQuerySpaceComparator(partitionBy.getPartitionFieldList());
-        partitionBy.setQuerySpaceComparator(querySpaceComparator);
-
-        SearchDatumComparator pruningSpaceComparator =
-            PartitionByDefinition.getPruningSpaceComparator(partitionBy.getPartitionExprTypeList());
-        partitionBy.setPruningSpaceComparator(pruningSpaceComparator);
-
-        SearchDatumComparator boundSpaceComparator = PartitionByDefinition
-            .getBoundSpaceComparator(pruningSpaceComparator, partitionBy.getStrategy());
-        partitionBy.setBoundSpaceComparator(boundSpaceComparator);
-
-        SearchDatumHasher hasher = PartitionByDefinition
-            .getHasher(partStrategy, partitionBy.getPartitionFieldList(), partitionBy.getPartitionExprTypeList());
-        partitionBy.setHasher(hasher);
-
-        SqlOperator partFuncOp = getPartFuncSqlOperator(partitionBy.getStrategy(), partitionBy.getPartitionExprList());
-        if (partFuncOp != null) {
-            partitionBy.setPartIntFunc(PartitionIntFunction.create(partFuncOp));
-            partitionBy.setPartIntFuncMonotonicity(PartFuncMonotonicityUtil
-                .getPartFuncMonotonicity(partFuncOp, partColFldList.get(0).getField().getRelType()));
-        }
-
-        partitionBy.setPartIntFuncOperator(partFuncOp);
-
-        partitionBy.setNeedEnumRange(
-            checkNeedDoEnumRange(partitionBy.getStrategy(), partitionBy.getPartitionFieldList(), partFuncOp));
-
-        String defaultDbIndex = null;
-        PartitionTableType tblType = PartitionTableType.getTypeByIntVal(parentConfig.tblType);
-        if (tblType == PartitionTableType.BROADCAST_TABLE) {
-            defaultDbIndex = TableInfoManager.getSchemaDefaultDbIndex(parentConfig.tableSchema);
-        }
-
-        for (int i = 0; i < partitionSpecConfigs.size(); i++) {
-            TablePartitionSpecConfig partSpecConf = partitionSpecConfigs.get(i);
-            TablePartitionRecord confInfo = partSpecConf.getSpecConfigInfo();
-
-            Long id = confInfo.id;
-            Long pid = confInfo.parentId;
-            String name = confInfo.partName;
-            Integer status = confInfo.partStatus;
-            Long position = confInfo.partPosition;
-            String desc = confInfo.partDesc;
-            Long metaVer = confInfo.metaVersion;
-            String comment = confInfo.partComment;
-            String engine = confInfo.partEngine;
-            ExtraFieldJSON extras = confInfo.partExtras;
-            Long flags = confInfo.partFlags;
-            String phyTbl = confInfo.phyTable;
-            String method = confInfo.partMethod;
-            PartitionStrategy strategy = PartitionStrategy.valueOf(method);
-
-            PartitionSpec partitionSpec = new PartitionSpec();
-            partitionSpec.setId(id);
-            partitionSpec.setParentId(pid);
-            partitionSpec.setName(name);
-            partitionSpec.setPosition(position);
-            partitionSpec.setStatus(status);
-            partitionSpec.setVersion(metaVer);
-            partitionSpec.setStrategy(strategy);
-
-            // Covert to SqlNode from str for partition desc
-            PartitionBoundSpec boundSpec = buildBoundSpecByPartitionDesc(desc, partitionBy);
-            partitionSpec.setBoundSpec(boundSpec);
-            if (boundSpec.isDefaultPartSpec()) {
-                partitionSpec.setIsDefaultPartition(true);
-            }
-
-            partitionSpec.setComment(comment);
-            partitionSpec.setEngine(engine);
-            partitionSpec.setExtras(extras);
-            partitionSpec.setFlags(flags);
-            partitionSpec.setBoundSpaceComparator(partitionBy.getBoundSpaceComparator());
-
-            PartitionGroupRecord partitionGroupRecord = partitionGroupRecordsMap.get(confInfo.groupId);
-            String groupKey = partitionGroupRecord == null ? "" :
-                GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.phy_db);
-            if (tblType == PartitionTableType.BROADCAST_TABLE && StringUtils.isEmpty(groupKey)) {
-                groupKey = defaultDbIndex;
-            }
-
-            PartitionLocation location =
-                new PartitionLocation(groupKey, phyTbl,
-                    partitionGroupRecord == null ? PartitionLocation.INVALID_PARTITION_GROUP_ID :
-                        partitionGroupRecord.id);
-            partitionSpec.setLocation(location);
-
-            if (extras != null && TStringUtil.isNotEmpty(extras.getLocality())) {
-                LocalityDesc locality = LocalityDesc.parse(extras.getLocality());
-                partitionSpec.setLocality(locality.toString());
-            }
-
-            partitionBy.getPartitions().add(partitionSpec);
-            if (partSpecConf.getSubPartitionSpecConfigs() != null
-                && partSpecConf.getSubPartitionSpecConfigs().size() > 0) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
-                    new NotSupportException("build partition definition with subpartition"));
-            }
-        }
-        PartitionRouter router = PartitionByDefinition.getPartRouter(partitionBy);
-        partitionBy.setRouter(router);
-
-        /**
-         * Prepare the orderNum in one phyDb for each partition
-         */
-        PartitionInfoBuilder.prepareOrderNumForPartitions(tblType, partitionBy.getPartitions());
-
-        return partitionBy;
-    }
-
     private static PartitionBoundSpec buildBoundSpecByPartitionDesc(String partDescStr,
-                                                                    PartitionByDefinition partitionBy) {
+                                                                    List<RelDataType> partExprDataTypes,
+                                                                    PartitionStrategy strategy) {
 
         /**
          * The raw partition expression from create tbl ddl or meta db
          */
         List<SqlPartitionValueItem> bndSpecVal = PartitionInfoUtil.buildPartitionExprByString(partDescStr);
 
-        List<RelDataType> partExprDataTypes = partitionBy.getPartitionExprTypeList();
         boolean isMultiPartCols = partExprDataTypes.size() > 1;
         RelDataTypeFactory typeFactory = PartitionPrunerUtils.getTypeFactory();
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
-        PartitionStrategy strategy = partitionBy.getStrategy();
 
         SqlPartitionValue.Operator op = SqlPartitionValue.Operator.LessThan;
         if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
@@ -1445,12 +1441,15 @@ public class PartitionInfoBuilder {
                     if (!oneValItem.isMaxValue()) {
                         assert oneValItem.getValue() instanceof SqlLiteral;
                         SqlLiteral literal = (SqlLiteral) oneValItem.getValue();
-
                         boundVal =
                             buildBoundValFromSqlLiteral(typeFactory, rexBuilder, strategy, literal, partExprDt);
-
                     } else {
-                        boundVal = PartitionBoundVal.createMaxValue();
+//                        boundVal = PartitionBoundVal.createMaxValue();
+                        if (strategy.isHashed() || strategy.isUdfHashed()) {
+                            boundVal = PartitionBoundVal.createHashBoundMaxValue();
+                        } else {
+                            boundVal = PartitionBoundVal.createMaxValue();
+                        }
                     }
                     boundValList.add(boundVal);
                 }
@@ -1496,13 +1495,23 @@ public class PartitionInfoBuilder {
     protected static boolean checkNeedDoEnumRange(PartitionStrategy strategy, List<ColumnMeta> partFields,
                                                   SqlOperator partFuncOp) {
         if (strategy == PartitionStrategy.KEY && partFields.size() == 1) {
-            if (DataTypeUtil.isNumberSqlType(partFields.get(0).getField().getDataType())) {
+            DataType dataType = partFields.get(0).getField().getDataType();
+            if (DataTypeUtil.isNumberSqlType(dataType)) {
+                if (dataType.getSqlType() == DataTypes.DecimalType.getSqlType()) {
+                    if (dataType.getScale() > 0) {
+                        /**
+                         * For decimal(x, scale) with scale > 0 , no need to do interval enum
+                         */
+                        return false;
+                    }
+                }
                 return true;
             }
-        } else if (strategy == PartitionStrategy.HASH && partFields.size() == 1 && partFuncOp == null) {
+        } else if (strategy == PartitionStrategy.HASH && partFields.size() == 1
+            && (partFuncOp == null || partFuncOp != null && partFuncCanDoEnumInHashStrategy(partFuncOp.getName()))) {
             return true;
         } else if ((strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.LIST) && partFuncOp != null) {
-            if (partFuncOp.getName() == "MONTH") {
+            if (partFuncNeedDoEnumInRangeAndListStrategy(partFuncOp.getName())) {
                 return true;
             } else {
                 return false;
@@ -1511,16 +1520,2082 @@ public class PartitionInfoBuilder {
         return false;
     }
 
+    //all the partition function can be used to do enumrate, except substr
+    protected static boolean partFuncCanDoEnumInHashStrategy(String partIntFunctionName) {
+        return "DAYOFMONTH".equalsIgnoreCase(partIntFunctionName)
+            || "DAYOFWEEK".equalsIgnoreCase(partIntFunctionName)
+            || "DAYOFYEAR".equalsIgnoreCase(partIntFunctionName)
+            || "WEEKOFYEAR".equalsIgnoreCase(partIntFunctionName)
+            || "MONTH".equalsIgnoreCase(partIntFunctionName)
+            || "TO_DAYS".equalsIgnoreCase(partIntFunctionName)
+            || "TO_MONTHS".equalsIgnoreCase(partIntFunctionName)
+            || "TO_SECONDS".equalsIgnoreCase(partIntFunctionName)
+            || "TO_WEEKS".equalsIgnoreCase(partIntFunctionName)
+            || "UNIX_TIMESTAMP".equalsIgnoreCase(partIntFunctionName)
+            || "YEAR".equalsIgnoreCase(partIntFunctionName);
+    }
+
+    /**
+     * all the NON_MONOTONIC partition function, except substr, can be used to do enumerate in range and list case
+     */
+    protected static boolean partFuncNeedDoEnumInRangeAndListStrategy(String partIntFunctionName) {
+        return "DAYOFMONTH".equalsIgnoreCase(partIntFunctionName)
+            || "DAYOFWEEK".equalsIgnoreCase(partIntFunctionName)
+            || "DAYOFYEAR".equalsIgnoreCase(partIntFunctionName)
+            || "MONTH".equalsIgnoreCase(partIntFunctionName)
+            || "WEEKOFYEAR".equalsIgnoreCase(partIntFunctionName);
+    }
+
     protected static SqlOperator getPartFuncSqlOperator(PartitionStrategy strategy, List<SqlNode> partColExprList) {
         if (strategy == PartitionStrategy.HASH
             || strategy == PartitionStrategy.RANGE
-            || strategy == PartitionStrategy.LIST) {
+            || strategy == PartitionStrategy.LIST
+            || strategy == PartitionStrategy.UDF_HASH) {
             SqlNode colExpr = partColExprList.get(0);
             if (colExpr instanceof SqlCall) {
                 SqlCall sqlCall = (SqlCall) colExpr;
-                return sqlCall.getOperator();
+                SqlOperator op = sqlCall.getOperator();
+                return op;
             }
         }
         return null;
     }
+
+    /**
+     * ============================================
+     */
+
+    /**
+     * Build a new PartitionSpec from new astNode(partSpecAst) by specifying prefix partition columns
+     * <pre>
+     *     When prefixPartColCnt is specified ( prefixPartColCnt > 0 ),
+     *     this method will only check and validate the data-type and bound-value of the prefix partition columns
+     * </pre>
+     */
+
+    public static PartitionSpec buildPartSpec(SqlPartition newSqlPartition,
+                                              PartitionByDefinition partByDef,
+                                              List<Integer> newActualPartColCnts,
+                                              Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                              AtomicInteger phyPartCounter,
+                                              AtomicInteger partPosCounter,
+                                              ExecutionContext context) {
+        List<ColumnMeta> partColMetaList = partByDef.getPartitionFieldList();
+        SearchDatumComparator comparator = partByDef.getPruningSpaceComparator();
+        PartitionIntFunction partIntFunc = partByDef.getPartIntFunc();
+
+        BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+        partSpecAstParams.setContext(context);
+        partSpecAstParams.setPartKeyLevel(PartKeyLevel.PARTITION_KEY);
+        partSpecAstParams.setPartColMetaList(partColMetaList);
+        partSpecAstParams.setPartIntFunc(partIntFunc);
+        partSpecAstParams.setPruningComparator(comparator);
+        partSpecAstParams.setPartBoundExprInfo(partBoundExprInfoByLevel.get(PARTITION_LEVEL_PARTITION));
+        partSpecAstParams.setPartBoundValBuilder(null);
+        partSpecAstParams.setStrategy(partByDef.getStrategy());
+        partSpecAstParams.setPartPosition(partPosCounter.getAndIncrement());
+        partSpecAstParams.setAllLevelPrefixPartColCnts(newActualPartColCnts);
+        partSpecAstParams.setPartNameAst(newSqlPartition.getName());
+        partSpecAstParams.setPartComment(newSqlPartition.getComment());
+        partSpecAstParams.setPartLocality(newSqlPartition.getLocality());
+        partSpecAstParams.setPartBndValuesAst(newSqlPartition.getValues());
+        partSpecAstParams.setLogical(partByDef.getSubPartitionBy() != null);
+        partSpecAstParams.setSpecTemplate(false);
+        partSpecAstParams.setSubPartSpec(false);
+        partSpecAstParams.setParentPartSpec(null);
+        partSpecAstParams.setPhySpecCounter(phyPartCounter);
+
+        return buildPartSpecByAstParamInner(partSpecAstParams);
+    }
+
+    public static PartitionSpec buildSubPartSpecForKey(SqlSubPartition newSubPartition,
+                                                       PartitionByDefinition subPartByDef,
+                                                       Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                                       PartBoundValBuilder partBoundValBuilder,
+                                                       PartitionSpec parentPartitionSpec,
+                                                       AtomicInteger phySubPartCounter,
+                                                       AtomicInteger subPartPosCounter,
+                                                       ExecutionContext context) {
+        List<ColumnMeta> subPartColMetaList = subPartByDef.getPartitionFieldList();
+        SearchDatumComparator comparator = subPartByDef.getPruningSpaceComparator();
+        PartitionIntFunction subPartIntFunc = subPartByDef.getPartIntFunc();
+
+        BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+
+        partSpecAstParams.setContext(context);
+        partSpecAstParams.setPartKeyLevel(PartKeyLevel.SUBPARTITION_KEY);
+        partSpecAstParams.setPartColMetaList(subPartColMetaList);
+        partSpecAstParams.setPartIntFunc(subPartIntFunc);
+        partSpecAstParams.setPruningComparator(comparator);
+        partSpecAstParams.setPartBoundExprInfo(partBoundExprInfoByLevel.get(PARTITION_LEVEL_SUBPARTITION));
+        partSpecAstParams.setPartBoundValBuilder(partBoundValBuilder);
+        partSpecAstParams.setStrategy(subPartByDef.getStrategy());
+        partSpecAstParams.setAutoBuildPart(true);
+        partSpecAstParams.setPartPosition(subPartPosCounter.getAndIncrement());
+        partSpecAstParams.setAllLevelPrefixPartColCnts(PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST);
+        partSpecAstParams.setPartNameAst(newSubPartition.getName());
+        partSpecAstParams.setPartComment(newSubPartition.getComment());
+        partSpecAstParams.setPartLocality(newSubPartition.getLocality());
+        partSpecAstParams.setLogical(subPartByDef.getSubPartitionBy() != null);
+        partSpecAstParams.setSpecTemplate(false);
+        partSpecAstParams.setSubPartSpec(true);
+        partSpecAstParams.setParentPartSpec(parentPartitionSpec);
+        partSpecAstParams.setPhySpecCounter(phySubPartCounter);
+
+        return buildPartSpecByAstParamInner(partSpecAstParams);
+    }
+
+    public static PartitionSpec buildSubPartSpecForRangeOrList(SqlSubPartition newSubPartition,
+                                                               PartitionByDefinition subPartByDef,
+                                                               List<Integer> newActualPartColCnts,
+                                                               Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                                               PartitionSpec parentPartitionSpec,
+                                                               AtomicInteger phySubPartCounter,
+                                                               AtomicInteger subPartPosCounter,
+                                                               ExecutionContext context) {
+        List<ColumnMeta> subPartColMetaList = subPartByDef.getPartitionFieldList();
+        SearchDatumComparator comparator = subPartByDef.getPruningSpaceComparator();
+        PartitionIntFunction subPartIntFunc = subPartByDef.getPartIntFunc();
+        BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+        partSpecAstParams.setContext(context);
+        partSpecAstParams.setPartKeyLevel(PartKeyLevel.SUBPARTITION_KEY);
+        partSpecAstParams.setPartColMetaList(subPartColMetaList);
+        partSpecAstParams.setPartIntFunc(subPartIntFunc);
+        partSpecAstParams.setPruningComparator(comparator);
+        partSpecAstParams.setPartBoundExprInfo(partBoundExprInfoByLevel.get(PARTITION_LEVEL_SUBPARTITION));
+        partSpecAstParams.setPartBoundValBuilder(null);
+        partSpecAstParams.setStrategy(subPartByDef.getStrategy());
+        partSpecAstParams.setPartPosition(subPartPosCounter.getAndIncrement());
+        partSpecAstParams.setAllLevelPrefixPartColCnts(newActualPartColCnts);
+        partSpecAstParams.setPartNameAst(newSubPartition.getName());
+        partSpecAstParams.setPartComment(newSubPartition.getComment());
+        partSpecAstParams.setPartLocality(newSubPartition.getLocality());
+        partSpecAstParams.setPartBndValuesAst(newSubPartition.getValues());
+        partSpecAstParams.setLogical(subPartByDef.getSubPartitionBy() != null);
+        partSpecAstParams.setSpecTemplate(false);
+        partSpecAstParams.setSubPartSpec(true);
+        partSpecAstParams.setParentPartSpec(parentPartitionSpec);
+        partSpecAstParams.setPhySpecCounter(phySubPartCounter);
+        return buildPartSpecByAstParamInner(partSpecAstParams);
+    }
+
+    public static PartitionSpec buildPartSpecByAstParams(BuildPartSpecFromAstParams buildParams) {
+        return buildPartSpecByAstParamInner(buildParams);
+    }
+
+    public static PartitionSpec buildPartSpecByAstParamInner(BuildPartSpecFromAstParams buildParams) {
+
+        ExecutionContext context = buildParams.getContext();
+        List<ColumnMeta> partColMetaList = buildParams.getPartColMetaList();
+        PartKeyLevel partKeyLevel = buildParams.getPartKeyLevel();
+        PartitionIntFunction partIntFunc = buildParams.getPartIntFunc();
+        SearchDatumComparator pruningComparator = buildParams.getPruningComparator();
+
+        Map<SqlNode, RexNode> partBoundExprInfo = buildParams.getPartBoundExprInfo();
+        PartBoundValBuilder partBoundValBuilder = buildParams.getPartBoundValBuilder();
+        boolean useAutoPart = buildParams.isAutoBuildPart();
+        SqlNode partNameAst = buildParams.getPartNameAst();
+        SqlPartitionValue partBndValuesAst = buildParams.getPartBndValuesAst();
+        String partComment = buildParams.getPartComment();
+        String partLocality = buildParams.getPartLocality();
+
+        PartitionStrategy strategy = buildParams.getStrategy();
+        long partPosition = buildParams.getPartPosition();
+
+        List<Integer> allLevelPrefixPartColCnts = buildParams.getAllLevelPrefixPartColCnts();
+        int partLevelIndex = partKeyLevel == PartKeyLevel.SUBPARTITION_KEY ? 1 : 0;
+        int prefixPartColCnt = allLevelPrefixPartColCnts.get(partLevelIndex);
+
+        boolean isLogicalSpec = buildParams.isLogical();
+        boolean isSpecTemplate = buildParams.isSpecTemplate();
+        boolean useSubPartByTemp = buildParams.isUseSpecTemplate();
+        AtomicInteger phySpecCounter = buildParams.getPhySpecCounter();
+        boolean needCountPhySpec = !isLogicalSpec;
+
+        Long phyPartPosition = null;
+        if (needCountPhySpec) {
+            phySpecCounter.incrementAndGet();
+            phyPartPosition = phySpecCounter.longValue();
+        }
+
+        Long parentPosition = 0L;
+        PartitionSpec parentPartSpec = buildParams.getParentPartSpec();
+        if (parentPartSpec != null) {
+            parentPosition = parentPartSpec.getPosition();
+        }
+
+        PartitionSpec partSpec = new PartitionSpec();
+        String partName = null;
+        SqlPartitionValue value = null;
+        List<SqlPartitionValueItem> itemsOfVal = null;
+        int partColCnt = partColMetaList.size();
+        boolean isMultiCols = partColCnt > 1;
+        RelDataTypeFactory typeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+        List<SearchDatumInfo> partBoundValues = new ArrayList<>();
+        PartitionRouter router = null;
+
+        if (!useAutoPart) {
+            SqlIdentifier partNameId = (SqlIdentifier) partNameAst;
+            partName = SQLUtils.normalizeNoTrim(partNameId.toString());
+
+            // all part name should convert to lower case
+            partName = PartitionNameUtil.toLowerCase(partName);
+
+            value = partBndValuesAst;
+            itemsOfVal = value.getItems();
+
+            PartitionInfoUtil.validatePartitionValueFormats(strategy, partColCnt, prefixPartColCnt, partName,
+                value);
+            if (strategy == PartitionStrategy.LIST_COLUMNS && isMultiCols) {
+
+                // each item is SqlCall of ROW, such "p1 values in ( (2+1,'a','1999-01-01'), (4, 'b', '2000-01-01') )"
+                // which each operand of the SqlCall
+                // will be SqlCall (such as "2+1" ) or SqlLiteral(such as '2000-01-01' )
+                for (int i = 0; i < itemsOfVal.size(); i++) {
+                    SqlCall item = (SqlCall) itemsOfVal.get(i).getValue();
+                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
+                    // The item must be SqlCall of ROW,
+                    // So bndExprRex also must be RexCall of ROW
+                    if (item.getKind() != SqlKind.DEFAULT) {
+                        RexCall bndExprRex = (RexCall) partBoundExprInfo.get(item);
+                        List<RexNode> bndRexValsOfOneItem = bndExprRex.getOperands();
+                        for (int j = 0; j < bndRexValsOfOneItem.size(); j++) {
+                            RexNode oneBndExpr = bndRexValsOfOneItem.get(j);
+                            RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[j];
+                            PartitionInfoUtil.validateBoundValueExpr(oneBndExpr, bndValDt, partIntFunc, strategy);
+                            PartitionBoundVal bndVal =
+                                PartitionPrunerUtils.getBoundValByRexExpr(oneBndExpr, bndValDt,
+                                    PartFieldAccessType.DDL_EXECUTION, context);
+                            oneBndVal.add(bndVal);
+                        }
+                    } else {
+                        partSpec.setDefaultPartition(true);
+                        PartitionBoundVal bndVal = PartitionBoundVal.createDefaultValue();
+                        oneBndVal.add(bndVal);
+                    }
+
+                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+                    partBoundValues.add(datum);
+                }
+
+            } else {
+                // each item is SqlNode may be the SqlCall like Func(const) or the SqlLiteral of const
+
+                if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
+                    RelDataType bndValDt = pruningComparator.getDatumRelDataTypes()[0];
+                    for (int i = 0; i < itemsOfVal.size(); i++) {
+                        SqlNode item = itemsOfVal.get(i).getValue();
+                        RexNode bndExprRex = partBoundExprInfo.get(item);
+                        PartitionBoundVal bndVal;
+                        if (item != null && item.getKind() == SqlKind.DEFAULT) {
+                            partSpec.setDefaultPartition(true);
+                            bndVal = PartitionBoundVal.createDefaultValue();
+                        } else {
+                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
+                            bndVal = PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
+                                PartFieldAccessType.DDL_EXECUTION, context);
+                        }
+                        List<PartitionBoundVal> oneBndVal = Collections.singletonList(bndVal);
+                        SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+                        partBoundValues.add(datum);
+                    }
+                } else {
+                    List<PartitionBoundVal> oneBndVal = new ArrayList<>();
+                    int itemsValCnt = itemsOfVal.size();
+                    for (int i = 0; i < itemsValCnt; i++) {
+                        SqlNode item = itemsOfVal.get(i).getValue();
+                        RexNode bndExprRex = partBoundExprInfo.get(item);
+                        RelDataType cmpValDt = pruningComparator.getDatumRelDataTypes()[i];
+                        RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, cmpValDt);
+
+                        PartitionBoundVal boundVal;
+                        if (!itemsOfVal.get(i).isMaxValue()) {
+                            PartitionInfoUtil.validateBoundValueExpr(bndExprRex, bndValDt, partIntFunc, strategy);
+                            boundVal =
+                                PartitionPrunerUtils.getBoundValByRexExpr(bndExprRex, bndValDt,
+                                    PartFieldAccessType.DDL_EXECUTION, context);
+                        } else {
+                            if (strategy.isHashed() || strategy.isUdfHashed()) {
+                                boundVal = PartitionBoundVal.createHashBoundMaxValue();
+                            } else {
+                                boundVal = PartitionBoundVal.createMaxValue();
+                            }
+                        }
+                        oneBndVal.add(boundVal);
+                    }
+
+                    if (strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.RANGE_COLUMNS) {
+
+                        /**
+                         * For Range/Range Columns, build virtual value
+                         */
+                        if (itemsValCnt < partColCnt && prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT
+                            && partColCnt > 1) {
+                            /**
+                             * Auto make up maxvalue for the columns after prefix part columns
+                             */
+                            for (int i = itemsValCnt; i < partColCnt; i++) {
+                                PartitionBoundVal maxVal = PartitionBoundVal.createMaxValue();
+                                oneBndVal.add(maxVal);
+                            }
+                        }
+                    } else if (strategy == PartitionStrategy.KEY) {
+                        /**
+                         * For Key, build hash bound max value
+                         */
+                        if (itemsValCnt < partColCnt && prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT
+                            && partColCnt > 1) {
+                            /**
+                             * Auto make up maxvalue for the columns after prefix part columns
+                             */
+                            for (int i = itemsValCnt; i < partColCnt; i++) {
+                                PartitionBoundVal maxVal = PartitionBoundVal.createHashBoundMaxValue();
+                                oneBndVal.add(maxVal);
+                            }
+                        }
+                    }
+
+                    SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
+                    partBoundValues.add(datum);
+                }
+            }
+            if (!StringUtils.isEmpty(partLocality)) {
+                partSpec.setLocality(partLocality);
+            } else {
+                partSpec.setLocality("");
+            }
+
+            if (!StringUtils.isEmpty(partComment)) {
+                partSpec.setComment(partComment);
+            } else {
+                partSpec.setComment("");
+            }
+        } else {
+
+            SqlIdentifier partNameId = (SqlIdentifier) partNameAst;
+            if (partNameId != null) {
+                partName = SQLUtils.normalizeNoTrim(partNameId.toString());
+            } else {
+                // auto build hash partition name
+
+                if (partKeyLevel == PartKeyLevel.PARTITION_KEY) {
+                    partName = PartitionNameUtil.autoBuildPartitionName(partPosition);
+                } else {
+                    if (isSpecTemplate) {
+                        partName = PartitionNameUtil.autoBuildSubPartitionTemplateName(partPosition);
+                    } else {
+                        partName = PartitionNameUtil.autoBuildSubPartitionName(parentPartSpec.getName(),
+                            PartitionNameUtil.autoBuildSubPartitionTemplateName(partPosition));
+                    }
+                }
+            }
+
+            if (!StringUtils.isEmpty(partComment)) {
+                partSpec.setComment(partComment);
+            } else {
+                partSpec.setComment("");
+            }
+
+            RelDataType bndValDt = getDataTypeForBoundVal(typeFactory, strategy, null);
+            SearchDatumInfo datum = null;
+            if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCols)) {
+                // auto build hash partition boundVal
+                Long bndJavaVal;
+                Object obj = partBoundValBuilder.getPartBoundVal((int) partPosition);
+                if (obj instanceof Long[]) {
+                    bndJavaVal = ((Long[]) obj)[0];
+                } else {
+                    bndJavaVal = (Long) obj;
+                }
+                PartitionBoundVal boundVal =
+                    buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
+                datum = new SearchDatumInfo(boundVal);
+            } else {
+                // build bound value for multi-column key
+                Long[] bndJavaVals = (Long[]) partBoundValBuilder.getPartBoundVal((int) partPosition);
+                PartitionBoundVal boundVals[] = new PartitionBoundVal[bndJavaVals.length];
+                for (int i = 0; i < bndJavaVals.length; i++) {
+                    Long bndJavaVal = bndJavaVals[i];
+                    PartitionBoundVal bndValForOneCol =
+                        buildOneHashBoundValByLong(context, bndJavaVal, bndValDt, PartFieldAccessType.DDL_EXECUTION);
+                    boundVals[i] = bndValForOneCol;
+                }
+                datum = new SearchDatumInfo(boundVals);
+            }
+            partBoundValues.add(datum);
+
+        }
+        PartitionBoundSpec boundSpec = createPartitionBoundSpec(strategy, value, partBoundValues);
+        partSpec.setBoundSpec(boundSpec);
+        partSpec.setDefaultPartition(boundSpec.isDefaultPartSpec());
+        partSpec.setStrategy(strategy);
+        partSpec.setName(partName);
+        partSpec.setPartLevel(partKeyLevel);
+        partSpec.setLogical(isLogicalSpec);
+        partSpec.setPosition(partPosition);
+        partSpec.setPhyPartPosition(phyPartPosition);
+        partSpec.setParentPartPosi(parentPosition);
+        partSpec.setSpecTemplate(isSpecTemplate);
+        partSpec.setTemplateName(isSpecTemplate ? partName : "");
+        partSpec.setUseSpecTemplate(useSubPartByTemp);
+        partSpec.setBoundSpaceComparator(PartitionByDefinition.buildBoundSpaceComparator(pruningComparator, strategy));
+        return partSpec;
+    }
+
+    public static PartitionByDefinition buildCompletePartByDefByAstParams(BuildPartByDefFromAstParams buildParams,
+                                                                          SqlPartitionBy sqlPartitionBy) {
+
+        PartitionByDefinition partByDef = buildPartByDefByAstParams(buildParams);
+        PartitionTableType tblType = buildParams.getTblType();
+        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
+            SqlSubPartitionBy subPartitionBy = sqlPartitionBy.getSubPartitionBy();
+            if (subPartitionBy != null) {
+                List<SqlNode> subPartCols = subPartitionBy.getColumns();
+                List<SqlSubPartition> subPartSpecAstList = subPartitionBy.getSubPartitions();
+                SqlNode subPartHashCntAst = subPartitionBy.getSubPartitionsCount();
+                List<SqlNode> subPartSpecs = new ArrayList<>();
+                PartitionStrategy subPartStrategy =
+                    buildSubPartByStrategy(buildParams.getSchemaName(), subPartitionBy, buildParams.getTblType());
+
+                boolean useSubPartTemplate = false;
+                if ((subPartHashCntAst != null) || (subPartSpecAstList != null && !subPartSpecAstList.isEmpty())) {
+                    useSubPartTemplate = true;
+                    for (int i = 0; i < subPartSpecAstList.size(); i++) {
+                        subPartSpecs.add(subPartSpecAstList.get(i));
+                    }
+                } else if (subPartHashCntAst == null && (subPartSpecAstList == null || subPartSpecAstList.isEmpty())) {
+                    if (subPartStrategy == PartitionStrategy.KEY || subPartStrategy == PartitionStrategy.HASH) {
+                        PartitionStrategy parentPartStrategy = partByDef.getStrategy();
+                        SqlNode parentHashPartCntAst = buildParams.getHashPartCntAst();
+                        List<SqlNode> parentPartSpecAstList = buildParams.getParentPartSpecAstList();
+                        if (parentHashPartCntAst == null && (parentPartSpecAstList == null
+                            || parentPartSpecAstList.isEmpty())) {
+                            if (parentPartStrategy == PartitionStrategy.KEY
+                                || parentPartStrategy == PartitionStrategy.HASH) {
+
+                                boolean specifySubPartSpecForKey = false;
+                                List<SqlNode> partSpecsAst = sqlPartitionBy.getPartitions();
+                                if (partSpecsAst != null) {
+                                    for (int i = 0; i < partSpecsAst.size(); i++) {
+                                        SqlPartition partAst = (SqlPartition) partSpecsAst.get(i);
+                                        List<SqlNode> subPartSpecsAst = partAst.getSubPartitions();
+                                        if (subPartSpecsAst != null && !subPartSpecsAst.isEmpty()) {
+                                            specifySubPartSpecForKey = true;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (!specifySubPartSpecForKey) {
+                                    useSubPartTemplate = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                BuildPartByDefFromAstParams subPartByAstParam = new BuildPartByDefFromAstParams();
+                subPartByAstParam.setSchemaName(buildParams.getSchemaName());
+                subPartByAstParam.setTableName(buildParams.getTableName());
+                subPartByAstParam.setTableGroupName(buildParams.getTableGroupName());
+                subPartByAstParam.setJoinGroupName(buildParams.getJoinGroupName());
+                subPartByAstParam.setPartByAstColumns(subPartCols);
+                subPartByAstParam.setPartByAstPartitions(subPartSpecs);
+                subPartByAstParam.setHashPartCntAst(subPartHashCntAst);
+                subPartByAstParam.setPartByStrategy(subPartStrategy);
+                subPartByAstParam.setBoundExprInfo(buildParams.getBoundExprInfo());
+                subPartByAstParam.setPkColMetas(buildParams.getPkColMetas());
+                subPartByAstParam.setAllColMetas(buildParams.getAllColMetas());
+                subPartByAstParam.setTblType(buildParams.getTblType());
+                subPartByAstParam.setEc(buildParams.getEc());
+                subPartByAstParam.setBuildSubPartBy(true);
+                subPartByAstParam.setUseSubPartTemplate(useSubPartTemplate);
+                subPartByAstParam.setParentPartSpecs(partByDef.getPartitions());
+                subPartByAstParam.setParentPartSpecAstList(sqlPartitionBy.getPartitions());
+                subPartByAstParam.setContainNextLevelPartSpec(false);
+                PartitionByDefinition subPartByDef = buildPartByDefByAstParams(subPartByAstParam);
+                partByDef.setSubPartitionBy(subPartByDef);
+            }
+        }
+        return partByDef;
+    }
+
+    public static PartitionByDefinition buildPartByDefByAstParams(BuildPartByDefFromAstParams buildParams) {
+
+        String schemaName = buildParams.getSchemaName();
+        String tableName = buildParams.getTableName();
+        List<SqlNode> partByAstColumns = buildParams.getPartByAstColumns();
+        List<SqlNode> partByAstPartitions = buildParams.getPartByAstPartitions();
+        PartitionStrategy partByStrategy = buildParams.getPartByStrategy();
+        SqlNode hashPartCntAst = buildParams.getHashPartCntAst();
+        Map<SqlNode, RexNode> boundExprInfo = buildParams.getBoundExprInfo();
+        List<ColumnMeta> pkColMetas = buildParams.getPkColMetas();
+        List<ColumnMeta> allColMetas = buildParams.getAllColMetas();
+        PartitionTableType tblType = buildParams.getTblType();
+        ExecutionContext ec = buildParams.getEc();
+
+        /**
+         * The following properties are only used for building subpartitions
+         */
+        boolean buildSubPartBy = buildParams.isBuildSubPartBy();
+        boolean useSubPartTemplate = buildParams.isUseSubPartTemplate();
+        boolean containNextLevelPartSpec = buildParams.isContainNextLevelPartSpec();
+        List<PartitionSpec> parentPartSpecs = buildParams.getParentPartSpecs();
+        PartKeyLevel partKeyLevel = !buildSubPartBy ? PartKeyLevel.PARTITION_KEY : PartKeyLevel.SUBPARTITION_KEY;
+
+        PartitionByDefinition partitionByDef = new PartitionByDefinition();
+        List<SqlNode> columns = new ArrayList<>();
+        PartitionStrategy strategy = partByStrategy;
+        List<SqlNode> partExprList = new ArrayList<>();
+        List<String> partColList = new ArrayList<>();
+        List<ColumnMeta> partColMetaList = new ArrayList<>();
+        List<RelDataType> partExprTypeList = new ArrayList<>();
+        int allPhyGroupCnt = HintUtil.allGroup(schemaName).size();
+
+        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
+
+            columns = partByAstColumns;
+            Map<String, ColumnMeta> allColMetaMap = new HashMap<>();
+            for (int j = 0; j < allColMetas.size(); j++) {
+                ColumnMeta cm = allColMetas.get(j);
+                allColMetaMap.put(cm.getOriginColumnName().toLowerCase(), cm);
+            }
+
+            if (!columns.isEmpty()) {
+                for (int i = 0; i < columns.size(); i++) {
+                    SqlNode colExpr = columns.get(i);
+                    partExprList.add(colExpr);
+                    String colName = PartitionInfoUtil.findPartitionColumn(colExpr);
+                    if (colName == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format("No found the column[%s] from Create Table DDL", colName));
+                    }
+                    partColList.add(colName.toLowerCase());
+                    ColumnMeta partColMeta = allColMetaMap.get(colName.toLowerCase());
+                    if (partColMeta == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format("No found the column[%s] from Create Table DDL", colName));
+                    }
+                    partColMetaList.add(partColMeta);
+                }
+            } else {
+                if (strategy == PartitionStrategy.KEY) {
+                    /**
+                     * convert to "partition by key()" to "partition by key(cols of primary key)"
+                     */
+                    initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        String.format("No found any columns in Creating Table"));
+                }
+            }
+
+            int maxPartColCnt = ec.getParamManager().getInt(ConnectionParams.MAX_PARTITION_COLUMN_COUNT);
+            if (partColList.size() > maxPartColCnt) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                    String.format(
+                        "Use too many partition column during create table[%s], the allowed max partition column is %s",
+                        tableName, maxPartColCnt));
+            }
+
+        } else if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
+            // Construct partition info for single table
+            strategy = PartitionStrategy.KEY;
+            initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
+        } else {
+            // tblType == PartitionTableType.BROADCAST_TABLE
+
+            // Construct partition info for broadcast table
+            strategy = PartitionStrategy.KEY;
+            initPartColMetasByPkColMetas(pkColMetas, partExprList, partColList, partColMetaList);
+        }
+
+        partExprTypeList = PartitionInfoBuilder.inferPartExprDataTypes(partExprList, partColMetaList);
+
+        PartitionIntFunction partIntFunc = null;
+        Monotonicity partIntFuncMonotonicity = null;
+        SqlOperator partFuncOp = getPartFuncSqlOperator(strategy, partExprList);
+        if (partFuncOp != null) {
+            initPartFunc(partExprList, partColMetaList, partFuncOp, partitionByDef);
+            partIntFunc = partitionByDef.getPartIntFunc();
+            partIntFuncMonotonicity = partitionByDef.getPartIntFuncMonotonicity();
+        } else {
+            /**
+             *  No use part func, convert all "partition by hash(col)" to "partition by key(col)"
+             */
+            if (strategy == PartitionStrategy.HASH && columns.size() == 1) {
+                strategy = PartitionStrategy.KEY;
+            }
+
+            /**
+             *  No use part func, convert all "partition by range/list(c1[,c2,...])" to "partition by range/list columns(col)"
+             */
+            Boolean enableAutoUseColumnsPartition =
+                Boolean.valueOf(ConnectionParams.ENABLE_AUTO_USE_COLUMNS_PARTITION.getDefault());
+            if (ec != null) {
+                enableAutoUseColumnsPartition =
+                    ec.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTO_USE_COLUMNS_PARTITION);
+            }
+            if (enableAutoUseColumnsPartition) {
+                if (strategy == PartitionStrategy.LIST) {
+                    if (columns.size() > 1) {
+                        strategy = PartitionStrategy.LIST_COLUMNS;
+                    } else {
+                        ColumnMeta partFldCm = partColMetaList.get(0);
+                        DataType partFldDt = partFldCm.getField().getDataType();
+                        if (!DataTypeUtil.isUnderBigintType(partFldDt)) {
+                            strategy = PartitionStrategy.LIST_COLUMNS;
+                        }
+                    }
+                } else if (strategy == PartitionStrategy.RANGE) {
+                    if (columns.size() > 1) {
+                        strategy = PartitionStrategy.RANGE_COLUMNS;
+                    } else {
+                        ColumnMeta partFldCm = partColMetaList.get(0);
+                        DataType partFldDt = partFldCm.getField().getDataType();
+                        if (!DataTypeUtil.isUnderBigintType(partFldDt)) {
+                            strategy = PartitionStrategy.RANGE_COLUMNS;
+                        }
+                    }
+                }
+            }
+        }
+
+        SearchDatumComparator querySpaceComparator = PartitionByDefinition.buildQuerySpaceComparator(partColMetaList);
+        SearchDatumComparator pruningSpaceComparator =
+            PartitionByDefinition.buildPruningSpaceComparator(partExprTypeList);
+        SearchDatumComparator boundSpaceComparator =
+            PartitionByDefinition.buildBoundSpaceComparator(pruningSpaceComparator, strategy);
+        SearchDatumHasher hasher = PartitionByDefinition.buildHasher(strategy, partColMetaList, partExprTypeList);
+
+        partitionByDef.setPartLevel(partKeyLevel);
+        partitionByDef.setPartitionColumnNameList(partColList);
+        partitionByDef.setPartitionFieldList(partColMetaList);
+        partitionByDef.setPartitionExprList(partExprList);
+        partitionByDef.setPartitionExprTypeList(partExprTypeList);
+        partitionByDef.setStrategy(strategy);
+        partitionByDef.setQuerySpaceComparator(querySpaceComparator);
+        partitionByDef.setPruningSpaceComparator(pruningSpaceComparator);
+        partitionByDef.setBoundSpaceComparator(boundSpaceComparator);
+        partitionByDef.setHasher(hasher);
+        partitionByDef.setPartIntFuncOperator(partFuncOp);
+        partitionByDef.setPartIntFunc(partIntFunc);
+        partitionByDef.setPartIntFuncMonotonicity(partIntFuncMonotonicity);
+        partitionByDef.setNeedEnumRange(checkNeedDoEnumRange(strategy, partColMetaList, partFuncOp));
+        if (buildSubPartBy) {
+            /**
+             * current building is doing for subpartitionBy
+             */
+            partitionByDef.setUseSubPartTemplate(useSubPartTemplate);
+        } else {
+            /**
+             * current building is doing for partitionBy
+             */
+            partitionByDef.setUseSubPartTemplate(false);
+        }
+
+        /**
+         * Validate and check partition columns for partition tbl and gsi table
+         */
+        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
+            PartitionInfoUtil.validatePartitionColumns(partitionByDef);
+        }
+
+        AtomicInteger phyPartCounter = new AtomicInteger(0);
+        List<PartitionSpec> partSpecList = new ArrayList<>();
+        BuildAllPartSpecsFromAstParams buildAllPartSpecsAstParams = new BuildAllPartSpecsFromAstParams();
+        buildAllPartSpecsAstParams.setPartKeyLevel(partKeyLevel);
+        buildAllPartSpecsAstParams.setPartColMetaList(partColMetaList);
+        buildAllPartSpecsAstParams.setPartIntFunc(partIntFunc);
+        buildAllPartSpecsAstParams.setPruningSpaceComparator(pruningSpaceComparator);
+        buildAllPartSpecsAstParams.setPartitions(partByAstPartitions);
+        buildAllPartSpecsAstParams.setHashPartitionCntAst(hashPartCntAst);
+        buildAllPartSpecsAstParams.setPartBoundExprInfo(boundExprInfo);
+        buildAllPartSpecsAstParams.setPartStrategy(strategy);
+        buildAllPartSpecsAstParams.setTblType(tblType);
+        buildAllPartSpecsAstParams.setEc(ec);
+        buildAllPartSpecsAstParams.setAllPhyGroupCnt(allPhyGroupCnt);
+        buildAllPartSpecsAstParams.setBuildSubPartBy(buildSubPartBy);
+        buildAllPartSpecsAstParams.setBuildSubPartSpecTemplate(buildSubPartBy);
+        buildAllPartSpecsAstParams.setUseSubPartTemplate(useSubPartTemplate);
+        buildAllPartSpecsAstParams.setContainNextLevelPartSpec(containNextLevelPartSpec);
+        buildAllPartSpecsAstParams.setPhyPartCounter(phyPartCounter);
+        partSpecList = buildAllPartBySpecList(buildAllPartSpecsAstParams);
+        partitionByDef.setPartitions(partSpecList);
+        /**
+         * Prebuild router of dynamic pruning for first-level-partition or subpartition template
+         */
+        //PartitionRouter router = PartitionByDefinition.buildPartRouter(partitionByDef, partSpecList);
+        PartitionRouter router = PartitionByDefinition.buildPartRouterInner(pruningSpaceComparator,
+            boundSpaceComparator, hasher, strategy, partColMetaList, partSpecList);
+        partitionByDef.setRouter(router);
+
+        if (buildSubPartBy) {
+            /**
+             * Build all partitions for second-level-partition
+             */
+            if (useSubPartTemplate) {
+                /**
+                 * Build all templated subpartitions
+                 */
+                if (partSpecList.isEmpty()) {
+                    // throw error
+                }
+
+                List<PartitionSpec> subPartSpecTemplateList = partSpecList;
+                AtomicInteger tmpPhyPartCntCounter = new AtomicInteger(0);
+                for (int i = 0; i < parentPartSpecs.size(); i++) {
+                    PartitionSpec parentPartSpec = parentPartSpecs.get(i);
+                    List<PartitionSpec> subPartSpecList = new ArrayList<>();
+                    for (int j = 0; j < subPartSpecTemplateList.size(); j++) {
+                        PartitionSpec subPartSpecTemplate = subPartSpecTemplateList.get(j);
+                        String parentPartName = parentPartSpec.getName();
+                        String subPartName = subPartSpecTemplate.getName();
+                        PartitionSpec subPartSpec = subPartSpecTemplate.copy();
+                        subPartSpec.setSpecTemplate(false);
+                        subPartSpec.setLogical(false);
+                        subPartSpec.setName(PartitionNameUtil.autoBuildSubPartitionName(parentPartName, subPartName));
+                        /**
+                         * all phy subpart from subpart templated should has its own phy position
+                         */
+                        subPartSpec.setPhyPartPosition(Long.valueOf(tmpPhyPartCntCounter.incrementAndGet()));
+                        subPartSpec.setParentPartPosi(parentPartSpec.getPosition());
+
+                        subPartSpecList.add(subPartSpec);
+                    }
+                    parentPartSpec.setSubPartitions(subPartSpecList);
+
+                    /**
+                     * For templated-subpartition, all first-level-partitions have the same bound definitions of subpartitions,
+                     * so the sub router of each first-level-partition can use the same router.
+                     */
+                    parentPartSpec.setSubRouter(router);
+                }
+
+            } else {
+                /**
+                 * Build all actual subpartitions that are use for subpartition pruning
+                 */
+
+                if (!partSpecList.isEmpty()) {
+                    // should throw error
+                }
+
+                List<SqlNode> parentPartSpecAstList = buildParams.getParentPartSpecAstList();
+                for (int i = 0; i < parentPartSpecs.size(); i++) {
+                    PartitionSpec parentPartSpec = parentPartSpecs.get(i);
+                    SqlPartition partBySpecAst = (SqlPartition) parentPartSpecAstList.get(i);
+                    List<SqlNode> subPartSpecAstList = partBySpecAst.getSubPartitions();
+                    SqlNode subPartHashPartCntAst = partBySpecAst.getSubPartitionCount();
+                    BuildAllPartSpecsFromAstParams buildAllSubPartSpecsAstParams = new BuildAllPartSpecsFromAstParams();
+                    buildAllSubPartSpecsAstParams.setPartColMetaList(partColMetaList);
+                    buildAllSubPartSpecsAstParams.setPartKeyLevel(partKeyLevel);
+                    buildAllSubPartSpecsAstParams.setPartIntFunc(partIntFunc);
+                    buildAllSubPartSpecsAstParams.setPruningSpaceComparator(pruningSpaceComparator);
+                    buildAllSubPartSpecsAstParams.setPartitions(subPartSpecAstList);
+                    buildAllSubPartSpecsAstParams.setHashPartitionCntAst(subPartHashPartCntAst);
+                    buildAllSubPartSpecsAstParams.setPartBoundExprInfo(boundExprInfo);
+                    buildAllSubPartSpecsAstParams.setPartStrategy(strategy);
+                    buildAllSubPartSpecsAstParams.setTblType(tblType);
+                    buildAllSubPartSpecsAstParams.setEc(ec);
+                    buildAllSubPartSpecsAstParams.setAllPhyGroupCnt(allPhyGroupCnt);
+                    buildAllSubPartSpecsAstParams.setBuildSubPartBy(true);
+                    buildAllSubPartSpecsAstParams.setBuildSubPartSpecTemplate(false);
+                    buildAllSubPartSpecsAstParams.setUseSubPartTemplate(false);
+                    buildAllSubPartSpecsAstParams.setContainNextLevelPartSpec(false);
+                    buildAllSubPartSpecsAstParams.setParentPartSpec(parentPartSpec);
+                    buildAllSubPartSpecsAstParams.setPhyPartCounter(phyPartCounter);
+                    List<PartitionSpec> subPartSpecList = buildAllPartBySpecList(buildAllSubPartSpecsAstParams);
+                    parentPartSpec.setSubPartitions(subPartSpecList);
+
+                    /**
+                     * For non-templated-subpartition, first-level-partitions may have different bound definitions of subpartitions,
+                     * so the sub router of each first-level-partition be build independently.
+                     */
+                    /**
+                     * Prebuild the router of actual subpartitions and save it into their parent partition
+                     */
+                    parentPartSpec.setSubRouter(
+                        PartitionByDefinition.buildPartRouterInner(pruningSpaceComparator, boundSpaceComparator, hasher,
+                            strategy, partColMetaList, subPartSpecList));
+                }
+
+            }
+        }
+
+        return partitionByDef;
+    }
+
+    protected static PartitionStrategy buildPartByStrategy(String schemaName, SqlPartitionBy sqlPartitionBy,
+                                                           PartitionTableType tblType) {
+        PartitionStrategy partStrategy = null;
+        boolean isKey;
+        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
+            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String
+                    .format("Failed to create partition tables on db[%s] with mode='drds'", schemaName));
+            }
+            if (null == sqlPartitionBy) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String
+                    .format("Failed to create sharding tables on db[%s] with mode='auto'",
+                        schemaName));
+            }
+            if (sqlPartitionBy instanceof SqlPartitionByRange) {
+                boolean isColumns = ((SqlPartitionByRange) sqlPartitionBy).isColumns();
+                partStrategy = PartitionStrategy.RANGE;
+                if (isColumns) {
+                    partStrategy = PartitionStrategy.RANGE_COLUMNS;
+                }
+            } else if (sqlPartitionBy instanceof SqlPartitionByList) {
+                boolean isColumns = ((SqlPartitionByList) sqlPartitionBy).isColumns();
+                partStrategy = PartitionStrategy.LIST;
+                if (isColumns) {
+                    partStrategy = PartitionStrategy.LIST_COLUMNS;
+                }
+            } else if (sqlPartitionBy instanceof SqlPartitionByHash) {
+                partStrategy = PartitionStrategy.HASH;
+                isKey = ((SqlPartitionByHash) sqlPartitionBy).isKey();
+                if (isKey) {
+                    partStrategy = PartitionStrategy.KEY;
+                }
+            } else if (sqlPartitionBy instanceof SqlPartitionByUdfHash) {
+                partStrategy = PartitionStrategy.UDF_HASH;
+            }
+        } else if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
+            // tblType == PartitionTableType.SINGLE_TABLE or PartitionTableType.GSI_SINGLE_TABLE
+            partStrategy = PartitionStrategy.KEY;
+        } else {
+            // tblType == PartitionTableType.BROADCAST_TABLE
+            partStrategy = PartitionStrategy.KEY;
+        }
+        return partStrategy;
+    }
+
+    protected static PartitionStrategy buildSubPartByStrategy(String schemaName, SqlSubPartitionBy sqlSubPartitionBy,
+                                                              PartitionTableType tblType) {
+        PartitionStrategy partStrategy = null;
+        boolean isKey;
+        if (tblType == PartitionTableType.PARTITION_TABLE || tblType == PartitionTableType.GSI_TABLE) {
+            if (sqlSubPartitionBy instanceof SqlSubPartitionByRange) {
+                boolean isColumns = sqlSubPartitionBy.isColumns();
+                partStrategy = PartitionStrategy.RANGE;
+                if (isColumns) {
+                    partStrategy = PartitionStrategy.RANGE_COLUMNS;
+                }
+            } else if (sqlSubPartitionBy instanceof SqlSubPartitionByList) {
+                boolean isColumns = sqlSubPartitionBy.isColumns();
+                partStrategy = PartitionStrategy.LIST;
+                if (isColumns) {
+                    partStrategy = PartitionStrategy.LIST_COLUMNS;
+                }
+            } else if (sqlSubPartitionBy instanceof SqlSubPartitionByHash) {
+                partStrategy = PartitionStrategy.HASH;
+                isKey = ((SqlSubPartitionByHash) sqlSubPartitionBy).isKey();
+                if (isKey) {
+                    partStrategy = PartitionStrategy.KEY;
+                }
+            } else if (sqlSubPartitionBy instanceof SqlSubPartitionByUdfHash) {
+                partStrategy = PartitionStrategy.UDF_HASH;
+            }
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                "Not allowed to use subpartition on single/broadcast table");
+        }
+        return partStrategy;
+    }
+
+    public static PartitionInfo buildPartInfoByAstParams(BuildPartInfoFromAstParams buildParams) {
+
+        String schemaName = buildParams.getSchemaName();
+        String tableName = buildParams.getTableName();
+        String tableGroupName = buildParams.getTableGroupName();
+        String joinGroupName = buildParams.getJoinGroupName();
+        SqlPartitionBy sqlPartitionBy = buildParams.getSqlPartitionBy();
+        Map<SqlNode, RexNode> boundExprInfo = buildParams.getBoundExprInfo();
+        List<ColumnMeta> pkColMetas = buildParams.getPkColMetas();
+        List<ColumnMeta> allColMetas = buildParams.getAllColMetas();
+        PartitionTableType tblType = buildParams.getTblType();
+        ExecutionContext ec = buildParams.getEc();
+        LocalityDesc tblLocality = buildParams.getLocality();
+        TableGroupConfig tableGroupConfig = null;
+        if (tblLocality.isEmpty() && !StringUtils.isEmpty(tableGroupName)) {
+            TableGroupInfoManager tableGroupInfoManager =
+                OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+            tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
+            tblLocality = tableGroupConfig.getLocalityDesc();
+        }
+
+        PartitionInfo partitionInfo = new PartitionInfo();
+        String tbName = tableName;
+        String tbSchema = schemaName;
+        PartitionStrategy partStrategy = buildPartByStrategy(schemaName, sqlPartitionBy, tblType);
+        boolean containNextLevelPartSpec = sqlPartitionBy == null ? false : sqlPartitionBy.getSubPartitionBy() != null;
+
+        /**
+         * Build PartitionBy for partition
+         */
+        BuildPartByDefFromAstParams partByAstParam = new BuildPartByDefFromAstParams();
+        partByAstParam.setSchemaName(schemaName);
+        partByAstParam.setTableName(tableName);
+        partByAstParam.setTableGroupName(tableGroupName);
+        partByAstParam.setJoinGroupName(joinGroupName);
+        partByAstParam.setPartByAstColumns(sqlPartitionBy == null ? null : sqlPartitionBy.getColumns());
+        partByAstParam.setPartByAstPartitions(sqlPartitionBy == null ? null : sqlPartitionBy.getPartitions());
+        partByAstParam.setHashPartCntAst(sqlPartitionBy == null ? null : sqlPartitionBy.getPartitionsCount());
+        partByAstParam.setPartByStrategy(partStrategy);
+        partByAstParam.setBoundExprInfo(boundExprInfo);
+        partByAstParam.setPkColMetas(pkColMetas);
+        partByAstParam.setAllColMetas(allColMetas);
+        partByAstParam.setTblType(tblType);
+        partByAstParam.setEc(ec);
+        partByAstParam.setBuildSubPartBy(false);
+        partByAstParam.setContainNextLevelPartSpec(containNextLevelPartSpec);
+        PartitionByDefinition partByDef = buildCompletePartByDefByAstParams(partByAstParam, sqlPartitionBy);
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+        partitionInfo.setPartitionBy(partByDef);
+        partitionInfo.getPartitionBy().setSubPartitionBy(subPartByDef);
+
+        PartitionInfoUtil.validateLocality(schemaName, tblLocality, partByDef);
+
+        partitionInfo.setMetaVersion(1L);
+        partitionInfo.setSpTemplateFlag(subPartByDef == null ? TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED :
+            subPartByDef.isUseSubPartTemplate() ? TablePartitionRecord.SUBPARTITION_TEMPLATE_USING :
+                TablePartitionRecord.SUBPARTITION_TEMPLATE_UNUSED);
+        partitionInfo.setTableGroupId(TableGroupRecord.INVALID_TABLE_GROUP_ID);
+        partitionInfo.setTableName(tbName);
+        partitionInfo.setTableSchema(tbSchema);
+        partitionInfo.setAutoFlag(TablePartitionRecord.PARTITION_AUTO_BALANCE_DISABLE);
+        partitionInfo.setPartFlags(0L);
+        partitionInfo.setTableType(tblType);
+        partitionInfo.setRandomTableNamePatternEnabled(ec.isRandomPhyTableEnabled());
+        partitionInfo.setSessionVars(saveSessionVars(ec));
+        partitionInfo.setLocality(tblLocality.toString());
+
+        PartitionInfoUtil.generateTableNamePattern(partitionInfo, tbName);
+        PartitionInfoUtil.generatePartitionLocation(partitionInfo, tableGroupName, joinGroupName, ec, tblLocality);
+
+        partitionInfo.initPartSpecSearcher();
+        PartitionInfoUtil.validatePartitionInfoForDdl(partitionInfo, ec);
+        return partitionInfo;
+    }
+
+    protected static PartitionByDefinition buildCompletePartByDefByMetaDbParams(
+        BuildPartByDefFromMetaDbParams buildParams) {
+
+        List<TablePartitionSpecConfig> partSpecConfigList = buildParams.getPartitionSpecConfigs();
+        Integer spSubPartTempFlag = buildParams.getSpPartTempFlag();
+        String defaultDbIndex = buildParams.getDefaultDbIndex();
+        AtomicLong phyPartSpecCounter = buildParams.getPhyPartSpecCounter();
+        boolean useSubPartBy = false;
+        boolean useSubPartByTemp = false;
+        if (spSubPartTempFlag != TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED) {
+            useSubPartBy = true;
+            if (spSubPartTempFlag == TablePartitionRecord.SUBPARTITION_TEMPLATE_USING) {
+                useSubPartByTemp = true;
+            }
+        }
+        TablePartitionSpecConfig partSpecConfig0 = partSpecConfigList.get(0);
+        TablePartitionRecord logTblConfig = buildParams.getLogTblConfig();
+        PartitionTableType tblType = PartitionTableType.getTypeByIntVal(logTblConfig.getTblType());
+
+        /**
+         * Build the partBy and the partSpecList for 1st-level partition
+         */
+        PartitionByDefinition partByDef = buildPartByDefByMetaDbParams(buildParams);
+        if (!useSubPartBy) {
+            return partByDef;
+        }
+
+        /**
+         * Build the subPartByTemlate only for 2nd-level partition
+         */
+        List<TablePartitionSpecConfig> partRecList = buildParams.getPartitionSpecConfigs();
+        BuildPartByDefFromMetaDbParams subPartByDefMetaDbParams = new BuildPartByDefFromMetaDbParams();
+        subPartByDefMetaDbParams.setBuildSubPartBy(true);
+        subPartByDefMetaDbParams.setBuildSubPartByTemp(true);
+        subPartByDefMetaDbParams.setLogTblConfig(buildParams.getLogTblConfig());
+        subPartByDefMetaDbParams.setParentSpecConfig(partSpecConfig0);
+        subPartByDefMetaDbParams.setAllColumnMetas(buildParams.getAllColumnMetas());
+        subPartByDefMetaDbParams.setPartitionSpecConfigs(partSpecConfig0.getSubPartitionSpecConfigs());
+        subPartByDefMetaDbParams.setPartitionGroupRecordsMap(buildParams.getPartitionGroupRecordsMap());
+        subPartByDefMetaDbParams.setSpPartTempFlag(buildParams.getSpPartTempFlag());
+        subPartByDefMetaDbParams.setDefaultDbIndex(defaultDbIndex);
+        subPartByDefMetaDbParams.setPhyPartSpecCounter(phyPartSpecCounter);
+        PartitionByDefinition subPartBy = buildPartByDefByMetaDbParams(subPartByDefMetaDbParams);
+        partByDef.setSubPartitionBy(subPartBy);
+
+        /**
+         * Build the all partSpec list of subpartitions for each partition
+         */
+        List<PartitionSpec> partSpecList = partByDef.getPartitions();
+        for (int i = 0; i < partSpecList.size(); i++) {
+            PartitionSpec partSpec = partSpecList.get(i);
+            TablePartitionSpecConfig partSpecConfig = partRecList.get(i);
+
+            BuildAllPartSpecsFromMetaDbParams allPartSpecsMetaDbParams = new BuildAllPartSpecsFromMetaDbParams();
+            allPartSpecsMetaDbParams.setPartitionSpecConfigs(partSpecConfig.getSubPartitionSpecConfigs());
+            allPartSpecsMetaDbParams.setPartitionGroupRecordsMap(buildParams.getPartitionGroupRecordsMap());
+            allPartSpecsMetaDbParams.setPartStrategy(subPartBy.getStrategy());
+            allPartSpecsMetaDbParams.setPartExprTypeList(subPartBy.getPartitionExprTypeList());
+            allPartSpecsMetaDbParams.setBoundSpaceComparator(subPartBy.getBoundSpaceComparator());
+            allPartSpecsMetaDbParams.setDefaultDbIndex(defaultDbIndex);
+            allPartSpecsMetaDbParams.setTblType(tblType);
+            allPartSpecsMetaDbParams.setBuildSubPartBy(true);
+            allPartSpecsMetaDbParams.setBuildSubPartByTemp(false);
+            allPartSpecsMetaDbParams.setUseSubPartByTemp(useSubPartByTemp);
+            allPartSpecsMetaDbParams.setUseSubPartBy(useSubPartBy);
+            allPartSpecsMetaDbParams.setPhyPartSpecCounter(phyPartSpecCounter);
+            allPartSpecsMetaDbParams.setParentSpecPosition(partSpec.getPosition());
+            List<PartitionSpec> subPartSpecList = buildAllPartSpecsByMetaParams(allPartSpecsMetaDbParams);
+            partSpec.setSubPartitions(subPartSpecList);
+
+            PartitionRouter subRouter =
+                PartitionByDefinition.buildPartRouterInner(subPartBy.getPruningSpaceComparator(),
+                    subPartBy.getBoundSpaceComparator(), subPartBy.getHasher(), subPartBy.getStrategy(),
+                    subPartBy.getPartitionFieldList(), subPartSpecList);
+            partSpec.setSubRouter(subRouter);
+        }
+        return partByDef;
+    }
+
+    protected static PartitionByDefinition buildPartByDefByMetaDbParams(BuildPartByDefFromMetaDbParams buildParams) {
+        TablePartitionRecord logTblConfig = buildParams.getLogTblConfig();
+        List<TablePartitionSpecConfig> partitionSpecConfigs = buildParams.getPartitionSpecConfigs();
+        List<ColumnMeta> allColumnMetas = buildParams.getAllColumnMetas();
+        Map<Long, PartitionGroupRecord> partitionGroupRecordsMap = buildParams.getPartitionGroupRecordsMap();
+        Integer spPartTempFlag = buildParams.getSpPartTempFlag();
+        String defaultDbIndex = buildParams.getDefaultDbIndex();
+        AtomicLong phyPartSpecCounter = buildParams.getPhyPartSpecCounter();
+        PartitionTableType tblType = PartitionTableType.getTypeByIntVal(logTblConfig.getTblType());
+
+        boolean buildSubPartBy = buildParams.isBuildSubPartBy();
+        boolean buildSubPartByTemp = buildParams.isBuildSubPartByTemp();
+        boolean useSubPartBy = spPartTempFlag != TablePartitionRecord.SUBPARTITION_TEMPLATE_NOT_EXISTED;
+        boolean useSubPartByTemp = spPartTempFlag == TablePartitionRecord.SUBPARTITION_TEMPLATE_USING;
+
+        List<SqlNode> partExprList = new ArrayList<>();
+        List<String> partColList = new ArrayList<>();
+        List<ColumnMeta> partColMetaList = new ArrayList<>();
+        PartKeyLevel partKeyLevel = PartKeyLevel.PARTITION_KEY;
+        if (buildSubPartBy) {
+            partKeyLevel = PartKeyLevel.SUBPARTITION_KEY;
+        }
+
+        PartitionIntFunction partIntFunc = null;
+        Monotonicity partIntFuncMonotonicity = null;
+        SqlOperator partFuncOp = null;
+
+        TablePartitionRecord p0Config = partitionSpecConfigs.get(0).getSpecConfigInfo();
+        PartitionStrategy partStrategy = null;
+        List<RelDataType> partExprTypeList = new ArrayList<>();
+        String partMethod = p0Config.getPartMethod();
+        String partExprStr = p0Config.getPartExpr();
+        partStrategy = PartitionStrategy.valueOf(partMethod);
+
+        /**
+         * The raw partition expression from create tbl ddl or meta db
+         */
+        List<SqlPartitionValueItem> partitionExprList = PartitionInfoUtil.buildPartitionExprByString(partExprStr);
+        partExprList = partitionExprList.stream().map(o -> o.getValue()).collect(Collectors.toList());
+
+        /**
+         * list of column name of partition fields
+         */
+        for (int i = 0; i < partitionExprList.size(); i++) {
+            SqlNode partExpr = partitionExprList.get(i).getValue();
+            String colName = PartitionInfoUtil.findPartitionColumn(partExpr);
+            partColList.add(colName.toLowerCase());
+        }
+
+        /**
+         * find all the column fields according to the list of partition column names
+         */
+        if (allColumnMetas != null && !allColumnMetas.isEmpty()) {
+            for (int i = 0; i < partColList.size(); i++) {
+                String partColName = partColList.get(i);
+                ColumnMeta cm = null;
+                for (int j = 0; j < allColumnMetas.size(); j++) {
+                    ColumnMeta colMeta = allColumnMetas.get(j);
+                    if (colMeta.getOriginColumnName().equalsIgnoreCase(partColName)) {
+                        cm = colMeta;
+                        break;
+                    }
+                }
+                if (cm == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        "Failed to init the column field for the partition key " + partColName);
+                }
+                partColMetaList.add(cm);
+            }
+        }
+        partExprTypeList = PartitionInfoBuilder.inferPartExprDataTypes(partExprList, partColMetaList);
+
+        PartitionByDefinition partitionBy = new PartitionByDefinition();
+        partFuncOp = getPartFuncSqlOperator(partStrategy, partExprList);
+        if (partFuncOp != null) {
+            initPartFunc(partExprList, partColMetaList, partFuncOp, partitionBy);
+            partIntFunc = partitionBy.getPartIntFunc();
+            partIntFuncMonotonicity = partitionBy.getPartIntFuncMonotonicity();
+        }
+
+        SearchDatumComparator querySpaceComparator = PartitionByDefinition.buildQuerySpaceComparator(partColMetaList);
+        SearchDatumComparator pruningSpaceComparator =
+            PartitionByDefinition.buildPruningSpaceComparator(partExprTypeList);
+        SearchDatumComparator boundSpaceComparator =
+            PartitionByDefinition.buildBoundSpaceComparator(pruningSpaceComparator, partStrategy);
+        SearchDatumHasher hasher = PartitionByDefinition.buildHasher(partStrategy, partColMetaList, partExprTypeList);
+
+        partitionBy.setPartitionColumnNameList(partColList);
+        partitionBy.setPartitionFieldList(partColMetaList);
+        partitionBy.setPartitionExprList(partExprList);
+        partitionBy.setPartitionExprTypeList(partExprTypeList);
+        partitionBy.setStrategy(partStrategy);
+        partitionBy.setQuerySpaceComparator(querySpaceComparator);
+        partitionBy.setPruningSpaceComparator(pruningSpaceComparator);
+        partitionBy.setBoundSpaceComparator(boundSpaceComparator);
+        partitionBy.setHasher(hasher);
+        partitionBy.setPartIntFuncOperator(partFuncOp);
+        partitionBy.setPartIntFunc(partIntFunc);
+        partitionBy.setPartIntFuncMonotonicity(partIntFuncMonotonicity);
+        partitionBy.setNeedEnumRange(checkNeedDoEnumRange(partStrategy, partColMetaList, partFuncOp));
+        partitionBy.setPartLevel(partKeyLevel);
+
+        BuildAllPartSpecsFromMetaDbParams allPartSpecsMetaDbParams = new BuildAllPartSpecsFromMetaDbParams();
+        allPartSpecsMetaDbParams.setPartitionSpecConfigs(partitionSpecConfigs);
+        allPartSpecsMetaDbParams.setPartitionGroupRecordsMap(partitionGroupRecordsMap);
+        allPartSpecsMetaDbParams.setPartStrategy(partStrategy);
+        allPartSpecsMetaDbParams.setPartExprTypeList(partExprTypeList);
+        allPartSpecsMetaDbParams.setBoundSpaceComparator(boundSpaceComparator);
+        allPartSpecsMetaDbParams.setDefaultDbIndex(defaultDbIndex);
+        allPartSpecsMetaDbParams.setTblType(tblType);
+
+        allPartSpecsMetaDbParams.setBuildSubPartBy(buildSubPartBy);
+        allPartSpecsMetaDbParams.setBuildSubPartByTemp(buildSubPartByTemp);
+        allPartSpecsMetaDbParams.setUseSubPartByTemp(useSubPartByTemp);
+        allPartSpecsMetaDbParams.setUseSubPartBy(useSubPartBy);
+        allPartSpecsMetaDbParams.setPhyPartSpecCounter(phyPartSpecCounter);
+        List<PartitionSpec> partSpecList = buildAllPartSpecsByMetaParams(allPartSpecsMetaDbParams);
+        PartitionRouter router = PartitionByDefinition.buildPartRouterInner(pruningSpaceComparator,
+            boundSpaceComparator, hasher, partStrategy, partColMetaList, partSpecList);
+        //PartitionRouter router = PartitionByDefinition.buildPartRouter(partitionBy, partSpecList);
+        partitionBy.setRouter(router);
+
+        if (!buildSubPartBy) {
+            partitionBy.setPartitions(partSpecList);
+        } else {
+            partitionBy.setUseSubPartTemplate(useSubPartByTemp);
+            if (useSubPartByTemp) {
+                if (buildSubPartByTemp) {
+                    partitionBy.setPartitions(partSpecList);
+                }
+            } else {
+                partitionBy.setPartitions(new ArrayList<>());
+            }
+        }
+
+        return partitionBy;
+    }
+
+    private static List<PartitionSpec> buildAllPartSpecsByMetaParams(BuildAllPartSpecsFromMetaDbParams buildParams) {
+
+        List<TablePartitionSpecConfig> partitionSpecConfigs = buildParams.getPartitionSpecConfigs();
+        Map<Long, PartitionGroupRecord> partitionGroupRecordsMap = buildParams.getPartitionGroupRecordsMap();
+        PartitionStrategy partStrategy = buildParams.getPartStrategy();
+        List<RelDataType> partExprTypeList = buildParams.getPartExprTypeList();
+        SearchDatumComparator boundSpaceComparator = buildParams.getBoundSpaceComparator();
+        String defaultDbIndex = buildParams.getDefaultDbIndex();
+        PartitionTableType tblType = buildParams.getTblType();
+
+        boolean buildSubPartBy = buildParams.isBuildSubPartBy();
+        boolean buildSubPartByTemp = buildParams.isBuildSubPartByTemp();
+        boolean useSubPartBy = buildParams.isUseSubPartBy();
+        boolean useSubPartByTemp = buildParams.isUseSubPartByTemp();
+        AtomicLong phyPartSpecCounter = buildParams.getPhyPartSpecCounter();
+        Long parentSpecPosition = buildParams.getParentSpecPosition();
+
+        List<PartitionSpec> partSpecList = new ArrayList<>();
+        for (int i = 0; i < partitionSpecConfigs.size(); i++) {
+            TablePartitionSpecConfig partSpecConf = partitionSpecConfigs.get(i);
+            TablePartitionRecord confInfo = partSpecConf.getSpecConfigInfo();
+
+            Long id = confInfo.getId();
+            Long pid = confInfo.getParentId();
+            String schema = confInfo.getTableSchema();
+            String tblName = confInfo.getTableName();
+            Integer spTempFlag = confInfo.getSpTempFlag();
+            Long groupId = confInfo.getGroupId();
+            Long metaVer = confInfo.getMetaVersion();
+            Integer autoFlag = confInfo.getAutoFlag();
+            Integer tblTypeVal = confInfo.getTblType();
+            String partName = confInfo.getPartName();
+            String partTempName = confInfo.getPartTempName();
+            Integer partLevel = confInfo.getPartLevel();
+            Integer nextLevel = confInfo.getNextLevel();
+            Integer partStatus = confInfo.getPartStatus();
+            Long partPosition = confInfo.getPartPosition();
+            String partMethod = confInfo.getPartMethod();
+            String partExpr = confInfo.getPartExpr();
+            String partDesc = confInfo.getPartDesc();
+            String partComment = confInfo.getPartComment();
+            String partEngine = confInfo.getPartEngine();
+            ExtraFieldJSON extras = confInfo.getPartExtras();
+            Long partFlags = confInfo.getPartFlags();
+            String phyTbl = confInfo.getPhyTable();
+
+            PartitionSpec partitionSpec = new PartitionSpec();
+            partitionSpec.setId(id);
+            partitionSpec.setParentId(pid);
+            partitionSpec.setName(partName);
+            partitionSpec.setTemplateName(partTempName);
+            partitionSpec.setPosition(partPosition);
+            partitionSpec.setStatus(partStatus);
+            partitionSpec.setVersion(metaVer);
+            partitionSpec.setStrategy(partStrategy);
+            // Covert to SqlNode from str for partition desc
+            PartitionBoundSpec boundSpec = buildBoundSpecByPartitionDesc(partDesc, partExprTypeList, partStrategy);
+            partitionSpec.setBoundSpec(boundSpec);
+            partitionSpec.setDefaultPartition(boundSpec.isDefaultPartSpec());
+            partitionSpec.setComment(partComment);
+            partitionSpec.setEngine(partEngine);
+            partitionSpec.setExtras(extras);
+            partitionSpec.setFlags(partFlags);
+            partitionSpec.setPartLevel(PartKeyLevel.getPartKeyLevelFromIntVal(partLevel));
+            partitionSpec.setBoundSpaceComparator(boundSpaceComparator);
+            partitionSpec.setUseSpecTemplate(useSubPartByTemp);
+            partitionSpec.setParentPartPosi(parentSpecPosition);
+
+            PartitionGroupRecord partitionGroupRecord = partitionGroupRecordsMap.get(confInfo.getGroupId());
+            String groupKey = partitionGroupRecord == null ? "" :
+                GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.getPhy_db());
+            if (tblType == PartitionTableType.BROADCAST_TABLE && StringUtils.isEmpty(groupKey)) {
+                groupKey = defaultDbIndex;
+            }
+            PartitionLocation location =
+                new PartitionLocation(groupKey, phyTbl,
+                    partitionGroupRecord == null ? PartitionLocation.INVALID_PARTITION_GROUP_ID :
+                        partitionGroupRecord.getId());
+            partitionSpec.setLocation(location);
+
+            if (extras != null && TStringUtil.isNotEmpty(extras.getLocality())) {
+                LocalityDesc locality = LocalityDesc.parse(extras.getLocality());
+                partitionSpec.setLocality(locality.toString());
+            }
+
+            if (!buildSubPartBy) {
+                if (useSubPartBy) {
+                    partitionSpec.setLogical(true);
+                    partitionSpec.setLocation(null);
+                    partitionSpec.setSpecTemplate(false);
+                    partitionSpec.setPhyPartPosition(null);
+                    partitionSpec.setEngine(null);
+                } else {
+                    partitionSpec.setLogical(false);
+                    partitionSpec.setSpecTemplate(false);
+                    partitionSpec.setPhyPartPosition(phyPartSpecCounter.incrementAndGet());
+                }
+            } else {
+                if (useSubPartByTemp) {
+                    if (buildSubPartByTemp) {
+                        partitionSpec.setLogical(true);
+                        partitionSpec.setLocation(null);
+                        partitionSpec.setSpecTemplate(true);
+                        partitionSpec.setName(partitionSpec.getTemplateName());
+                        partitionSpec.setPhyPartPosition(null);
+                        partitionSpec.setEngine(null);
+                    } else {
+                        partitionSpec.setLogical(false);
+                        partitionSpec.setSpecTemplate(false);
+                        partitionSpec.setPhyPartPosition(phyPartSpecCounter.incrementAndGet());
+                    }
+                } else {
+                    if (!buildSubPartByTemp) {
+                        partitionSpec.setLogical(false);
+                        partitionSpec.setSpecTemplate(false);
+                        partitionSpec.setPhyPartPosition(phyPartSpecCounter.incrementAndGet());
+                    }
+                }
+            }
+            partSpecList.add(partitionSpec);
+        }
+        return partSpecList;
+    }
+
+    public static PartitionInfo buildPartInfoByMetaDbParams(BuildPartInfoFromMetaDbParams buildParams) {
+
+        TablePartitionConfig tbPartConf = buildParams.getTbPartConf();
+        List<ColumnMeta> allColumnMetas = buildParams.getAllColumnMetas();
+        Map<Long, PartitionGroupRecord> partitionGroupRecordsMap = buildParams.getPartitionGroupRecordsMap();
+        TablePartitionRecord logTblConfig = tbPartConf.getTableConfig();
+        PartitionInfo partitionInfo = new PartitionInfo();
+        TablePartitionRecord logTableConfig = tbPartConf.getTableConfig();
+        PartitionTableType tblType = PartitionTableType.getTypeByIntVal(logTblConfig.getTblType());
+
+        Long tblId = logTableConfig.getId();
+        String tableSchema = logTableConfig.getTableSchema();
+        String tableName = logTableConfig.getTableName();
+        Long tblGroupId = logTableConfig.getGroupId();
+        Long metaDbVersion = logTableConfig.getMetaVersion();
+        Integer spTempFlag = logTableConfig.getSpTempFlag();
+        Integer logTbStatus = logTableConfig.getPartStatus();
+        Integer autoFlag = logTableConfig.getAutoFlag();
+        Long partFlags = logTableConfig.getPartFlags();
+        ExtraFieldJSON partExtras = logTableConfig.getPartExtras();
+
+        partitionInfo.setTableId(tblId);
+        partitionInfo.setTableSchema(tableSchema);
+        partitionInfo.setTableName(tableName);
+        partitionInfo.setTableGroupId(tblGroupId);
+        partitionInfo.setMetaVersion(metaDbVersion);
+        partitionInfo.setSpTemplateFlag(spTempFlag);
+        partitionInfo.setStatus(logTbStatus);
+        partitionInfo.setAutoFlag(autoFlag);
+        partitionInfo.setPartFlags(partFlags);
+        partitionInfo.setTableType(tblType);
+
+        PartInfoSessionVars sessionVars = new PartInfoSessionVars();
+        if (partExtras != null) {
+            partitionInfo.setLocality(logTableConfig.getPartExtras().getLocality());
+            String tablePattern = partExtras.getPartitionPattern();
+            if (StringUtils.isEmpty(tablePattern)) {
+                partitionInfo.setRandomTableNamePatternEnabled(false);
+            } else {
+                partitionInfo.setTableNamePattern(tablePattern);
+            }
+            if (partExtras.getTimeZone() != null) {
+                sessionVars.setTimeZone(partExtras.getTimeZone());
+            }
+            if (partExtras.getCharset() != null) {
+                sessionVars.setCharset(partExtras.getCharset());
+            }
+            if (partExtras.getCollation() != null) {
+                sessionVars.setCollation(partExtras.getCollation());
+            }
+        } else {
+            partitionInfo.setRandomTableNamePatternEnabled(false);
+        }
+        partitionInfo.setSessionVars(sessionVars);
+        List<TablePartitionSpecConfig> partSpecConfigs = tbPartConf.getPartitionSpecConfigs();
+
+        String defaultDbIndex = null;
+        if (tblType == PartitionTableType.BROADCAST_TABLE) {
+            defaultDbIndex = TableInfoManager.getSchemaDefaultDbIndex(logTblConfig.getTableSchema());
+        }
+        AtomicLong phyPartSpecCounter = new AtomicLong(0L);
+
+        BuildPartByDefFromMetaDbParams partByDefMetaDbParams = new BuildPartByDefFromMetaDbParams();
+        partByDefMetaDbParams.setLogTblConfig(tbPartConf.getTableConfig());
+        partByDefMetaDbParams.setAllColumnMetas(allColumnMetas);
+        partByDefMetaDbParams.setParentSpecConfig(null);
+        partByDefMetaDbParams.setPartitionSpecConfigs(partSpecConfigs);
+        partByDefMetaDbParams.setPartitionGroupRecordsMap(partitionGroupRecordsMap);
+        partByDefMetaDbParams.setSpPartTempFlag(spTempFlag);
+        partByDefMetaDbParams.setDefaultDbIndex(defaultDbIndex);
+        partByDefMetaDbParams.setPhyPartSpecCounter(phyPartSpecCounter);
+        PartitionByDefinition partByDef = buildCompletePartByDefByMetaDbParams(partByDefMetaDbParams);
+        partitionInfo.setPartitionBy(partByDef);
+
+        partitionInfo.initPartSpecSearcher();
+        return partitionInfo;
+    }
+
+    public static List<PartitionSpec> buildAllPartBySpecList(BuildAllPartSpecsFromAstParams buildParams) {
+
+        List<ColumnMeta> partColMetaList = buildParams.getPartColMetaList();
+        PartKeyLevel partKeyLevel = buildParams.getPartKeyLevel();
+        PartitionIntFunction partIntFunc = buildParams.getPartIntFunc();
+        SearchDatumComparator pruningSpaceComparator = buildParams.getPruningSpaceComparator();
+
+        /**
+         * If buildSubPartBy = false, the partitions are the first-level partitionSpec definitions,
+         * If buildSubPartBy = true,
+         *      if buildSubPartSpecTemplate=true
+         *       then the partitions are the subpartition-templated partitionSpec definitions.
+         *      if buildSubPartSpecTemplate=false
+         *       then the partitions are a subpartition partitionSpec definitions of one partition.
+         */
+        List<SqlNode> partitions = buildParams.getPartitions();
+
+        AtomicInteger phyPartCounter = buildParams.getPhyPartCounter();
+        SqlNode hashPartitionCntAst = buildParams.getHashPartitionCntAst();
+        Map<SqlNode, RexNode> partBoundExprInfo = buildParams.getPartBoundExprInfo();
+        PartitionStrategy strategy = buildParams.getPartStrategy();
+        PartitionTableType tblType = buildParams.getTblType();
+        ExecutionContext ec = buildParams.getEc();
+        PartitionSpec parentPartSpec = buildParams.getParentPartSpec();
+        int allPhyGroupCnt = buildParams.getAllPhyGroupCnt();
+        boolean buildSubPartBy = buildParams.isBuildSubPartBy();
+        /**
+         * Label if current building is doing for subpartition template.
+         */
+        boolean buildSubPartSpecTemplate = buildParams.isBuildSubPartSpecTemplate();
+        boolean useSubPartSpecTemplate = buildParams.isUseSubPartTemplate();
+        boolean containNextPartLevelSpec = buildParams.isContainNextLevelPartSpec();
+
+        /**
+         * Label if a partition has its own non-templated subpartitions definitions.
+         */
+        boolean notExistSubPartSpecDef =
+            (!buildSubPartBy) || (buildSubPartBy && !useSubPartSpecTemplate && (partitions == null
+                || partitions.isEmpty()));
+
+        List<PartitionSpec> partSpecList = new ArrayList<>();
+        Long initHashPartCnt = 0L;
+        if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
+            initHashPartCnt = 1L;
+        } else if (tblType == PartitionTableType.BROADCAST_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
+            initHashPartCnt = Long.valueOf(allPhyGroupCnt);
+        } else {
+            if (partitions != null) {
+                /**
+                 * Handle for the following cases:
+                 *  <pre>
+                 *      case1:
+                 *          partition by key(pk)
+                 *          partitions 3 (
+                 *              partition p1 values less than (100000000),
+                 *              partition p2 values less than (200000000),
+                 *              partition p3 values less than (maxvalue)
+                 *          )
+                 *     case2:
+                 *          ...
+                 *          partition p1 values less than (100000000) (
+                 *              subpartition sp1
+                 *              subpartition sp2
+                 *              subpartition sp3
+                 *          )
+                 *          ...
+                 *
+                 *     case3:
+                 *          ...
+                 *          partition p1 values less than (100000000) (
+                 *              subpartition sp1 values less than (100000000),
+                 *              subpartition sp2 values less than (200000000),
+                 *              subpartition sp3 values less than (maxvalue)
+                 *          )
+                 *          ...
+                 *
+                 *  </pre>
+                 *  The above cases specify hash partitions by both the list of (sub)partition and (sub)partition count
+                 *  so initHashPartCnt should be set the value to the size of partitions
+                 */
+                initHashPartCnt = Long.valueOf(partitions.size());
+            }
+        }
+
+        Long finalHashPartCnt;
+        Integer maxPhysicalPartitions = Integer.valueOf(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT.getDefault());
+        if (ec != null) {
+            maxPhysicalPartitions = ec.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
+        }
+        if (!(strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY)) {
+            if (partitions.size() > maxPhysicalPartitions) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                    String
+                        .format("Too many partitions [%s] (including subpartitions) were defined", partitions.size()));
+            }
+
+            for (int i = 0; i < partitions.size(); i++) {
+
+                BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+                partSpecAstParams.setContext(ec);
+                partSpecAstParams.setPartColMetaList(partColMetaList);
+                partSpecAstParams.setPartKeyLevel(partKeyLevel);
+                partSpecAstParams.setPartIntFunc(partIntFunc);
+                partSpecAstParams.setPruningComparator(pruningSpaceComparator);
+                partSpecAstParams.setPartBoundExprInfo(partBoundExprInfo);
+                partSpecAstParams.setPartBoundValBuilder(null);
+                partSpecAstParams.setAutoBuildPart(false);
+                partSpecAstParams.setUseSpecTemplate(useSubPartSpecTemplate);
+
+                if (!buildSubPartBy) {
+                    SqlPartition partSpecAst = (SqlPartition) partitions.get(i);
+                    partSpecAstParams.setPartNameAst(partSpecAst.getName());
+                    partSpecAstParams.setPartBndValuesAst(partSpecAst.getValues());
+                    partSpecAstParams.setPartComment(partSpecAst.getComment());
+                    partSpecAstParams.setPartLocality(partSpecAst.getLocality());
+                } else {
+                    SqlSubPartition partSpecAst = (SqlSubPartition) partitions.get(i);
+                    partSpecAstParams.setPartNameAst(partSpecAst.getName());
+                    partSpecAstParams.setPartBndValuesAst(partSpecAst.getValues());
+                    partSpecAstParams.setPartComment(partSpecAst.getComment());
+                    partSpecAstParams.setPartLocality(partSpecAst.getLocality());
+                }
+
+                //todo (luoyanxin,chengbi) why consider buildSubPartSpecTemplate here
+                partSpecAstParams.setLogical(
+                    containNextPartLevelSpec ? true : (buildSubPartSpecTemplate ? true : false));
+                partSpecAstParams.setSpecTemplate(buildSubPartSpecTemplate);
+                partSpecAstParams.setSubPartSpec(buildSubPartBy);
+                partSpecAstParams.setPhySpecCounter(phyPartCounter);
+
+                partSpecAstParams.setStrategy(strategy);
+                partSpecAstParams.setPartPosition(i + 1);
+                //partSpecAstParams.setPrefixPartColCnt(PartitionInfoUtil.FULL_PART_COL_COUNT);
+                partSpecAstParams.setAllLevelPrefixPartColCnts(PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST);
+                partSpecAstParams.setParentPartSpec(parentPartSpec);
+                PartitionSpec partSpec = buildPartSpecByAstParams(partSpecAstParams);
+
+                partSpecList.add(partSpec);
+            }
+
+            if (strategy == PartitionStrategy.LIST_COLUMNS || strategy == PartitionStrategy.LIST) {
+                /**
+                 * validate:
+                 * 1. only allow at most one default partition
+                 * 2. default partition must be in last position
+                 * */
+                int defaultPartSpecCnt = 0;
+                int defaultPartPosition = 0;
+                for (int idx = 0; idx < partSpecList.size(); idx++) {
+                    PartitionSpec spec = partSpecList.get(idx);
+                    if (spec.isDefaultPartition()) {
+                        defaultPartSpecCnt++;
+                        defaultPartPosition = idx;
+                    }
+                }
+                if (defaultPartSpecCnt > 1) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        "Only at most one default partition is allowed");
+                }
+                if (defaultPartSpecCnt == 1 && defaultPartPosition != partSpecList.size() - 1) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                        "Default partition must be the last partition");
+                }
+            }
+
+        } else {
+
+            /**
+             * On Hash/Key Policy, the size of partitions will be 0.
+             * When partitions.size = 0, it may be one of the following cases:
+             *
+             * <pre>
+             *     case1-0:
+             *          create table (...)
+             *          partition by key(pk);
+             *          so the partition size is the default config of partition size
+             *          [partition use the definition of key policy without specifying partition count]
+             *     case1-1:
+             *          create table (...)
+             *          partition by key(pk)
+             *          partitions 8;
+             *          so the partition size is the default config of partition size
+             *          [partition use the definition of key policy with specifying partition count]
+             *     case2:
+             *          create table (...)
+             *          partition by key(pk)
+             *          subpartition by key(name);
+             *          [subpartition use the templated definition of key policy without specifying subpartition count]
+             *          so the partition size is the default config of partition size,
+             *          so the subpartition size is the default config of partition size
+             *     case3-0:
+             *          create table (...)
+             *          partition by range(pk)
+             *          subpartition by key(name)
+             *          subpartitions 8
+             *          (
+             *              partition p1 values less than (100),
+             *              partition p2 values less than (maxvalue)
+             *          )
+             *          [subpartition use the non-templated definition of key policy with specifying subpartition count]
+             *     case3-1:
+             *          create table (...)
+             *          partition by range(pk)
+             *          subpartition by key(name)
+             *          (
+             *              partition p1 values less than (100) (
+             *                  subpartitions 3
+             *              ),
+             *              partition p2 values less than (maxvalue) (
+             *                  subpartition sp4,
+             *                  subpartition sp5
+             *              )
+             *          )
+             *          [subpartition use the non-templated definition of key policy with specifying subpartition count
+             *           by using "subpartitions" or list of "subpartition" ]
+             *     case4:
+             *          create table (...)
+             *          partition by range(pk)
+             *          subpartition by key(name)
+             *          (
+             *              partition p1 values less than (100) (
+             *                  subpartitions 5
+             *              ),
+             *              partition p2 values less than (maxvalue)
+             *          )
+             *          [subpartition use the non-templated definition of key policy,
+             *           but some partition has no definition of its subpartition]
+             * </pre>
+             */
+
+            /**
+             * Only the following case need auto generate hash partition count and partitions :
+             * case1-0: buildSubPartBy=false and hashPartitionCntAst == null
+             * case2: buildSubPartBy=true and hashPartitionCntAst == null and useSubPartTemplate=true
+             * case4: buildSubPartBy=true and hashPartitionCntAst == null and useSubPartTemplate=false
+             *        and some partition has no subpartition definition.
+             *
+             */
+            finalHashPartCnt = autoDecideHashPartCountIfNeed(
+                ec,
+                tblType,
+                buildSubPartBy,
+                buildSubPartSpecTemplate,
+                notExistSubPartSpecDef,
+                maxPhysicalPartitions,
+                initHashPartCnt,
+                hashPartitionCntAst);
+
+            boolean specifyPartitionsAst = false;
+            if (partitions != null && !partitions.isEmpty()) {
+                specifyPartitionsAst = true;
+            }
+            if (!specifyPartitionsAst) {
+                /**
+                 * If buildSubPartBy = false, the partitions are the first-level partitionSpec definitions,
+                 * If buildSubPartBy = true, the partitions are the subpartition-templated partitionSpec definitions.
+                 */
+
+                /**
+                 * On Hash/Key Policy, the size of partitions will be 0.
+                 * When partitions.size() = 0, it may be the following cases and need auto build partitionSpec:
+                 *
+                 * <pre>
+                 *     case1-0:
+                 *          create table (...)
+                 *          partition by key(pk);
+                 *          so the partition size is the default config of partition size
+                 *          [partition use the definition of key policy without specifying partition count]
+                 *     case1-1:
+                 *          create table (...)
+                 *          partition by key(pk)
+                 *          partitions 8;
+                 *          so the partition size is the default config of partition size
+                 *          [partition use the definition of key policy with specifying partition count]
+                 *     case2:
+                 *          create table (...)
+                 *          partition by key(pk)
+                 *          subpartition by key(name);
+                 *          [subpartition use the templated definition of key policy without specifying subpartition count]
+                 *          so the partition size is the default config of partition size,
+                 *          so the subpartition size is the default config of partition size
+                 *     case3-0:
+                 *          create table (...)
+                 *          partition by range(pk)
+                 *          subpartition by key(name)
+                 *          subpartitions 8
+                 *          (
+                 *              partition p1 values less than (100),
+                 *              partition p2 values less than (maxvalue)
+                 *          )
+                 *          [subpartition use the non-templated definition of key policy with specifying subpartition count]
+                 *     case3-1:
+                 *          create table (...)
+                 *          partition by range(pk)
+                 *          subpartition by key(name)
+                 *          (
+                 *              partition p1 values less than (100) (
+                 *                  subpartitions 4
+                 *              ),
+                 *              partition p2 values less than (maxvalue) (
+                 *                  subpartitions 5
+                 *              )
+                 *          )
+                 *          [subpartition use the non-templated definition of key policy]
+                 * </pre>
+                 */
+                boolean needAutoGenHashPartSpecBndVal =
+                    checkNeedAutoGenPartSpecByHashPartCntVal(buildSubPartBy, buildSubPartSpecTemplate,
+                        useSubPartSpecTemplate,
+                        notExistSubPartSpecDef);
+
+                if (needAutoGenHashPartSpecBndVal) {
+                    PartBoundValBuilder boundValBuilder = null;
+                    boolean isMultiCol = partColMetaList.size() > 1;
+                    if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCol)) {
+                        boundValBuilder = new HashPartBoundValBuilder(finalHashPartCnt.intValue());
+                    } else {
+                        boundValBuilder =
+                            new KeyPartBoundValBuilder(finalHashPartCnt.intValue(), partColMetaList.size());
+                    }
+                    for (int i = 0; i < finalHashPartCnt; i++) {
+                        BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+                        partSpecAstParams.setContext(ec);
+                        partSpecAstParams.setPartColMetaList(partColMetaList);
+                        partSpecAstParams.setPartKeyLevel(partKeyLevel);
+                        partSpecAstParams.setPartIntFunc(partIntFunc);
+                        partSpecAstParams.setPruningComparator(pruningSpaceComparator);
+                        partSpecAstParams.setPartBoundExprInfo(partBoundExprInfo);
+                        partSpecAstParams.setPartBoundValBuilder(boundValBuilder);
+                        partSpecAstParams.setAutoBuildPart(true);
+                        partSpecAstParams.setPartNameAst(null);
+                        partSpecAstParams.setPartBndValuesAst(null);
+                        partSpecAstParams.setPartComment(null);
+                        partSpecAstParams.setPartLocality(null);
+                        partSpecAstParams.setStrategy(strategy);
+                        partSpecAstParams.setPartPosition(i + 1);
+                        //partSpecAstParams.setPrefixPartColCnt(PartitionInfoUtil.FULL_PART_COL_COUNT);
+                        partSpecAstParams.setAllLevelPrefixPartColCnts(
+                            PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST);
+
+                        partSpecAstParams.setLogical(containNextPartLevelSpec);
+                        partSpecAstParams.setSpecTemplate(buildSubPartSpecTemplate);
+                        partSpecAstParams.setSubPartSpec(buildSubPartBy);
+                        partSpecAstParams.setPhySpecCounter(phyPartCounter);
+                        partSpecAstParams.setUseSpecTemplate(useSubPartSpecTemplate);
+
+                        partSpecAstParams.setParentPartSpec(parentPartSpec);
+                        PartitionSpec partSpec = buildPartSpecByAstParams(partSpecAstParams);
+                        partSpecList.add(partSpec);
+                    }
+                }
+
+            } else {
+
+                /**
+                 * Come here, it must be a partitionBy/subpartitionBy definition of key/hash policy
+                 * are defined by partitions count and partitionSpec list
+                 * which partitionSpec list are the manually-specifying hash bound definitions , such as
+                 * <pre>
+                 * case 1:
+                 *          create table (...)
+                 *          partition by key(pk)
+                 *          partitions 3 (
+                 *              partition p1 values less than (100000000),
+                 *              partition p2 values less than (200000000),
+                 *              partition p3 values less than (maxvalue)
+                 *          )
+                 * case 2:
+                 *          create table (...)
+                 *          partition by range(pk)
+                 *
+                 *          subpartition by key(pk)
+                 *          subpartitions 3 (
+                 *              subpartition p1 values less than (100000000),
+                 *              subpartition p2 values less than (200000000),
+                 *              subpartition p3 values less than (maxvalue)
+                 *          )
+                 *
+                 *          (
+                 *              partition p1 values less than (100000000),
+                 *              partition p2 values less than (200000000),
+                 *              partition p3 values less than (maxvalue)
+                 *          )
+                 * case 3:
+                 *          create table (...)
+                 *          partition by range(pk)
+                 *
+                 *          subpartition by key(pk)
+                 *          subpartitions 3 (
+                 *              subpartition p1,
+                 *              subpartition p2,
+                 *              subpartition p3
+                 *          )
+                 *
+                 *          (
+                 *              partition p1 values less than (100000000),
+                 *              partition p2 values less than (200000000),
+                 *              partition p3 values less than (maxvalue)
+                 *          )
+                 * </pre>
+                 * , so the above cases need check if the hashPartCnt is invalid
+                 */
+                boolean needCheckHashCntInvalid =
+                    (!buildSubPartBy) || (buildSubPartBy && ((useSubPartSpecTemplate && buildSubPartSpecTemplate)
+                        || (!useSubPartSpecTemplate && !buildSubPartSpecTemplate)));
+                if (needCheckHashCntInvalid) {
+                    if (partitions.size() != finalHashPartCnt) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                            String.format(
+                                "the count[%s] of the manual defined hash partitions mismatch the count[%s] of `PARTITIONS`",
+                                partitions.size(), finalHashPartCnt));
+                    }
+                }
+
+                boolean specHashSubPartCntByNameList = false;
+                if (!buildSubPartBy) {
+                    SqlPartition partSpecAst0 = (SqlPartition) partitions.get(0);
+                    if (partSpecAst0.getValues() == null) {
+                        specHashSubPartCntByNameList = true;
+                    }
+                } else {
+                    SqlSubPartition partSpecAst0 = (SqlSubPartition) partitions.get(0);
+                    if (partSpecAst0.getValues() == null) {
+                        specHashSubPartCntByNameList = true;
+                    }
+                }
+
+                PartBoundValBuilder boundValBuilder = null;
+                if (specHashSubPartCntByNameList) {
+                    boolean isMultiCol = partColMetaList.size() > 1;
+                    if (strategy == PartitionStrategy.HASH || (strategy == PartitionStrategy.KEY && !isMultiCol)) {
+                        boundValBuilder = new HashPartBoundValBuilder(partitions.size());
+                    } else {
+                        boundValBuilder = new KeyPartBoundValBuilder(partitions.size(), partColMetaList.size());
+                    }
+                }
+
+                for (int i = 0; i < partitions.size(); i++) {
+
+                    BuildPartSpecFromAstParams partSpecAstParams = new BuildPartSpecFromAstParams();
+                    partSpecAstParams.setContext(ec);
+                    partSpecAstParams.setPartColMetaList(partColMetaList);
+                    partSpecAstParams.setPartKeyLevel(partKeyLevel);
+                    partSpecAstParams.setPartIntFunc(partIntFunc);
+                    partSpecAstParams.setPruningComparator(pruningSpaceComparator);
+                    partSpecAstParams.setPartBoundExprInfo(partBoundExprInfo);
+                    partSpecAstParams.setPartBoundValBuilder(boundValBuilder);
+                    partSpecAstParams.setAutoBuildPart(specHashSubPartCntByNameList);
+                    partSpecAstParams.setUseSpecTemplate(useSubPartSpecTemplate);
+
+                    if (!buildSubPartBy) {
+                        SqlPartition partSpecAst = (SqlPartition) partitions.get(i);
+                        partSpecAstParams.setPartNameAst(partSpecAst.getName());
+                        partSpecAstParams.setPartBndValuesAst(partSpecAst.getValues());
+                        partSpecAstParams.setPartComment(partSpecAst.getComment());
+                        partSpecAstParams.setPartLocality(partSpecAst.getLocality());
+                    } else {
+                        SqlSubPartition partSpecAst = (SqlSubPartition) partitions.get(i);
+                        partSpecAstParams.setPartNameAst(partSpecAst.getName());
+                        partSpecAstParams.setPartBndValuesAst(partSpecAst.getValues());
+                        partSpecAstParams.setPartComment(partSpecAst.getComment());
+                        partSpecAstParams.setPartLocality(partSpecAst.getLocality());
+                    }
+
+                    partSpecAstParams.setLogical(containNextPartLevelSpec);
+                    partSpecAstParams.setSpecTemplate(buildSubPartSpecTemplate);
+                    partSpecAstParams.setSubPartSpec(buildSubPartBy);
+                    partSpecAstParams.setPhySpecCounter(phyPartCounter);
+
+                    partSpecAstParams.setStrategy(strategy);
+                    partSpecAstParams.setPartPosition(i + 1);
+                    //partSpecAstParams.setPrefixPartColCnt(PartitionInfoUtil.FULL_PART_COL_COUNT);
+                    partSpecAstParams.setAllLevelPrefixPartColCnts(
+                        PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST);
+
+                    partSpecAstParams.setParentPartSpec(parentPartSpec);
+                    PartitionSpec partSpec = buildPartSpecByAstParams(partSpecAstParams);
+                    partSpecList.add(partSpec);
+                }
+            }
+        }
+        return partSpecList;
+    }
+
+    private static boolean checkNeedAutoGenPartSpecByHashPartCntVal(boolean buildSubPartBy,
+                                                                    boolean buildSubPartSpecTemplate,
+                                                                    boolean useSubPartSpecTemplate,
+                                                                    boolean notExistSubPartSpecDef) {
+
+        if (!buildSubPartBy) {
+            /**
+             *     case1-0:
+             *          create table (...)
+             *          partition by key(pk);
+             *  build-> partitions autoPartCnt
+             *
+             *     case1-1:
+             *          create table (...)
+             *          partition by key(pk)
+             *  build-> partitions 2;
+             *
+             */
+            return true;
+        } else {
+            if (useSubPartSpecTemplate) {
+                if (buildSubPartSpecTemplate) {
+                    /**
+                     *     case2:
+                     *          create table (...)
+                     *          partition by key(pk)
+                     *          subpartition by key(name);
+                     *  build-> subpartitions autoPartCnt
+                     *
+                     *     case3-0:
+                     *          create table (...)
+                     *          partition by range(pk)
+                     *          subpartition by key(name)
+                     *  build-> subpartitions 2
+                     *          (
+                     *              partition p1 ...,
+                     *              partition p2 ...
+                     *          )
+                     *
+                     */
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                if (buildSubPartSpecTemplate) {
+                    /**
+                     *     case4-0:
+                     *          create table (...)
+                     *          partition by range(pk)
+                     *  build-> subpartition by key(name)
+                     *          (
+                     *              partition p1 values less than (100) (
+                     *                  subpartitions 4
+                     *              ),
+                     *              partition p2 values less than (maxvalue) (
+                     *                  subpartitions 3
+                     *              )
+                     *          )
+                     */
+                    return false;
+                } else {
+                    if (notExistSubPartSpecDef) {
+                        /**
+                         *     case4-1:
+                         *          create table (...)
+                         *          partition by range(pk)
+                         *          subpartition by key(name)
+                         *          (
+                         *              partition p1 values less than (100) (
+                         *        build->  autoSubPartCnt(=1)
+                         *              ),
+                         *              partition p2 ...
+                         *          )
+                         */
+                        return true;
+                    } else {
+                        /**
+                         *     case4-2:
+                         *          create table (...)
+                         *          partition by range(pk)
+                         *          subpartition by key(name)
+                         *          (
+                         *              partition p1 values less than (100) (
+                         *       build->    subpartitions 4
+                         *              ),
+                         *              partition p2 ...
+                         *          )
+                         */
+                        return true;
+                    }
+                }
+
+            }
+        }
+    }
+
+    protected static Long autoDecideHashPartCountIfNeed(ExecutionContext ec,
+                                                        PartitionTableType tblType,
+                                                        boolean buildSubPartBy,
+                                                        boolean buildSubPartSpecTemplate,
+                                                        boolean notExistSubPartSpecDef,
+                                                        Integer maxPhysicalPartitions,
+                                                        Long initHashPartCnt,
+                                                        SqlNode hashPartitionCntAst) {
+
+        /**
+         * Only the following case need auto generate hash partition count and partitions :
+         * case1-0: buildSubPartBy=false and hashPartitionCntAst == null
+         * case2: buildSubPartBy=true and hashPartitionCntAst == null and useSubPartTemplate=true
+         * case4: buildSubPartBy=true and hashPartitionCntAst == null and useSubPartTemplate=false
+         *        and some partition has no subpartition definition.
+         *
+         */
+
+        Long finalHashPartCnt = initHashPartCnt;
+        if (hashPartitionCntAst == null && (tblType == PartitionTableType.GSI_TABLE
+            || tblType == PartitionTableType.PARTITION_TABLE)) {
+            if (!buildSubPartBy) {
+                /**
+                 * Create Table ddl does NOT specify partition count for hash/key partition strategy
+                 */
+                if (initHashPartCnt == 0) {
+                    /**
+                     * no specify hashPartCntAst and any partitionSpecsAst, so use default partition count of metadb
+                     */
+                    finalHashPartCnt = ec.getParamManager().getLong(ConnectionParams.AUTO_PARTITION_PARTITIONS);
+                }
+
+            } else {
+                if (buildSubPartSpecTemplate) {
+                    /**
+                     *  auto generate hash partition count for subpartitions
+                     */
+                    if (initHashPartCnt == 0) {
+                        /**
+                         * no specify hashPartCntAst and any partitionSpecsAst, so use default partition count of metadb
+                         */
+                        finalHashPartCnt = ec.getParamManager().getLong(ConnectionParams.AUTO_PARTITION_PARTITIONS);
+                    }
+                } else {
+                    if (notExistSubPartSpecDef) {
+                        /**
+                         * no specify any subPartitionSpecsAst, so treat it as the only one subpartition
+                         */
+                        finalHashPartCnt = 1L;
+                    }
+                }
+            }
+        } else if ((hashPartitionCntAst != null) && (hashPartitionCntAst instanceof SqlLiteral)) {
+            finalHashPartCnt = ((SqlLiteral) hashPartitionCntAst).getValueAs(Long.class);
+        }
+
+        /**
+         * Check the finalHashPartCnt is invalid
+         */
+        if (finalHashPartCnt > maxPhysicalPartitions) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                String.format("Too many partitions [%s] (including subpartitions) were defined", finalHashPartCnt));
+        } else if (finalHashPartCnt <= 0) {
+            if (buildSubPartSpecTemplate) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                    String.format("partitions [%s] (including subpartitions) can not be less then 1",
+                        finalHashPartCnt));
+            }
+        }
+        return finalHashPartCnt;
+    }
+
+    public static PartitionInfo buildPartInfoWithKeyStrategyForNewGsiMeta(String schemaName,
+                                                                          String tableName,
+                                                                          TableMeta primaryTblMeta,
+                                                                          List<String> newGsiAllCols,
+                                                                          List<String> newGsiPartCols,
+                                                                          long hashPartCnt) {
+        List<ColumnMeta> newGsiAllColMetas = new ArrayList<>();
+        for (int i = 0; i < newGsiAllCols.size(); i++) {
+            String col = newGsiAllCols.get(i);
+            ColumnMeta cm = primaryTblMeta.getColumn(col);
+            newGsiAllColMetas.add(cm);
+        }
+
+        List<SqlIdentifier> partKeyAst = new ArrayList<>();
+        for (int i = 0; i < newGsiPartCols.size(); i++) {
+            SqlIdentifier id = new SqlIdentifier(newGsiPartCols.get(i), SqlParserPos.ZERO);
+            partKeyAst.add(id);
+        }
+
+        // Generate the partitioning clause.
+        final SqlPartitionByHash sqlPartitionByHash = new SqlPartitionByHash(true, false, SqlParserPos.ZERO);
+        Long partCnt = hashPartCnt;
+        SqlLiteral partCntAst =
+            SqlLiteral.createLiteralForIntTypes(partCnt, SqlParserPos.ZERO, SqlTypeName.INTEGER_UNSIGNED);
+        sqlPartitionByHash.setPartitionsCount(partCntAst);
+        sqlPartitionByHash.getColumns().addAll(partKeyAst);
+        final StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < partKeyAst.size(); ++i) {
+            if (i != 0) {
+                builder.append(", ");
+            }
+            builder.append(SqlIdentifier.surroundWithBacktick(partKeyAst.get(i).getLastName()));
+        }
+        sqlPartitionByHash.setSourceSql("KEY(" + builder + ") PARTITIONS " + partCnt);
+        SqlPartitionBy partByKeyOfNewGsi = sqlPartitionByHash;
+
+        PartitionInfo newGsiPartInfo = PartitionInfoBuilder
+            .buildPartitionInfoByPartDefAst(schemaName,
+                tableName, null, null,
+                partByKeyOfNewGsi, null,
+                new ArrayList<>(),
+                newGsiAllColMetas,
+                PartitionTableType.PARTITION_TABLE,
+                new ExecutionContext());
+        return newGsiPartInfo;
+    }
+
 }

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dql.auto.select;
 
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import org.junit.Test;
@@ -36,6 +37,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @author zhuoxue
  * @since 5.0.1
  */
+
 
 public class SelectWithOperatorTest extends AutoReadBaseTestCase {
 

@@ -29,7 +29,7 @@ public class SQLPurgeTableStatement extends SQLStatementImpl implements SQLDropS
     }
 
     public SQLPurgeTableStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

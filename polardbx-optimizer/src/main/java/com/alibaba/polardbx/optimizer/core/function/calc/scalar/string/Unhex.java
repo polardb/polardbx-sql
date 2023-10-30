@@ -16,12 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
-import com.alibaba.polardbx.common.charset.CharsetHandler;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 

@@ -15,6 +15,7 @@
  */
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 
 /**
  * @author chenghui.lch

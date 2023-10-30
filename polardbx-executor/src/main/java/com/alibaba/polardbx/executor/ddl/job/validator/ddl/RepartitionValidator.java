@@ -89,6 +89,16 @@ public class RepartitionValidator {
                 "can not use 'alter table dbpartition by' in auto mode database, please use 'alter table partition by' instead");
         }
 
+        if (newPartDb && !DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "can not use 'alter table partition by' in drds mode database, please use 'alter table dbpartition by' instead");
+        }
+
+        if (!newPartDb && DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "can not use 'alter table dbpartition by' in auto mode database, please use 'alter table partition by' instead");
+        }
+
         //必须变成某种类型的表，不可能既不是拆分表，也不是广播表/单表
         if (dbPartitionBy == null && isBroadcast == false && isSingle == false) {
             LOGGER.warn("repartition rule unspecified, primary table name: " + sourceTableName);
@@ -160,10 +170,25 @@ public class RepartitionValidator {
         PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
             .getPartitionInfo(sourceTableName);
 
-        if (partitionInfo.getActualPartitionColumns().size() != 1) {
-            throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
-                "can not alter partition count on the table which has been hot split");
+        List<List<String>> allLevelActualPartCols = partitionInfo.getAllLevelActualPartCols();
+        boolean useSubPartBy = partitionInfo.getPartitionBy().getSubPartitionBy() != null;
+        if (!useSubPartBy) {
+            if (allLevelActualPartCols.get(0).size() != 1) {
+                throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                    "can not alter partition count on the table which has been hot split");
+            }
+        } else {
+            if (allLevelActualPartCols.get(0).size() > 1) {
+                throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                    "can not alter partition count on the table which partitions has been hot split");
+            }
+
+            if (allLevelActualPartCols.get(1).size() > 1) {
+                throw new TddlRuntimeException(ERR_DDL_JOB_UNSUPPORTED,
+                    "can not alter partition count on the table which subpartitions has been hot split");
+            }
         }
+
     }
 
     /**

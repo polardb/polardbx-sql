@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -47,7 +48,6 @@ public class MySqlManageInstanceGroupStatement extends MySqlStatementImpl {
         return names;
     }
 
-
     public List<SQLExpr> getGroupNames() {
         return groupNames;
     }
@@ -66,5 +66,10 @@ public class MySqlManageInstanceGroupStatement extends MySqlStatementImpl {
 
     public void setOperation(SQLName operation) {
         this.operation = operation;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

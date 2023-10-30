@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.FloatConfigParam;
 import com.alibaba.polardbx.common.properties.IntConfigParam;
 import com.alibaba.polardbx.common.properties.LongConfigParam;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
 import java.text.ParseException;
 import java.util.Calendar;
@@ -34,6 +36,9 @@ import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANC
  * @author fangwu
  */
 public class InstConfUtil {
+    private static final Logger logger = LoggerFactory.getLogger(InstConfUtil.class);
+
+    private static final int MAX_TIME_CONFIG = 24 * 60;
 
     public static Map<String, Long> fetchLongConfigs(LongConfigParam... props) {
         Map<String, Long> results = new HashMap<>();
@@ -43,14 +48,43 @@ public class InstConfUtil {
         return results;
     }
 
-    public static boolean isInMaintenanceTimeWindow() throws ParseException {
-        int currentMinute = Calendar.getInstance().get(Calendar.MINUTE) +
-            Calendar.getInstance().get(Calendar.HOUR_OF_DAY) * 60;
+    public static boolean isInMaintenanceTimeWindow() {
+        return isInMaintenanceTimeWindow(Calendar.getInstance());
+    }
+
+    public static boolean isInMaintenanceTimeWindow(Calendar calendar) {
+        int currentMinute = calendar.get(Calendar.MINUTE) + calendar.get(Calendar.HOUR_OF_DAY) * 60;
         String startTime = getOriginVal(MAINTENANCE_TIME_START);
         String endTime = getOriginVal(MAINTENANCE_TIME_END);
-        int startTimeInt = getMinute(startTime);
-        int endTimeInt = getMinute(endTime);
-        return startTimeInt < currentMinute && currentMinute < endTimeInt;
+        try {
+            int startTimeInt = getMinute(startTime);
+            int endTimeInt = getMinute(endTime);
+
+            // check time config valid
+            checkTimeValid(startTimeInt, endTimeInt);
+
+            if (startTimeInt <= endTimeInt) {
+                return startTimeInt <= currentMinute && currentMinute <= endTimeInt;
+            } else {
+                return (MAX_TIME_CONFIG >= currentMinute && currentMinute >= startTimeInt)
+                    || endTimeInt >= currentMinute;
+            }
+
+        } catch (Exception e) {
+            logger.error(
+                "maintenance time parse error, check config  " + MAINTENANCE_TIME_START + "/" + MAINTENANCE_TIME_END,
+                e);
+            return false;
+        }
+    }
+
+    private static void checkTimeValid(int startTimeInt, int endTimeInt) throws Exception {
+        if (startTimeInt < 0 ||
+            endTimeInt < 0 ||
+            startTimeInt > MAX_TIME_CONFIG ||
+            endTimeInt > MAX_TIME_CONFIG) {
+            throw new Exception("time config exceed range limit 0~1440:" + startTimeInt + "," + endTimeInt);
+        }
     }
 
     /**

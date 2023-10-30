@@ -16,15 +16,22 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreateGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateGsi;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateTable;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
+import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
@@ -52,6 +59,12 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
     private final String primaryTableName;
 
     private final ExecutionContext executionContext;
+
+    protected String selectSql;
+
+    public void setSelectSql(String sql) {
+        selectSql = sql;
+    }
 
     public CreateTableWithGsiJobFactory(@Deprecated DDL ddl,
                                         CreateTableWithGsiPreparedData preparedData,
@@ -90,20 +103,29 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
 
         boolean isAutoPartition = this.preparedData.getPrimaryTablePreparedData().isAutoPartition();
         boolean hasTimestampColumnDefault = this.preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
-        Map<String, String> binaryColumnDefaultValues =
-            this.preparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
+        Map<String, String> specialDefaultValues =
+            this.preparedData.getPrimaryTablePreparedData().getSpecialDefaultValues();
+        Map<String, Long> specialDefaultValueFlags =
+            this.preparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags();
+        List<ForeignKeyData> addedForeignKeys =
+            this.preparedData.getPrimaryTablePreparedData().getAddedForeignKeys();
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(
                 primaryTableTopology,
                 primaryTablePhysicalPlans,
                 false,
                 isAutoPartition);
-        ExecutableDdlJob4CreateTable createTableJob = (ExecutableDdlJob4CreateTable) new CreateTableJobFactory(
+        CreateTableJobFactory executableDdlJob4CreateTable = new CreateTableJobFactory(
             false,
             hasTimestampColumnDefault,
-            binaryColumnDefaultValues,
+            specialDefaultValues,
+            specialDefaultValueFlags,
+            addedForeignKeys,
             physicalPlanData,
-            executionContext).create();
+            executionContext);
+//        executableDdlJob4CreateTable.setSelectSql(selectSql);
+        ExecutableDdlJob4CreateTable createTableJob =
+            (ExecutableDdlJob4CreateTable) executableDdlJob4CreateTable.create();
         result.combineTasks(createTableJob);
         result.removeTaskRelationship(
             createTableJob.getCreateTableAddTablesMetaTask(),
@@ -114,6 +136,13 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
             final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
             ExecutableDdlJob4CreateGsi gsiJob = (ExecutableDdlJob4CreateGsi)
                 CreateGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
+            DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
+                gsiPreparedData.getSchemaName(),
+                gsiPreparedData.getPrimaryTableName(),
+                gsiPreparedData.getIndexTableName(),
+                GsiStatisticsSyncAction.INSERT_RECORD,
+                null);
+            gsiJob.appendTask(gsiStatisticsInfoTask);
             result.combineTasks(gsiJob);
             result.removeTaskRelationship(
                 gsiJob.getCreateGsiValidateTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
@@ -131,6 +160,20 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
 
         result.setExceptionActionForAllSuccessor(
             createTableJob.getCdcDdlMarkTask(), DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
+
+        if (selectSql != null) {
+            InsertIntoTask insertIntoTask = new InsertIntoTask(schemaName, primaryTableName, selectSql, null, 0);
+            affectRows = insertIntoTask.getAffectRows();
+            ExecutableDdlJob insertJob = new ExecutableDdlJob();
+            insertJob.addTask(insertIntoTask);
+            ExecutableDdlJob4CreateSelect ans = new ExecutableDdlJob4CreateSelect();
+            ans.appendJob2(result);
+            ans.appendJob2(insertJob);
+            ans.setInsertTask(insertIntoTask);
+            //insert 只能rollback，无法重试
+            insertIntoTask.setExceptionAction(DdlExceptionAction.ROLLBACK);
+            return ans;
+        }
 
         return result;
     }

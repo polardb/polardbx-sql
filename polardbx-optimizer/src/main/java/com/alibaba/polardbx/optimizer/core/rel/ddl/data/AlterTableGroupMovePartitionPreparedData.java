@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +40,18 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
     val: partitions to be moved
      */
     private Map<String, Set<String>> targetPartitionsLocation;
+
+    @Override
+    public Map<String, String> getNewPartitionLocalities() {
+        return newPartitionLocalities;
+    }
+
+    @Override
+    public void setNewPartitionLocalities(Map<String, String> newPartitionLocalities) {
+        this.newPartitionLocalities = newPartitionLocalities;
+    }
+
+    private Map<String, String> newPartitionLocalities = new HashMap<>();
 
     public Map<String, Set<String>> getTargetPartitionsLocation() {
         return targetPartitionsLocation;
@@ -71,6 +86,10 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
                 partitionGroupRecord.phy_db = groupDetailInfoExRecordsForSpecInst.get(i % targetDbCount).phyDbName;
 
                 partitionGroupRecord.locality = "";
+                LocalityDesc localityDesc = LocalityInfoUtils.parse(newPartitionLocalities.get(newPartitionName));
+                if (!localityDesc.holdEmptyLocality()) {
+                    partitionGroupRecord.locality = localityDesc.toString();
+                }
                 partitionGroupRecord.pax_group_id = 0L;
                 inVisiblePartitionGroups.add(partitionGroupRecord);
                 newPartitionNames.add(newPartitionName);

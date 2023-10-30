@@ -17,10 +17,15 @@
 package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 public class PartSpecSearcher {
 
@@ -30,12 +35,33 @@ public class PartSpecSearcher {
     /**
      * key: grp
      * val: {
-     *     key: tbl
-     *     val: PartitionSpec
+     * key: tbl
+     * val: PartitionSpec
      * }
      */
     protected Map<String, Map<String, PartitionSpec>> phyInfoSpecMap;
+    /**
+     * key: partName or subPartName
+     * val:
+     * partSpec of (sub)partName
+     */
+    protected Map<String, PartitionSpec> partNameToSpecMap;
+    /**
+     * key: partName of subPartTempName
+     * val:
+     * subpartSpec Temp
+     */
+    protected Map<String, PartitionSpec> subPartTempNameToSpecMap;
     protected PartitionTableType tableType;
+    protected int phyPartCount;
+    /**
+     * Use to collate different subpartition spec definitions of different partition
+     * (only used for non-subpartition-template definitions)
+     * <p>
+     * key: the digest of subpartition spec definitions of one partition
+     * val: the partition spec that the subpartitions belong to
+     */
+    protected Map<String, List<PartitionSpec>> subPartSpecDefDigestMap;
 
     public static PartSpecSearcher buildPartSpecSearcher(PartitionTableType tblType, PartitionByDefinition partByDef) {
         return new PartSpecSearcher(tblType, partByDef);
@@ -44,9 +70,15 @@ public class PartSpecSearcher {
     private PartSpecSearcher(PartitionTableType tableType, PartitionByDefinition partByDef) {
         this.tableType = tableType;
         this.phyInfoSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        List<PartitionSpec> pSpecList = partByDef.getPartitions();
-        for (int i = 0; i < pSpecList.size(); i++) {
-            PartitionSpec p = pSpecList.get(i);
+        this.partNameToSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        this.subPartTempNameToSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        this.subPartSpecDefDigestMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        partByDef.refreshPhysicalPartitionsCache();
+        List<PartitionSpec> phySpecList = partByDef.getPhysicalPartitions();
+        this.phyPartCount = phySpecList.size();
+        for (int i = 0; i < phySpecList.size(); i++) {
+            PartitionSpec p = phySpecList.get(i);
+            String phyPartName = p.getName();
             PartitionLocation location = p.getLocation();
             String grpName = location.getGroupKey();
             String phyTbl = location.getPhyTableName();
@@ -57,6 +89,25 @@ public class PartSpecSearcher {
             }
             if (!phyTbToSpecMap.containsKey(phyTbl)) {
                 phyTbToSpecMap.put(phyTbl, p);
+            }
+            this.partNameToSpecMap.put(phyPartName, p);
+        }
+        if (partByDef.getSubPartitionBy() != null) {
+            /**
+             * If use subPart, also put top-level partition into partNameToSpecMap
+             */
+            List<PartitionSpec> pSpecList = partByDef.getPartitions();
+            for (int i = 0; i < pSpecList.size(); i++) {
+                PartitionSpec p = pSpecList.get(i);
+                String partName = p.getName();
+                this.partNameToSpecMap.put(partName, p);
+            }
+            boolean useSubPartTemp = partByDef.getSubPartitionBy().isUseSubPartTemplate();
+            if (useSubPartTemp) {
+                List<PartitionSpec> subPartSpecTemps = partByDef.getSubPartitionBy().getPartitions();
+                for (int i = 0; i < subPartSpecTemps.size(); i++) {
+                    this.subPartTempNameToSpecMap.put(subPartSpecTemps.get(i).getName(), subPartSpecTemps.get(i));
+                }
             }
         }
     }
@@ -74,13 +125,44 @@ public class PartSpecSearcher {
     }
 
     public Long getPartIntraGroupConnKey(String grpIndex, String phyTb) {
-        if (this.tableType != PartitionTableType.PARTITION_TABLE && this.tableType != PartitionTableType.GSI_TABLE ) {
+        if (this.tableType != PartitionTableType.PARTITION_TABLE && this.tableType != PartitionTableType.GSI_TABLE) {
             return FOUND_NON_PARTITIONED_TBL;
         }
-        PartitionSpec pSpec =  getPartSpec(grpIndex, phyTb);
+        PartitionSpec pSpec = getPartSpec(grpIndex, phyTb);
         if (pSpec == null) {
             return NO_FOUND_PART_SPEC;
         }
         return pSpec.getIntraGroupConnKey();
     }
+
+    public PartitionSpec getPartSpecByPartName(String partNameOrSubPartName) {
+        return this.partNameToSpecMap.get(partNameOrSubPartName);
+    }
+
+    public int getPhyPartCount() {
+        return phyPartCount;
+    }
+
+    public Set<String> fetchBothPartNameAndSubPartNameSet() {
+        Set<String> alreadyExistsPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        alreadyExistsPartNameSet.addAll(partNameToSpecMap.keySet());
+        alreadyExistsPartNameSet.addAll(subPartTempNameToSpecMap.keySet());
+        return alreadyExistsPartNameSet;
+    }
+
+    public boolean checkIfDuplicated(String newPartName) {
+        Set<String> alreadyExistsPartNameSet = partNameToSpecMap.keySet();
+        Set<String> alreadyExistsSubPartTempNameSet = partNameToSpecMap.keySet();
+
+        if (alreadyExistsPartNameSet.contains(newPartName)) {
+            return true;
+        }
+
+        if (alreadyExistsSubPartTempNameSet.contains(newPartName)) {
+            return true;
+        }
+
+        return false;
+    }
+
 }

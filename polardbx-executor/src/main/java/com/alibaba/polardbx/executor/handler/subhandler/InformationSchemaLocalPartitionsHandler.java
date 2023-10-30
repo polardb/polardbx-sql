@@ -29,7 +29,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaLocalPartitions;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
@@ -50,7 +50,7 @@ import java.util.Set;
  *
  * @author guxu
  */
-public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubClassHandler{
+public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubClassHandler {
     public InformationSchemaLocalPartitionsHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
@@ -65,14 +65,16 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
 
         InformationSchemaLocalPartitions localPartitionView = (InformationSchemaLocalPartitions) virtualView;
 
-        Set<String> equalSchemaNames = getFilterValues(virtualView, localPartitionView.getTableSchemaIndex(), executionContext);
-        Set<String> equalTableNames = getFilterValues(virtualView, localPartitionView.getTableNameIndex(), executionContext);
+        Set<String> equalSchemaNames =
+            getFilterValues(virtualView, localPartitionView.getTableSchemaIndex(), executionContext);
+        Set<String> equalTableNames =
+            getFilterValues(virtualView, localPartitionView.getTableNameIndex(), executionContext);
 
-        if(CollectionUtils.isEmpty(equalSchemaNames) || CollectionUtils.size(equalSchemaNames) != 1){
+        if (CollectionUtils.isEmpty(equalSchemaNames) || CollectionUtils.size(equalSchemaNames) != 1) {
             throw new TddlNestableRuntimeException("table_schema must be specified");
         }
 
-        if(CollectionUtils.isEmpty(equalTableNames) || CollectionUtils.size(equalTableNames) != 1){
+        if (CollectionUtils.isEmpty(equalTableNames) || CollectionUtils.size(equalTableNames) != 1) {
             throw new TddlNestableRuntimeException("table_name must be specified");
         }
 
@@ -81,18 +83,19 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
 
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
         boolean isTableSchemaActive = false;
-        for(String schema: schemaNames){
-            if(StringUtils.equalsIgnoreCase(schema, tableSchema)){
+        for (String schema : schemaNames) {
+            if (StringUtils.equalsIgnoreCase(schema, tableSchema)) {
                 isTableSchemaActive = true;
             }
         }
-        if(!isTableSchemaActive){
+        if (!isTableSchemaActive) {
             return cursor;
         }
 
-        final TableMeta primaryTableMeta = OptimizerContext.getContext(tableSchema).getLatestSchemaManager().getTable(tableName);
+        final TableMeta primaryTableMeta =
+            OptimizerContext.getContext(tableSchema).getLatestSchemaManager().getTable(tableName);
         final LocalPartitionDefinitionInfo definitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
-        if(definitionInfo == null){
+        if (definitionInfo == null) {
             throw new TddlNestableRuntimeException(String.format(
                 "table %s.%s is not a local partition table", tableSchema, tableName));
         }
@@ -112,10 +115,10 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
         TableDescription expect = primaryTableDesc.get(0);
 
         List<LocalPartitionDescription> localPartitionDescriptions = expect.getPartitions();
-        if(CollectionUtils.isEmpty(localPartitionDescriptions)){
+        if (CollectionUtils.isEmpty(localPartitionDescriptions)) {
             return cursor;
         }
-        for(LocalPartitionDescription rs: localPartitionDescriptions){
+        for (LocalPartitionDescription rs : localPartitionDescriptions) {
 
             if (!CanAccessTable.verifyPrivileges(tableSchema, tableName, executionContext)) {
                 continue;
@@ -138,7 +141,6 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
 
         return cursor;
     }
-
 
     Set<String> getFilterValues(VirtualView virtualView, int index, ExecutionContext executionContext) {
         List<Object> indexList = virtualView.getIndex().get(index);

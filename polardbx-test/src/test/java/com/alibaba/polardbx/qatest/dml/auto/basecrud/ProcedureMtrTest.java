@@ -19,12 +19,16 @@ package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.qatest.BaseTestCase;
+import com.alibaba.polardbx.qatest.ConnectionWrap;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.Lists;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -36,6 +40,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -66,7 +71,7 @@ public class ProcedureMtrTest extends BaseTestCase {
     public static Object[] fileNameAndMaxLine() {
         return new Pair[] {
             Pair.of("random_procedure.sql", Integer.MAX_VALUE),
-            Pair.of("random_procedure.sql", Integer.MAX_VALUE),
+            Pair.of("mysql_pl_test.sql", 7300),
             Pair.of("simple_procedure_test.sql", Integer.MAX_VALUE),
             Pair.of("procedure_alias_test.sql", Integer.MAX_VALUE),
             Pair.of("show_procedure_test.sql", Integer.MAX_VALUE),
@@ -96,10 +101,45 @@ public class ProcedureMtrTest extends BaseTestCase {
 
     @Before
     public void getConnection() {
-        this.mysqlConnection = getMysqlConnection();
-        this.tddlConnection = getPolardbxConnection();
+        // get a new mysql connection
+        this.mysqlConnection = ConnectionManager.getInstance().newMysqlConnection();
+        useDb(mysqlConnection, PropertiesUtil.mysqlDBName1());
+        setSqlMode(ConnectionManager.getInstance().getPolardbxMode(), mysqlConnection);
+
+        // get a new polardb-x connection
+        this.tddlConnection = ConnectionManager.getInstance().newPolarDBXConnection();
+        useDb(tddlConnection, PropertiesUtil.polardbXDBName1(usingNewPartDb()));
+        setSqlMode(ConnectionManager.getInstance().getPolardbxMode(), tddlConnection);
+
         JdbcUtil.executeSuccess(tddlConnection, "set global log_bin_trust_function_creators = on");
         JdbcUtil.executeSuccess(mysqlConnection, "set global log_bin_trust_function_creators = on");
+    }
+
+    @After
+    public void closeConnection() throws SQLException {
+        // close tddl connection
+        if (!tddlConnection.isClosed()) {
+            //确保所有连接都被正常关闭
+            try {
+                //保险起见, 主动rollback
+                if (!tddlConnection.getAutoCommit()) {
+                    tddlConnection.rollback();
+                }
+                tddlConnection.close();
+            } catch (Throwable t) {
+                log.error("close the Connection!", t);
+            }
+        }
+
+        // close mysql connection
+        if (!mysqlConnection.isClosed()) {
+            //确保所有连接都被正常关闭
+            try {
+                mysqlConnection.close();
+            } catch (Throwable t) {
+                log.error("close the Connection!", t);
+            }
+        }
     }
 
     @Test

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.cursor.impl;
 
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
@@ -25,6 +23,8 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.ImmutableList;
 
 import java.util.Comparator;
 import java.util.Iterator;
@@ -32,8 +32,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.mergeSorted;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 
 /**
  * Merge Sort Cursor
@@ -67,16 +67,21 @@ public class MergeSortCursor extends AbstractCursor {
             }
             inited = true;
 
-            List<WorkProcessor<Row>> sortedChunks = cursors.stream().map(
-                input -> WorkProcessor.fromIterator(new ResultIterator(input))).collect(toImmutableList());
+            if (cursors.size() == 1) {
+                this.sortedRows = new OptionResultIterator(cursors.get(0));
+            } else {
+                List<WorkProcessor<Row>> sortedChunks = cursors.stream().map(
+                    input -> WorkProcessor.fromIterator(new ResultIterator(input))).collect(toImmutableList());
 
-            List<WorkProcessor<Row>> sortedStreams = ImmutableList.<WorkProcessor<Row>>builder()
-                .addAll(sortedChunks)
-                .build();
+                List<WorkProcessor<Row>> sortedStreams = ImmutableList.<WorkProcessor<Row>>builder()
+                    .addAll(sortedChunks)
+                    .build();
 
-            final Comparator<Row> rowComparator = ExecUtils.getComparator(orderBys,
-                getReturnColumns().stream().map(columnMeta -> columnMeta.getDataType()).collect(Collectors.toList()));
-            this.sortedRows = mergeSorted(sortedStreams, rowComparator).yieldingIterator();
+                final Comparator<Row> rowComparator = ExecUtils.getComparator(orderBys,
+                    getReturnColumns().stream().map(columnMeta -> columnMeta.getDataType())
+                        .collect(Collectors.toList()));
+                this.sortedRows = mergeSorted(sortedStreams, rowComparator).yieldingIterator();
+            }
         }
     }
 
@@ -128,6 +133,23 @@ public class MergeSortCursor extends AbstractCursor {
                 endOfData();
             }
             return ret;
+        }
+    }
+
+    private class OptionResultIterator extends AbstractIterator<Optional<Row>> {
+        Cursor input;
+
+        public OptionResultIterator(Cursor input) {
+            this.input = input;
+        }
+
+        @Override
+        protected Optional<Row> computeNext() {
+            Row ret = input.next();
+            if (ret == null) {
+                endOfData();
+            }
+            return Optional.ofNullable(ret);
         }
     }
 }

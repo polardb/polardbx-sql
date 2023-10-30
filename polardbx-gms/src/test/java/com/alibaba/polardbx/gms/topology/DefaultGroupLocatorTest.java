@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.topology;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.google.common.collect.ImmutableMap;
 import org.junit.Assert;
 import org.junit.Test;
@@ -43,7 +44,8 @@ public class DefaultGroupLocatorTest {
 
         {
             List<String> singleGroupInstList = Arrays.asList("inst2");
-            DefaultGroupLocator locator = new DefaultGroupLocator(dbType, groupPhyDbMap, instList, singleGroupInstList);
+            DefaultGroupLocator locator =
+                new DefaultGroupLocator(dbType, groupPhyDbMap, instList, new LocalityDesc(), singleGroupInstList);
 
             Map<String, List<String>> normalGroupMap = new HashMap<>();
             Map<String, List<String>> singleGroupMap = new HashMap<>();
@@ -57,7 +59,8 @@ public class DefaultGroupLocatorTest {
 
         {
             List<String> singleGroupInstList = Arrays.asList("inst1");
-            DefaultGroupLocator locator = new DefaultGroupLocator(dbType, groupPhyDbMap, instList, singleGroupInstList);
+            DefaultGroupLocator locator =
+                new DefaultGroupLocator(dbType, groupPhyDbMap, instList, new LocalityDesc(), singleGroupInstList);
 
             Map<String, List<String>> normalGroupMap = new HashMap<>();
             Map<String, List<String>> singleGroupMap = new HashMap<>();

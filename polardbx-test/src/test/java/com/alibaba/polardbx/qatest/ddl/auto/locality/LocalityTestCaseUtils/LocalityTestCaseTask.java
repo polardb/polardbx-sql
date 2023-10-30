@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils;
 
-
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.Version;
@@ -27,10 +26,10 @@ import org.junit.Test;
 
 import java.io.FileNotFoundException;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 
 public class LocalityTestCaseTask {
 
@@ -42,18 +41,17 @@ public class LocalityTestCaseTask {
         this.localityTestCaseBean = new LocalityTestCaseReader(fileDir).readTestCase();
         this.nodeMap = new HashMap<>();
         this.tableGroupMap = new HashMap<>();
-     }
+    }
 
-
-    public void executeCleanupDdls(Connection tddlConnection, List<String> cleanupDDls){
-        for(String cleanupDDl: cleanupDDls) {
+    public void executeCleanupDdls(Connection tddlConnection, List<String> cleanupDDls) {
+        for (String cleanupDDl : cleanupDDls) {
             JdbcUtil.executeUpdate(tddlConnection, cleanupDDl);
         }
     }
 
-    public void execute(Connection tddlConnection){
+    public void execute(Connection tddlConnection) throws InterruptedException, SQLException {
         List<String> storageList = LocalityTestUtils.getDatanodes(tddlConnection);
-        if(storageList.size() < this.localityTestCaseBean.getStorageList().size()){
+        if (storageList.size() < this.localityTestCaseBean.getStorageList().size()) {
             return;
         }
         this.nodeMap = LocalityTestUtils.generateNodeMap(storageList, this.localityTestCaseBean.getStorageList());
@@ -65,6 +63,7 @@ public class LocalityTestCaseTask {
             singleTestCaseTask.execute(tddlConnection);
             tableGroupMap.putAll(singleTestCaseTask.groupNameMap);
         }
+        Thread.sleep(2 * 1000);
         executeCleanupDdls(tddlConnection, this.localityTestCaseBean.getCleanupDDls());
     }
 }

@@ -36,6 +36,8 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
@@ -69,18 +71,38 @@ public class MySingleTableModifyHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        Cursor cursor = handleInner(logicalPlan, executionContext);
+        Cursor cursor;
+        try {
+            cursor = handleInner(logicalPlan, executionContext);
+        } catch (Throwable t) {
+            if (logicalPlan instanceof BaseTableOperation) {
+                ((BaseTableOperation) logicalPlan).setSuccessExecuted(false);
+            }
+            throw t;
+        }
         return cursor;
     }
 
     protected Cursor handleInner(RelNode logicalPlan, ExecutionContext executionContext) {
         if (logicalPlan instanceof PhyTableOperation) {
             if (((PhyTableOperation) logicalPlan).isOnlyOnePartitionAfterPruning()) {
-                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation)logicalPlan).getSchemaName(), executionContext);
+                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation) logicalPlan).getSchemaName(),
+                    executionContext);
             }
         } else {
-            if ( logicalPlan instanceof BaseTableOperation && !(logicalPlan instanceof PhyDdlTableOperation)) {
-                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation)logicalPlan).getSchemaName(), executionContext);
+            if (logicalPlan instanceof DirectMultiDBTableOperation) {
+                checkUpdateDeleteLimitLimitation(((DirectMultiDBTableOperation) logicalPlan).getNativeSqlNode(),
+                    executionContext);
+                PhyTableOperationUtil.enableIntraGroupParallelism(
+                    ((DirectMultiDBTableOperation) logicalPlan).getBaseSchemaName(executionContext),
+                    executionContext);
+            } else if (logicalPlan instanceof BaseTableOperation && !(logicalPlan instanceof PhyDdlTableOperation)) {
+                if (logicalPlan instanceof DirectTableOperation) {
+                    checkUpdateDeleteLimitLimitation(
+                        ((DirectTableOperation) logicalPlan).getNativeSqlNode(), executionContext);
+                }
+                PhyTableOperationUtil.enableIntraGroupParallelism(((BaseTableOperation) logicalPlan).getSchemaName(),
+                    executionContext);
             }
         }
         MyPhyTableModifyCursor modifyCursor = (MyPhyTableModifyCursor) repo.getCursorFactory()

@@ -179,6 +179,9 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
         }
     }
 
+    /**
+     * 获取CDC打标表中tokenHints所对应的记录
+     */
     protected String getDdlRecordSql(String tokenHints) throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
@@ -279,7 +282,22 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
         return result;
     }
 
-    protected String getOnePartitionByGroupName(String groupNameIn, String tableName) throws SQLException {
+    protected String getSecondLevelPartitionByGroupName(String groupNameIn, String tableName) throws SQLException {
+        try (Statement stmt = tddlConnection.createStatement()) {
+            try (ResultSet resultSet = stmt.executeQuery("show topology from " + tableName)) {
+                while (resultSet.next()) {
+                    String groupName = resultSet.getString("GROUP_NAME");
+                    String partitionName = resultSet.getString("SUBPARTITION_NAME");
+                    if (StringUtils.equals(groupName, groupNameIn)) {
+                        return partitionName;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    protected String getFirstLevelPartitionByGroupName(String groupNameIn, String tableName) throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery("show topology from " + tableName)) {
                 while (resultSet.next()) {
@@ -305,7 +323,9 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
                         continue;
                     }
                     String group = rs.getString("group");
-                    result.put(group, storageInstId);
+                    if (!group.equals("MetaDB")) {
+                        result.put(group, storageInstId);
+                    }
                 }
             }
         }
@@ -313,7 +333,7 @@ public abstract class CdcBaseTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     protected String buildTokenHints() {
-        return String.format("/* CDC_TOKEN : %s */", UUID.randomUUID().toString());
+        return String.format("/* CDC_TOKEN : %s */", UUID.randomUUID());
     }
 
     protected Timestamp getLastDdlRecordTimestamp(String schemaName) throws SQLException {

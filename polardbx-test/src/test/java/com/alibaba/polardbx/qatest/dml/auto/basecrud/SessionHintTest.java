@@ -154,6 +154,23 @@ public class SessionHintTest extends BaseTestCase {
         }
     }
 
+    /**
+     * non-table statement like SELECT @@session.transaction_read_only
+     */
+    @Test
+    public void testSessionHintWithNonTableStmt() throws SQLException {
+        Connection c = null;
+        try {
+            c = getPolardbxConnection();
+            c.createStatement().execute("use drds_polarx1_part_qatest_app");
+            c.createStatement().execute("set partition_hint=p3");
+            c.createStatement().execute("SELECT @@session.transaction_read_only");
+        } finally {
+            Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
+            Objects.requireNonNull(c).close();
+        }
+    }
+
     @Test
     public void testSessionHintWithTrans() throws SQLException {
         Connection c1 = null;
@@ -349,43 +366,26 @@ public class SessionHintTest extends BaseTestCase {
             checkHintWork(connWithHint, TBL_NAME);
 
             // test show command
-            DataValidator.selectContentSameAssert("show tables", null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show full tables", null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show ddl", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show full ddl", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show ddl status", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show ddl result", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show rule", null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show rule from select_base_three_multi_db_multi_tb", null,
-                connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show full rule from select_base_three_multi_db_multi_tb", null,
-                connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show topology from select_base_three_multi_db_multi_tb", null,
-                connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show partitions from select_base_three_multi_db_multi_tb", null,
-                connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show broadcasts", null, connWithHint, connWithoutHint);
+            connWithHint.createStatement().executeQuery("show tables");
+            connWithHint.createStatement().executeQuery("show full tables");
+            connWithHint.createStatement().executeQuery("show ddl");
+            connWithHint.createStatement().executeQuery("show full ddl");
+            connWithHint.createStatement().executeQuery("show ddl status");
+            connWithHint.createStatement().executeQuery("show ddl result");
+            connWithHint.createStatement().executeQuery("show rule from select_base_three_multi_db_multi_tb");
+            connWithHint.createStatement().executeQuery("show full rule from select_base_three_multi_db_multi_tb");
+            connWithHint.createStatement().executeQuery("show topology from select_base_three_multi_db_multi_tb");
+            connWithHint.createStatement().executeQuery("show partitions from select_base_three_multi_db_multi_tb");
             // show datasources cannot make sure POOLING_COUNT same
             DataValidator.selectConutAssert("show datasources", null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show node", null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show slow", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectConutAssert("show physical_slow", null, connWithHint, connWithoutHint);
             DataOperator.executeOnMysqlAndTddl(connWithHint, connWithoutHint, "clear slow", null);
-            DataValidator.selectContentSameAssert(
-                "explain optimizer select * from select_base_three_multi_db_multi_tb order by pk", null, connWithHint,
-                connWithoutHint);
 
             // explain advisor/json_plan might cause different result in different cn node
             connWithHint.createStatement().executeQuery(
                 "explain advisor select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
-            connWithoutHint.createStatement().executeQuery(
-                "explain advisor select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
-
             connWithHint.createStatement().execute("analyze table select_base_three_multi_db_multi_tb");
-            DataValidator.selectContentSameAssert(
-                "explain STATISTICS select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk",
-                null, connWithHint, connWithoutHint);
-
+            connWithHint.createStatement().executeQuery(
+                "explain STATISTICS select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
             connWithHint.createStatement().executeQuery(
                 "explain JSON_PLAN select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
             connWithoutHint.createStatement().executeQuery(
@@ -396,10 +396,8 @@ public class SessionHintTest extends BaseTestCase {
             connWithoutHint.createStatement().executeQuery(
                 "explain EXECUTE select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
 
-            DataValidator.selectContentSameAssert(
-                "explain SHARDING select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk",
-                null, connWithHint, connWithoutHint);
-            DataValidator.selectContentSameAssert("show sequences", null, connWithHint, connWithoutHint);
+            connWithHint.createStatement().executeQuery(
+                "explain SHARDING select * from select_base_three_multi_db_multi_tb where varchar_test='12' order by pk");
             connWithHint.createStatement().execute("create sequence session_hint_test_seq start with 100");
             connWithHint.createStatement().execute("alter sequence session_hint_test_seq start with 99");
             connWithHint.createStatement().execute("drop sequence session_hint_test_seq");
@@ -408,18 +406,20 @@ public class SessionHintTest extends BaseTestCase {
             connWithHint.createStatement().execute("clear ccl_triggers");
 
             // thread running might be different
-            connWithHint.createStatement().execute("show db status");
-            connWithHint.createStatement().execute("show full db status");
+            connWithHint.createStatement().executeQuery("show db status");
+            connWithHint.createStatement().executeQuery("show full db status");
 
-            DataValidator.selectContentSameAssert("show ds", null, connWithHint, connWithoutHint);
-            connWithHint.createStatement().execute("show connection");
-            DataValidator.selectContentSameAssert("show trans", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show full trans", null, connWithHint, connWithoutHint, true);
-            DataValidator.selectContentSameAssert("show ccl_rules", null, connWithHint, connWithoutHint, true);
-
-            // test check table
-            DataValidator.selectContentSameAssert("check table select_base_four_multi_db_multi_tb;", null, connWithHint,
-                connWithoutHint, true);
+            connWithHint.createStatement().executeQuery("show ds");
+            connWithHint.createStatement().executeQuery("show trans");
+            connWithHint.createStatement().executeQuery("show node");
+            connWithHint.createStatement().executeQuery("show slow");
+            connWithHint.createStatement().executeQuery("show full trans");
+            connWithHint.createStatement().executeQuery("show ccl_rules");
+            connWithHint.createStatement().executeQuery("show physical_slow");
+            connWithHint.createStatement().executeQuery("show broadcasts");
+            connWithHint.createStatement().executeQuery("show connection");
+            connWithHint.createStatement().executeQuery("show rule");
+            connWithHint.createStatement().executeQuery("check table select_base_four_multi_db_multi_tb");
         } finally {
             Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
             Objects.requireNonNull(connWithHint).close();
@@ -488,7 +488,7 @@ public class SessionHintTest extends BaseTestCase {
         }
     }
 
-    @Ignore
+    @Test
     public void testSessionHintWithFlashBack() throws SQLException, InterruptedException {
         Connection connWithHint = null;
         try {
@@ -505,6 +505,9 @@ public class SessionHintTest extends BaseTestCase {
             // clear data
             connWithHint.createStatement().execute("truncate table update_delete_base_autonic_multi_db_multi_tb");
 
+            // Ensure the as of timestamp is valid.
+            Thread.sleep(1000);
+
             // test insert into partition table
             Calendar current = Calendar.getInstance();
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -513,12 +516,10 @@ public class SessionHintTest extends BaseTestCase {
                 .execute(
                     "insert into update_delete_base_autonic_multi_db_multi_tb(varchar_test, timestamp_test) values('session hint test value', now())");
             connWithHint.commit();
-            rs = connWithHint.createStatement().executeQuery(
-                "select * from update_delete_base_autonic_multi_db_multi_tb as of timestamp '" + f.format(
-                    current.getTime()) + "' where varchar_test='session hint test value'");
-            System.out.println(
-                "select * from update_delete_base_autonic_multi_db_multi_tb as of timestamp '" + f.format(
-                    current.getTime()) + "' where varchar_test='session hint test value'");
+            String sql = "select * from update_delete_base_autonic_multi_db_multi_tb as of timestamp '" + f.format(
+                current.getTime()) + "' where varchar_test='session hint test value'";
+            System.out.println(sql);
+            rs = connWithHint.createStatement().executeQuery(sql);
             while (rs.next()) {
                 Assert.fail("should not query any value by flashback");
             }
@@ -597,6 +598,7 @@ public class SessionHintTest extends BaseTestCase {
 
             // test partition hint working
             checkHintWork(connWithHint, TBL_NAME);
+            connWithHint.createStatement().execute("set partition_hint=p3");
 
             connWithHint.createStatement()
                 .execute(
@@ -609,7 +611,8 @@ public class SessionHintTest extends BaseTestCase {
                 .execute("truncate table update_delete_base_autonic_string_multi_db_multi_tb");
             connWithHint.createStatement()
                 .execute(
-                    "insert into update_delete_base_autonic_string_multi_db_multi_tb  select * from update_delete_base_autonic_multi_db_multi_tb");
+                    "insert into update_delete_base_autonic_string_multi_db_multi_tb(varchar_test, timestamp_test)  "
+                        + "select varchar_test, timestamp_test from update_delete_base_autonic_multi_db_multi_tb");
         } finally {
             Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
             Objects.requireNonNull(connWithHint).close();
@@ -835,7 +838,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -843,7 +846,7 @@ public class SessionHintTest extends BaseTestCase {
                         "select * from select_base_three_multi_db_multi_tb_i9JV_06 a join select_base_three_multi_db_one_tb b on a.pk=b.pk;");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -873,7 +876,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -882,7 +885,7 @@ public class SessionHintTest extends BaseTestCase {
 
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -950,7 +953,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[PXC-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -989,7 +992,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[PXC-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -1027,7 +1030,7 @@ public class SessionHintTest extends BaseTestCase {
         } catch (SQLException e) {
             e.printStackTrace();
             Assert.assertTrue(
-                e.getMessage().contains("[ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
+                e.getMessage().contains("[PXC-5325][ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");

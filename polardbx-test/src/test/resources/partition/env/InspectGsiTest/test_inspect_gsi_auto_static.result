@@ -1,0 +1,207 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_gsi_auto;
+create database inspect_gsi_auto mode=auto;
+use inspect_gsi_auto;
+# 完全重复的gsi
+create table tb1(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g1(name) covering(status) partition by key(name),
+  unique global index g2(name) partition by key(name)
+) partition by key(id);
+inspect full index from tb1;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb1,g1,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g1, g2;,alter table `tb1` alter index `g1` invisible;,alter table `tb1` drop index `g1`;
+inspect_gsi_auto,tb1,g2,UNIQUE GLOBAL INDEX,name,id,0,null,0.0,found duplicate global indexes: g1, g2, covering column {id, status} is recommended;,alter table `tb1` alter index `g2` invisible;,alter table `tb1` drop index `g2`;
+alter table `tb1` add unique global index `g2` (`name`) covering(`id`,`status`) PARTITION BY KEY (`name`) PARTITIONS 3;
+create table tb2(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g3(name) covering(status) partition by key(name),
+  clustered index g4(name) partition by key(name)
+) partition by key(id);
+inspect full index from tb2;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb2,g3,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g3, g4;,alter table `tb2` alter index `g3` invisible;,alter table `tb2` drop index `g3`;
+create table tb3(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g5(name) covering(status, detail, shop_id) partition by hash(name),
+  global index g6(name) covering(status) partition by hash(name)
+) partition by hash(id);
+inspect full index from tb3;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb3,g6,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g5, g6;,alter table `tb3` alter index `g6` invisible;,alter table `tb3` drop index `g6`;
+# 部分列重复的GSI
+create table tb4(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g7(name, code) covering(status, detail, shop_id) partition by key(name),
+  global index g8(name) covering(status) partition by key(name),
+  local index idx1(name, code)
+) partition by hash(id);
+inspect full index from tb4;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb4,g8,GLOBAL INDEX,name,id,status,0,null,0.0,index columns duplicate: g7, g8;,alter table `tb4` alter index `g8` invisible;,alter table `tb4` drop index `g8`;
+create table tb5(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g9(name, code) covering(status) partition by hash(name),
+  global index g10(name) covering(status, detail, shop_id) partition by hash(name)
+) partition by hash(id);
+inspect full index from tb5;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb5,g10,GLOBAL INDEX,name,id,shop_id,status,detail,0,null,0.0,index columns duplicate: g10, g9;,alter table `tb5` alter index `g10` invisible;,alter table `tb5` drop index `g10`;
+alter table `tb5` add local index `g10` (`name`);
+inspect_gsi_auto,tb5,g9,GLOBAL INDEX,name,code,id,status,0,null,0.0,index columns duplicate: g10, g9, covering column {detail, id, shop_id, status} is recommended;,alter table `tb5` alter index `g9` invisible;,alter table `tb5` drop index `g9`;
+alter table `tb5` add global index `g9` (`name`,`code`) covering(`detail`,`id`,`shop_id`,`status`) PARTITION BY KEY (`name`) PARTITIONS 3;
+create table tb6(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g11(name, code) covering(status) partition by key(name),
+  unique global index g12(name) covering(status, detail, shop_id) partition by key(name)
+) partition by key(id);
+inspect full index from tb6;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb6,g11,GLOBAL INDEX,name,code,id,status,0,null,0.0,index columns duplicate: g11, g12;,alter table `tb6` alter index `g11` invisible;,alter table `tb6` drop index `g11`;
+alter table `tb6` add local index `g11` (`name`,`code`);
+inspect_gsi_auto,tb6,g12,UNIQUE GLOBAL INDEX,name,id,shop_id,status,detail,0,null,0.0,index columns duplicate: g11, g12, covering column {code, detail, id, shop_id, status} is recommended;,alter table `tb6` alter index `g12` invisible;,alter table `tb6` drop index `g12`;
+alter table `tb6` add unique global index `g12` (`name`) covering(`code`,`detail`,`id`,`shop_id`,`status`) PARTITION BY KEY (`name`) PARTITIONS 3;
+# low efficient GSI
+create table tb7(
+  id int,
+  dt datetime,
+  primary key(id),
+  global index g13(dt) partition by hash(dt)
+) partition by hash(id);
+inspect full index from tb7;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb7,g13,GLOBAL INDEX,dt,id,0,null,0.0,ineffective gsi `g13`, time/timestamp/datetime type is ineffective in index column,alter table `tb7` alter index `g13` invisible;,alter table `tb7` drop index `g13`;
+alter table `tb7` add local index `g13` (`dt`);
+create table tb8(
+  id int,
+  dt timestamp,
+  primary key(id),
+  unique global index g14(dt) partition by hash(dt)
+) partition by hash(id);
+inspect full index from tb8;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb8,g14,UNIQUE GLOBAL INDEX,dt,id,0,null,0.0,ineffective gsi `g14`, time/timestamp/datetime type is ineffective in index column,alter table `tb8` alter index `g14` invisible;,alter table `tb8` drop index `g14`;
+alter table `tb8` add unique local index `g14` (`dt`);
+# duplicate gsi partition key
+create table tb10(
+  id int,
+  dt time,
+  primary key(id),
+  key `idx` (`dt`, `id`),
+  global index g16(dt,id) partition by key(id)
+) partition by key(id);
+inspect full index from tb10;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb10,g16,GLOBAL INDEX,dt,id,,0,null,0.0,ineffective gsi `g16` because it has the same rule as primary table,alter table `tb10` alter index `g16` invisible;,alter table `tb10` drop index `g16`;
+create table tb11(
+  id int,
+  dt varchar(20),
+  key `idx`(`id`,`dt`),
+  global index g17(id, dt) partition by key(id, dt)
+) partition by key(id);
+inspect full index from tb11;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb11,g17,GLOBAL INDEX,id,dt,,0,null,0.0,ineffective gsi `g17` because it has the same rule as primary table,alter table `tb11` alter index `g17` invisible;,alter table `tb11` drop index `g17`;
+# test auto partition table
+create table tb12(
+  id int,
+  dt time,
+  name varchar(20),
+  primary key(id),
+  index idx1(id, dt),
+  local index idx2(dt),
+  local index idx3(dt, name),
+  index idx4(name)
+);
+inspect full index from tb12;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb12,idx1,LOCAL INDEX,dt,null,null,null,null,found duplicate local indexes: idx1, idx2;
+index idx1 has the same effect as primary key,None,alter table `tb12` drop index `idx1`;
+inspect_gsi_auto,tb12,idx2,LOCAL INDEX,dt,null,null,null,null,found duplicate local indexes: idx2, idx3,None,alter table `tb12` drop index `idx2`;
+# shared column gsi中，生成local index的建议
+CREATE TABLE `tb13` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `col1` varchar(20) DEFAULT NULL,
+  `col2` varchar(20) DEFAULT NULL,
+  GLOBAL INDEX `g18` (`name`) COVERING (`id`) PARTITION BY KEY(`name`),
+  GLOBAL INDEX `g19` (`name`, `col1`) COVERING (`id`) PARTITION BY HASH(`name`,`col1`),
+  GLOBAL INDEX `g20` (`name`, `col1`, `col2`) COVERING (`id`) PARTITION BY HASH(`name`,`col1`,`col2`)
+) PARTITION BY KEY(`id`);
+inspect full index from tb13;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb13,g18,GLOBAL INDEX,name,id,0,null,0.0,index columns duplicate: g18, g19, g20;,alter table `tb13` alter index `g18` invisible;,alter table `tb13` drop index `g18`;
+inspect_gsi_auto,tb13,g19,GLOBAL INDEX,name,col1,id,0,null,0.0,index columns duplicate: g18, g19, g20;,alter table `tb13` alter index `g19` invisible;,alter table `tb13` drop index `g19`;
+alter table `tb13` add local index `g19` (`name`,`col1`);
+# 主表key分区，gsi hash分区
+CREATE TABLE `tb14` (
+`id` int(11) DEFAULT NULL,
+`name` varchar(20) DEFAULT NULL,
+`col1` varchar(20) DEFAULT NULL,
+`col2` varchar(20) DEFAULT NULL,
+GLOBAL INDEX `g1` (`id`) PARTITION BY hash(`id`)
+) PARTITION BY KEY(`id`, name);
+inspect full index from tb14;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb14,g1,GLOBAL INDEX,id,name,0,null,0.0,ineffective gsi `g1` because it has the same rule as primary table,alter table `tb14` alter index `g1` invisible;,alter table `tb14` drop index `g1`;
+CREATE TABLE `tb15` (
+`id` int(11) DEFAULT NULL,
+`name` varchar(20) DEFAULT NULL,
+`col1` varchar(20) DEFAULT NULL,
+`col2` varchar(20) DEFAULT NULL,
+GLOBAL INDEX `g1` (`id`, `name`) PARTITION BY key(`id`, `name`)
+) PARTITION BY HASH(`id`);
+inspect full index from tb15;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_auto,tb15,g1,GLOBAL INDEX,id,name,,0,null,0.0,ineffective gsi `g1` because it has the same rule as primary table,alter table `tb15` alter index `g1` invisible;,alter table `tb15` drop index `g1`;
+alter table `tb15` add local index `g1` (`id`,`name`);
+use polardbx;
+drop database if exists inspect_gsi_auto;

@@ -121,15 +121,13 @@ public class DmlWithUdfTest extends CrudBasedLockTestCase {
             mysqlConnection);
 
         // TODO insert on duplicate key has some problem now
-        if (canPush || baseOneTableName.equalsIgnoreCase(ExecuteTableName.UPDATE_DELETE_BASE + BROADCAST_TB_SUFFIX)) {
-            sql = String.format(
-                "insert into %s (pk, integer_test) values (100, %s(3)) on duplicate key update integer_test = %s(4)",
-                baseOneTableName, functionName, functionName);
-            JdbcUtil.executeSuccess(mysqlConnection, sql);
-            JdbcUtil.executeSuccess(tddlConnection, sql);
-            DataValidator.selectContentSameAssert(String.format(CHECK_RESULT, baseOneTableName), null, tddlConnection,
-                mysqlConnection);
-        }
+        sql = String.format(
+            "insert into %s (pk, integer_test) values (100, %s(3)) on duplicate key update integer_test = %s(4)",
+            baseOneTableName, functionName, functionName);
+        JdbcUtil.executeSuccess(mysqlConnection, sql);
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+        DataValidator.selectContentSameAssert(String.format(CHECK_RESULT, baseOneTableName), null, tddlConnection,
+            mysqlConnection);
     }
 
     @Test

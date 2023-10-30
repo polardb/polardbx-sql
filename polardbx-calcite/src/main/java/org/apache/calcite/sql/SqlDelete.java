@@ -52,6 +52,7 @@ public class SqlDelete extends SqlCall implements SqlHint {
   SqlNodeList sourceTables;
   SqlNodeList aliases;
   SqlNodeList orderList;
+  SqlNode offset;
   SqlNode fetch;
   SqlNodeList keywords;
   SqlNodeList hints;
@@ -147,6 +148,35 @@ public class SqlDelete extends SqlCall implements SqlHint {
     this.hints = hints;
   }
 
+public SqlDelete(
+    SqlParserPos pos,
+    SqlNode targetTable,
+    SqlNode condition,
+    SqlSelect sourceSelect,
+    SqlIdentifier alias,
+    SqlNode from,
+    SqlNode using,
+    SqlNodeList targetTables,
+    SqlNodeList orderList,
+    SqlNode offset,
+    SqlNode fetch,
+    SqlNodeList keywords,
+    SqlNodeList hints) {
+    this(pos,
+        targetTable,
+        condition,
+        sourceSelect,
+        alias,
+        from,
+        using,
+        targetTables,
+        orderList,
+        fetch,
+        keywords);
+    this.hints = hints;
+    this.offset = offset;
+}
+
   public SqlDelete(
       SqlParserPos pos,
       SqlNode targetTable,
@@ -171,8 +201,8 @@ public class SqlDelete extends SqlCall implements SqlHint {
 
   private SqlDelete(SqlParserPos pos, SqlNode targetTable, SqlNode condition, SqlSelect sourceSelect,
                     SqlIdentifier alias, SqlNode from, SqlNode using, SqlNodeList targetTables,
-                    SqlNodeList sourceTables, SqlNodeList aliases, SqlNodeList orderList, SqlNode fetch,
-                    SqlNodeList keywords, SqlNodeList hints, boolean withTableAlias,
+                    SqlNodeList sourceTables, SqlNodeList aliases, SqlNodeList orderList, SqlNode offset,
+                    SqlNode fetch, SqlNodeList keywords, SqlNodeList hints, boolean withTableAlias,
                     Map<SqlNode, List<SqlIdentifier>> subQueryTableMap,
                     List<Pair<SqlNode, List<SqlNode>>> sourceTableColumns, boolean sourceTableCollected) {
     super(pos);
@@ -186,6 +216,7 @@ public class SqlDelete extends SqlCall implements SqlHint {
     this.sourceTables = sourceTables;
     this.aliases = aliases;
     this.orderList = orderList;
+    this.offset = offset;
     this.fetch = fetch;
     this.keywords = keywords;
     this.hints = hints;
@@ -216,7 +247,8 @@ public class SqlDelete extends SqlCall implements SqlHint {
             using,
             targetTables,
             sourceTables,
-            aliases);
+            aliases,
+            offset);
   }
 
   /**
@@ -228,7 +260,8 @@ public class SqlDelete extends SqlCall implements SqlHint {
         targetTables,
         condition,
         fetch,
-        keywords);
+        keywords,
+        offset);
   }
   @Override public void setOperand(int i, SqlNode operand) {
     switch (i) {
@@ -267,6 +300,9 @@ public class SqlDelete extends SqlCall implements SqlHint {
       break;
     case 11:
       aliases = (SqlNodeList) operand;
+      break;
+    case 12:
+      offset = operand;
       break;
     default:
       throw new AssertionError(i);
@@ -320,6 +356,10 @@ public class SqlDelete extends SqlCall implements SqlHint {
     this.orderList = orderList;
   }
 
+  public SqlNode getOffset() {
+    return offset;
+  }
+
   public SqlNode getFetch() {
     return fetch;
   }
@@ -360,6 +400,10 @@ public class SqlDelete extends SqlCall implements SqlHint {
   public SqlNodeList getAliases() {
     Assert.assertTrue(sourceTableCollected, "SqlDelete not initialized");
     return aliases;
+  }
+
+  public void setWithTableAlias(boolean withTableAlias) {
+    this.withTableAlias = withTableAlias;
   }
 
   public boolean isWithTableAlias() {
@@ -443,7 +487,7 @@ public class SqlDelete extends SqlCall implements SqlHint {
       orderList.commaList(writer);
       writer.endList(orderFrame);
     }
-    writer.fetchOffset(fetch, null);
+    writer.fetchOffset(fetch, offset);
     writer.endList(frame);
   }
 
@@ -587,8 +631,8 @@ public class SqlDelete extends SqlCall implements SqlHint {
   @Override
   public SqlNode clone(SqlParserPos pos) {
     return new SqlDelete(pos, getTargetTable(), getCondition(), getSourceSelect(), getAlias(), getFrom(), getUsing(),
-            getTargetTables(), getSourceTables(), getAliases(), getOrderList(), getFetch(), getKeywords(), getHints(),
-            isWithTableAlias(), this.subQueryTableMap, this.sourceTableColumns, this.sourceTableCollected);
+            getTargetTables(), getSourceTables(), getAliases(), getOrderList(), getOffset(), getFetch(), getKeywords(),
+            getHints(), isWithTableAlias(), this.subQueryTableMap, this.sourceTableColumns, this.sourceTableCollected);
   }
 }
 

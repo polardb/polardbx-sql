@@ -458,19 +458,19 @@ public class SelectInPruneTest extends BaseTestCase {
     }
 
     public static final String[][] dynamicInSqlTest = {
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5)", "true"},
-        {"explain select * from select_base_one_multi_db_multi_tb where varchar_test in ('1','4',' 5')", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5+7)", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, integer_test)", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5+7)", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (cast (7 as signed))", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk in (cast(integer_test as signed))", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk = (cast(integer_test as signed))", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where pk>3", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where integer_test>3 or pk in (1,7,87,8)", "false"},
-        {"explain select * from select_base_one_multi_db_multi_tb where integer_test>3 and pk in (1,7,87,8)", "true"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5)", "true"},
+        {"select * from select_base_one_multi_db_multi_tb where varchar_test in ('1','4',' 5')", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5+7)", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, integer_test)", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (1,2,3,4, 5+7)", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (cast (7 as signed))", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk in (cast(integer_test as signed))", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk = (cast(integer_test as signed))", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where pk>3", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where integer_test>3 or pk in (1,7,87,8)", "false"},
+        {"select * from select_base_one_multi_db_multi_tb where integer_test>3 and pk in (1,7,87,8)", "true"},
         {
-            "explain select * from select_base_one_multi_db_multi_tb where integer_test>3 and (pk, varchar_test) in ((1,'a'),(7, 'b'), (87, 'e'),(8, 'e'))",
+            "select * from select_base_one_multi_db_multi_tb where integer_test>3 and (pk, varchar_test) in ((1,'a'),(7, 'b'), (87, 'e'),(8, 'e'))",
             "true"},
     };
 
@@ -481,9 +481,11 @@ public class SelectInPruneTest extends BaseTestCase {
         for (String[] row : dynamicInSqlTest) {
             System.out.println(count++);
             if (row[1].equalsIgnoreCase("true")) {
-                DataValidator.explainAllResultMatchAssert(row[0], null, this.getPolardbxConnection(), rex);
+                DataValidator.explainAllResultMatchAssert("explain /*TDDL:IN_SUB_QUERY_THRESHOLD=100*/ " + row[0],
+                    null, this.getPolardbxConnection(), rex);
             } else {
-                DataValidator.explainAllResultNotMatchAssert(row[0], null, this.getPolardbxConnection(), rex);
+                DataValidator.explainAllResultNotMatchAssert("explain /*TDDL:IN_SUB_QUERY_THRESHOLD=100*/ " + row[0],
+                    null, this.getPolardbxConnection(), rex);
             }
         }
     }

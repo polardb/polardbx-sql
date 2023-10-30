@@ -37,7 +37,7 @@ public class SelectDatabase {
     private static final int FIELD_COUNT = 1;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -45,10 +45,9 @@ public class SelectDatabase {
         header.packetId = ++packetId;
         fields[i] = PacketUtil.getField("DATABASE()", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-        eof.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -57,20 +56,28 @@ public class SelectDatabase {
         for (FieldPacket field : fields) {
             proxy = field.write(proxy);
         }
-        proxy = eof.write(proxy);
-        byte packetId = eof.packetId;
+
+        byte tmpPacketId = packetId;
+        // write eof
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
+
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
         row.add(StringUtil.encode(c.getSchema(), c.getCharset()));
-        row.packetId = ++packetId;
+        row.packetId = ++tmpPacketId;
         proxy = row.write(proxy);
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
         proxy = lastEof.write(proxy);
 
         proxy.packetEnd();
+        return true;
     }
 
 }

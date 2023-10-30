@@ -42,17 +42,20 @@ public class GsiUpdateIndexStatusTask extends BaseGmsTask {
     final String indexName;
     final IndexStatus beforeIndexStatus;
     final IndexStatus afterIndexStatus;
+    final boolean needOnlineSchemaChange;
 
     @JSONCreator
     public GsiUpdateIndexStatusTask(String schemaName,
                                     String logicalTableName,
                                     String indexName,
                                     IndexStatus beforeIndexStatus,
-                                    IndexStatus afterIndexStatus) {
+                                    IndexStatus afterIndexStatus,
+                                    boolean needOnlineSchemaChange) {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.beforeIndexStatus = beforeIndexStatus;
         this.afterIndexStatus = afterIndexStatus;
+        this.needOnlineSchemaChange = needOnlineSchemaChange;
     }
 
     /**
@@ -89,7 +92,9 @@ public class GsiUpdateIndexStatusTask extends BaseGmsTask {
             metaDbConnection, schemaName, logicalTableName, indexName, afterIndexStatus, beforeIndexStatus);
 
         //sync have to be successful to continue
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        if (needOnlineSchemaChange) {
+            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        }
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
@@ -100,6 +105,13 @@ public class GsiUpdateIndexStatusTask extends BaseGmsTask {
                 indexName,
                 beforeIndexStatus.name(),
                 afterIndexStatus.name()));
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+        if (needOnlineSchemaChange) {
+            super.onRollbackSuccess(executionContext);
+        }
     }
 
     @Override

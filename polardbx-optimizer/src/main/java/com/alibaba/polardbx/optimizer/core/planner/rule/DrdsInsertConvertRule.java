@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -55,6 +56,6 @@ public class DrdsInsertConvertRule extends ConverterRule {
             }
         RelTraitSet relTraitSet = logicalInsert.getTraitSet().simplify();
         return logicalInsert.copy(relTraitSet.replace(DrdsConvention.INSTANCE),
-            convertList(logicalInsert.getInputs(), DrdsConvention.INSTANCE));
+                convertList(logicalInsert.getInputs(), DrdsConvention.INSTANCE));
     }
 }

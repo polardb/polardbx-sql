@@ -18,7 +18,7 @@ package com.alibaba.polardbx.manager.handler;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -26,6 +26,7 @@ import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequestSyncAction;
+import com.alibaba.polardbx.executor.sync.ddl.RemoteDdlTaskSyncAction;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager.MetaDbConfigSyncAction;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
@@ -69,7 +70,7 @@ public class SyncHandler {
             ResultSet rs = null;
             boolean actionDone = false;
 
-            if (action instanceof MetaDbConfigSyncAction) {
+            if (ConfigDataMode.isPolarDbX() && action instanceof MetaDbConfigSyncAction) {
                 MetaDbConfigSyncAction configAction = (MetaDbConfigSyncAction) action;
                 String dbInfoDataId = MetaDbDataIdBuilder.getDbInfoDataId();
                 if (TStringUtil.equalsIgnoreCase(configAction.getDataId(), dbInfoDataId)) {
@@ -138,6 +139,10 @@ public class SyncHandler {
      * trigger the leader initialization in case it is still inactive.
      */
     private static boolean isDdlJobRequest(IGmsSyncAction action) {
-        return action instanceof DdlRequestSyncAction;
+        if (ConfigDataMode.isPolarDbX()) {
+            return action instanceof DdlRequestSyncAction
+                || action instanceof RemoteDdlTaskSyncAction;
+        }
+        return false;
     }
 }

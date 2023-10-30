@@ -1,0 +1,19 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+
+DROP TABLE IF EXISTS `hash_dayofmonth`;
+CREATE TABLE IF NOT EXISTS`hash_dayofmonth` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFMONTH(`d`))
+PARTITIONS 8;
+
+select part_route('', 'hash_dayofmonth', '2022-02-28');
+select part_route('', 'hash_dayofmonth', '2022-02-31');
+select part_route('', 'hash_dayofmonth', '2024-02-29');
+select part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.499');
+select part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.500');
+select part_route('', 'hash_dayofmonth', '2025-01-01 00:00:00.000');
+
+explain select d from hash_dayofmonth where d between '2022-02-28' and '2022-03-01';
+explain select d from hash_dayofmonth where d between '2024-02-28' and '2024-03-01';

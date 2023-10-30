@@ -31,7 +31,8 @@ import java.util.List;
 /**
  * Created by wenshao on 30/06/2017.
  */
-public class SQLCreateMaterializedViewStatement extends SQLStatementImpl implements SQLCreateStatement, SQLReplaceable {
+public class SQLCreateMaterializedViewStatement extends SQLStatementImpl
+    implements SQLCreateStatement, SQLReplaceable {
     private SQLName name;
     private List<SQLName> columns = new ArrayList<SQLName>();
 
@@ -129,7 +130,8 @@ public class SQLCreateMaterializedViewStatement extends SQLStatementImpl impleme
     }
 
     public boolean isRefresh() {
-        return this.refreshFast || refreshComplete || refreshForce || refreshOnDemand || refreshOnCommit || refreshStartWith || refreshNext;
+        return this.refreshFast || refreshComplete || refreshForce || refreshOnDemand || refreshOnCommit
+            || refreshStartWith || refreshNext;
     }
 
     public boolean isRefreshFast() {

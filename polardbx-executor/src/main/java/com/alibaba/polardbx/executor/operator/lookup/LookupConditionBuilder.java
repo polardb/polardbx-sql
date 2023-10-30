@@ -31,7 +31,7 @@ import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.rule.TableRule;
@@ -163,7 +163,7 @@ public class LookupConditionBuilder {
         String logTbNale = v.getShardingTable();
         String schemaName = v.getSchemaName();
 
-        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logTbNale);
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logTbNale);
         if (TableTopologyUtil.isSingle(tableMeta) || TableTopologyUtil.isBroadcast(tableMeta)) {
             // no need to do lookup sharding
             return false;
@@ -185,7 +185,7 @@ public class LookupConditionBuilder {
             }
             return containsAllIgnoreCase(joinKeyColumnNames, rule.getDbPartitionKeys());
         } else {
-            PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logTbNale);
+            PartitionInfo partInfo = tableMeta.getPartitionInfo();
             return partInfo.canPerformPruning(joinKeyColumnNames, PartKeyLevel.PARTITION_KEY);
 //            List<String> allPartCols = partInfo.getPartitionColumns();
 //            return containsAllIgnoreCase(joinKeyColumnNames, allPartCols);

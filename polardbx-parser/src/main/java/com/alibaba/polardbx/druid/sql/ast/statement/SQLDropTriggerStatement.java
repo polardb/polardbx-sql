@@ -49,11 +49,11 @@ public class SQLDropTriggerStatement extends SQLStatementImpl implements SQLDrop
     private boolean ifExists;
 
     public SQLDropTriggerStatement() {
-        
+
     }
-    
+
     public SQLDropTriggerStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public SQLName getName() {

@@ -1,7 +1,23 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
@@ -32,7 +48,7 @@ public final class ShowFullConnection {
     private static final int FIELD_COUNT = 14;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -80,8 +96,6 @@ public final class ShowFullConnection {
 
         fields[i] = PacketUtil.getField("PARTITION_HINT", Fields.FIELD_TYPE_VAR_STRING);
         fields[i].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
     public static boolean execute(ServerConnection c, boolean hasMore) {
@@ -97,11 +111,15 @@ public final class ShowFullConnection {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
         String charset = c.getCharset();
 
         SchemaConfig schema = c.getSchemaConfig();
@@ -144,14 +162,14 @@ public final class ShowFullConnection {
                 row.add(IntegerUtil.toBytes(DataTypes.IntegerType.convertFrom(conn.get("TRX"))));
                 row.add(IntegerUtil.toBytes(DataTypes.IntegerType.convertFrom(conn.get("NEED_RECONNECT"))));
                 row.add(StringUtil.encode(DataTypes.StringType.convertFrom(conn.get("PARTITION_HINT")), charset));
-                row.packetId = ++packetId;
+                row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);
 
             }
         }
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }

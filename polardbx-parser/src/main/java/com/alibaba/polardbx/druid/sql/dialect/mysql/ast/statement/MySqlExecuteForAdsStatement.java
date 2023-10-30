@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -89,5 +90,10 @@ public class MySqlExecuteForAdsStatement extends MySqlStatementImpl {
             children.add(status);
         }
         return children;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

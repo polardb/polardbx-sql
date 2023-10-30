@@ -1,5 +1,6 @@
 test_intra_group_autocommit2
 test_intra_group_xa_rc
+test_intra_group_xa_rc2
 test_intra_group_upsert
 test_intra_group_dml_push3
 test_intra_group_dml_push2

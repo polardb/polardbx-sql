@@ -91,6 +91,16 @@ public class PushFilterRule extends RelOptRule {
     }
 
     @Override
+    public boolean matches(RelOptRuleCall call) {
+        // todo
+//        final LogicalView logicalView = call.rel(1);
+//        if (logicalView instanceof OSSTableScan) {
+//            return false;
+//        }
+        return true;
+    }
+
+    @Override
     public void onMatch(RelOptRuleCall call) {
         Filter filter = call.rel(0);
         LogicalView logicalView = call.rel(1);
@@ -134,7 +144,11 @@ public class PushFilterRule extends RelOptRule {
     }
 
     public static boolean doNotPush(RexNode condition, LogicalView logicalView) {
-        if (RexUtils.containsUnPushableFunction(condition, false)) {
+        if (RexUtil.containsUnPushableFunction(condition, false)) {
+            return true;
+        }
+        if (logicalView instanceof OSSTableScan
+            && !((OSSTableScan) logicalView).canPushFilterProject()) {
             return true;
         }
         if (logicalView instanceof OSSTableScan

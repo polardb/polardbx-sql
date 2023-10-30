@@ -17,7 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.partition.MurmurHashUtils;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
+import com.alibaba.polardbx.executor.archive.writer.OSSBackFillWriterTask;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPartitionTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -29,7 +33,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -37,12 +42,25 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.collections.CollectionUtils;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TimeZone;
+
+import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 
 public class OSSTaskUtils {
     private static final ImmutableList<String> ENDPOINTS = ImmutableList.of(
@@ -103,23 +121,104 @@ public class OSSTaskUtils {
     public static PartitionInfo getSourcePartitionInfo(ExecutionContext executionContext, String sourceLogicalSchema,
                                                        String sourceLogicalTable) {
         PartitionInfoManager partitionInfoManager =
-                executionContext.getSchemaManager(sourceLogicalSchema).getTddlRuleManager().getPartitionInfoManager();
+            executionContext.getSchemaManager(sourceLogicalSchema).getTddlRuleManager().getPartitionInfoManager();
         return partitionInfoManager.getPartitionInfo(sourceLogicalTable);
+    }
+
+    public static Map<String, Set<String>> genSourcePhyTables(Map<Pair<String, String>, OSSBackFillWriterTask> tasks) {
+        Map<String, Set<String>> sourcePhyTables = new HashMap<>();
+        for (Pair<String, String> sourcePhySchemaAndTable : tasks.keySet()) {
+            sourcePhyTables.computeIfAbsent(sourcePhySchemaAndTable.getKey(), x -> new HashSet<>());
+            sourcePhyTables.get(sourcePhySchemaAndTable.getKey()).add(sourcePhySchemaAndTable.getValue());
+        }
+        return sourcePhyTables;
     }
 
     public static Pair<String, String> getSourcePhyTable(PartitionInfo loadTablePartitionInfo, String partName) {
         List<String> partitionNameList = ImmutableList.of(partName);
         PhysicalPartitionInfo loadTablePhysicalPartitionInfo =
-                loadTablePartitionInfo
-                        .getPhysicalPartitionTopology(partitionNameList)
-                        .values()
-                        .stream()
-                        .findFirst().get().get(0);
+            loadTablePartitionInfo
+                .getPhysicalPartitionTopology(partitionNameList)
+                .values()
+                .stream()
+                .findFirst().get().get(0);
         return Pair.of(loadTablePhysicalPartitionInfo.getGroupKey(), loadTablePhysicalPartitionInfo.getPhyTable());
     }
 
-    public static List<DdlTask> dropTableTasks(Engine engine, String schemaName, String logicalTableName, boolean ifExists, ExecutionContext executionContext) {
-        DropTableBuilder dropTableBuilder = DropPartitionTableBuilder.createBuilder(schemaName, logicalTableName, true, executionContext);
+    public static List<PhysicalPartitionInfo> getFlattenedPartitionInfo(String schema, String table) {
+        List<PhysicalPartitionInfo> partitionInfos = new ArrayList<>();
+        OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(table)
+            .getPartitionInfo().getPhysicalPartitionTopology(ImmutableList.of())
+            .values().forEach(partitionInfos::addAll);
+        return partitionInfos;
+    }
+
+    public static List<PhysicalPartitionInfo> getOrderedPartitionInfo(List<PhysicalPartitionInfo> partitionInfos,
+                                                                      int total, int serial) {
+        partitionInfos.sort(Comparator.comparing(PhysicalPartitionInfo::getPartBitSetIdx));
+        List<PhysicalPartitionInfo> result = new ArrayList<>();
+        int cnt = 0;
+        for (PhysicalPartitionInfo physicalPartitionInfo : partitionInfos) {
+            cnt++;
+            // only consider tables with the same remainder
+            if (cnt % total == (serial)) {
+                result.add(physicalPartitionInfo);
+            }
+        }
+        return result;
+    }
+
+    public static List<PhysicalPartitionInfo> getOrderedPartitionInfo(String schema, String table,
+                                                                      int total, int serial) {
+        List<PhysicalPartitionInfo> partitionInfos = OSSTaskUtils.getFlattenedPartitionInfo(schema, table);
+        return OSSTaskUtils.getOrderedPartitionInfo(partitionInfos, total, serial);
+    }
+
+    public static Optional<String> chooseRemoteNode(Long taskId) {
+        List<GmsNode> remoteNodeList = GmsNodeManager.getInstance().getRemoteNodes();
+        if (CollectionUtils.isEmpty(remoteNodeList)) {
+            //no remote node, so choose local node
+            return Optional.empty();
+        }
+        List<GmsNode> candidates = new ArrayList<>(remoteNodeList);
+        candidates.add(null);
+        int mod = (int) (MurmurHashUtils.murmurHashWithZeroSeed(taskId) % candidates.size());
+        if (mod < 0) {
+            mod = mod + candidates.size();
+        }
+        GmsNode chosenNode = candidates.get(mod);
+        if (chosenNode == null) {
+            //choose local node
+            return Optional.empty();
+        }
+        //choose remote node by taskId
+        return Optional.of(chosenNode.getServerKey());
+    }
+
+    public static int getArchiveParallelism(ExecutionContext ec) {
+        int parallelism = (int) ec.getParamManager()
+            .getLong(ConnectionParams.FILE_STORAGE_TASK_PARALLELISM);
+        return parallelism <= 0 ? 4 : parallelism;
+    }
+
+    public static int getMppParallelism(ExecutionContext executionContext, TableMeta primaryTableMeta) {
+        int parallelism = OSSTaskUtils.getArchiveParallelism(executionContext);
+        if (TableTopologyUtil.isShard(primaryTableMeta)) {
+            return Math.min(parallelism, primaryTableMeta.getPartitionInfo().getAllPhysicalPartitionCount());
+        }
+
+        if (TableTopologyUtil.isBroadcast(primaryTableMeta)) {
+            return Math.min(parallelism,
+                primaryTableMeta.getPartitionInfo().getPhysicalPartitionTopology(ImmutableList.of()).size());
+        }
+        // single table
+        return 1;
+    }
+
+    public static List<DdlTask> dropTableTasks(Engine engine, String schemaName, String logicalTableName,
+                                               boolean ifExists, ExecutionContext executionContext) {
+        DropTableBuilder dropTableBuilder =
+            DropPartitionTableBuilder.createBuilder(schemaName, logicalTableName, true, executionContext);
         dropTableBuilder.build();
         PhysicalPlanData physicalPlanData = dropTableBuilder.genPhysicalPlanData();
 
@@ -172,5 +271,18 @@ public class OSSTaskUtils {
         }
         tasks.add(tableSyncTask);
         return tasks;
+    }
+
+    public static long getTsFromTimestampWithTimeZone(String timestamp, TimeZone timeZone) {
+        String utcTimeStampString =
+            TimestampUtils.convertBetweenTimeZones(timestamp, timeZone, TimeZone.getTimeZone("UTC"), 0);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        LocalDateTime localDateTime = LocalDateTime.parse(utcTimeStampString, formatter);
+        Instant instant = localDateTime.toInstant(ZoneOffset.UTC);
+        if (instant.toEpochMilli() < 0) {
+            throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
+        }
+        long ts = instant.toEpochMilli() << BITS_LOGICAL_TIME;
+        return ts;
     }
 }

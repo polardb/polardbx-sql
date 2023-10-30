@@ -43,7 +43,6 @@ import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Struct;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,6 +112,11 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
 
             // 不处理 DRDS 自定义的系统变量
             if (ServerVariables.extraVariables.contains(key)) {
+                continue;
+            }
+
+            // 对于 DN 仅支持 set global 设置的变量，禁止 set session
+            if (!isGlobal && ServerVariables.isMysqlGlobal(key)) {
                 continue;
             }
 

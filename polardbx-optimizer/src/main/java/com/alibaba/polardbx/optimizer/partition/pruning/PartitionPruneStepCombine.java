@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -83,8 +84,25 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
         return combineType;
     }
 
+    protected PartitionPruneStep mergeIntervalAndRebuildPruneStepIfNeed(ExecutionContext context,
+                                                                        PartPruneStepPruningContext pruningCtx,
+                                                                        List<Integer> parentPartPosiSet) {
+        if (needMergeRanges(pruningCtx)) {
+            /**
+             * Do the auto merge intervals and build a new prune step from new merged intervals
+             */
+            PartitionPruneStep rngMergedStepInfo =
+                PartitionPruneStepBuilder.mergePruneStepsForStepCombine(this, context, pruningCtx);
+            pruningCtx.setRootStep(rngMergedStepInfo);
+            return rngMergedStepInfo;
+        } else {
+            return this;
+        }
+    }
+
     @Override
-    public PartPrunedResult prunePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx) {
+    public PartPrunedResult prunePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx,
+                                            List<Integer> parentPartPosiSet) {
 
         if (needMergeRanges(pruningCtx)) {
             /**
@@ -96,22 +114,22 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
             /**
              * Do pruning by the new prune step from new merged intervals
              */
-            PartPrunedResult rs = rngMergedStepInfo.prunePartitions(context, pruningCtx);
+            PartPrunedResult rs = rngMergedStepInfo.prunePartitions(context, pruningCtx, parentPartPosiSet);
             pruningCtx.setRootStep(rngMergedStepInfo);
             return rs;
         }
 
         List<PartitionPruneStep> subStepList = this.subSteps;
         PartitionPruneStep step = subStepList.get(0);
-        PartPrunedResult prunedRs = step.prunePartitions(context, pruningCtx);
-        BitSet prunedPartBitSet = prunedRs.partBitSet;
+        PartPrunedResult prunedRs = step.prunePartitions(context, pruningCtx, parentPartPosiSet);
+        BitSet prunedPartBitSet = prunedRs.getPartBitSet();
         for (int i = 1; i < subStepList.size(); i++) {
             PartitionPruneStep tmpStep = subStepList.get(i);
-            PartPrunedResult tmpPrunedRs = tmpStep.prunePartitions(context, pruningCtx);
+            PartPrunedResult tmpPrunedRs = tmpStep.prunePartitions(context, pruningCtx, parentPartPosiSet);
             if (this.combineType == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
-                prunedPartBitSet.and(tmpPrunedRs.partBitSet);
+                prunedPartBitSet.and(tmpPrunedRs.getPartBitSet());
             } else if (this.combineType == PartPruneStepType.PARTPRUNE_COMBINE_UNION) {
-                prunedPartBitSet.or(tmpPrunedRs.partBitSet);
+                prunedPartBitSet.or(tmpPrunedRs.getPartBitSet());
             }
         }
         PartitionPrunerUtils.collateStepExplainInfo(this, context, prunedRs, pruningCtx);
@@ -125,7 +143,7 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
     @Override
     public String getStepDigest() {
 
-        String andOrExprStr = this.combineType.getSymbol();
+        String andOrExprStr = getCombineSymbol();
         StringBuilder digestBuilder = new StringBuilder(andOrExprStr);
         digestBuilder.append("(");
         for (int i = 0; i < subSteps.size(); i++) {
@@ -137,6 +155,15 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
         }
         digestBuilder.append(")");
         return digestBuilder.toString();
+    }
+
+    @Override
+    public PartKeyLevel getPartLevel() {
+        PartitionPruneStepOp step = (PartitionPruneStepOp) findFirstOpStep(this);
+        if (step != null) {
+            return step.getPartLevel();
+        }
+        return null;
     }
 
     @Override
@@ -189,5 +216,9 @@ public class PartitionPruneStepCombine implements PartitionPruneStep {
 
     public void setCombineType(PartPruneStepType combineType) {
         this.combineType = combineType;
+    }
+
+    protected String getCombineSymbol() {
+        return this.combineType.getSymbol();
     }
 }

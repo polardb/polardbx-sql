@@ -25,7 +25,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class ModifyTimerTaskTest extends CrudBasedLockTestCase {
-    final String DISABLE_MPP_HINT = "/*+TDDL:ENABLE_MPP=false*/";
+    final String DISABLE_MPP_HINT = "/*+TDDL:ENABLE_MPP=false SHOW_ALL_PARAMS=true*/";
 
     @Test
     public void testModifyLogCleanTask() throws SQLException {
@@ -42,10 +42,10 @@ public class ModifyTimerTaskTest extends CrudBasedLockTestCase {
             int found = 0;
             while (rs.next()) {
                 final String variableName = rs.getString("VARIABLE_NAME");
-                if ("PURGE_TRANS_BEFORE".equals(variableName)) {
+                if ("PURGE_TRANS_BEFORE".equalsIgnoreCase(variableName)) {
                     before = Long.parseLong(rs.getString(VALUE));
                     found++;
-                } else if ("PURGE_TRANS_INTERVAL".equals(variableName)) {
+                } else if ("PURGE_TRANS_INTERVAL".equalsIgnoreCase(variableName)) {
                     interval = Long.parseLong(rs.getString(VALUE));
                     found++;
                 }
@@ -73,10 +73,10 @@ public class ModifyTimerTaskTest extends CrudBasedLockTestCase {
             found = 0;
             while (rs.next()) {
                 final String variableName = rs.getString("VARIABLE_NAME");
-                if ("PURGE_TRANS_BEFORE".equals(variableName)) {
+                if ("PURGE_TRANS_BEFORE".equalsIgnoreCase(variableName)) {
                     Assert.assertEquals(newBefore, Long.parseLong(rs.getString(VALUE)));
                     found++;
-                } else if ("PURGE_TRANS_INTERVAL".equals(variableName)) {
+                } else if ("PURGE_TRANS_INTERVAL".equalsIgnoreCase(variableName)) {
                     Assert.assertEquals(newInterval, Long.parseLong(rs.getString(VALUE)));
                     found++;
                 }
@@ -108,10 +108,10 @@ public class ModifyTimerTaskTest extends CrudBasedLockTestCase {
             int found = 0;
             while (rs.next()) {
                 final String variableName = rs.getString(NAME);
-                if ("PURGE_TRANS_BEFORE".equals(variableName)) {
+                if ("PURGE_TRANS_BEFORE".equalsIgnoreCase(variableName)) {
                     before = Long.parseLong(rs.getString(VALUE));
                     found++;
-                } else if ("PURGE_TRANS_INTERVAL".equals(variableName)) {
+                } else if ("PURGE_TRANS_INTERVAL".equalsIgnoreCase(variableName)) {
                     interval = Long.parseLong(rs.getString(VALUE));
                     found++;
                 }

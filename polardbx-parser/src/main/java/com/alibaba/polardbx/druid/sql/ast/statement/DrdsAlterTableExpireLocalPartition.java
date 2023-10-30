@@ -25,7 +25,7 @@ import java.util.List;
 
 public class DrdsAlterTableExpireLocalPartition extends SQLObjectImpl implements SQLAlterTableItem {
 
-    private List<SQLName> partitions  = new ArrayList<SQLName>(4);
+    private List<SQLName> partitions = new ArrayList<SQLName>(4);
 
     public void setPartitions(final List<SQLName> partitions) {
         this.partitions = partitions;

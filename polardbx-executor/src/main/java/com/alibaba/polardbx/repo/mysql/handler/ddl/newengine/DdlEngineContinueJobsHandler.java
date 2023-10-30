@@ -31,9 +31,7 @@ import org.apache.calcite.sql.SqlContinueDdlJob;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
 
@@ -56,11 +54,11 @@ public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
             DdlState state = DdlState.valueOf(e.state);
             if (!(state == DdlState.PAUSED || state == DdlState.ROLLBACK_PAUSED)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
-                    "Only PAUSED/ROLLBACK_PAUSED jobs can be continued, job %s is in %s state", e.jobId, e.state));
+                    "Only PAUSED/ROLLBACK_PAUSED jobs can be continued, but job %s is in %s state", e.jobId, e.state));
             }
             if (!e.isSupportContinue()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
-                    "continue/recover is not supported for job %s. please try: cancel ddl %s", e.jobId, e.jobId));
+                    "Continue/recover is not supported for job %s. Please try: cancel ddl %s", e.jobId, e.jobId));
             }
             if (e.isSubJob() && !enableOperateSubJob) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
@@ -91,12 +89,15 @@ public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
             }
         }
 
+        DdlEngineRequester.removeResponses(jobIdList);
         DdlEngineRequester.notifyLeader(executionContext.getSchemaName(), jobIdList);
 
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
+        boolean checkResponseInMemory
+            = executionContext.getParamManager().getBoolean(ConnectionParams.CHECK_RESPONSE_IN_MEM);
         if (!asyncMode && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
             DdlEngineRecord record = records.get(0);
-            respond(record.schemaName, record.jobId, executionContext, true);
+            respond(record.schemaName, record.jobId, executionContext, checkResponseInMemory, true);
         }
 
         return new AffectRowCursor(new int[] {countDone});

@@ -77,13 +77,15 @@ public class BinaryResultSetUtil {
      * Only return header packet (without data).
      */
     public static IPacketOutputProxy resultSetToHeaderPacket(ResultSetCachedObj resultSetCachedObj,
-                                                             ServerConnection c, PreparedStmtCache preparedStmtCache)
+                                                             ServerConnection c, PreparedStmtCache preparedStmtCache,
+                                                             AtomicLong affectRows)
         throws SQLException, IllegalAccessException {
         // Call the resultSet.next() to actually execute the physical sql
         // and generate data. If the result set is empty, set the last row flag.
         final ResultSet rs = resultSetCachedObj.getResultSet();
         resultSetCachedObj.setLastRow(!rs.next());
         resultSetCachedObj.setFirstRow(true);
+        affectRows.set(resultSetCachedObj.getRowCount());
 
         final MysqlBinaryResultSetPacket packet = new MysqlBinaryResultSetPacket();
         final Set<Integer> undecidedTypeIndexes = new HashSet<>();
@@ -125,12 +127,15 @@ public class BinaryResultSetUtil {
             // For the first row, the rs.next() is already called when the header packet is sent.
             // So do not call it again or we will miss the first row of data.
             if (!resultSetCachedObj.isFirstRow()) {
-                resultSetCachedObj.setLastRow(!rs.next());
+                if (!resultSetCachedObj.isLastRow()) {
+                    resultSetCachedObj.setLastRow(!rs.next());
+                }
             } else {
                 resultSetCachedObj.setFirstRow(false);
             }
 
             if (resultSetCachedObj.isLastRow()) {
+                resultSetCachedObj.close();
                 break;
             }
 
@@ -223,8 +228,6 @@ public class BinaryResultSetUtil {
                         packet.fieldPackets[i].orgName =
                             StringUtil.encode_0(((TResultSetMetaData) metaData).getOriginColumnName(j),
                                 javaCharset);
-                        packet.fieldPackets[i].orgName =
-                            StringUtil.encode_0(metaData.getColumnName(j), javaCharset);
                         packet.fieldPackets[i].name =
                             StringUtil.encode_0(metaData.getColumnLabel(j), javaCharset);
                         packet.fieldPackets[i].orgTable =
@@ -291,7 +294,6 @@ public class BinaryResultSetUtil {
             do {
                 if (sqlSelectLimit != ResultSetUtil.NO_SQL_SELECT_LIMIT
                     && sqlSelectLimit < ResultSetUtil.MAX_SQL_SELECT_LIMIT && sqlSelectLimit-- <= 0L) {
-                    rs.close();
                     break;
                 }
                 final BinaryRowDataPacket row =

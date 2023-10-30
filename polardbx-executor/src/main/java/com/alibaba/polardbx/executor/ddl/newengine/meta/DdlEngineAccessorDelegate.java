@@ -51,8 +51,10 @@ public abstract class DdlEngineAccessorDelegate<T> extends MetaDbAccessorWrapper
     @Override
     public T execute() {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            int iso = metaDbConn.getTransactionIsolation();
             try {
                 open(metaDbConn);
+                metaDbConn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                 MetaDbUtil.beginTransaction(metaDbConn);
 
                 T r = invoke();
@@ -64,6 +66,7 @@ public abstract class DdlEngineAccessorDelegate<T> extends MetaDbAccessorWrapper
                 onException(metaDbConn, t);
                 throw t;
             } finally {
+                metaDbConn.setTransactionIsolation(iso);
                 MetaDbUtil.endTransaction(metaDbConn, LOGGER);
                 close();
             }

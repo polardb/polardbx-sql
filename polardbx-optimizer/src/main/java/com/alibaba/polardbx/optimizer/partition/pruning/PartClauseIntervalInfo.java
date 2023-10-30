@@ -20,12 +20,16 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlOperator;
 
 /**
@@ -61,21 +65,36 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
         PartClauseExprExec partClauseExec = new PartClauseExprExec(PartitionBoundValueKind.DATUM_NORMAL_VALUE);
 
         PartKeyLevel partLevel = partPredClause.getPartKeyLevel();
+
+        PartitionByDefinition partByDef = null;
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            partByDef = partInfo.getPartitionBy().getSubPartitionBy();
+        } else {
+            partByDef = partInfo.getPartitionBy();
+        }
+
         int partKeyIndex = partPredClause.getPartKeyIndex();
-        SqlOperator partFuncOp = PartitionPruneStepBuilder.getPartFuncSqlOperation(partLevel, partKeyIndex, partInfo);
         boolean isNull = partPredClause.isNull();
         RexNode partPredExpr = partPredClause.getConstExpr();
         PartitionIntFunction partFunc = null;
-        if (partFuncOp != null) {
-            partFunc = PartitionPrunerUtils.getPartitionIntFunction(partFuncOp.getName());
+
+//        SqlOperator partFuncOp = PartitionPruneStepBuilder.getPartFuncSqlOperation(partLevel, partKeyIndex, partInfo);
+//        if (partFuncOp != null) {
+//            partFunc = PartitionPrunerUtils.getPartitionIntFunction(partFuncOp, partLevel, partInfo);
+//        }
+
+        SqlCall partFuncCall = PartitionFunctionBuilder.getPartFuncCall(partLevel, partKeyIndex, partInfo);
+        if (partFuncCall != null) {
+            partFunc = PartitionFunctionBuilder.createPartFuncByPartFuncCal(partFuncCall);
         }
+
         IExpression exprExec = RexUtils.getEvalFuncExec(partPredExpr, exprCtxHolder);
         partClauseExec.setExprCtxHolder(exprCtxHolder);
         partClauseExec.setExprExec(exprExec);
         partClauseExec.setPartIntFunc(partFunc);
         partClauseExec.setPredExprReturnType(isNull ? null : DataTypeUtil.calciteToDrdsType(partPredExpr.getType()));
 
-        ColumnMeta partFldColMeta = partInfo.getPartitionBy().getPartitionFieldList().get(partKeyIndex);
+        ColumnMeta partFldColMeta = partByDef.getPartitionFieldList().get(partKeyIndex);
         partClauseExec.setPartColDataType(partFldColMeta.getField().getDataType());
         partClauseExec.setPartColMeta(partFldColMeta);
 

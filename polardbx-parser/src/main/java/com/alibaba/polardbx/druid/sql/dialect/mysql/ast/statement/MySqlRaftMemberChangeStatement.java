@@ -15,6 +15,7 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -74,5 +75,10 @@ public class MySqlRaftMemberChangeStatement extends MySqlStatementImpl {
 
     public void setNoLeader(boolean noLeader) {
         this.noLeader = noLeader;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

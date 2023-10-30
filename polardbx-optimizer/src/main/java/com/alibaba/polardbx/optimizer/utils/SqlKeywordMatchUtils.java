@@ -128,7 +128,7 @@ public class SqlKeywordMatchUtils {
             return false;
         }
         char firstCh = stringVal.charAt(0);
-        return firstCh == '\'' || firstCh == '\"';
+        return firstCh == '\'' || firstCh == '\"' || firstCh == '`';
     }
 
     public static List<String> fetchWords(String sql) {

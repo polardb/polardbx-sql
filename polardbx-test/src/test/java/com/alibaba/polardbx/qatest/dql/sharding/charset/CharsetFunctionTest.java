@@ -24,6 +24,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class CharsetFunctionTest extends CharsetTestBase {
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepare() {

@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlSetTransactionStatement extends MySqlStatementImpl {
@@ -25,8 +26,8 @@ public class MySqlSetTransactionStatement extends MySqlStatementImpl {
     private Boolean session;
     private boolean local;
 
-    private String  isolationLevel;
-    private String  accessModel;
+    private String isolationLevel;
+    private String accessModel;
 
     private SQLExpr policy;
 
@@ -84,5 +85,10 @@ public class MySqlSetTransactionStatement extends MySqlStatementImpl {
             x.setParent(this);
         }
         this.policy = x;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

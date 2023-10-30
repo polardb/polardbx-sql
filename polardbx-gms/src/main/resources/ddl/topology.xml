@@ -72,12 +72,20 @@
               `db_status` int(11) NOT NULL COMMENT '0:running, 1:creating, 2:dropping',
               `charset` varchar(128) DEFAULT NULL,
               `collation` varchar(128) DEFAULT NULL,
+              `read_write_status` int(11) NOT NULL DEFAULT 0 COMMENT '0:read_write,1:read_only,2:write_only',
+              `extra` text DEFAULT NULL COMMENT 'extra info',
               PRIMARY KEY (`id`),
               UNIQUE KEY `uk_db` (`db_name`),
               INDEX `idx_type` (`db_type`),
               INDEX `idx_app_name` (`app_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
         ]]></Create>
+        <Change><![CDATA[
+            alter table `db_info` add column `read_write_status` int(11) NOT NULL DEFAULT 0 COMMENT '0:read_write,1:read_only,2:write_only'
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `db_info` add column `extra` text default null COMMENT 'extra info'
+        ]]> </Change>
     </SystemTable>
 
     <SystemTable name="db_group_info">

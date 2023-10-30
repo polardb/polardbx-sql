@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.sync.GmsSyncDataSource;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.ServerInfoAccessor;
 import com.alibaba.polardbx.gms.topology.ServerInfoRecord;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
@@ -43,6 +44,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class GmsNodeManager extends AbstractLifecycle {
 
@@ -75,6 +77,11 @@ public class GmsNodeManager extends AbstractLifecycle {
      * All master nodes
      */
     private final List<GmsNode> masterNodes = new ArrayList<>();
+
+    /**
+     * All standby nodes
+     */
+    private final List<GmsNode> standbyNodes = new ArrayList<>();
 
     /**
      * All read-only nodes by instance id.
@@ -119,6 +126,10 @@ public class GmsNodeManager extends AbstractLifecycle {
         return remoteNodes;
     }
 
+    public List<GmsNode> getStandbyNodes() {
+        return standbyNodes;
+    }
+
     public List<GmsNode> getMasterNodes() {
         return masterNodes;
     }
@@ -161,19 +172,11 @@ public class GmsNodeManager extends AbstractLifecycle {
     }
 
     public boolean isCurrentNodeMaster() {
-        if (localNode != null) {
-            return localNode.instType == ServerInfoRecord.INST_TYPE_MASTER;
-        } else {
-            return ConfigDataMode.isMasterMode();
-        }
+        return ServerInstIdManager.getInstance().isMasterInst();
     }
 
     public boolean isCurrentNodeReadOnly() {
-        if (localNode != null) {
-            return localNode.instType != ServerInfoRecord.INST_TYPE_MASTER;
-        } else {
-            return ConfigDataMode.isSlaveMode();
-        }
+        return !ServerInstIdManager.getInstance().isMasterInst();
     }
 
     public void reloadNodes(int localServerPort) {
@@ -184,6 +187,7 @@ public class GmsNodeManager extends AbstractLifecycle {
         loadNodesForCurrentInstance(localServerPort);
         loadMasterNodes();
         loadReadOnlyNodes();
+        loadStandbyNodes();
         loadRedundantNodes();
 
         // Refresh node info which relies on node change.
@@ -297,6 +301,31 @@ public class GmsNodeManager extends AbstractLifecycle {
         }
     }
 
+    private void loadStandbyNodes() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            serverInfoAccessor.setConnection(metaDbConn);
+
+            // Fetch the latest standby node info.
+            List<ServerInfoRecord> records = serverInfoAccessor.getServerInfoForStandby();
+
+            // Clear loaded standby nodes.
+            standbyNodes.clear();
+
+            // Reload new ones.
+            Set<Integer> assignedUniqueIds = new HashSet<>();
+            for (ServerInfoRecord record : records) {
+                if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
+                    int uniqueId = assignUniqueId(record, assignedUniqueIds);
+                    standbyNodes.add(buildNode(record, uniqueId));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+        } finally {
+            serverInfoAccessor.setConnection(null);
+        }
+    }
+
     private void loadRedundantNodes() {
         // All read-only nodes.
         readOnlyNodes.clear();
@@ -308,6 +337,7 @@ public class GmsNodeManager extends AbstractLifecycle {
         allNodes.clear();
         allNodes.addAll(masterNodes);
         allNodes.addAll(readOnlyNodes);
+        allNodes.addAll(standbyNodes);
         if (allNodes.isEmpty()) {
             // Need one node at least for local test even if it's null.
             allNodes.add(localNode);
@@ -319,6 +349,13 @@ public class GmsNodeManager extends AbstractLifecycle {
             return gmsNode1.instId.compareTo(gmsNode2.instId);
         });
         this.currentIndex = allNodes.indexOf(GmsNodeManager.getInstance().getLocalNode());
+        if (currentIndex == -1) {
+            LOGGER.error(String.format(
+                "local node not found from allNodes, local node is %s, while all node is %s",
+                GmsNodeManager.getInstance().getLocalNode(),
+                allNodes.stream().map(node -> node.toString()).collect(Collectors.joining(",")))
+            );
+        }
     }
 
     private GmsNode buildNode(ServerInfoRecord record, int uniqueId) {
@@ -547,6 +584,15 @@ public class GmsNodeManager extends AbstractLifecycle {
         if (remoteNodes != null) {
             nodeInfo.append("Remote Nodes:").append(SEPARATOR_LINE);
             for (GmsNode node : remoteNodes) {
+                if (node != null) {
+                    nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
+                }
+            }
+        }
+
+        if (standbyNodes != null && standbyNodes.size() > 0) {
+            nodeInfo.append("Standby Nodes:").append(SEPARATOR_LINE);
+            for (GmsNode node : standbyNodes) {
                 if (node != null) {
                     nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
                 }

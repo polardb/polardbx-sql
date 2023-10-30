@@ -29,6 +29,7 @@ import org.junit.runners.Parameterized;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 
@@ -69,7 +70,7 @@ public class SpmTest extends ReadBaseTestCase {
         }
 
         // clear current baseline info
-        executeBatchOnConn(tddlConnection, "baseline clear", null);
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
 
         String sql1 = "explain select * from " + baseOneTableName
             + " where integer_test between 100 and 50 or integer_test between 500 and 233;";
@@ -102,6 +103,41 @@ public class SpmTest extends ReadBaseTestCase {
     }
 
     @Test
+    public void baselineWithPushdownHint() {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+
+        final String select = " select * from " + baseOneTableName
+            + " where integer_test between 100 and 50 or integer_test between 500 and 233";
+
+        String sql1 = "explain " + select;
+        // test original sql plan ,making sure that it's a full table scan plan
+        explainAllResultMatchAssert(sql1, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        final String randomScanHint = "/*+TDDL:SCAN(\"" + baseOneTableName + "\", condition=\"pk = rand() * 100\")*/ ";
+        String sql2 = "explain " + randomScanHint + select;
+
+        // use hint make plan pushdown to a randomly chosen partition
+        explainAllResultNotMatchAssert(sql2, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        String sql3 = "baseline fix sql " + randomScanHint + select;
+
+        // baseline fix plan with pushdown hint
+        executeBatchOnConn(tddlConnection, sql3, null);
+
+        // test original sql , whether its plan contains no shardCount
+        explainAllResultNotMatchAssert(sql1, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        // persist plan(not necessary)
+        executeBatchOnConn(tddlConnection, "baseline PERSIST", null);
+
+        String sql4 = "explain select * from " + baseOneTableName
+            + " where integer_test between 1324 and 435 or integer_test between 345 and 222;";
+        // test original sql with different params
+        explainAllResultNotMatchAssert(sql4, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+    }
+
+    @Test
     public void testPlanCacheFreshAfterAnalyzeTable() throws SQLException {
         //bypass selectHandler
         String sql = "show tables";
@@ -124,6 +160,164 @@ public class SpmTest extends ReadBaseTestCase {
 
         if (newTableNames.contains(targetTable)) {
             Assert.fail("plan cache should not contains the table name of the latest query after analyze");
+        }
+    }
+
+    @Test
+    public void testBaselineRebuildAtLoad() throws SQLException {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+
+        String sql = "baseline hint bind /*TDDL:a()*/ select * from " + baseOneTableName + " limit 100";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "select count(1) as hintCount from information_schema.spm where hint is not null";
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        rs.next();
+        int hintCount = rs.getInt("hintCount");
+        rs.close();
+        Assert.assertTrue(hintCount >= 1);
+
+        // reload baseline
+        sql = "baseline load";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "select count(1) as hintCount from information_schema.spm where hint is not null";
+        rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        rs.next();
+        hintCount = rs.getInt("hintCount");
+        rs.close();
+        Assert.assertTrue(hintCount >= 1);
+    }
+
+    @Test
+    public void testBaselineRebuildAtLoadPushDownHint() throws SQLException {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+
+        String sql = "baseline add sql \n"
+            + "/*+TDDL:SCAN(\n"
+            + "    'select_base_two_multi_db_one_tb a, select_base_three_multi_db_one_tb b, select_base_four_multi_db_one_tb c', \n"
+            + "    condition='a.pk = rand() * 10 and a.pk = b.pk and a.pk = c.pk')*/\n"
+            + "select *\n"
+            + "  from select_base_two_multi_db_one_tb a\n"
+            + "  join select_base_three_multi_db_one_tb b\n"
+            + "    on a.pk           = b.pk\n"
+            + "  join select_base_four_multi_db_one_tb c\n"
+            + "    on a.integer_test = c.integer_test;";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "select count(1) as hintCount from information_schema.spm where hint is not null";
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        rs.next();
+        int hintCount = rs.getInt("hintCount");
+        rs.close();
+        Assert.assertTrue(hintCount >= 1);
+
+        // reload baseline
+        sql = "baseline load";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "select count(1) as hintCount from information_schema.spm where hint is not null";
+        rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        rs.next();
+        hintCount = rs.getInt("hintCount");
+        rs.close();
+        Assert.assertTrue(hintCount >= 1);
+    }
+
+    @Test
+    public void testBaselineRebuildAtLoadPushDownHintCurrentSchema() throws SQLException {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+        String sql = "baseline add sql \n"
+            + "/*+TDDL:SCAN(\n"
+            + "    'select_base_two_multi_db_one_tb a, select_base_three_multi_db_one_tb b, select_base_four_multi_db_one_tb c', \n"
+            + "    condition='a.pk = rand() * 10 and a.pk = b.pk and a.pk = c.pk')*/\n"
+            + "select *\n"
+            + "  from select_base_two_multi_db_one_tb a\n"
+            + "  join select_base_three_multi_db_one_tb b\n"
+            + "    on a.pk           = b.pk\n"
+            + "  join select_base_four_multi_db_one_tb c\n"
+            + "    on a.integer_test = c.integer_test;";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        sql = "trace select *\n"
+            + "  from select_base_two_multi_db_one_tb a\n"
+            + "  join select_base_three_multi_db_one_tb b\n"
+            + "    on a.pk           = b.pk\n"
+            + "  join select_base_four_multi_db_one_tb c\n"
+            + "    on a.integer_test = c.integer_test";
+        Statement statement = tddlConnection.createStatement();
+        ResultSet rs = statement.executeQuery(sql);
+        rs.close();
+        sql = "show trace";
+        rs = statement.executeQuery(sql);
+        int rows = 0;
+        while (rs.next()) {
+            rows++;
+        }
+        rs.close();
+        Assert.assertTrue(rows == 1);
+    }
+
+    @Test
+    public void testBaselineRebuildAtLoadPushDownHintCrossSchema() throws SQLException {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+        Statement statement = tddlConnection.createStatement();
+        statement.executeQuery("use polardbx");
+        String sql =
+            "baseline fix SQL /*+TDDL:SCAN( 'drds_polarx1_part_qatest_app.select_base_two_multi_db_one_tb a, drds_polarx1_part_qatest_app.select_base_three_multi_db_one_tb b, drds_polarx1_part_qatest_app.select_base_four_multi_db_one_tb c', condition='a.pk = rand() * 10 and a.pk = b.pk and a.pk = c.pk')*/\n"
+                + "SELECT *\n"
+                + "FROM drds_polarx1_part_qatest_app.select_base_two_multi_db_one_tb a\n"
+                + "JOIN drds_polarx1_part_qatest_app.select_base_three_multi_db_one_tb b ON a.pk = b.pk\n"
+                + "JOIN drds_polarx1_part_qatest_app.select_base_four_multi_db_one_tb c ON a.integer_test = c.integer_test";
+        statement.executeQuery(sql);
+        sql = "trace SELECT *\n"
+            + "FROM drds_polarx1_part_qatest_app.select_base_two_multi_db_one_tb a\n"
+            + "JOIN drds_polarx1_part_qatest_app.select_base_three_multi_db_one_tb b ON a.pk = b.pk\n"
+            + "JOIN drds_polarx1_part_qatest_app.select_base_four_multi_db_one_tb c ON a.integer_test = c.integer_test";
+        ResultSet rs = statement.executeQuery(sql);
+        rs.close();
+        sql = "show trace";
+        rs = statement.executeQuery(sql);
+        int rows = 0;
+        while (rs.next()) {
+            rows++;
+        }
+        rs.close();
+        Assert.assertTrue(rows == 1);
+    }
+
+    /**
+     * Test baseline add/fix sql will merge IN operands with one '?'
+     */
+    @Test
+    public void testBaselineWithInExpr() throws SQLException {
+        String sqlAdd = "baseline fix sql /*TDDL:a()*/select pk from " + baseOneTableName + " where pk in (1, 3)";
+        try (Statement statement = tddlConnection.createStatement()) {
+            // get baseline id
+            ResultSet rs = statement.executeQuery(sqlAdd);
+            rs.next();
+            String baselineId = rs.getString(1);
+            rs.close();
+
+            // delete baseline
+            String sql = "baseline delete " + baselineId;
+            statement.execute(sql);
+
+            // re-fix it
+            statement.execute(sqlAdd);
+
+            // check PARAMETERIZED_SQL in spm if it contained only one question mark
+            sql = "select PARAMETERIZED_SQL from information_schema.spm where BASELINE_ID=" + baselineId;
+            rs = statement.executeQuery(sql);
+            rs.next();
+            String paramSql = rs.getString(1);
+            rs.close();
+            System.out.println(paramSql);
+            Assert.assertTrue(paramSql.contains("(?)"));
         }
     }
 

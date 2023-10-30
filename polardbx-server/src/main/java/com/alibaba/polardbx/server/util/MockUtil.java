@@ -28,6 +28,8 @@ import com.alibaba.polardbx.config.ServerConfigManager;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
+import com.alibaba.polardbx.matrix.jdbc.TDataSource;
+import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -87,11 +89,6 @@ public class MockUtil {
             MppConfig.getInstance().getTableScanConnectionStrategy());
         ds.putConnectionProperties(ConnectionProperties.STATISTIC_COLLECTOR_FROM_RULE,
             !system.isEnableCollectorAllTables());
-
-        if (system.getCoronaMode() == 1) {
-            //corona模式下rule不全，也会从0库加载表
-            ds.putConnectionProperties(ConnectionProperties.SHOW_TABLES_FROM_RULE_ONLY, false);
-        }
 
         // 共享一个线程池
         ds.setGlobalExecutorService(CobarServer.getInstance().getServerExecutor());

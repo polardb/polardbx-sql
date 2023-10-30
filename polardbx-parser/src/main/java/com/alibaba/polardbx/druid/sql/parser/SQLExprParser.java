@@ -99,6 +99,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryOperator;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableModifyPartitionValues;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableModifySubPartitionValues;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCheck;
@@ -3989,6 +3990,10 @@ public class SQLExprParser extends SQLParser {
     }
 
     public SQLColumnDefinition parseColumn() {
+        return parseColumn(false);
+    }
+
+    public SQLColumnDefinition parseColumn(boolean withoutName) {
         return parseColumn(null);
     }
 
@@ -4019,6 +4024,9 @@ public class SQLExprParser extends SQLParser {
         case DEFAULT:
             lexer.nextToken();
             SQLExpr defaultExpr = null;
+            if (lexer.token == Token.LPAREN) {
+                column.setDefaultExprHasLp(true);
+            }
             if (lexer.token == Token.LITERAL_CHARS && dbType == DbType.mysql) {
                 defaultExpr = new SQLCharExpr(lexer.stringVal());
                 lexer.nextToken();
@@ -4586,16 +4594,10 @@ public class SQLExprParser extends SQLParser {
                 lexer.nextToken();
                 indexDefinition.getOptions().setIndexType(lexer.stringVal());
                 lexer.nextToken();
-            } else if ((DbType.mysql == dbType) &&
-                lexer.identifierEquals("HASHMAP")) {
-                lexer.nextToken();
-                indexDefinition.setHashMapType(true);
-            } else if ((DbType.mysql == dbType) &&
-                lexer.identifierEquals(FnvHash.Constants.HASH)) {
-                lexer.nextToken();
-                indexDefinition.setHashType(true);
-            } else {
+            } else if (indexDefinition.getName() == null) {
                 indexDefinition.setName(name());
+            } else {
+                throw new ParserException("syntax error near " + lexer.info());
             }
         }
 
@@ -4723,6 +4725,13 @@ public class SQLExprParser extends SQLParser {
                         accept(Token.EQ);
                         SQLName tableGroupName = this.name();
                         indexDefinition.setTableGroup(tableGroupName);
+                    } else if (lexer.identifierEquals("INVISIBLE") || lexer.identifierEquals("VISIBLE")) {
+                        if (lexer.identifierEquals("VISIBLE")) {
+                            indexDefinition.setVisible(true);
+                        } else {
+                            indexDefinition.setVisible(false);
+                        }
+                        lexer.nextToken();
                     } else {
                         break _opts;
                     }
@@ -5079,6 +5088,24 @@ public class SQLExprParser extends SQLParser {
                 && ident.charAt(0) != '`'
                 && lexer.token != Token.LPAREN && (dbType == DbType.mysql)) {
                 expr = new SQLCurrentTimeExpr(SQLCurrentTimeExpr.Type.LOCALTIMESTAMP);
+
+            } else if (FnvHash.Constants.UTC_DATE == hash_lower
+                && ident.charAt(0) != '`'
+                && lexer.token != Token.LPAREN
+                && (dbType == DbType.mysql)) {
+                expr = new SQLCurrentTimeExpr(SQLCurrentTimeExpr.Type.UTC_DATE);
+
+            } else if (FnvHash.Constants.UTC_TIME == hash_lower
+                && ident.charAt(0) != '`'
+                && lexer.token != Token.LPAREN
+                && (dbType == DbType.mysql)) {
+                expr = new SQLCurrentTimeExpr(SQLCurrentTimeExpr.Type.UTC_TIME);
+
+            } else if (FnvHash.Constants.UTC_TIMESTAMP == hash_lower
+                && ident.charAt(0) != '`'
+                && lexer.token != Token.LPAREN
+                && (dbType == DbType.mysql)) {
+                expr = new SQLCurrentTimeExpr(SQLCurrentTimeExpr.Type.UTC_TIMESTAMP);
 
             } else if (FnvHash.Constants.CURRENT_USER == hash_lower
                 && ident.charAt(0) != '`'
@@ -5590,7 +5617,11 @@ public class SQLExprParser extends SQLParser {
         throw new ParserException("TODO");
     }
 
-    public SQLAlterTableModifyPartitionValues parseModifyListPartition() {
+    public SQLAlterTableModifyPartitionValues parseModifyPartitionValues() {
+        throw new ParserException("TODO");
+    }
+
+    public SQLAlterTableModifySubPartitionValues parseModifySubPartitionValues() {
         throw new ParserException("TODO");
     }
 

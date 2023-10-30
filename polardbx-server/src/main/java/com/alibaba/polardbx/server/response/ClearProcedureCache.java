@@ -27,9 +27,10 @@ import com.alibaba.polardbx.server.ServerConnection;
  * @author yuehan.wcf
  */
 public class ClearProcedureCache {
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         SyncManagerHelper.sync(new ClearProcedureCacheSyncAction(), TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 }

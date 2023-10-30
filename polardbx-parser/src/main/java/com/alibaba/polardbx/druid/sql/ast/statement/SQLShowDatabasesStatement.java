@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
-public class SQLShowDatabasesStatement extends SQLStatementImpl implements SQLShowStatement,SQLReplaceable {
+public class SQLShowDatabasesStatement extends SQLStatementImpl implements SQLShowStatement, SQLReplaceable {
 
     private boolean physical;
     private boolean full;

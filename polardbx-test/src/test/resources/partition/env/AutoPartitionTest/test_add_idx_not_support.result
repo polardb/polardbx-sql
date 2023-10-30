@@ -25,15 +25,19 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`seller_id` varchar(20) DEFAULT NULL,
 	`f` float DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
-	LOCAL KEY `_local_i_0` (`seller_id`),
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`),
 	LOCAL KEY `hehef` (`f`),
 	LOCAL KEY `f` (`f`),
 	LOCAL KEY `idx0` (`f`),
 	LOCAL KEY `idx1` (`f`),
-	LOCAL FULLTEXT KEY `i_2` (`order_id`, `seller_id`),
+	LOCAL FULLTEXT KEY `order_id_2` (`order_id`, `seller_id`),
 	LOCAL FULLTEXT KEY `idx2` (`order_id`, `seller_id`),
 	LOCAL FULLTEXT KEY `idx3` (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
@@ -48,13 +52,13 @@ t_order,CREATE TABLE `t_order` (
 	`seller_id` varchar(20) DEFAULT NULL,
 	`f` float DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	INDEX `i_0` (`seller_id`),
-	UNIQUE INDEX `i_1` (`order_id`),
+	UNIQUE INDEX `order_id` (`order_id`),
+	INDEX `seller_id` (`seller_id`),
 	LOCAL KEY `hehef` (`f`),
 	LOCAL KEY `f` (`f`),
 	LOCAL KEY `idx0` (`f`),
 	LOCAL KEY `idx1` (`f`),
-	LOCAL FULLTEXT KEY `i_2` (`order_id`, `seller_id`),
+	LOCAL FULLTEXT KEY `order_id_2` (`order_id`, `seller_id`),
 	LOCAL FULLTEXT KEY `idx2` (`order_id`, `seller_id`),
 	LOCAL FULLTEXT KEY `idx3` (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

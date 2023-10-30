@@ -18,6 +18,7 @@ package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseClear;
+import com.alibaba.polardbx.server.response.ClearOSSCache;
 import com.alibaba.polardbx.server.response.ClearPartitionsHeatmapCache;
 import com.alibaba.polardbx.server.response.ClearOSSCache;
 import com.alibaba.polardbx.server.response.ClearPlanCache;
@@ -32,32 +33,26 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
  */
 public final class ClearHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
         boolean recordSql = true;
         Throwable sqlEx = null;
         try {
             switch (ServerParseClear.parse(stmt, offset)) {
             case ServerParseClear.SLOW:
-                ClearSQLSlow.response(c, hasMore);
-                break;
+                return ClearSQLSlow.response(c, hasMore);
             case ServerParseClear.PLANCACHE:
-                ClearPlanCache.response(c, hasMore);
-                break;
-            case ServerParseClear.PROCEDURE_CACHE:
-                ClearProcedureCache.response(c, hasMore);
-                break;
-            case ServerParseClear.FUNCTION_CACHE:
-                ClearStoredFunctionCache.response(c, hasMore);
-                break;
+                return ClearPlanCache.response(c, hasMore);
             case ServerParseClear.OSSCACHE:
-                ClearOSSCache.response(c, hasMore);
-                break;
+                return ClearOSSCache.response(c, hasMore);
             case ServerParseClear.HEATMAP_CACHE:
-                ClearPartitionsHeatmapCache.response(c, hasMore);
-                break;
+                return ClearPartitionsHeatmapCache.response(c, hasMore);
+            case ServerParseClear.PROCEDURE_CACHE:
+                return ClearProcedureCache.response(c, hasMore);
+            case ServerParseClear.FUNCTION_CACHE:
+                return ClearStoredFunctionCache.response(c, hasMore);
             default:
-                c.execute(stmt, hasMore);
                 recordSql = false;
+                return c.execute(stmt, hasMore);
             }
         } catch (Throwable ex) {
             sqlEx = ex;

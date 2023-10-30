@@ -17,19 +17,25 @@ package com.alibaba.polardbx.druid.sql.ast;
 
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class SQLPartitionBy extends SQLObjectImpl {
-    protected SQLSubPartitionBy  subPartitionBy;
-    protected SQLExpr            partitionsCount;
-    protected boolean            linear;
+    protected SQLSubPartitionBy subPartitionBy;
+    protected SQLExpr partitionsCount;
+    protected boolean linear;
     protected List<SQLPartition> partitions = new ArrayList<SQLPartition>();
-    protected List<SQLName>      storeIn    = new ArrayList<SQLName>();
-    protected List<SQLExpr>      columns    = new ArrayList<SQLExpr>();
+    protected List<SQLName> storeIn = new ArrayList<SQLName>();
+    protected List<SQLExpr> columns = new ArrayList<SQLExpr>();
+    //use for create tablegroup template
+    protected List<SQLColumnDefinition> columnsDefinition = new ArrayList<>();
+    protected boolean forTableGroup;
 
     protected SQLIntegerExpr lifecycle;
+    private ByteString sourceSql;
 
     public List<SQLPartition> getPartitions() {
         return partitions;
@@ -91,6 +97,25 @@ public abstract class SQLPartitionBy extends SQLObjectImpl {
         this.columns.add(column);
     }
 
+    public List<SQLColumnDefinition> getColumnsDefinition() {
+        return columnsDefinition;
+    }
+
+    public void addColumnDefinition(SQLColumnDefinition columnDefinition) {
+        if (columnDefinition != null) {
+            columnDefinition.setParent(this);
+        }
+        this.columnsDefinition.add(columnDefinition);
+    }
+
+    public boolean isForTableGroup() {
+        return forTableGroup;
+    }
+
+    public void setForTableGroup(boolean forTableGroup) {
+        this.forTableGroup = forTableGroup;
+    }
+
     public void cloneTo(SQLPartitionBy x) {
         if (subPartitionBy != null) {
             x.setSubPartitionBy(subPartitionBy.clone());
@@ -116,8 +141,8 @@ public abstract class SQLPartitionBy extends SQLObjectImpl {
     public boolean isPartitionByColumn(long columnNameHashCode64) {
         for (SQLExpr column : columns) {
             if (column instanceof SQLIdentifierExpr
-                    && ((SQLIdentifierExpr) column)
-                        .nameHashCode64() == columnNameHashCode64) {
+                && ((SQLIdentifierExpr) column)
+                .nameHashCode64() == columnNameHashCode64) {
                 return true;
             }
         }
@@ -137,4 +162,12 @@ public abstract class SQLPartitionBy extends SQLObjectImpl {
     }
 
     public abstract SQLPartitionBy clone();
+
+    public ByteString getSourceSql() {
+        return sourceSql;
+    }
+
+    public void setSourceSql(ByteString sourceSql) {
+        this.sourceSql = sourceSql;
+    }
 }

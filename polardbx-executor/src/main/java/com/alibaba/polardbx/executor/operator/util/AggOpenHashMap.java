@@ -42,11 +42,11 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
 
     private final List<Aggregator> aggregators;
 
-    private List<Chunk> groupChunks;
+    protected List<Chunk> groupChunks;
 
-    private List<Chunk> valueChunks;
+    protected List<Chunk> valueChunks;
 
-    private final BlockBuilder[] valueBlockBuilders;
+    protected final BlockBuilder[] valueBlockBuilders;
 
     private int[] filterArgs;
 
@@ -97,7 +97,7 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
     }
 
     @Override
-    public void putChunk(Chunk keyChunk, Chunk inputChunk) {
+    public int[] putChunk(Chunk keyChunk, Chunk inputChunk) {
 
         final int[] groupIds = new int[inputChunk.getPositionCount()];
         final boolean noGroupBy = noGroupBy();
@@ -136,6 +136,7 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
                 }
             }
         }
+        return groupIds;
     }
 
     @Override
@@ -157,7 +158,7 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
         return valueChunks;
     }
 
-    private List<Chunk> buildValueChunks() {
+    protected List<Chunk> buildValueChunks() {
         List<Chunk> chunks = new ArrayList<>();
         int offset = 0;
         for (int groupId = 0; groupId < getGroupCount(); groupId++) {
@@ -165,6 +166,8 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
                 aggregators.get(i).writeResultTo(groupId, valueBlockBuilders[i]);
             }
 
+            // value chunks split by chunk size
+            // hash window depend on this feature for simplicity, not change this part
             if (++offset == chunkSize) {
                 chunks.add(buildValueChunk());
                 offset = 0;

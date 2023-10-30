@@ -102,8 +102,7 @@ public class FileSystemManager {
             new ThreadPoolExecutor.CallerRunsPolicy());
 
         MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getFileStorageInfoDataId(), null);
-        MetaDbConfigManager
-            .getInstance()
+        MetaDbConfigManager.getInstance()
             .bindListener(MetaDbDataIdBuilder.getFileStorageInfoDataId(), new FileStorageInfoListener());
     }
 
@@ -295,9 +294,11 @@ public class FileSystemManager {
                     .initialize();
             Path workingDirectory =
                 new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
-
+            try {
                 ossFileSystem.setWorkingDirectory(workingDirectory);
-
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
             return ossFileSystem;
         }
         case LOCAL_DISK: {
@@ -308,9 +309,11 @@ public class FileSystemManager {
             );
             Path workingDirectory =
                 new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
-
+            try {
                 localFileSystem.setWorkingDirectory(workingDirectory);
-
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
             return localFileSystem;
         }
         case EXTERNAL_DISK: {

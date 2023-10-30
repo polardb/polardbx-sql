@@ -27,14 +27,14 @@ import java.util.List;
 
 public class SQLSequenceExpr extends SQLExprImpl implements SQLReplaceable {
 
-    private SQLName  sequence;
+    private SQLName sequence;
     private Function function;
 
-    public SQLSequenceExpr(){
+    public SQLSequenceExpr() {
 
     }
 
-    public SQLSequenceExpr(SQLName sequence, Function function){
+    public SQLSequenceExpr(SQLName sequence, Function function) {
         this.sequence = sequence;
         this.function = function;
     }
@@ -68,12 +68,12 @@ public class SQLSequenceExpr extends SQLExprImpl implements SQLReplaceable {
     }
 
     public static enum Function {
-                                 NextVal("NEXTVAL"), CurrVal("CURRVAL"), PrevVal("PREVVAL");
+        NextVal("NEXTVAL"), CurrVal("CURRVAL"), PrevVal("PREVVAL");
 
         public final String name;
         public final String name_lcase;
 
-        private Function(String name){
+        private Function(String name) {
             this.name = name;
             this.name_lcase = name.toLowerCase();
         }
@@ -110,14 +110,26 @@ public class SQLSequenceExpr extends SQLExprImpl implements SQLReplaceable {
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null) return false;
-        if (getClass() != obj.getClass()) return false;
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
         SQLSequenceExpr other = (SQLSequenceExpr) obj;
-        if (function != other.function) return false;
+        if (function != other.function) {
+            return false;
+        }
         if (sequence == null) {
-            if (other.sequence != null) return false;
-        } else if (!sequence.equals(other.sequence)) return false;
+            if (other.sequence != null) {
+                return false;
+            }
+        } else if (!sequence.equals(other.sequence)) {
+            return false;
+        }
         return true;
     }
 

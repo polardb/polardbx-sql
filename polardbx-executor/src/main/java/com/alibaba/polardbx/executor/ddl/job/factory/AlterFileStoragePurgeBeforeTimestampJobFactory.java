@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalRenameTableHandler;
 import com.alibaba.polardbx.gms.engine.FileStorageFilesMetaRecord;
+import com.alibaba.polardbx.gms.engine.FileStorageMetaStore;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
@@ -56,6 +57,10 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TimeZone;
+import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.common.RecycleBin.FILE_STORAGE_PREFIX;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.common.RecycleBin.FILE_STORAGE_PREFIX;
@@ -84,10 +89,15 @@ public class AlterFileStoragePurgeBeforeTimestampJobFactory extends DdlJobFactor
     protected ExecutableDdlJob doCreate() {
         Engine engine = Engine.of(alterFileStoragePreparedData.getFileStorageName());
         Timestamp timestamp = Timestamp.valueOf(alterFileStoragePreparedData.getTimestamp());
-        long ts = timestamp.getTime() << BITS_LOGICAL_TIME;
-        if (ts < 0) {
-            throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
+
+        TimeZone fromTimeZone;
+        if (executionContext.getTimeZone() != null) {
+            fromTimeZone = executionContext.getTimeZone().getTimeZone();
+        } else {
+            fromTimeZone = TimeZone.getDefault();
         }
+
+        long ts = OSSTaskUtils.getTsFromTimestampWithTimeZone(alterFileStoragePreparedData.getTimestamp(), fromTimeZone);
 
         // ensure purge do not affect backup
         int backupOssPeriodInDay = executionContext.getParamManager().getInt(ConnectionParams.BACKUP_OSS_PERIOD);

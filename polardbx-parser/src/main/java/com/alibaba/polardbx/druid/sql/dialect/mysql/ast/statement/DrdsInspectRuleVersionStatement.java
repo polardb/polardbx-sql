@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class DrdsInspectRuleVersionStatement extends MySqlStatementImpl implements SQLStatement {
@@ -34,5 +35,10 @@ public class DrdsInspectRuleVersionStatement extends MySqlStatementImpl implemen
 
     public boolean isIgnoreManager() {
         return ignoreManager;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

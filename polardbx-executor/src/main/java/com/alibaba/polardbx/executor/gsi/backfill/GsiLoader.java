@@ -46,6 +46,8 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+
 /**
  * Fill batch data into index table with duplication check
  */
@@ -72,6 +74,7 @@ public class GsiLoader extends Loader {
         final SqlNodeList targetColumnList = new SqlNodeList(
             indexTableMeta.getAllColumns()
                 .stream()
+                .filter(columnMeta -> !columnMeta.isGeneratedColumn())
                 .map(columnMeta -> new SqlIdentifier(columnMeta.getName(), SqlParserPos.ZERO))
                 .collect(Collectors.toList()),
             SqlParserPos.ZERO);
@@ -118,6 +121,10 @@ public class GsiLoader extends Loader {
         filterColumns.addAll(primaryKeys);
         filterColumns.addAll(tddlRuleManager.getSharedColumns(primaryTable));
         filterColumns.addAll(tddlRuleManager.getSharedColumns(indexTable));
+
+        if (filterColumns.contains(IMPLICIT_COL_NAME) && indexTableMeta.getColumn(IMPLICIT_COL_NAME) == null) {
+            filterColumns.remove(IMPLICIT_COL_NAME);
+        }
 
         final List<String> filterList = ImmutableList.copyOf(filterColumns);
 

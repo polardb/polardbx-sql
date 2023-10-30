@@ -16,23 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
-import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
@@ -318,15 +312,15 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                 if (rawStrings.size() == 1) {
                     RawString r = rawStrings.values().iterator().next();
                     step = r.size() / maxPruneTime > step ? r.size() / maxPruneTime : step;
-                    int currenteIndex = 0;
+                    int currentIndex = 0;
                     Map<Pair<String, List<String>>, Parameters> pruneRawStringMap = Maps.newHashMap();
-                    while (currenteIndex < r.size()) {
+                    while (currentIndex < r.size()) {
                         Parameters parameters = executionContext.getParams().clone();
 
                         // split rawstring ( args of in expr)
                         PruneRawString p =
-                            new PruneRawString(r.getObjList(), PruneRawString.PRUNE_MODE.RANGE, currenteIndex,
-                                (currenteIndex + step) > r.size() ? r.size() : (currenteIndex + step),
+                            new PruneRawString(r.getObjList(), PruneRawString.PRUNE_MODE.RANGE, currentIndex,
+                                Math.min((currentIndex + step), r.size()),
                                 null);
 
                         // sub parameter
@@ -357,7 +351,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                                 }
                             }
                         }
-                        currenteIndex += step;
+                        currentIndex += step;
                     }
 
                     executionContext.setPruneRawStringMap(pruneRawStringMap);

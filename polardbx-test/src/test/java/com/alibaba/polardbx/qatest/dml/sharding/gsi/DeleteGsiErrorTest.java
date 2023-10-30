@@ -34,6 +34,7 @@ import java.util.Map;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableName.HINT_STRESS_FLAG;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
 
+
 public class DeleteGsiErrorTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();

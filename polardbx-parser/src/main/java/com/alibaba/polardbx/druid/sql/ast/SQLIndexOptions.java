@@ -25,10 +25,6 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName SQLIndexOptions
- * @description
- * @Author zzy
- * @Date 2019-06-04 11:48
  */
 public class SQLIndexOptions extends SQLObjectImpl {
 
@@ -108,7 +104,8 @@ public class SQLIndexOptions extends SQLObjectImpl {
         // Old parser code put it in options list.
         if (algorithm != null && getParent() != null && getParent() instanceof SQLIndexDefinition) {
             SQLIndexDefinition parent = (SQLIndexDefinition) getParent();
-            SQLAssignItem assignItem = new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr(algorithm));
+            SQLAssignItem assignItem =
+                new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr(algorithm));
             if (getParent() != null && getParent().getParent() != null) {
                 assignItem.setParent(getParent().getParent());
             } else {

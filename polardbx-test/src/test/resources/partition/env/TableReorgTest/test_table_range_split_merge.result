@@ -129,12 +129,12 @@ explain select t1.a from t1 join t2 on t1.a=t2.a;
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="t1[p1,p2,p3,p4],t2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
-## error_msg: $# ERR_PARTITION_INVALID_PARAMS #$
+## error_msg: $# ERR_PARTITION_MANAGEMENT #$
 alter table t1 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc', 100),
   PARTITION p2_2 VALUES LESS THAN ('efg', maxvalue)
 );
-ERR_PARTITION_INVALID_PARAMS
+ERR_PARTITION_MANAGEMENT
 alter table t1 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc'),
   PARTITION p2_2 VALUES LESS THAN ('efg')

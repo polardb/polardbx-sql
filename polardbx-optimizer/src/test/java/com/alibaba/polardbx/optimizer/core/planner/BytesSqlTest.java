@@ -33,6 +33,7 @@ import com.google.common.collect.Lists;
 import junit.framework.TestCase;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.junit.Test;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -60,6 +61,13 @@ public class BytesSqlTest extends TestCase {
         "select name from t4 where (name,pk) in (('a', 1),('age', 324))",
         "select name from t4 where (name,pk,a) in (('a', 1, 'er'),('age', 324, 'a'), (34,3,34))"
     };
+
+    @Test
+    public void testHint() {
+        String sql = "/*DRDS xxx*/ select * from xx";
+        BytesSql b = BytesSql.getBytesSql(sql);
+        System.out.println(b.toString());
+    }
 
     public void testStreamBytesSQL() {
         // without limit

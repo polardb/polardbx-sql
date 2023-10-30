@@ -16,30 +16,38 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
-import groovy.sql.Sql;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlPartition;
-import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableDropPartition extends BaseDdlOperation {
@@ -55,12 +63,22 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
         assert notIncludeGsiName;
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        String logicalTableName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + logicalTableName);
+    }
+
     public void preparedData(ExecutionContext ec) {
         AlterTable alterTable = (AlterTable) relDdl;
         SqlAlterTable sqlAlterTable = (SqlAlterTable) alterTable.getSqlNode();
-        assert sqlAlterTable.getAlters().size() == 1;
 
-        assert sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableDropPartition;
         SqlAlterTableDropPartition sqlAlterTableDropPartition =
             (SqlAlterTableDropPartition) sqlAlterTable.getAlters().get(0);
 
@@ -82,41 +100,182 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
         preparedData.setSchemaName(schemaName);
         preparedData.setWithHint(targetTablesHintCache != null);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData.setOldPartitionNames(
-            sqlAlterTableDropPartition.getPartitionNames().stream().map(o -> ((SqlIdentifier) o).getSimple()).collect(
-                Collectors.toList()));
 
-        preparedData.prepareInvisiblePartitionGroup();
+        List<String> oldPartitionNames =
+            getDroppingPartitionNames(sqlAlterTableDropPartition, partitionInfo, preparedData);
+
+        preparedData.setOldPartitionNames(oldPartitionNames);
+
+        preparedData.prepareInvisiblePartitionGroup(sqlAlterTableDropPartition.isSubPartition());
+
+        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+
         List<String> newPartitionNames =
             preparedData.getInvisiblePartitionGroups().stream().map(o -> o.getPartition_name())
                 .collect(Collectors.toList());
+
         preparedData.setNewPartitionNames(newPartitionNames);
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION);
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
         preparedData.setTableName(logicalTableName);
 
-        List<Pair<String, String>> mockOrderedTargetTableLocations = new ArrayList<>(newPartitionNames.size());
-        int i = 0;
-        for (int j = 0; j < newPartitionNames.size(); j++) {
-            GroupDetailInfoExRecord groupDetailInfoExRecord =
-                preparedData.getTargetGroupDetailInfoExRecords().get(i++);
-
+        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
+        for (int i = 0; i < newPartitionNames.size(); i++) {
             String mockTableName = "";
-            mockOrderedTargetTableLocations.add(new Pair<>(mockTableName, groupDetailInfoExRecord.getGroupName()));
-            if (i >= preparedData.getTargetGroupDetailInfoExRecords().size()) {
-                i = 0;
-            }
+            mockOrderedTargetTableLocations.put(newPartitionGroups.get(i).partition_name, new Pair<>(mockTableName,
+                GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(i).partition_name)));
         }
 
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForDropPartition(partitionInfo, preparedData.getInvisiblePartitionGroups(),
+            .getNewPartitionInfo(
+                preparedData,
+                partitionInfo,
+                false,
                 sqlAlterTableDropPartition,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                preparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
                 mockOrderedTargetTableLocations,
                 ec);
+
         int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo,
-            null, null, flag, ec);
+
+        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null, null, flag, ec);
+    }
+
+    public static List<String> getDroppingPartitionNames(SqlAlterTableDropPartition sqlAlterTableDropPartition,
+                                                         PartitionInfo partitionInfo,
+                                                         AlterTableGroupDropPartitionPreparedData preparedData) {
+        List<String> actualPartitionNames = new ArrayList<>();
+        Map<String, List<String>> partitionNamesByLevel = new TreeMap<>(String::compareToIgnoreCase);
+
+        PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+
+        for (SqlNode sqlNode : sqlAlterTableDropPartition.getPartitionNames()) {
+            final String origName = ((SqlIdentifier) sqlNode).getLastName().toLowerCase();
+            if (subPartByDef != null) {
+                if (subPartByDef.isUseSubPartTemplate()) {
+                    if (sqlAlterTableDropPartition.isSubPartition()) {
+                        // DROP SUBPARTITION
+                        // The origName is a subpartition name for templated subpartition.
+                        for (PartitionSpec partSpec : partByDef.getPartitions()) {
+                            String partName = partSpec.getName().toLowerCase();
+
+                            String actualSubPartName = PartitionNameUtil.autoBuildSubPartitionName(partName, origName);
+                            actualPartitionNames.add(actualSubPartName);
+
+                            if (!partitionNamesByLevel.containsKey(partName)) {
+                                partitionNamesByLevel.put(partName, new ArrayList<>());
+                            }
+
+                            partitionNamesByLevel.get(partName).add(actualSubPartName);
+                        }
+                    } else {
+                        // DROP PARTITION
+                        // The origName is a partition name for templated subpartition.
+                        validatePartition(partByDef, origName);
+
+                        if (!partitionNamesByLevel.containsKey(origName)) {
+                            partitionNamesByLevel.put(origName, new ArrayList<>());
+                        }
+
+                        for (PartitionSpec subPartSpec : subPartByDef.getPartitions()) {
+                            String subPartName = subPartSpec.getName().toLowerCase();
+
+                            String actualSubPartName =
+                                PartitionNameUtil.autoBuildSubPartitionName(origName, subPartName);
+                            actualPartitionNames.add(actualSubPartName);
+
+                            partitionNamesByLevel.get(origName).add(actualSubPartName);
+                        }
+                    }
+                } else {
+                    if (sqlAlterTableDropPartition.getPartitionName() != null) {
+                        // MODIFY PARTITION DROP SUBPARTITION
+                        // The origName is an actual subpartition name for non-templated subpartition.
+                        actualPartitionNames.add(origName);
+
+                        String partName = sqlAlterTableDropPartition.getPartitionName().toString().toLowerCase();
+
+                        validatePartition(partByDef, partName);
+
+                        if (!partitionNamesByLevel.containsKey(partName)) {
+                            partitionNamesByLevel.put(partName, new ArrayList<>());
+                        }
+
+                        partitionNamesByLevel.get(partName).add(origName);
+                    } else if (sqlAlterTableDropPartition.isSubPartition()) {
+                        boolean found = false;
+
+                        for (PartitionSpec partSpec : partByDef.getPartitions()) {
+                            for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                                if (subPartSpec.getName().equalsIgnoreCase(origName)) {
+                                    actualPartitionNames.add(origName);
+
+                                    String partName = partSpec.getName();
+
+                                    if (!partitionNamesByLevel.containsKey(partName)) {
+                                        partitionNamesByLevel.put(partName, new ArrayList<>());
+                                    }
+
+                                    partitionNamesByLevel.get(partName).add(origName);
+
+                                    found = true;
+
+                                    break;
+                                }
+                            }
+                            if (found) {
+                                break;
+                            }
+                        }
+
+                        if (!found) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_DROP_SUBPARTITION,
+                                String.format("Subpartition '%s' doesn't exist", origName));
+                        }
+                    } else {
+                        // DROP PARTITION
+                        // The origName is a partition name for non-templated subpartition.
+                        PartitionSpec partSpec = validatePartition(partByDef, origName);
+
+                        if (!partitionNamesByLevel.containsKey(origName)) {
+                            partitionNamesByLevel.put(origName, new ArrayList<>());
+                        }
+
+                        for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                            String subPartName = subPartSpec.getName().toLowerCase();
+                            actualPartitionNames.add(subPartName);
+                            partitionNamesByLevel.get(origName).add(subPartName);
+                        }
+                    }
+                }
+            } else {
+                // DROP PARTITION
+                // The origName is a partition name.
+                actualPartitionNames.add(origName);
+                partitionNamesByLevel.put(origName, Collections.EMPTY_LIST);
+            }
+        }
+
+        if (preparedData != null) {
+            preparedData.setOldPartitionNamesByLevel(partitionNamesByLevel);
+        }
+
+        return actualPartitionNames;
+    }
+
+    protected static PartitionSpec validatePartition(PartitionByDefinition partByDef, String partitionName) {
+        PartitionSpec partitionSpec = partByDef.getPartitionByPartName(partitionName);
+        if (partitionSpec == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "partition '" + partitionName + "' doesn't exist");
+        }
+        return partitionSpec;
     }
 
     public AlterTableGroupDropPartitionPreparedData getPreparedData() {

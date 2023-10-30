@@ -89,7 +89,7 @@ public class RelMdUtil {
     public static RexNode makeSemiJoinSelectivityRexNode(RelMetadataQuery mq,
                                                          SemiJoin rel) {
         RexBuilder rexBuilder = rel.getCluster().getRexBuilder();
-        JoinInfo joinInfo =  JoinInfo.of(rel.getLeft(), rel.getRight(), rel.getCondition());
+        JoinInfo joinInfo = JoinInfo.of(rel.getLeft(), rel.getRight(), rel.getCondition());
         final double equiSelectivity;
         if (!joinInfo.leftKeys.isEmpty()) {
             equiSelectivity = computeSemiJoinSelectivity(mq, rel.getLeft(), rel.getRight(), rel);

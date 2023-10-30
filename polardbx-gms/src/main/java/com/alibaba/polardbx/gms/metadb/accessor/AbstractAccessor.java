@@ -106,6 +106,18 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
         return MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
     }
 
+    protected Map<Integer, ParameterContext> buildParams(String tableSchema, String tableName,
+                                                         List<String> objectNames, String columns) {
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(objectNames)) {
+            paramValues.addAll(objectNames);
+        }
+        paramValues.add(columns);
+        return MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+    }
+
     protected int insert(String insertSql, String systemTable, Map<Integer, ParameterContext> params) {
         try {
             if (DdlMetaLogUtil.isDdlTable(systemTable)) {
@@ -150,6 +162,12 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
     }
 
     protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                          String schemaName, String objectName, String objectName2,
+                                                          String objectName3) {
+        return query(selectSql, systemTable, clazz, schemaName, objectName, objectName2, objectName3, connection);
+    }
+
+    protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
                                                           String schemaName, String objectName, DataSource dataSource) {
         return query(selectSql, systemTable, clazz, schemaName, objectName, null, dataSource);
     }
@@ -165,22 +183,6 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
                 systemTable,
                 e.getMessage());
         }
-    }
-
-    protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
-                                                          String schemaName, String objectName, String objectName2,
-                                                          Connection connection) {
-        Map<Integer, ParameterContext> params;
-        if (TStringUtil.isNotBlank(objectName2)) {
-            params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName, objectName2});
-        } else if (TStringUtil.isNotBlank(objectName)) {
-            params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName});
-        } else if (TStringUtil.isNotBlank(schemaName)) {
-            params = MetaDbUtil.buildStringParameters(new String[] {schemaName});
-        } else {
-            params = null;
-        }
-        return query(selectSql, systemTable, clazz, params, connection);
     }
 
     protected <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
@@ -212,6 +214,46 @@ public abstract class AbstractAccessor extends AbstractLifecycle {
                                                                  Map<Integer, ParameterContext> params,
                                                                  Connection connection) {
         try {
+            return MetaDbUtil.query(selectSql, params, clazz, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + systemTable, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                systemTable,
+                e.getMessage());
+        }
+    }
+
+    protected static <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                                 String schemaName, String objectName,
+                                                                 Connection connection) {
+        return query(selectSql, systemTable, clazz, schemaName, objectName, null, null, connection);
+    }
+
+    protected static <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                                 String schemaName, String objectName,
+                                                                 String objectName2,
+                                                                 Connection connection) {
+        return query(selectSql, systemTable, clazz, schemaName, objectName, objectName2, null, connection);
+    }
+
+    protected static <T extends SystemTableRecord> List<T> query(String selectSql, String systemTable, Class clazz,
+                                                                 String schemaName, String objectName,
+                                                                 String objectName2, String objectName3,
+                                                                 Connection connection) {
+        try {
+            Map<Integer, ParameterContext> params;
+            if (TStringUtil.isNotBlank(objectName3)) {
+                params =
+                    MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName, objectName2, objectName3});
+            } else if (TStringUtil.isNotBlank(objectName2)) {
+                params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName, objectName2});
+            } else if (TStringUtil.isNotBlank(objectName)) {
+                params = MetaDbUtil.buildStringParameters(new String[] {schemaName, objectName});
+            } else if (TStringUtil.isNotBlank(schemaName)) {
+                params = MetaDbUtil.buildStringParameters(new String[] {schemaName});
+            } else {
+                params = null;
+            }
             return MetaDbUtil.query(selectSql, params, clazz, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + systemTable, e);

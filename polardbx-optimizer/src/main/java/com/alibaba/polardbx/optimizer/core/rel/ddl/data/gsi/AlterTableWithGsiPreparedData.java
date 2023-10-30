@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameLocalIndexPreparedData;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -33,6 +34,8 @@ public class AlterTableWithGsiPreparedData extends DdlPreparedData {
     private CreateIndexWithGsiPreparedData createIndexWithGsiPreparedData;
     private DropIndexWithGsiPreparedData dropIndexWithGsiPreparedData;
     private RenameGlobalIndexPreparedData renameGlobalIndexPreparedData;
+    private AlterGlobalIndexVisibilityPreparedData globalIndexVisibilityPreparedData;
+    private RenameLocalIndexPreparedData renameLocalIndexPreparedData;
 
     public void addAlterGlobalIndexPreparedData(AlterTablePreparedData alterGlobalIndexPreparedData) {
         this.globalIndexPreparedData.add(alterGlobalIndexPreparedData);

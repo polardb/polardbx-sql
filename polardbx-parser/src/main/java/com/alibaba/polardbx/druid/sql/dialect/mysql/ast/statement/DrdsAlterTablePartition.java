@@ -22,13 +22,13 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class DrdsAlterTablePartition extends MySqlObjectImpl implements SQLAlterTableItem {
 
-    protected SQLExpr           dbPartitionBy;//for drds
-    protected SQLExpr           dbPartitions;//for drds
-    protected SQLExpr           tablePartitionBy;//for drds
-    protected SQLExpr           tablePartitions;//for drds
+    protected SQLExpr dbPartitionBy;//for drds
+    protected SQLExpr dbPartitions;//for drds
+    protected SQLExpr tablePartitionBy;//for drds
+    protected SQLExpr tablePartitions;//for drds
     protected MySqlExtPartition exPartition; //for drds
 
-    public DrdsAlterTablePartition(){
+    public DrdsAlterTablePartition() {
 
     }
 

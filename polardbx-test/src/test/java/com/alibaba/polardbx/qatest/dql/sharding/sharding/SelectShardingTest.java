@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dql.sharding.sharding;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.Blob;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
@@ -31,7 +32,10 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import javax.validation.constraints.AssertTrue;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -41,12 +45,14 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.dnCount;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.shardDbCountEachDn;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardCount;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultMatchAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultNotMatchAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 /**
  * @author chenmo.cm
  */
-@RunWith(Parameterized.class)
+
 public class SelectShardingTest extends ReadBaseTestCase {
 
     String hint = "/*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=100)*/";
@@ -120,6 +126,63 @@ public class SelectShardingTest extends ReadBaseTestCase {
         assertShardCount(tddlConnection,
             sql,
             tableNames.stream().collect(Collectors.toMap(s -> s, s -> getTablePartitionCount(s) > 1 ? 3 : 1)));
+    }
+
+    @Test
+    public void multiColumnHexIn() {
+        final List<String> tableNames = ImmutableList.of(baseOneTableName);
+
+        String sql = hint + MessageFormat.format("select * from {0} a", tableNames.toArray())
+            + " where (a.blob_test, a.integer_test) in ((x'3530', 17))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        assertShardCount(tddlConnection,
+            sql,
+            tableNames.stream().collect(Collectors.toMap(s -> s, this::getTablePartitionCount)));
+    }
+
+    @Test
+    public void multiColumnBlobIn() {
+        final List<String> tableNames = ImmutableList.of(baseOneTableName);
+
+        String sql =
+            hint + MessageFormat.format("select count(*) from {0} a where (a.blob_test, a.integer_test) in ((?, ?))",
+                tableNames.toArray());
+        byte[] blobTestData = {0x35, 0x30};
+
+        try (PreparedStatement ps = tddlConnection.prepareStatement(sql)) {
+            ps.setBlob(1, new Blob(blobTestData));
+            ps.setInt(2, 17);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                Assert.assertTrue(4 == rs.getInt(1));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void conditionInDynamic() {
+        final List<String> tableNames = ImmutableList.of(baseOneTableName);
+
+        String sql = hint + MessageFormat.format("select distinct(integer_test) from {0} a where a.pk in (2,3,4)",
+            tableNames.toArray());
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        /* if multi-table or multi-db, must agg in CN */
+        explainAllResultMatchAssert("explain " + sql, null, tddlConnection,
+            "[\\s\\S]*" + "HashAgg" + "[\\s\\S]*" + "shardCount=3" + "[\\s\\S]*|[\\s\\S]*" + "params=\"Raw"
+                + "[\\s\\S]*");
+
+        sql = hint + MessageFormat.format(
+            "select distinct(integer_test) from {0} a where a.pk=1 and tinyint_test in(1,2,3,4,14)",
+            tableNames.toArray());
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        /* access only one shard, do not agg in CN */
+        explainAllResultNotMatchAssert("explain " + sql, null, tddlConnection,
+            "[\\s\\S]*" + "HashAgg" + "[\\s\\S]*");
     }
 
     @Test
@@ -255,8 +318,11 @@ public class SelectShardingTest extends ReadBaseTestCase {
 
     @Test
     @Ignore("fix by ???")
-    public void conditionFalse2() {
+    public void conditionFalse2() throws SQLException {
         final List<String> tableNames = ImmutableList.of(baseOneTableName, baseTwoTableName, baseThreeTableName);
+
+        // analyze tables
+        tddlConnection.createStatement().execute("analyze table " + String.join(",", tableNames));
 
         String sql = MessageFormat.format(
             " /*+TDDL:cmd_extra(enable_bka_join=false) HASH_JOIN({0}, {1}) "

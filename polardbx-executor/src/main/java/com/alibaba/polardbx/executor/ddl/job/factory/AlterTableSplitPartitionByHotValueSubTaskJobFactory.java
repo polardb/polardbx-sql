@@ -23,12 +23,15 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionByHotValuePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
 import java.util.Map;
@@ -45,13 +48,14 @@ public class AlterTableSplitPartitionByHotValueSubTaskJobFactory extends AlterTa
                                                                Map<String, List<List<String>>> tableTopology,
                                                                Map<String, Set<String>> targetTableTopology,
                                                                Map<String, Set<String>> sourceTableTopology,
-                                                               List<Pair<String, String>> orderedTargetTableLocations,
+                                                               Map<String, Pair<String, String>> orderedTargetTableLocations,
                                                                String targetPartition,
                                                                boolean skipBackfill,
                                                                ComplexTaskMetaManager.ComplexTaskType taskType,
                                                                ExecutionContext executionContext) {
-        super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, taskType, executionContext);
+        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology,
+            sourceTableTopology, orderedTargetTableLocations, targetPartition, skipBackfill, taskType,
+            executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 
@@ -83,15 +87,29 @@ public class AlterTableSplitPartitionByHotValueSubTaskJobFactory extends AlterTa
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
 
+        SqlNode sqlNode = ((SqlAlterTable) ddl.getSqlNode()).getAlters().get(0);
+
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForSplitPartitionByHotValue(curPartitionInfo, parentPrepareData,
-                orderedTargetTableLocations, executionContext);
+            .getNewPartitionInfo(
+                parentPrepareData,
+                curPartitionInfo,
+                false,
+                sqlNode,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                parentPrepareData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                orderedTargetTableLocations,
+                executionContext);
+
         if (parentPrepareData.isMoveToExistTableGroup()) {
             updateNewPartitionInfoByTargetGroup(parentPrepareData, newPartInfo);
         }
-        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
-        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
         return newPartInfo;
     }
 
+    public AlterTableGroupBasePreparedData getParentPrepareData() {
+        return parentPrepareData;
+    }
 }

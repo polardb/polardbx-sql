@@ -52,7 +52,7 @@ public class FetchSessionPerfSyncAction implements ISyncAction {
                     item.getQueuedRequestDepth(),
                     item.getLastRequestTraceId(), item.getLastRequestSql(), item.getLastRequestExtra(),
                     item.getLastRequestType(), item.getLastRequestStatus(), item.getLastRequestFetchCount(),
-                    item.getLastRequestTokenCount(), item.getLastRequestWorkingNanos() / 1e9d,
+                    item.getLastRequestTokenSize(), item.getLastRequestWorkingNanos() / 1e9d,
                     item.getLastRequestDataPktResponseNanos() > 0 ? item.getLastRequestDataPktResponseNanos() / 1e9d :
                         null,
                     item.getLastRequestResponseNanos() > 0 ? item.getLastRequestResponseNanos() / 1e9d : null,
@@ -119,7 +119,7 @@ public class FetchSessionPerfSyncAction implements ISyncAction {
         resultCursor.addColumn("TYPE", DataTypes.StringType);
         resultCursor.addColumn("REQUEST_STATUS", DataTypes.StringType);
         resultCursor.addColumn("FETCH_COUNT", DataTypes.LongType);
-        resultCursor.addColumn("TOKEN_COUNT", DataTypes.LongType);
+        resultCursor.addColumn("TOKEN_SIZE", DataTypes.LongType);
         resultCursor.addColumn("TIME_SINCE_REQUEST", DataTypes.DoubleType);
         resultCursor.addColumn("DATA_PKT_RESPONSE_TIME", DataTypes.DoubleType);
         resultCursor.addColumn("RESPONSE_TIME", DataTypes.DoubleType);

@@ -46,6 +46,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * 复杂Update测试
  */
 
+
 public class ComplexUpdateTest extends CrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
     private static final String HINT1 = "";

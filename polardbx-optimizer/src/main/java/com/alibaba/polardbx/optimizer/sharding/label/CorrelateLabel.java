@@ -16,11 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.sharding.label;
 
+import com.alibaba.polardbx.optimizer.sharding.LabelShuttle;
 import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.optimizer.sharding.LabelShuttle;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.type.RelDataType;
@@ -30,6 +31,7 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SemiJoinType;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.util.mapping.Mapping;
 
 import javax.annotation.Nonnull;
 import java.util.List;
@@ -50,6 +52,19 @@ public class CorrelateLabel extends AbstractLabel {
         correlationId = rel.getCorrelationId();
         List<RexNode> leftRexNode = rel.getLeftConditions();
         inferredCorrelateCondition = new PredicateNode(this, null, inferCorrelation(leftRexNode), context);
+        this.context = context;
+    }
+
+    public CorrelateLabel(LabelType type, List<Label> inputs, RelNode rel, FullRowType fullRowType,
+                          Mapping columnMapping, RelDataType currentBaseRowType,
+                          PredicateNode pullUp, PredicateNode pushdown, PredicateNode[] columnConditionMap,
+                          List<PredicateNode> predicates, SemiJoinType type1, CorrelationId correlationId,
+                          PredicateNode inferredCorrelateCondition, ExtractorContext context) {
+        super(type, inputs, rel, fullRowType, columnMapping, currentBaseRowType, pullUp, pushdown, columnConditionMap,
+            predicates);
+        this.type = type1;
+        this.correlationId = correlationId;
+        this.inferredCorrelateCondition = inferredCorrelateCondition;
         this.context = context;
     }
 
@@ -75,7 +90,20 @@ public class CorrelateLabel extends AbstractLabel {
     @Override
     public Label copy(List<Label> inputs) {
         return new CorrelateLabel(
-            getRel(), inputs.get(0), inputs.get(1), context);
+            getType(),
+            inputs,
+            getRel(),
+            getFullRowType(),
+            getColumnMapping(),
+            currentBaseRowType,
+            getPullUp(),
+            getPushdown(),
+            getColumnConditionMap(),
+            getPredicates(),
+            this.type,
+            correlationId,
+            inferredCorrelateCondition,
+            context);
     }
 
     @Override

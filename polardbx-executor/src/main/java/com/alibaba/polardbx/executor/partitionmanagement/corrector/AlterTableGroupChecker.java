@@ -83,7 +83,7 @@ public class AlterTableGroupChecker extends Checker {
         final SchemaManager sm = ec.getSchemaManager(schemaName);
         final TableMeta indexTableMeta = sm.getTable(indexName);
 
-        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName);
+        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder

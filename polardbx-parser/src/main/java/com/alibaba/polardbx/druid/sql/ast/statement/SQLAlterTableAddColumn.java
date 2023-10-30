@@ -47,7 +47,7 @@ public class SQLAlterTableAddColumn extends SQLObjectImpl implements SQLAlterTab
     public List<SQLColumnDefinition> getColumns() {
         return columns;
     }
-    
+
     public void addColumn(SQLColumnDefinition column) {
         if (column != null) {
             column.setParent(this);

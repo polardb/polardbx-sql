@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.ArchiveOSSTableDataMppTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.ArchiveOSSTableDataWithPauseTask;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
@@ -46,7 +47,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaArchive;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
@@ -120,6 +121,9 @@ public class InformationSchemaArchiveHandler extends BaseVirtualViewSubClassHand
 
                     ScheduledJobsRecord scheduledJobsRecord = scheduleJobs.get(Pair.of(currentSchema, currentTable));
 
+                    if (scheduledJobsRecord == null) {
+                        continue;
+                    }
                     List<DdlEngineRecord> ddlEngineRecordList = ddlEngineAccessor.query(currentSchema, currentTable);
                     String lastSuccessArchiveTime = null;
                     String archiveStatus = null;
@@ -255,7 +259,9 @@ public class InformationSchemaArchiveHandler extends BaseVirtualViewSubClassHand
             return 0;
         }
         if (!StringUtils.containsIgnoreCase(currentTask.getName(),
-            ArchiveOSSTableDataWithPauseTask.class.getSimpleName())) {
+            ArchiveOSSTableDataWithPauseTask.class.getSimpleName())
+            && !StringUtils.containsIgnoreCase(currentTask.getName(),
+            ArchiveOSSTableDataMppTask.class.getSimpleName())) {
             return 0;
         }
         try {

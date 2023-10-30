@@ -17,16 +17,20 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.cdc.CdcConstants;
+import com.alibaba.polardbx.common.cdc.ResultCode;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.PooledHttpHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.net.util.CdcTargetUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc;
-import com.alibaba.polardbx.rpc.cdc.ChangeReplicationFilterRequest;
-import com.alibaba.polardbx.rpc.cdc.RplCommandResponse;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlChangeReplicationFilter;
+import org.apache.http.entity.ContentType;
 
 /**
  * @author shicai.xsc 2021/3/5 14:33
@@ -44,12 +48,19 @@ public class LogicalChangeReplicationFilterHandler extends LogicalReplicationBas
         LogicalDal dal = (LogicalDal) logicalPlan;
         SqlChangeReplicationFilter sqlNode = (SqlChangeReplicationFilter) dal.getNativeSqlNode();
 
-        ChangeReplicationFilterRequest request = ChangeReplicationFilterRequest.newBuilder()
-            .setRequest(JSON.toJSONString(sqlNode.getParams()))
-            .build();
-
-        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub = CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
-        RplCommandResponse response = blockingStub.changeReplicationFilter(request);
-        return handleRplCommandResponse(response, blockingStub.getChannel());
+        String daemonEndpoint = CdcTargetUtil.getReplicaDaemonMasterTarget();
+        String res;
+        try {
+            res = PooledHttpHelper.doPost("http://" + daemonEndpoint + "/replica/changeReplicationFilter",
+                ContentType.APPLICATION_JSON,
+                JSON.toJSONString(sqlNode.getParams()), 10000);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+        }
+        ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
+        if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, httpResult.getMsg());
+        }
+        return new AffectRowCursor(0);
     }
 }

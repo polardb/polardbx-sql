@@ -18,8 +18,10 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
+
 /**
  * @author Shi Yuxuan
  */
@@ -29,43 +31,58 @@ public class DrdsUnArchiveStatement extends MySqlStatementImpl implements SQLSta
         TABLE_GROUP,
         DATABASE
     }
+
     private UnArchiveTarget target;
     private SQLExprTableSource tableSource;
     private SQLName tableGroup;
     private SQLName database;
+
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
         visitor.endVisit(this);
     }
+
     public void setTable(SQLExprTableSource table) {
         this.target = UnArchiveTarget.TABLE;
         this.tableSource = table;
     }
+
     public void setDatabase(SQLName database) {
         this.target = UnArchiveTarget.DATABASE;
         this.database = database;
     }
+
     public void setTableGroup(SQLName tableGroup) {
         this.target = UnArchiveTarget.TABLE_GROUP;
         this.tableGroup = tableGroup;
     }
+
     public UnArchiveTarget getTarget() {
         return target;
     }
+
     public SQLExprTableSource getTableSource() {
         return tableSource;
     }
+
     public SQLName getTableGroup() {
         return tableGroup;
     }
+
     public SQLName getDatabase() {
         return database;
     }
+
     @Override
     public String toString() {
         if (target == null) {
             return "";
         }
         return super.toString();
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.UNARCHIVE;
     }
 }

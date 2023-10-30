@@ -28,6 +28,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 public class InformationSchemaFileStorageFilesMeta extends VirtualView {
+
     public InformationSchemaFileStorageFilesMeta(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet, VirtualViewType.FILE_STORAGE_FILES_META);
     }

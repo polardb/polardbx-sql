@@ -1,10 +1,10 @@
 storageList: [$dn1, $dn2]
-dbName: "test_db1"
+dbName: "test_locality_db14"
 testCases:
   - prepareDDls:
-      - "drop database if exists test_db1"
-      - "create database test_db1 mode = auto locality = 'dn=$dn1,$dn2'"
-      - "use test_db1;"
+      - "use polardbx"
+      - "create database test_locality_db14 mode = auto"
+      - "use test_locality_db14;"
       - "
       create table p0(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality = 'dn=polardbx-storage-0-master';
       "
@@ -16,13 +16,13 @@ testCases:
       "
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - p0 table $dn1
         - p1 table $dn1
         - g_i_y_p0 table $dn1,$dn2
-        - test_db1 database $dn1,$dn2
+        - test_locality_db14 database ""
       tableGroupMatchCheck:
         - p0,p1 $tg1 ""
         - c2 $tg2 ""
@@ -72,4 +72,5 @@ testCases:
         - c2.p8 partition $dn2
         #  auto generate by locality value check.
         #  auto generate by partition locality check. with each table.
-
+cleanupDDls:
+  - "drop database if exists test_locality_db14;"

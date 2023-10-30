@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionGsiPhyDdlTask;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -65,7 +67,7 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
                                       String indexTableName,
                                       PhysicalPlanData physicalPlanData,
                                       ExecutionContext executionContext) {
-        super(schemaName, primaryTableName, indexTableName, executionContext);
+        super(schemaName, primaryTableName, indexTableName, physicalPlanData, executionContext);
         this.physicalPlanData = physicalPlanData;
     }
 
@@ -135,6 +137,17 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
         DropTableRemoveMetaTask dropGsiTableRemoveMetaTask = new DropTableRemoveMetaTask(schemaName, indexTableName);
         taskList.add(dropGsiTableRemoveMetaTask);
 
+        if (!skipSchemaChange && !repartition) {
+            //mark gsi task
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+            if (!tableMeta.isAutoPartition()) {
+                CdcGsiDdlMarkTask cdcDdlMarkTask =
+                    new CdcGsiDdlMarkTask(schemaName, physicalPlanData,
+                        primaryTableName, executionContext.getOriginSql());
+                taskList.add(cdcDdlMarkTask);
+            }
+        }
+
         if (tableGroupId != -1) {
             //tableGroupConfig from physicalPlanData is not set tableGroup record
             tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
@@ -145,9 +158,8 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
         }
 
         //5. sync after drop table
-        TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);
-        //TablesSyncTask dropTableSyncTask =
-        //    new TablesSyncTask(schemaName, Lists.newArrayList(indexTableName, primaryTableName));
+        TablesSyncTask dropTableSyncTask =
+            new TablesSyncTask(schemaName, Lists.newArrayList(indexTableName, primaryTableName));
         taskList.add(dropTableSyncTask);
 
 //        final ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();

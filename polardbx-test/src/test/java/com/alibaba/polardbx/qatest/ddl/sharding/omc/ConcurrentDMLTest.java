@@ -28,6 +28,7 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -46,10 +47,11 @@ import static org.junit.Assert.assertTrue;
 public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());
+    private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
 
     @Before
     public void beforeMethod() {
-        org.junit.Assume.assumeTrue(supportsAlterType);
+        org.junit.Assume.assumeTrue(supportsAlterType && !isRDS80);
     }
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC";
@@ -67,7 +69,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithInsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -217,7 +219,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithInsertSelect() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         String selectTableName = "omc_with_insert_select_src_tbl";
@@ -287,7 +289,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithUpdate() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -403,7 +405,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithReplace() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -468,7 +470,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithUpsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -591,7 +593,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithInsertIgnore() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -641,7 +643,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithInsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -806,7 +808,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithInsertSelect() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         String selectTableName = "omc_with_insert_select_src_tbl";
@@ -883,7 +885,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithUpdate() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -1010,7 +1012,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithReplace() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_replace_1";
@@ -1074,7 +1076,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithUpsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_upsert_1";
@@ -1214,7 +1216,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithInsertIgnore() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_insert_ignore_1";
@@ -1387,11 +1389,12 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                     @Override
                     public Void apply(AtomicBoolean shouldStop, AtomicInteger totalCount) {
                         Connection connection = getPolardbxConnection();
+                        Statement statement = connection.createStatement();
                         try {
                             int cnt = 0;
                             while ((!shouldStop.get() || fillData) && totalCount.get() < FILL_COUNT) {
                                 int tot = totalCount.get();
-                                ResultSet rs = JdbcUtil.executeQuerySuccess(connection,
+                                ResultSet rs = statement.executeQuery(
                                     String.format(selectSql, finalTableName + index.get(cnt % index.size())));
                                 cnt++;
                                 ResultSetMetaData rsmd = rs.getMetaData();
@@ -1405,8 +1408,10 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                     assertTrue(checker.apply(colA, colB));
                                     tot--;
                                 }
+                                rs.close();
                                 Thread.sleep(500);
                             }
+                            statement.close();
 
                             Thread.sleep(500); // sleep to wait dmlTask
                             ResultSet rs =
@@ -1453,8 +1458,13 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(alterTask));
             results.add(threadPool.submit(selectTask));
 
-            for (Future<Void> result : results) {
-                result.get();
+            try {
+                for (Future<Void> result : results) {
+                    result.get();
+                }
+            } catch (Throwable e) {
+                e.printStackTrace();
+                throw (e);
             }
 
             if (withGsi) {

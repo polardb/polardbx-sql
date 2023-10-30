@@ -90,6 +90,7 @@ public class MutableChunk extends Chunk {
     public void reallocate(int newBatchSize, int blockCount) {
         reallocate(newBatchSize, blockCount, false);
     }
+
     /**
      * If the runtime size of Chunk exceeds the batch size, reallocate the vector.
      */

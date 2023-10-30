@@ -264,7 +264,8 @@ public class StorageHaChecker {
 
             MetaDbLogUtil.META_DB_LOG.info(
                 "Non-cluster DN with type: " + storageType + " vip_addr: " + (null == vipAddr ? "null" : vipAddr)
-                    + " addr: " + availableAddr + (XConfig.GALAXY_X_PROTOCOL ? " with galaxy" : "") + (
+                    + " addr: " + availableAddr + (XConfig.GALAXY_X_PROTOCOL ?" with galaxy" : "") + (
+                    XConfig.OPEN_XRPC_PROTOCOL ? " with xrpc" : "") + (
                     XConfig.OPEN_XRPC_PROTOCOL ? " with xrpc" : "") + " xport: "
                     + xport + " isVip: " + isVip);
 
@@ -303,7 +304,8 @@ public class StorageHaChecker {
             }
         }
 
-        if (ConfigDataMode.isMasterMode() && storageInstKind == StorageInfoRecord.INST_KIND_MASTER) {
+        if (ConfigDataMode.isMasterMode() && (storageInstKind == StorageInfoRecord.INST_KIND_MASTER ||
+            storageInstKind == StorageInfoRecord.INST_KIND_META_DB)) {
             modifyTheFollowRole(addrHaInfoMap, usr, passwd, storageType);
         }
         return addrHaInfoMap;
@@ -352,7 +354,7 @@ public class StorageHaChecker {
                     // ignore error of building conn to logger,
                     // logger is NOT allowed to accepting any connections
                     nodeHaInfo.setRole(StorageRole.LOGGER);
-                    MetaDbLogUtil.META_DB_LOG.warn(
+                    MetaDbLogUtil.META_DB_LOG.debug(
                         String.format("Fail to get conn from storage node[%s] during check logger", nodeHaInfo.addr),
                         ex);
                 } finally {
@@ -420,7 +422,25 @@ public class StorageHaChecker {
                 // Get the leader addr for the current node which address is addr
                 currentPaxosLeaderAddr = rs.getString("current_leader");
                 if (role != null) {
-                    roleVal = StorageRole.getStorageRoleByString(role);
+
+                    if (isMasterStorage) {
+                        roleVal = StorageRole.getStorageRoleByString(role);
+                    } else {
+                        StorageRole newRoleVal = StorageRole.getStorageRoleByString(role);
+                        if (newRoleVal != null && (newRoleVal == StorageRole.FOLLOWER ||
+                            newRoleVal == StorageRole.LEADER)) {
+                            /**
+                             * For the read-only polardb-x inst mocked by sub-inst of other regions,
+                             * its dn nodes are all followers,
+                             * so here need to force treat follower as learner, and log the info
+                             */
+                            MetaDbLogUtil.META_DB_LOG.warn(
+                                String.format(
+                                    "The %s role of storage node[%s] is treat as learner role for subinst", newRoleVal,
+                                    addr));
+                        }
+                        roleVal = StorageRole.LEARNER;
+                    }
                 }
                 isHealthy = true;
             }

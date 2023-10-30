@@ -19,12 +19,24 @@ package com.alibaba.polardbx.server.parser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.util.ParseUtil;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public final class ServerParseResize {
 
     public static final int OTHER = -1;
     public static final int PLANCACHE = 1;
     public static final int PROCEDURE_CACHE = 2;
     public static final int FUNCTION_CACHE = 3;
+
+    public static final Set<Integer> PREPARE_UNSUPPORTED_RESIZE_TYPE;
+
+    static {
+        PREPARE_UNSUPPORTED_RESIZE_TYPE = new HashSet<>();
+        PREPARE_UNSUPPORTED_RESIZE_TYPE.add(ServerParseResize.PLANCACHE);
+        PREPARE_UNSUPPORTED_RESIZE_TYPE.add(ServerParseResize.PROCEDURE_CACHE);
+        PREPARE_UNSUPPORTED_RESIZE_TYPE.add(ServerParseResize.FUNCTION_CACHE);
+    }
 
     public static int parse(String stmt, int offset) {
         return parse(ByteString.from(stmt), offset);

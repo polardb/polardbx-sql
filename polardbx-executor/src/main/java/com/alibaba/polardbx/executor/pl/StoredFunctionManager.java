@@ -23,9 +23,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SqlDataAccess;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.FunctionAccessor;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.pl.function.FunctionDefinitionRecord;
 import com.alibaba.polardbx.gms.metadb.pl.function.FunctionMetaRecord;
-import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureDefinitionRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
@@ -36,7 +36,6 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -86,6 +85,10 @@ public class StoredFunctionManager {
         return statement;
     }
 
+    public synchronized boolean containsFunction(String functionName) {
+        return functions.containsKey(functionName);
+    }
+
     private synchronized SQLCreateFunctionStatement loadStoredFunction(String functionName) {
         try (Connection connection = MetaDbUtil.getConnection()) {
             FunctionAccessor accessor = new FunctionAccessor();
@@ -123,6 +126,9 @@ public class StoredFunctionManager {
     }
 
     private synchronized void initStoredFunctions() {
+        if (MetaDbDataSource.getInstance() == null) {
+            return;
+        }
         try (Connection connection = MetaDbUtil.getConnection()) {
             FunctionAccessor accessor = new FunctionAccessor();
             accessor.setConnection(connection);

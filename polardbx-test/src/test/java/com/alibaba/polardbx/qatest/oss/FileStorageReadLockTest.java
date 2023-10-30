@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.oss;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.qatest.BaseTestCase;
+import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
@@ -64,9 +65,12 @@ public class FileStorageReadLockTest extends BaseTestCase {
     @AfterClass
     public static void dropDatabase() {
         try (Connection tmpConnection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
-            JdbcUtil.executeUpdate(tmpConnection, String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=true)*/drop database if exists %s ", db1));
-            JdbcUtil.executeUpdate(tmpConnection, String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=ture)*/drop database if exists %s ", db2));
-            JdbcUtil.executeUpdate(tmpConnection, String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=ture)*/drop database if exists %s ", db3));
+            JdbcUtil.executeUpdate(tmpConnection,
+                String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=true)*/drop database if exists %s ", db1));
+            JdbcUtil.executeUpdate(tmpConnection,
+                String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=ture)*/drop database if exists %s ", db2));
+            JdbcUtil.executeUpdate(tmpConnection,
+                String.format("/*+TDDL:cmd_extra(ALLOW_DROP_DATABASE_FORCE=ture)*/drop database if exists %s ", db3));
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -97,7 +101,7 @@ public class FileStorageReadLockTest extends BaseTestCase {
         Map<String, Connection> dbToConn = Maps.newTreeMap(String::compareToIgnoreCase);
         Map<String, Long> tbToJobId = Maps.newTreeMap(String::compareToIgnoreCase);
         for (String tb : tbs) {
-            tbToOssTb.put(tb, "oss_"+tb);
+            tbToOssTb.put(tb, "oss_" + tb);
         }
         tbToDb.put(x1, db1);
         tbToDb.put(tbToOssTb.get(x1), db2);
@@ -112,35 +116,36 @@ public class FileStorageReadLockTest extends BaseTestCase {
 
         try (Connection conn1 = getPolardbxConnection(db1);
             Connection conn2 = getPolardbxConnection(db2);
-            Connection conn3 = getPolardbxConnection(db3)){
+            Connection conn3 = getPolardbxConnection(db3)) {
             dbToConn.put(db1, conn1);
             dbToConn.put(db2, conn2);
             dbToConn.put(db3, conn3);
             // build innodb table
             for (String tb : tbs) {
-                FullTypeTestUtil.prepareInnoTable(dbToConn.get(tbToDb.get(tb)), tb, 100);
+                FileStorageTestUtil.prepareInnoTable(dbToConn.get(tbToDb.get(tb)), tb, 100, false);
             }
             // bind oss table
             for (String tb : tbs) {
                 String oss = tbToOssTb.get(tb);
-                FullTypeTestUtil.prepareTTLTable(dbToConn.get(tbToDb.get(oss)), tbToDb.get(oss), oss, tbToDb.get(tb), tb, engine);
+                FileStorageTestUtil.prepareTTLTable(dbToConn.get(tbToDb.get(oss)), tbToDb.get(oss), oss, tbToDb.get(tb),
+                    tb, engine);
             }
             // expire ttl tables
             String ttlSql = "/*+TDDL:cmd_extra(OSS_ORC_INDEX_STRIDE=5,OSS_MAX_ROWS_PER_FILE=4,"
                 + "ENABLE_EXPIRE_FILE_STORAGE_PAUSE=true, ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE=true)*/ "
                 + "alter table %s expire local partition";
             for (String tb : tbs) {
-                JdbcUtil.executeUpdateFailed(dbToConn.get(tbToDb.get(tb)), String.format(ttlSql, tb) , "SHOW DDL");
+                JdbcUtil.executeUpdateFailed(dbToConn.get(tbToDb.get(tb)), String.format(ttlSql, tb), "SHOW DDL");
             }
             // find jobId of each ddl
             for (String tb : tbs) {
                 tbToJobId.put(tb,
-                    FullTypeTestUtil.fetchJobId(dbToConn.get(tbToDb.get(tb)), tbToDb.get(tb) , tb));
+                    FileStorageTestUtil.fetchJobId(dbToConn.get(tbToDb.get(tb)), tbToDb.get(tb), tb));
             }
             // drop should fail
             String dropDB = "drop database if exists %s";
             for (String db : dbToConn.keySet()) {
-                JdbcUtil.executeUpdateFailed(dbToConn.get(db), String.format(dropDB, db) , "using 'show ddl");
+                JdbcUtil.executeUpdateFailed(dbToConn.get(db), String.format(dropDB, db), "using 'show ddl");
             }
             // cancel ddl of x2, db3 can't be dropped
             JdbcUtil.executeUpdate(dbToConn.get(tbToDb.get(x2)), String.format("cancel ddl %d", tbToJobId.get(x2)));

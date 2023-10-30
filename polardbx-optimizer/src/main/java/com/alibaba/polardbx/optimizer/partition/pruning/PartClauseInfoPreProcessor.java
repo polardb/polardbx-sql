@@ -18,8 +18,8 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import org.apache.calcite.rel.type.RelDataType;
@@ -46,7 +46,7 @@ import static org.apache.calcite.sql.SqlKind.LESS_THAN;
  */
 public class PartClauseInfoPreProcessor {
 
-    public static PartClauseItem convertToPartClauseItem(PartitionInfo partInfo,
+    public static PartClauseItem convertToPartClauseItem(PartitionByDefinition partByDef,
                                                          RelDataType relRowType,
                                                          RexNode partPred,
                                                          PartPruneStepBuildingContext stepContext) {
@@ -64,17 +64,17 @@ public class PartClauseInfoPreProcessor {
         PartClauseItem clauseItem;
         SqlKind kind = partPred.getKind();
         if (kind == SqlKind.OR) {
-            clauseItem = convertOrExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
+            clauseItem = convertOrExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
         } else if (kind == SqlKind.AND) {
-            clauseItem = convertAndExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
+            clauseItem = convertAndExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
         } else {
-            clauseItem = convertBoolExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
+            clauseItem = convertBoolExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
         }
 
         return clauseItem;
     }
 
-    private static PartClauseItem convertOrExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertOrExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                 RelDataType relRowType,
                                                                 RexCall partPred,
                                                                 PartPruneStepBuildingContext stepContext) {
@@ -103,7 +103,7 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partInfo, relRowType, op, stepContext);
+            PartClauseItem item = convertToPartClauseItem(partByDef, relRowType, op, stepContext);
             if (item == null) {
                 /**
                  * In OR-Expr, 
@@ -195,7 +195,7 @@ public class PartClauseInfoPreProcessor {
         return item;
     }
 
-    private static PartClauseItem convertAndExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertAndExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                  RelDataType relRowType,
                                                                  RexCall partPred,
                                                                  PartPruneStepBuildingContext stepContext) {
@@ -223,7 +223,7 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partInfo, relRowType, op, stepContext);
+            PartClauseItem item = convertToPartClauseItem(partByDef, relRowType, op, stepContext);
             if (item == null) {
                 /**
                  * if item is null, then it is the predicate without any partition column
@@ -322,7 +322,7 @@ public class PartClauseInfoPreProcessor {
         return item;
     }
 
-    private static PartClauseItem convertBoolExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertBoolExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                   RelDataType relRowType,
                                                                   RexCall partPred,
                                                                   PartPruneStepBuildingContext stepContext) {
@@ -338,11 +338,11 @@ public class PartClauseInfoPreProcessor {
         case NOT_EQUALS:
         case GREATER_THAN_OR_EQUAL:
         case LESS_THAN_OR_EQUAL:
-            item = convertComparisonExprToPartClauseItem(partInfo, relRowType, partPred, stepContext);
+            item = convertComparisonExprToPartClauseItem(partByDef, relRowType, partPred, stepContext);
             break;
 
         case IS_NULL:
-            item = convertIsNullExprToPartClauseItem(partInfo, relRowType, partPred, false, stepContext);
+            item = convertIsNullExprToPartClauseItem(partByDef, relRowType, partPred, false, stepContext);
             break;
 
         case BETWEEN:
@@ -362,7 +362,7 @@ public class PartClauseInfoPreProcessor {
              * only allow part_col in (scalarSubQuery) come here
              */
             // only allowed IN expr with non-max-one-row scalar subquery come here!!
-            item = convertScalarQueryInExprToPartClauseItem(partInfo, relRowType, partPred, stepContext);
+            item = convertScalarQueryInExprToPartClauseItem(partByDef, relRowType, partPred, stepContext);
 
             break;
 
@@ -383,7 +383,7 @@ public class PartClauseInfoPreProcessor {
         return item;
     }
 
-    private static PartClauseItem convertScalarQueryInExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertScalarQueryInExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                            RelDataType relRowType,
                                                                            RexCall partPred,
                                                                            PartPruneStepBuildingContext stepContext) {
@@ -394,11 +394,11 @@ public class PartClauseInfoPreProcessor {
             return null;
         }
 
-        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
+        PartitionStrategy strategy = partByDef.getStrategy();
         String predColName = null;
         boolean findInPartNameList = false;
-        List<String> relPartNameList = partInfo.getPartitionBy().getPartitionColumnNameList();
-        List<ColumnMeta> partKeyFldList = partInfo.getPartitionBy().getPartitionFieldList();
+        List<String> relPartNameList = partByDef.getPartitionColumnNameList();
+        List<ColumnMeta> partKeyFldList = partByDef.getPartitionFieldList();
         int partKeyIdx = -1;
         ColumnMeta cmFldInfo = null;
         RexInputRef columnRef = (RexInputRef) input;
@@ -435,7 +435,7 @@ public class PartClauseInfoPreProcessor {
         eqOpList.add(eqValDynamicParam);
         RexNode eqExprOfInPred = rexBuilder.makeCall(TddlOperatorTable.EQUALS, eqOpList);
         PartClauseInfo eqExprClauseInfo =
-            matchPartPredToPartKey(partInfo, relRowType, eqExprOfInPred, input, eqValDynamicParam, false,
+            matchPartPredToPartKey(partByDef, relRowType, eqExprOfInPred, input, eqValDynamicParam, false,
                 TddlOperatorTable.EQUALS, stepContext);
         if (eqExprClauseInfo == null) {
             return null;
@@ -453,7 +453,7 @@ public class PartClauseInfoPreProcessor {
         sbInPartClauseInfo.setConstExpr(exprReferenceInfo.getConstExpr());
         sbInPartClauseInfo.setOriginalPredicate(partPred);
         sbInPartClauseInfo.setNull(false);
-        sbInPartClauseInfo.setPartKeyLevel(PartKeyLevel.PARTITION_KEY);
+        sbInPartClauseInfo.setPartKeyLevel(stepContext.getPartLevel());
         sbInPartClauseInfo.setStrategy(strategy);
         sbInPartClauseInfo.setPartKeyIndex(partKeyIdx);
         sbInPartClauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
@@ -478,7 +478,7 @@ public class PartClauseInfoPreProcessor {
     /**
      * Convert the partition comparsion predicate to the uniform representation PartClauseItem
      */
-    private static PartClauseItem convertComparisonExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertComparisonExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                         RelDataType relRowType,
                                                                         RexCall partPred,
                                                                         PartPruneStepBuildingContext stepContext) {
@@ -490,11 +490,11 @@ public class PartClauseInfoPreProcessor {
         RexNode left = partPred.getOperands().get(0);
         RexNode right = partPred.getOperands().get(1);
         SqlKind kind = partPred.getKind();
-        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
-        boolean isMultiCols = partInfo.getPartitionBy().getPartitionFieldList().size() > 1;
+        PartitionStrategy strategy = partByDef.getStrategy();
+        boolean isMultiCols = partByDef.getPartitionFieldList().size() > 1;
         SqlOperator operator = partPred.getOperator();
         PartClauseInfo matchedPartClauseInfo =
-            matchPartPredToPartKey(partInfo, relRowType, partPred, left, right, false, operator, stepContext);
+            matchPartPredToPartKey(partByDef, relRowType, partPred, left, right, false, operator, stepContext);
         if (matchedPartClauseInfo != null) {
             switch (kind) {
             case LESS_THAN:
@@ -507,7 +507,7 @@ public class PartClauseInfoPreProcessor {
                 if (strategy == PartitionStrategy.KEY && isMultiCols && (kind == LESS_THAN || kind == GREATER_THAN)) {
                     /**
                      * For multi-column partition with key strategy, if p1 < const or p1 > const and p1 is the first part col,
-                     * then should treat it as always-true predicates and generate full scan.
+                     * then should treat it as always-true predicates and generate full sscan.
                      * Because key strategy is not support do range query by using first part col directly
                      *
                      */
@@ -530,7 +530,7 @@ public class PartClauseInfoPreProcessor {
         }
     }
 
-    private static PartClauseItem convertIsNullExprToPartClauseItem(PartitionInfo partInfo,
+    private static PartClauseItem convertIsNullExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                     RelDataType relRowType,
                                                                     RexCall partPred,
                                                                     boolean isNegative,
@@ -544,7 +544,7 @@ public class PartClauseInfoPreProcessor {
         List<RexNode> operands = partPred.getOperands();
         RexNode input = operands.get(0);
         PartClauseInfo clauseInfo =
-            matchPartPredToPartKey(partInfo, relRowType, partPred, input, null, true, TddlOperatorTable.EQUALS,
+            matchPartPredToPartKey(partByDef, relRowType, partPred, input, null, true, TddlOperatorTable.EQUALS,
                 stepContext);
         if (clauseInfo == null) {
             return null;
@@ -557,7 +557,7 @@ public class PartClauseInfoPreProcessor {
     /**
      * Try to match part predicate to part key and check if the part predicate contains part key
      */
-    protected static PartClauseInfo matchPartPredToPartKey(PartitionInfo partInfo,
+    protected static PartClauseInfo matchPartPredToPartKey(PartitionByDefinition partByDef,
                                                            RelDataType relRowType,
                                                            RexNode originalPred,
                                                            RexNode left,
@@ -635,10 +635,10 @@ public class PartClauseInfoPreProcessor {
         RelDataTypeField predColRelFld = relDataType.getFieldList().get(columnRef.getIndex());
         predColName = predColRelFld.getName();
 
-        relPartNameList = partInfo.getPartitionBy().getPartitionColumnNameList();
-        List<ColumnMeta> partKeyFldList = partInfo.getPartitionBy().getPartitionFieldList();
+        relPartNameList = partByDef.getPartitionColumnNameList();
+        List<ColumnMeta> partKeyFldList = partByDef.getPartitionFieldList();
 
-        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
+        PartitionStrategy strategy = partByDef.getStrategy();
 
         int partKeyIdx = -1;
         ColumnMeta cmFldInfo = null;
@@ -653,7 +653,7 @@ public class PartClauseInfoPreProcessor {
         }
         if (findInPartNameList) {
 
-            clauseInfo.setPartKeyLevel(PartKeyLevel.PARTITION_KEY);
+            clauseInfo.setPartKeyLevel(stepContext.getPartLevel());
             clauseInfo.setOp(op);
             clauseInfo.setOpKind(predOpKind);
             clauseInfo.setInput(input);

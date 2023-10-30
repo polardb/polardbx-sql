@@ -27,11 +27,11 @@ public final class SQLAllExpr extends SQLExprImpl {
 
     public SQLSelect subQuery;
 
-    public SQLAllExpr(){
+    public SQLAllExpr() {
 
     }
 
-    public SQLAllExpr(SQLSelect select){
+    public SQLAllExpr(SQLSelect select) {
         setSubQuery(select);
     }
 

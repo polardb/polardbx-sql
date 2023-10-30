@@ -28,4 +28,13 @@ public class LogicalSequenceDdl extends BaseDdlOperation {
         return new LogicalSequenceDdl(sequenceDdl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

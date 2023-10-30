@@ -1,6 +1,23 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.eclipse.jetty.util.BlockingCallback;
 
 import java.util.List;
 import java.util.Map;
@@ -14,14 +31,28 @@ import java.util.Set;
 public class SqlAlterTableMovePartition extends SqlAlterSpecification {
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("MOVE PARTITION", SqlKind.MOVE_PARTITION);
-    private final Map<SqlNode, List<SqlNode>> instPartitions;
-    private SqlAlterTableGroup parent;
-    private Map<String, Set<String>> targetPartitions;
 
-    public SqlAlterTableMovePartition(SqlParserPos pos, Map<SqlNode, List<SqlNode>> instPartitions, Map<String, Set<String>> targetPartitions) {
+    private Map<String, Set<String>> targetPartitions;
+    private final boolean subPartitionsMoved;
+
+    public Map<String, String> getLocalities() {
+        return localities;
+    }
+
+    public void setLocalities(Map<String, String> localities) {
+        this.localities = localities;
+    }
+
+    private Map<String, String> localities;
+
+    public SqlAlterTableMovePartition(SqlParserPos pos,
+                                      Map<String, Set<String>> targetPartitions,
+                                      boolean subPartitionsMoved,
+                                      Map<String, String> localities) {
         super(pos);
-        this.instPartitions = instPartitions;
         this.targetPartitions = targetPartitions;
+        this.subPartitionsMoved = subPartitionsMoved;
+        this.localities = localities;
     }
 
     @Override
@@ -34,18 +65,6 @@ public class SqlAlterTableMovePartition extends SqlAlterSpecification {
         return null;
     }
 
-    public SqlAlterTableGroup getParent() {
-        return parent;
-    }
-
-    public void setParent(SqlAlterTableGroup parent) {
-        this.parent = parent;
-    }
-
-    public Map<SqlNode, List<SqlNode>> getInstPartitions() {
-        return instPartitions;
-    }
-
     public Map<String, Set<String>> getTargetPartitions() {
         return targetPartitions;
     }
@@ -53,4 +72,12 @@ public class SqlAlterTableMovePartition extends SqlAlterSpecification {
     public void setTargetPartitions(Map<String, Set<String>> targetPartitions) {
         this.targetPartitions = targetPartitions;
     }
+
+    @Override
+    public boolean supportFileStorage() { return true;}
+
+    public boolean isSubPartitionsMoved() {
+        return subPartitionsMoved;
+    }
+
 }

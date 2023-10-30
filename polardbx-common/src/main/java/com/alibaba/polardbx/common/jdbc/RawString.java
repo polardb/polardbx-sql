@@ -19,6 +19,7 @@ package com.alibaba.polardbx.common.jdbc;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
 import java.io.Serializable;
@@ -64,6 +65,20 @@ public class RawString implements Serializable {
             "rawstring error when get object:" + index + "," + skIndex + "," + buildRawString());
     }
 
+    private List<Object> getObjBySkIndex(int skIndex) {
+        if (skIndex == -1) {
+            return getObjList();
+        }
+        List objNew = new ArrayList();
+        for (Object o : getObjList()) {
+            Preconditions.checkArgument(o instanceof List && ((List<?>) o).size() > skIndex,
+                "illegal skIndex:" + skIndex + ",rawstring:" + display());
+            Object o1 = ((List<?>) o).get(skIndex);
+            objNew.add(o1);
+        }
+        return objNew;
+    }
+
     public List getObjList() {
         return objList;
     }
@@ -78,7 +93,7 @@ public class RawString implements Serializable {
 
     public RawString convertType(Function<Object, Object> function, int skIndex) {
         List objNew = new ArrayList();
-        for (Object o : objList) {
+        for (Object o : getObjList()) {
             if (skIndex != -1) {
                 Assert.assertTrue(o instanceof List);
                 Object o1 = ((List<?>) o).get(skIndex);
@@ -178,5 +193,21 @@ public class RawString implements Serializable {
             return rs.substring(0, 4096) + " ... ";
         }
         return rs;
+    }
+
+    /**
+     * if subindex == -1 meaning return list object
+     * if skindex!=-1 meaning return specify column
+     */
+    public Object acquireObject(int subIndex, int skIndex) {
+        if (subIndex == -1) {
+            if (skIndex == -1) {
+                return getObjList();
+            } else {
+                return getObjBySkIndex(skIndex);
+            }
+        } else {
+            return getObj(subIndex, skIndex);
+        }
     }
 }

@@ -49,12 +49,21 @@ public class RenameTableAddMetaTask extends BaseGmsTask {
         TableMetaChanger.addNewTableName(metaDbConnection, schemaName, logicalTableName, newLogicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        CommonMetaChanger.finalOperationsOnRenameTableSuccess(schemaName, logicalTableName, newLogicalTableName);
+        // 这个task 看起来是方便debug 或者物理ddl失败的时候用的，没有特别大的用处。
     }
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.removeNewTableName(metaDbConnection, schemaName, logicalTableName);
+    }
+
+    @Override
+    protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        executeImpl(metaDbConnection, executionContext);
+    }
+
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
     }
 
 }

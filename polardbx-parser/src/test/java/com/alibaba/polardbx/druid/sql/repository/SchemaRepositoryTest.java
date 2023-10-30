@@ -363,6 +363,54 @@ public class SchemaRepositoryTest {
         repository.console(ddl);
     }
 
+    @Test
+    public void testCreateViewClone() {
+        String sql =
+            " create or replace algorithm=undefined definer=`admin`@`%` sql security definer view `v`(`c1`) as select a.pk from select_base_two_one_db_one_tb a join select_base_three_multi_db_one_tb b on a.pk = b.p";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql, DbType.mysql, FEATURES);
+        StringBuffer sb = new StringBuffer();
+        stmtList.get(0).clone().output(sb);
+        System.out.println(sb);
+    }
+
+    @Test
+    public void testAlterView() {
+        String sql =
+            "alter algorithm=undefined definer=`admin`@`%` sql security definer view `v2_unrelated` as select 2 as r1";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql, DbType.mysql, FEATURES);
+        stmtList.get(0);
+    }
+
+    @Test
+    public void testDropPrimaryKey() {
+        String tableName = "t";
+        String createTable = " create table t(id bigint primary key , name varchar(20) UNIQUE, content text)";
+        repository.console(createTable);
+        SchemaObject table = repository.findTable(tableName);
+        SQLColumnDefinition idDefine = table.findColumn("id");
+        Assert.assertTrue(idDefine.isPrimaryKey());
+        String alterSql = "alter table t drop primary key";
+        repository.console(alterSql);
+        table = repository.findTable(tableName);
+        idDefine = table.findColumn("id");
+        Assert.assertFalse(idDefine.isPrimaryKey());
+    }
+
+    @Test
+    public void testDropPrimaryKey2() {
+        String tableName = "t";
+        String createTable = " create table t(id bigint , name varchar(20) UNIQUE, content text, primary key(id))";
+        repository.console(createTable);
+        SchemaObject table = repository.findTable(tableName);
+        SQLColumnDefinition idDefine = table.findColumn("id");
+        Assert.assertTrue(idDefine.isPrimaryKey());
+        String alterSql = "alter table t drop primary key";
+        repository.console(alterSql);
+        table = repository.findTable(tableName);
+        idDefine = table.findColumn("id");
+        Assert.assertFalse(idDefine.isPrimaryKey());
+    }
+
     private void testAlterTableInternal(String tableName1, String tableName2) {
         String sql1 = "create table if not exists `" + tableName1 + "` ("
             + " `col-minus` int, "
@@ -549,5 +597,60 @@ public class SchemaRepositoryTest {
         repository.console(createTableSql);
         // com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement
         // com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement
+    }
+
+    @Test
+    public void testModifyColumnSequence() {
+        SchemaRepository memoryTableMeta = new SchemaRepository(JdbcConstants.MYSQL);
+        memoryTableMeta.console(
+            "create table `test_compat_yha2_7ajh_00002` (\n"
+                + "  a int,\n"
+                + "  b double,\n"
+                + "  c varchar(10),\n"
+                + "  d bigint,\n"
+                + "  _drds_implicit_id_ bigint auto_increment,\n"
+                + "  primary key (_drds_implicit_id_)\n"
+                + ")");
+        memoryTableMeta.console("alter table `test_compat_yha2_7ajh_00002`\n"
+            + "  modify column a int after b,\n"
+            + "  drop column b,\n"
+            + "  change column c b int,\n"
+            + "  add column c int");
+
+        String expectedDDL = "CREATE TABLE `test_compat_yha2_7ajh_00002` (\n"
+            + "\tb int,\n"
+            + "\ta int,\n"
+            + "\td bigint,\n"
+            + "\t_drds_implicit_id_ bigint AUTO_INCREMENT,\n"
+            + "\tPRIMARY KEY (_drds_implicit_id_),\n"
+            + "\tc int\n"
+            + ")";
+        SchemaObject tm1 = memoryTableMeta.findTable("test_compat_yha2_7ajh_00002");
+        Assert.assertEquals(expectedDDL, tm1.getStatement().toString());
+    }
+
+    @Test
+    public void testModifyColumnSequence2() {
+        SchemaRepository memoryTableMeta = new SchemaRepository(JdbcConstants.MYSQL);
+        memoryTableMeta.console(
+            "create table `t25` (\n"
+                + "  a int,\n"
+                + "  b double,\n"
+                + "  c varchar(10),\n"
+                + "  _drds_implicit_id_ bigint auto_increment,\n"
+                + "  d bigint,\n"
+                + "  primary key (_drds_implicit_id_)\n"
+                + ")");
+        String expectedDDL = "CREATE TABLE `t25` (\n"
+            + "\tc varchar(10),\n"
+            + "\tb double,\n"
+            + "\ta int,\n"
+            + "\t_drds_implicit_id_ bigint AUTO_INCREMENT,\n"
+            + "\td bigint,\n"
+            + "\tPRIMARY KEY (_drds_implicit_id_)\n"
+            + ")";
+        memoryTableMeta.console("alter table t25 modify column a int after c,modify column c varchar(10) first");
+        SchemaObject tm1 = memoryTableMeta.findTable("t25");
+        Assert.assertEquals(expectedDDL, tm1.getStatement().toString());
     }
 }

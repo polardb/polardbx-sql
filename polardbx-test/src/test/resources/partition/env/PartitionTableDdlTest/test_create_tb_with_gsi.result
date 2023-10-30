@@ -1,0 +1,75 @@
+DROP TABLE IF EXISTS t_order5;
+CREATE TABLE `t_order5` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	GLOBAL INDEX `g_i_seller2`(`country`, `city`) PARTITION BY LIST COLUMNS (`country`, `city`) (
+		PARTITION p1 VALUES IN (('China', 'Hangzhou'), ('China', 'Beijing'))
+			STORAGE ENGINE InnoDB,
+		PARTITION p2 VALUES IN (('United States', 'NewYork'), ('United States', 'Chicago'))
+			STORAGE ENGINE InnoDB,
+		PARTITION p3 VALUES IN (('Russian', 'Moscow'))
+			STORAGE ENGINE InnoDB
+	),
+	GLOBAL INDEX `l_i_order`(`order_id`) PARTITION BY KEY (`order_id`, `id`) PARTITIONS 16,
+	LOCAL KEY `_local_l_i_order` (`order_id`),
+	LOCAL KEY `_local_g_i_seller2` (`country`, `city`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`id`) PARTITIONS 16;
+SHOW CREATE TABLE t_order5;
+Table,Create Table
+t_order5,CREATE TABLE `t_order5` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	GLOBAL INDEX `g_i_seller2` (`country`, `city`)
+		PARTITION BY LIST COLUMNS(`country`,`city`)
+		(PARTITION p1 VALUES IN (('China','Beijing'),('China','Hangzhou')) ENGINE = InnoDB,
+		 PARTITION p3 VALUES IN (('Russian','Moscow')) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (('United States','Chicago'),('United States','NewYork')) ENGINE = InnoDB),
+	GLOBAL INDEX `l_i_order` (`order_id`)
+		PARTITION BY KEY(`order_id`,`id`)
+		PARTITIONS 16,
+	KEY `_local_l_i_order` (`order_id`),
+	KEY `_local_g_i_seller2` (`country`, `city`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+SHOW FULL CREATE TABLE t_order5;
+Table,Create Table
+t_order5,CREATE TABLE `t_order5` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	GLOBAL INDEX /* g_i_seller2_$ */ `g_i_seller2` (`country`, `city`)
+		PARTITION BY LIST COLUMNS(`country`,`city`)
+		(PARTITION p1 VALUES IN (('China','Beijing'),('China','Hangzhou')) ENGINE = InnoDB,
+		 PARTITION p3 VALUES IN (('Russian','Moscow')) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (('United States','Chicago'),('United States','NewYork')) ENGINE = InnoDB),
+	GLOBAL INDEX /* l_i_order_$ */ `l_i_order` (`order_id`)
+		PARTITION BY KEY(`order_id`,`id`)
+		PARTITIONS 16,
+	LOCAL KEY `_local_l_i_order` (`order_id`),
+	LOCAL KEY `_local_g_i_seller2` (`country`, `city`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+/* tablegroup = `tg` */

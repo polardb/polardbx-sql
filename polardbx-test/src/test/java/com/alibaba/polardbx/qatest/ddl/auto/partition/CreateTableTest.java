@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -500,6 +501,9 @@ public class CreateTableTest extends PartitionTestBase {
 
     @Test
     public void testLargeBlobBackfill() {
+        // test client limits
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global CONN_POOL_XPROTO_MAX_PACKET_SIZE = 67108864");
+
         String dropTable = "drop table if exists `largeCol`";
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
 
@@ -536,29 +540,95 @@ public class CreateTableTest extends PartitionTestBase {
     }
 
     @Test
-    public void testGeneratedColumnsForbidden() {
-        final String tableName = "test_generated_columns";
-        final String createTable = "create table " + tableName + " (c1 int, c2 int %s)";
-        final String expectedErrMsg = "Do not support generated columns";
+    public void testLargeBlobBackfill2() {
+        // Set client limit to 128MB to test auto shrink batch on limit of server settings
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global CONN_POOL_XPROTO_MAX_PACKET_SIZE = 134217728");
+
+        String dropTable = "drop table if exists `largeCol`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
+
+        String createTable =
+            "CREATE TABLE  if not exists `largeCol` ( `id` int(11) NOT NULL AUTO_INCREMENT, `c1` longtext, PRIMARY KEY (`id`)) partition by key(id) partitions 1;";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+        String insertSql = "insert into largeCol(id, c1) values(null,%s)";
+        int rowSize = 1024 * 1024;
+        int rowCount = 136;
+        String baseText =
+            "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < rowSize; i = i + baseText.length()) {
+            sb.append(baseText);
+        }
+        String sql = String.format(insertSql, sb.toString());
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        //16 rows
+        for (int i = 0; i < 4; i++) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "insert into largeCol(id,c1) select null, c1 from largeCol");
+        }
+        //15*3 rows
+        for (int i = 0; i < 4; i++) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                "insert into largeCol(id,c1) select null, c1 from largeCol limit 15");
+        }
+        //6 rows
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "insert into largeCol(id,c1) select null, c1 from largeCol limit 6");
+
+        sql = "alter table largeCol add global index g1(id) covering(c1) partition by key(id) partitions 1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        // reset to 64M
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global CONN_POOL_XPROTO_MAX_PACKET_SIZE = 67108864");
+    }
+
+    @Test
+    public void testShowCreateTableForEscape() {
+        final String tableName = "```test``backtick`";
+        final String createTable = "create table %s (```col-minus` int(11) default null, `c2` int(11) default null)";
 
         dropTableIfExists(tableName);
 
-        String sql = String.format(createTable, "as (c1+1)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+        String sql = String.format(createTable, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = String.format(createTable, "generated always as (c1+4)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+        String showCreateTableSql = showCreateTable(tddlConnection, tableName);
 
-        sql = String.format(createTable, "generated always as (c1+5) virtual");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+        int lastIndex = TStringUtil.lastIndexOf(showCreateTableSql, ")");
+        showCreateTableSql = TStringUtil.substring(showCreateTableSql, 0, lastIndex + 1).toLowerCase();
+        showCreateTableSql = removeInvisibleChar(showCreateTableSql);
+        sql = removeInvisibleChar(sql);
 
-        sql = String.format(createTable, "as (c1+3) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(createTable, "generated always as (c1+6) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+        if (!TStringUtil.equalsIgnoreCase(sql, showCreateTableSql)) {
+            StringBuilder buf = new StringBuilder();
+            buf.append("\n").append("Expected: ").append(sql).append("\n");
+            buf.append("  Actual: ").append(showCreateTableSql);
+            Assert.fail(buf.toString());
+        }
 
         dropTableIfExists(tableName);
     }
 
+    @Test
+    public void testCreateTableWithPercentSign() {
+        String tableName = "tbWithPercSign";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("drop table if exists %s", tableName));
+        String tableBody = "(a int, b int comment 'abc %s ddd') partition by key(a) partitions 2";
+        String sql = String.format("create table %s %s", tableName, tableBody);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testBug50139035() {
+        String sql =
+            "create table testBug50139035(a int) ENGINE = InnoDB DEFAULT CHARSET = `utf8` DEFAULT COLLATE = `utf8_general_ci`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    private static final String EMPTY = "";
+
+    private String removeInvisibleChar(String sql) {
+        return sql == null ? EMPTY :
+            sql.replace("\r", EMPTY).replace("\n", EMPTY).replace("\t", EMPTY).replace(" ", EMPTY);
+    }
 }

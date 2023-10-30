@@ -68,10 +68,10 @@ public class ShardingWhatIf {
         if (sqls.isEmpty()) {
             return;
         }
+
         if (shardResultForOutput.display().get(schemaName) == null) {
             return;
         }
-
         // record the shard plan first
         for (Map.Entry<String, StringBuilder> entry : shardResultForOutput.display().entrySet()) {
             logger.info(entry.getKey() + ": " + entry.getValue().toString());

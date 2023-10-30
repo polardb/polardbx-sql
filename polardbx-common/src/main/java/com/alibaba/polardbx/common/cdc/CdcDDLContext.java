@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.common.cdc;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.utils.Pair;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -41,4 +42,6 @@ public class CdcDDLContext {
     private final boolean isRefreshTableMetaInfo;
 
     private final Map<String, Set<String>> newTableTopology;
+
+    private final Pair<String, TablesExtInfo> tablesExtInfoPair;
 }

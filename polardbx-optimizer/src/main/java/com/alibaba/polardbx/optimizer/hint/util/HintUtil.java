@@ -25,25 +25,34 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdQueryBlockName;
 import com.alibaba.polardbx.optimizer.hint.operator.HintPushdownOperator;
 import com.alibaba.polardbx.optimizer.parse.HintParser;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.convertTargetDB;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.filterGroup;
@@ -129,9 +138,6 @@ public class HintUtil {
 
     public static String buildPushdown(String table, String condition, String schemaName) {
         StringBuilder sql = new StringBuilder("SELECT * FROM ");
-        if (TStringUtil.isNotBlank(schemaName)) {
-            sql.append("`").append(schemaName).append("`").append(".");
-        }
 
         if (TStringUtil.isNotBlank(table)) {
             sql.append(table);
@@ -254,14 +260,47 @@ public class HintUtil {
     }
 
     public static Map<String, List<List<String>>> buildTargetTablesByPruneStepMap(List<String> tables,
-                                                                    Map<String, PartitionPruneStep> pruneStepMap,
-                                                                    String schemaName, ExecutionContext ec) {
-        List<List<TargetDB>> targetDBs = DataNodeChooser.shardByPruneStep(ImmutableList.copyOf(tables),
-            pruneStepMap,
-            schemaName, ec);
-        final Set<String> groupIntersection = getGroupIntersection(targetDBs);
-        targetDBs = filterGroup(targetDBs, groupIntersection, schemaName);
-        return convertTargetDB(targetDBs);
+                                                                                  Map<String, PartitionPruneStep> pruneStepMap,
+                                                                                  String schemaName,
+                                                                                  ExecutionContext ec) {
+        final List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();
+        for (String table : tables) {
+            PartPrunedResult tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepMap.get(table), ec);
+            allTbPrunedResults.add(tbPrunedResult);
+        }
+        final BitSet partitionIntersection = partitionIntersection(allTbPrunedResults);
+        filterPartition(allTbPrunedResults, partitionIntersection);
+
+        return PartitionPrunerUtils.buildTargetTablesByPartPrunedResults(allTbPrunedResults);
+    }
+
+    public static void filterPartition(List<PartPrunedResult> allTbPrunedResults, BitSet partIntersection) {
+        for (PartPrunedResult partPrunedResult : allTbPrunedResults) {
+            PartitionInfo partitionInfo = partPrunedResult.getPartInfo();
+            if (partitionInfo.isBroadcastTable()) {
+                continue;
+            }
+
+            partPrunedResult.getPartBitSet().and(partIntersection);
+        }
+    }
+
+    @Nullable
+    public static BitSet partitionIntersection(List<PartPrunedResult> allTbPrunedResults) {
+        BitSet partIntersection = null;
+        for (PartPrunedResult partPrunedResult : allTbPrunedResults) {
+            PartitionInfo partitionInfo = partPrunedResult.getPartInfo();
+            if (partitionInfo.isBroadcastTable()) {
+                continue;
+            }
+
+            if (partIntersection == null) {
+                partIntersection = BitSet.valueOf(partPrunedResult.getPartBitSet().toByteArray());
+            } else {
+                partIntersection.and(partPrunedResult.getPartBitSet());
+            }
+        }
+        return partIntersection;
     }
 
     public static List<String> allGroup() {
@@ -277,6 +316,18 @@ public class HintUtil {
             }
         }
         return result;
+    }
+
+    public static List<String> allGroup(String schemaName, boolean forSingleTable) {
+        if (forSingleTable) {
+            return allGroup(schemaName).stream()
+                .filter(GroupInfoUtil::isSingleGroup)
+                .collect(Collectors.toList());
+        } else {
+            return allGroup(schemaName).stream()
+                .filter(group -> !GroupInfoUtil.isSingleGroup(group))
+                .collect(Collectors.toList());
+        }
     }
 
     /**

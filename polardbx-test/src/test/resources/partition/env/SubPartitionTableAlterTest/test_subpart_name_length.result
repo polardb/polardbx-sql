@@ -1,0 +1,63 @@
+## DISABLE_FAST_SQL_PARSER
+  ## error_msg: $# too long #$
+create table if not exists r_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+  subpartition sp1 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd12345678900 values less than ( maxvalue )
+);
+too long
+## error_msg: $# too long #$
+create table if not exists r_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+subpartition sp1abc12345678900 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd1234567890 values less than ( maxvalue )
+);
+too long
+create table if not exists r_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+subpartition sp1abc1234567890 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd1234567890 values less than ( maxvalue )
+);
+alter table r_l_tp modify subpartition sp1abc1234567890 drop values (2,3,4);
+show create table r_l_tp;
+Table,Create Table
+r_l_tp,CREATE TABLE `r_l_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST(`a`)
+(SUBPARTITION sp1abc1234567890 VALUES IN (1,5,6,7,8))
+(PARTITION pmabcd1234567890 VALUES LESS THAN (MAXVALUE))

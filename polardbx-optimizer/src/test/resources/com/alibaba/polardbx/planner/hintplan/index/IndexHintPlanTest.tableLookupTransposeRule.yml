@@ -8,7 +8,7 @@
       bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
         indexscan(tables="optest_0001.t1_i_b_3", sql="select `pk`, `c1` from `t1_i_b` as `t1_i_b` where ((`c2` = ?) and (`pk` = ?))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c7` from `t1` as `t1` where (((`pk` = ?) and (`c2` = ?)) and (`pk` in (...)))")
+          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c7` from `t1` as `t1` where ((`pk` = ?) and (`c2` = ?) and (`pk` in (...)))")
 
   # filter transpose without copy filter
 - sql: |
@@ -30,16 +30,15 @@
     select * from t1 ignore index(t1_i_b) a join t2 b force index(t2_i_b) on a.c2 = b.c2 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
-    Project(pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80", pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
-      BKAJoin(condition="c2 = c2", type="inner")
-        Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
-          BKAJoin(condition="pk = pk AND c2 <=> c2", type="inner")
-            Gather(concurrent=true)
-              IndexScan(tables="[0000-0003].t2_i_b_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE ((`pk` = ?) AND (`c2` = ?))")
-            LogicalView(tables="optest_0001.t2_3", sql="SELECT `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (((`pk` = ?) AND (`c2` = ?)) AND (`pk` IN (...)))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`c2` IN (...)))")
+    project(pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80", pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+      bkajoin(condition="c2 = c2", type="inner")
+        project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+          bkajoin(condition="pk = pk and c2 <=> c2", type="inner")
+            gather(concurrent=true)
+              indexscan(tables="[0000-0003].t2_i_b_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c2`, `c5` from `t2_i_b` as `t2_i_b` where ((`pk` = ?) and (`c2` = ?))")
+            logicalview(tables="optest_0001.t2_3", sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`c2` = ?) and (`pk` in (...)))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `t1` as `t1` where ((`c2` = ?) and (`c2` in (...)))")
 
   # filter transpose with join, covering index
 - sql: |
@@ -48,16 +47,15 @@
     select a.*, b.c1, b.c5 from t1 a join t2 b force index(t2_i_b) on a.c2 = b.c2 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-
-    Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", c10="c10", c50="c50")
-      BKAJoin(condition="c2 = c2", type="inner")
-        Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
-          BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
-            IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t2_i_b_[00-27]", shardCount=28, sql="SELECT `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (((`pk` = ?) AND (`c2` = ?)) AND (`c2` IN (...)))")
+    project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", c10="c10", c50="c50")
+      bkajoin(condition="c2 = c2", type="inner")
+        project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+          bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+            indexscan(tables="optest_0001.t1_i_b_3", sql="select `pk`, `c1`, `c2`, `c5` from `t1_i_b` as `t1_i_b` where (`c2` = ?)")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` from `t1` as `t1` where ((`c2` = ?) and (`pk` in (...)))")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t2_i_b_[00-27]", shardcount=28, sql="select `c1`, `c2`, `c5` from `t2_i_b` as `t2_i_b` where ((`pk` = ?) and (`c2` = ?) and (`c2` in (...)))")
 
   # join transpose, inner join, index right, non-covering index
 - sql: |
@@ -354,13 +352,12 @@
     /*+TDDL:index(T1, t1_i_b) BKA_JOIN(t1_i_b,t1) NL_JOIN((t1_i_b,t1), t2)*/ select * from t1 a  join t2 b  where a.c2 = 1 and a.c1 = 1 and b.c2 = 1;
 
   plan: |
-
-    NlJoin(condition="true", type="inner")
-      Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
-        BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
-          IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t1_i_b` AS `t1_i_b` WHERE ((`c2` = ?) AND (`c1` = ?))")
-          LogicalView(tables="optest_0000.t1_01", sql="SELECT `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (((`c2` = ?) AND (`c1` = ?)) AND (`pk` IN (...)))")
-      LogicalView(tables="optest_0000.t2_1", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (`c2` = ?)")
+    nljoin(condition="true", type="inner")
+      project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+          indexscan(tables="optest_0000.t1_i_b_1", sql="select `pk`, `c1`, `c2`, `c5` from `t1_i_b` as `t1_i_b` where ((`c2` = ?) and (`c1` = ?))")
+          logicalview(tables="optest_0000.t1_01", sql="select `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` from `t1` as `t1` where ((`c2` = ?) and (`c1` = ?) and (`pk` in (...)))")
+      logicalview(tables="optest_0000.t2_1", sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `t2` as `t2` where (`c2` = ?)")
 
   # support post planner
 - sql: |

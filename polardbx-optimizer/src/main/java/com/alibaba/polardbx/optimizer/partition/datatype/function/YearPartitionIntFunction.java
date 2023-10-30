@@ -20,9 +20,11 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import org.apache.calcite.sql.SqlOperator;
 
 import java.sql.Types;
 import java.util.List;
@@ -91,4 +93,10 @@ public class YearPartitionIntFunction extends PartitionIntFunction {
     public String[] getFunctionNames() {
         return new String[] {"YearPartitionInt"};
     }
+
+    @Override
+    public SqlOperator getSqlOperator() {
+        return TddlOperatorTable.YEAR;
+    }
+
 }

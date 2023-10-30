@@ -31,7 +31,7 @@ public interface Capabilities {
      * client_cmd: 11 10100110 10000101
      * client_jdbc:10 10100010 10001111
      *
-     * @see http://dev.mysql.com/doc/refman/5.1/en/mysql-real-connect.html
+     * @see https://dev.mysql.com/doc/dev/mysql-server/latest/group__group__cs__capabilities__flags.html#details
      * </pre>
      */
     // new more secure passwords
@@ -111,4 +111,6 @@ public interface Capabilities {
 
     int CLIENT_CONNECT_ATTRS = 0x00100000;
 
+    // 客户端不需要EOF包，使用OK包来替代EOF包
+    int CLIENT_DEPRECATE_EOF = 1 << 24;
 }

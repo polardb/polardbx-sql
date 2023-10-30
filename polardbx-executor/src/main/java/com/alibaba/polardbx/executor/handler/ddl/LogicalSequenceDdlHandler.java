@@ -103,24 +103,26 @@ public class LogicalSequenceDdlHandler extends HandlerCommon {
 
             switch (sequence.getKind()) {
             case CREATE_SEQUENCE:
-                affectedRows = sequencesAccessor.insert(record, newSeqCacheSize);
+                affectedRows = sequencesAccessor.insert(record, newSeqCacheSize,
+                    SequenceUtil.buildFailPointInjector(executionContext));
                 break;
             case ALTER_SEQUENCE:
-                boolean alterWithoutChange = true;
+                boolean alterWithoutTypeChange = true;
 
                 if (sequence.getToType() != null && sequence.getToType() != Type.NA) {
                     Pair<SequenceBaseRecord, SequenceBaseRecord> recordPair =
                         SequenceUtil.change(sequence, null, executionContext);
                     if (recordPair != null) {
-                        affectedRows = sequencesAccessor.change(recordPair, newSeqCacheSize);
-                        alterWithoutChange = false;
+                        affectedRows = sequencesAccessor.change(recordPair, newSeqCacheSize,
+                            SequenceUtil.buildFailPointInjector(executionContext));
+                        alterWithoutTypeChange = false;
                     }
                 }
 
-                if (alterWithoutChange) {
+                if (alterWithoutTypeChange) {
                     Type existingType = SequenceManagerProxy.getInstance().checkIfExists(seqSchema, seqName);
                     if (existingType != Type.TIME) {
-                        affectedRows = sequencesAccessor.update(record);
+                        affectedRows = sequencesAccessor.update(record, newSeqCacheSize);
                     }
                 }
 

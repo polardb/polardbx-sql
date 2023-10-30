@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
@@ -28,10 +29,10 @@ public class MySqlPrepareStatement extends MySqlStatementImpl {
     private SQLName name;
     private SQLExpr from;
 
-    public MySqlPrepareStatement(){
+    public MySqlPrepareStatement() {
     }
 
-    public MySqlPrepareStatement(SQLName name, SQLExpr from){
+    public MySqlPrepareStatement(SQLName name, SQLExpr from) {
         this.name = name;
         this.from = from;
     }
@@ -70,5 +71,10 @@ public class MySqlPrepareStatement extends MySqlStatementImpl {
             children.add(from);
         }
         return children;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

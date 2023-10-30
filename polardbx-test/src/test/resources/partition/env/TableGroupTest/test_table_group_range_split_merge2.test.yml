@@ -71,8 +71,8 @@ PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
-  
-  ## error_msg: $# not all the tables in tablegroup #$
+
+  ## error_msg: $# the column count[3] of bound values of partition p2_1 is more than the full partition columns count[2] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
@@ -113,15 +113,15 @@ PARTITION p3_2 VALUES LESS THAN ('hij')
 alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
 alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-  
-  ## error_msg: $# not all the tables in tablegroup #$
+
+  ## error_msg: $# the column count[5] of bound values of partition p2_1 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue)
 );
-  
-  ## error_msg: $# not all the tables in tablegroup #$
+
+  ## error_msg: $# the column count[6] of bound values of partition p2_1 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100,100),
@@ -152,8 +152,8 @@ PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
 alter tablegroup mytg23 drop partition p4;
 alter tablegroup mytg23 drop partition p5;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-  
-  ## error_msg: $# not all the tables in tablegroup #$
+
+  ## error_msg: $# the column count[4] of bound values of partition p6 is more than the full partition columns count[3] #$
 alter tablegroup mytg23 add partition (
 PARTITION p6 VALUES LESS THAN ('rst',100,100,100)
 );

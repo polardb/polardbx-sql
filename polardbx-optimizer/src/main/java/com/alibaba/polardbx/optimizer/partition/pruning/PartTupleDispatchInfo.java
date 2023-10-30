@@ -18,7 +18,8 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.util.Rex2ExprStringVisitor;
 
 import java.util.BitSet;
@@ -55,36 +56,32 @@ public class PartTupleDispatchInfo implements PartitionPruneBase {
         PartitionTableType tblType = partInfo.getTableType();
         if (tblType == PartitionTableType.SINGLE_TABLE || tblType == PartitionTableType.GSI_SINGLE_TABLE) {
 
-            PartPrunedResult rs = new PartPrunedResult();
             BitSet partBitSet = null;
-            partBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSet(partInfo);
+            partBitSet = PartitionPrunerUtils.buildEmptyPhysicalPartitionsBitSet(partInfo);
             partBitSet.set(0, 1, true);
-            rs.partBitSet = partBitSet;
-            rs.partInfo = partInfo;
+
+            PartPrunedResult rs =
+                PartPrunedResult.buildPartPrunedResult(partInfo, partBitSet, PartKeyLevel.PARTITION_KEY, null, false);
             PartitionPrunerUtils.collateTupleRouteExplainInfo(this, ec, rs, pruningCtx);
             return rs;
 
         } else if (tblType == PartitionTableType.BROADCAST_TABLE || tblType == PartitionTableType.GSI_BROADCAST_TABLE) {
 
-            PartPrunedResult rs = new PartPrunedResult();
             BitSet partBitSet = null;
-            partBitSet = PartitionPrunerUtils.buildFullScanPartitionsBitSet(partInfo);
-            rs.partBitSet = partBitSet;
-            rs.partInfo = partInfo;
+            partBitSet = PartitionPrunerUtils.buildFullPhysicalPartitionsBitSet(partInfo);
+            PartPrunedResult rs =
+                PartPrunedResult.buildPartPrunedResult(partInfo, partBitSet, PartKeyLevel.PARTITION_KEY, null, false);
             PartitionPrunerUtils.collateTupleRouteExplainInfo(this, ec, rs, pruningCtx);
             return rs;
         }
 
         // Do pruning for partition-keys
-        BitSet finalBitSet = partDispatchFunc.routePartitions(ec, pruningCtx);
-        PartPrunedResult rs = new PartPrunedResult();
-        rs.partBitSet = finalBitSet;
-        rs.partInfo = partInfo;
-        PartitionPrunerUtils.collateTupleRouteExplainInfo(this, ec, rs, pruningCtx);
-        return rs;
+        PartPrunedResult prunedResult = partDispatchFunc.routePartitions(ec, pruningCtx, null);
+        PartitionPrunerUtils.collateTupleRouteExplainInfo(this, ec, prunedResult, pruningCtx);
+        return prunedResult;
     }
 
-    public SearchDatumInfo calcSearchDatum(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+    public List<SearchDatumInfo> calcSearchDatum(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
         return partDispatchFunc.calcSearchDatum(ec, pruningCtx);
     }
 

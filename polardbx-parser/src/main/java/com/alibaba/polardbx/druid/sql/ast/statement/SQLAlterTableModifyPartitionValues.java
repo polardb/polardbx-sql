@@ -22,19 +22,28 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 /**
  * Created by luoyanxin.
- *
+ * <p>
  * for list partition add/drop value
+ *
  * @author luoyanxin
  */
-public class SQLAlterTableModifyPartitionValues extends SQLObjectImpl implements SQLAlterTableItem,SQLAlterTableGroupItem {
-    final boolean isAdd;
-    final boolean isDrop;
+public class SQLAlterTableModifyPartitionValues extends SQLObjectImpl
+    implements SQLAlterTableItem, SQLAlterTableGroupItem {
+    boolean isAdd;
+    boolean isDrop;
+    String algorithm = null;
+
+    /**
+     * The values to be added or be dropped
+     */
     final SQLPartition sqlPartition;
 
-    public SQLAlterTableModifyPartitionValues(boolean isAdd, SQLPartition sqlPartition) {
-        this.isAdd = isAdd;
-        this.isDrop = !this.isAdd;
+    boolean isSubPartition;
+
+    public SQLAlterTableModifyPartitionValues(SQLPartition sqlPartition,
+                                              boolean isSubPartition) {
         this.sqlPartition = sqlPartition;
+        this.isSubPartition = isSubPartition;
     }
 
     @Override
@@ -47,11 +56,31 @@ public class SQLAlterTableModifyPartitionValues extends SQLObjectImpl implements
         return isAdd;
     }
 
+    public void setAdd(boolean add) {
+        isAdd = add;
+    }
+
     public boolean isDrop() {
         return isDrop;
     }
 
+    public void setDrop(boolean drop) {
+        isDrop = drop;
+    }
+
     public SQLPartition getSqlPartition() {
         return sqlPartition;
+    }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public String getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(String algorithm) {
+        this.algorithm = algorithm;
     }
 }

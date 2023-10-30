@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -33,8 +34,24 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
     private Long interval;
     private TimeUnit timeUnit;
 
+    private Long connId;
+
+    private Boolean sameTableGroup;
+
     public TablesMetaChangePreemptiveSyncAction() {
 
+    }
+
+    @JSONCreator
+    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
+                                                Long interval, TimeUnit timeUnit, Long connId, Boolean sameTableGroup) {
+        this.schemaName = schemaName;
+        this.logicalTables = logicalTables;
+        this.initWait = initWait;
+        this.interval = interval;
+        this.timeUnit = timeUnit;
+        this.connId = connId;
+        this.sameTableGroup = sameTableGroup;
     }
 
     public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
@@ -44,13 +61,16 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
         this.initWait = initWait;
         this.interval = interval;
         this.timeUnit = timeUnit;
+        this.connId = -1L;
+        this.sameTableGroup = true;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         // TODO(luoyanxin) optimize single-version schema-change
-        oldSchemaManager.toNewVersionInTrx(logicalTables, true, initWait, interval, timeUnit, true);
+        oldSchemaManager.toNewVersionInTrx(logicalTables, true, initWait, interval, timeUnit, connId, true,
+            sameTableGroup);
         return null;
     }
 
@@ -92,5 +112,21 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
 
     public void setTimeUnit(TimeUnit timeUnit) {
         this.timeUnit = timeUnit;
+    }
+
+    public Long getConnId() {
+        return connId;
+    }
+
+    public void setConnId(Long connId) {
+        this.connId = connId;
+    }
+
+    public Boolean getSameTableGroup() {
+        return sameTableGroup;
+    }
+
+    public void setSameTableGroup(Boolean sameTableGroup) {
+        this.sameTableGroup = sameTableGroup;
     }
 }

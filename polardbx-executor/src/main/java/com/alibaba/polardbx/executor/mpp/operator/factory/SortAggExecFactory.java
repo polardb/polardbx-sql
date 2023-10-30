@@ -31,8 +31,6 @@ import org.apache.calcite.util.ImmutableBitSet;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory.convertFrom;
-
 public class SortAggExecFactory extends ExecutorFactory {
 
     private SortAgg sortAgg;
@@ -65,7 +63,7 @@ public class SortAggExecFactory extends ExecutorFactory {
                         sortAgg.getAggCallList(), context, memoryAllocator);
 
                 ImmutableBitSet gp = sortAgg.getGroupSet();
-                int[] groups = convertFrom(gp);
+                int[] groups = AggregateUtils.convertBitSet(gp);
                 Executor exec =
                     new SortAggExec(
                         input, groups, aggregators, CalciteUtils.getTypes(sortAgg.getRowType()), context);

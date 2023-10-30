@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
+import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
@@ -40,6 +41,7 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.biv.MockUtils;
+import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -47,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -168,6 +171,9 @@ public class TopologyHandler extends AbstractLifecycle {
             mergeMatrix(matrix);
         }
         reloadStorageManager();
+
+        // reload all XClient & XSession
+        XConnectionManager.getInstance().reload();
     }
 
     protected void clean() {
@@ -391,7 +397,7 @@ public class TopologyHandler extends AbstractLifecycle {
 
                 String addr = atomDs.getHost() + ':' + atomDs.getPort();
                 String dnId = atomDs.getDnId();
-                String repoInstId =  dnId + '@' + addr;
+                String repoInstId = dnId + '@' + addr;
                 repoInst.setAddress(addr);
                 repoInst.setDnId(dnId);
                 repoInst.setRepoInstId(repoInstId);
@@ -418,6 +424,7 @@ public class TopologyHandler extends AbstractLifecycle {
 
         List<Group> allGroupsInMatrix = new ArrayList<>();
         allGroupsInMatrix.addAll(matrix.getGroups());
+        allGroupsInMatrix.addAll(matrix.getScaleOutGroups());
         for (Group group : allGroupsInMatrix) {
             IGroupExecutor groupExecutor = get(group.getName());
             TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
@@ -434,7 +441,7 @@ public class TopologyHandler extends AbstractLifecycle {
                 address = TGroupDataSource.INVALID_ADDRESS;
                 dnId = "empty";
             }
-            repoInstId =  dnId + '@' + address;
+            repoInstId = dnId + '@' + address;
 
             RepoInst repoInst = new RepoInst();
             repoInst.setAddress(address);
@@ -571,6 +578,17 @@ public class TopologyHandler extends AbstractLifecycle {
 
     public void setTopologyChanger(TopologyChanger topologyChanger) {
         this.topologyChanger = topologyChanger;
+    }
+
+    /**
+     * Get a random datasource.
+     */
+    public IDataSource getRandomDatasource() {
+        final Iterator<IGroupExecutor> it = executorMap.values().iterator();
+        if (it.hasNext()) {
+            return it.next().getDataSource();
+        }
+        return null;
     }
 
 }

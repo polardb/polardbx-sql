@@ -16,17 +16,22 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
@@ -36,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
 
@@ -44,12 +50,12 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
     protected Map<String, Set<String>> sourcePhyTables = new LinkedHashMap<>();
     protected Map<String, Set<String>> targetPhyTables = new LinkedHashMap<>();
     /**
-     * orderedTargetTableLocations is used to store all the locations of target new added phy tables
-     * the list order is map to the new partitions order
-     * list of locations:
-     * a item is [phyTbl, grpKey]
+     * orderedTargetTableLocations is used to store all the partition's locations of target new added phy tables
+     * <p>
+     * item is format as <partitionName, <phyTbl, grpKey>>
      */
-    protected List<Pair<String, String>> orderedTargetTableLocations = new ArrayList<>();
+    protected Map<String, Pair<String, String>> orderedTargetTableLocations =
+        new TreeMap<>(String::compareToIgnoreCase);
 
     public AlterTableGroupItemBuilder(DDL ddl,
                                       AlterTableGroupItemPreparedData preparedData,
@@ -82,19 +88,45 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
             PartitionInfo partitionInfo =
                 OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
                     .getPartitionInfo(preparedData.getTableName());
-            int num = 0;
+            PartitionByDefinition subPartBy = partitionInfo.getPartitionBy().getSubPartitionBy();
             for (String oldPartitionName : preparedData.getOldPartitionNames()) {
+                boolean found = false;
                 for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                    if (partitionSpec.getName().equalsIgnoreCase(oldPartitionName)) {
-                        PartitionLocation location = partitionSpec.getLocation();
-                        sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                            .add(location.getPhyTableName());
-                        num++;
+                    if (partitionInfo.getPartitionBy().getSubPartitionBy() != null &&
+                        GeneralUtil.isNotEmpty(partitionSpec.getSubPartitions())
+                        && preparedData.isOperateOnSubPartition()) {
+                        for (PartitionSpec subPartitionSpec : partitionSpec.getSubPartitions()) {
+                            if (subPartitionSpec.getName().equalsIgnoreCase(oldPartitionName) || (subPartBy != null
+                                && subPartBy.isUseSubPartTemplate() && subPartitionSpec.getTemplateName()
+                                .equalsIgnoreCase(oldPartitionName))) {
+                                PartitionLocation location = subPartitionSpec.getLocation();
+                                sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                    .add(location.getPhyTableName());
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!found && partitionSpec.getName().equalsIgnoreCase(oldPartitionName)) {
+                        if (partitionSpec.isLogical()) {
+                            for (PartitionSpec subPart : partitionSpec.getSubPartitions()) {
+                                PartitionLocation location = subPart.getLocation();
+                                sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                    .add(location.getPhyTableName());
+                            }
+                        } else {
+                            PartitionLocation location = partitionSpec.getLocation();
+                            sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                .add(location.getPhyTableName());
+                        }
+                        found = true;
+                    }
+                    if (found && !(subPartBy != null && subPartBy.isUseSubPartTemplate())) {
                         break;
                     }
                 }
             }
-            assert num == preparedData.getOldPartitionNames().size();
         }
         return sourcePhyTables;
     }
@@ -103,27 +135,27 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
         return targetPhyTables;
     }
 
-    public List<Pair<String, String>> getOrderedTargetTableLocations() {
+    public Map<String, Pair<String, String>> getOrderedTargetTableLocations() {
         return orderedTargetTableLocations;
     }
 
     @Override
     protected void buildNewTableTopology(String schemaName, String tableName) {
         tableTopology = new HashMap<>();
-        List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getGroupDetailInfoExRecords();
+        List<PartitionGroupRecord> invisiblePartitionGroups = preparedData.getInvisiblePartitionGroups();
         int i = 0;
         for (String newPhyTableName : preparedData.getNewPhyTables()) {
-            GroupDetailInfoExRecord groupDetailInfoExRecord = groupDetailInfoExRecords.get(i++);
+            PartitionGroupRecord partitionGroupRecord = invisiblePartitionGroups.get(i++);
+            //TODO need review by taokun
+            String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.getPhy_db());
             List<String> phyTables = new ArrayList<>();
             phyTables.add(newPhyTableName);
-            tableTopology.computeIfAbsent(groupDetailInfoExRecord.getGroupName(), o -> new ArrayList<>())
+            tableTopology.computeIfAbsent(groupName, o -> new ArrayList<>())
                 .add(phyTables);
-            targetPhyTables.computeIfAbsent(groupDetailInfoExRecord.getGroupName(), o -> new HashSet<>())
+            targetPhyTables.computeIfAbsent(groupName, o -> new HashSet<>())
                 .add(newPhyTableName);
-            orderedTargetTableLocations.add(new Pair<>(newPhyTableName, groupDetailInfoExRecord.getGroupName()));
-            if (i >= groupDetailInfoExRecords.size()) {
-                i = 0;
-            }
+            orderedTargetTableLocations.put(partitionGroupRecord.partition_name, Pair.of(newPhyTableName, groupName));
+            buildAlterPartitionReferenceTableTopology(schemaName, tableName);
         }
     }
 
@@ -135,5 +167,46 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
                 preparedData.getSchemaName());
         sqlTemplate = AlterTableGroupUtils.getSqlTemplate(preparedData.getSchemaName(), preparedData.getTableName(),
             createTableStr, executionContext);
+    }
+
+    public void buildAlterPartitionReferenceTableTopology(String schemaName, String tableName) {
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        for (Map.Entry<String, ForeignKeyData> fk : tableMeta.getForeignKeys().entrySet()) {
+            ForeignKeyData data = fk.getValue();
+            if (!data.isPushDown()) {
+                continue;
+            }
+            final PartitionInfo refPartInfo =
+                OptimizerContext.getContext(data.refSchema).getPartitionInfoManager()
+                    .getPartitionInfo(data.refTableName);
+            final Map<String, List<List<String>>> refTopo =
+                PartitionInfoUtil.buildTargetTablesFromPartitionInfo(refPartInfo);
+
+            // push down must be single or broadcast, so only one db
+            Map.Entry<String, List<List<String>>> refTable = new ArrayList<>(refTopo.entrySet()).get(0);
+            Map.Entry<String, List<List<String>>> table = new ArrayList<>(tableTopology.entrySet()).get(0);
+            final List<List<String>> part = refTopo.remove(refTable.getKey());
+            refTopo.put(table.getKey(), part);
+
+            if (refPartInfo.isBroadcastTable()) {
+                final String phyTable =
+                    refTopo.values().stream().map(l -> l.get(0).get(0)).findFirst().orElse(null);
+                assert phyTable != null;
+                for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
+                    for (List<String> l : entry.getValue()) {
+                        l.add(phyTable);
+                    }
+                }
+            } else {
+                for (Map.Entry<String, List<List<String>>> entry : refTopo.entrySet()) {
+                    final List<List<String>> partList = tableTopology.get(entry.getKey());
+                    assert partList != null;
+                    assert partList.size() == entry.getValue().size();
+                    for (int i = 0; i < entry.getValue().size(); ++i) {
+                        partList.get(i).addAll(entry.getValue().get(i));
+                    }
+                }
+            }
+        }
     }
 }

@@ -239,7 +239,8 @@ public class PlanFragmenter {
                 parentProperties.setSingleTonNode();
                 return other;
             } else if (other instanceof BaseTableOperation) {
-                LogicalView logicalView = ExecUtils.convertToLogicalView((BaseTableOperation) other);
+                LogicalView logicalView = ExecUtils.convertToLogicalView((BaseTableOperation) other,
+                    session.getClientContext());
                 logicalView.setRelatedId(other.getRelatedId());
                 RelNode newParent = parent;
                 if (parent != null) {

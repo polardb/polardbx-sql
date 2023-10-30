@@ -24,7 +24,6 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 

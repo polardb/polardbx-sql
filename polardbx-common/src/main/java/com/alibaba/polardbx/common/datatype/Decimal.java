@@ -59,7 +59,6 @@ public class Decimal extends Number implements Comparable<Decimal> {
         this.decimalStructure = decimalStructure;
     }
 
-    // todo optimize the rescale.
     public Decimal(long longVal, int scale) {
         this(new DecimalStructure());
         // parse long & set scale.

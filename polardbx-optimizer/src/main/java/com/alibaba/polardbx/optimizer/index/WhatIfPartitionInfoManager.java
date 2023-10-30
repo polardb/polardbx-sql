@@ -18,7 +18,7 @@ package com.alibaba.polardbx.optimizer.index;
 
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import org.apache.commons.lang.StringUtils;
 
 /**

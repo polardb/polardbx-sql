@@ -16,7 +16,15 @@
 
 package com.alibaba.polardbx.server;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.StatementHandler;
 import com.alibaba.polardbx.net.packet.FieldPacket;
@@ -30,33 +38,29 @@ import com.alibaba.polardbx.net.packet.StmtPrepareReponseHeaderPacket;
 import com.alibaba.polardbx.net.packet.StmtResetPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
 import com.alibaba.polardbx.net.util.MySQLMessage;
-import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
-import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
-import com.alibaba.polardbx.optimizer.planmanager.Statement;
-import com.alibaba.polardbx.server.executor.utils.MysqlDefs;
-import com.alibaba.polardbx.server.handler.SetHandler;
-import com.alibaba.polardbx.server.parser.ServerParse;
-import com.alibaba.polardbx.server.util.LogUtils;
-import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.jdbc.ParameterMethod;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.parse.bean.FieldMetaData;
 import com.alibaba.polardbx.optimizer.parse.bean.PreStmtMetaData;
+import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
+import com.alibaba.polardbx.optimizer.planmanager.Statement;
+import com.alibaba.polardbx.server.executor.utils.MysqlDefs;
+import com.alibaba.polardbx.server.handler.SetHandler;
+import com.alibaba.polardbx.server.parser.ServerParse;
+import com.alibaba.polardbx.server.util.LogUtils;
+import com.alibaba.polardbx.server.util.PrepareUtils;
+import com.alibaba.polardbx.server.util.StringUtil;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.locks.Lock;
 
 /**
@@ -131,9 +135,13 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             }
             checkMultiQuery(sql);
 
-            int queryType = ServerParse.parse(sql) & 0xff;
+            int rs = ServerParse.parse(sql);
+            int queryType = rs & 0xff;
             if (prepareTCL(queryType, stmtId, stmtIdStr)) {
                 return;
+            }
+            if (!PrepareUtils.checkQueryType(sql, rs)) {
+                throw new SQLException("Prepare does not support sql: " + sql);
             }
 
             Statement stmt = new Statement(stmtIdStr, sql);
@@ -176,25 +184,20 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 c.getCharset(), c);
 
             // send back response to client
-            packet.write(PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate()));
             c.savePrepareStmtCache(preparedStmtCache, true);
+
+            packet.write(PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate()));
         } catch (SQLException e) {
             logger.error(e.getMessage());
-            c.writeErrMessage(e.getErrorCode(), e.getMessage());
+            c.writeErrMessage(e.getErrorCode(), null, e.getMessage());
             affectedRow = -1;
-        } catch (TddlNestableRuntimeException t) {
+        } catch (TddlRuntimeException t) {
             logger.error(t.getMessage());
-            c.writeErrMessage(t.getErrorCode(), t.getMessage());
-            affectedRow = -1;
-        } catch (Exception t) {
-            logger.error(t);
-            c.writeErrMessage(100, t.getMessage());
+            c.writeErrMessage(t.getErrorCodeType(), t.getMessage());
             affectedRow = -1;
         } finally {
+            // prepare 请求不计入QPS
             long endTimeNano = System.nanoTime();
-            c.getStatistics().timeCost += (endTimeNano - lastActiveTime) / 1000;
-            c.getStatistics().request++;
-            MatrixStatistics.requestAllDB.incrementAndGet();
             LogUtils.recordPreparedSql(c, stmtIdStr, sql, endTimeNano, affectedRow);
         }
     }
@@ -211,7 +214,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             logger.warn(e);
         }
         if (splitted == null || splitted.size() != 1) {
-            throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR);
+            throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR.getCode());
         }
     }
 
@@ -232,6 +235,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         ServerConnection c = this.source;
         Lock exeLock = null;
         c.genTraceId();
+        c.resetTrxLastActiveTime();
         try {
             StmtExecutePacket packet = new StmtExecutePacket();
             packet.charset = CharsetUtil.getJavaCharset(c.getCharset());
@@ -243,7 +247,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
             PreparedStmtCache preparedStmtCache = c.getSmForPrepare().find(stmtId);
             if (preparedStmtCache == null) {
-                // jdbc loadbalance 模式下可能导致prepare-execute不在同一CN节点上
+                // prepare-execute 不在同一CN节点上
                 throw new SQLException("Prepared statement has been freed");
             }
             if (executePreparedTCL(preparedStmtCache)) {
@@ -270,11 +274,12 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 c.execute(stmt.getRawSql(), preparedStmtCache, params, packet.stmt_id, packet.flags);
             }
         } catch (SQLException e) {
-            c.writeErrMessage(e.getErrorCode(), e.getMessage());
+            c.writeErrMessage(e.getErrorCode(), null, e.getMessage());
         } finally {
             if (exeLock != null) {
                 exeLock.unlock();
             }
+            c.setTrxLastActiveTime();
         }
     }
 
@@ -346,10 +351,6 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             c.removePreparedCache(stmt_id);
             // Close and remove the cached result set when statement is closed.
             c.closeCacheResultSet(packet.stmt_id);
-            if (null != c.getTddlConnection() && null != c.getTddlConnection().getExecutionContext()) {
-                c.getTddlConnection().getExecutionContext().setCursorFetchMode(false);
-            }
-            c.setCursorFetchMode(false);
             // no response for STMT_CLOSE
         } catch (Exception e) {
             c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, e.getMessage());
@@ -463,8 +464,14 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             }
         }
 
-        for (int i = 0; i < prepareParamCount; i++) {
-            int paramIndex = i + 1;
+        for (int i = 0; i < stmt.getParamArray().size(); i++) {
+            int paramIndex;
+            if (prepareParamCount > 0) {
+                paramIndex = i % prepareParamCount + 1;
+            } else {
+                paramIndex = i + 1;
+            }
+
             /**
              * use exact execute first packet data type to extract incoming data and always
              * use setObject1 to set java object to param context, then the optimizer has
@@ -531,8 +538,8 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         // prepare header before write to buffer
         resp.head = new StmtPrepareReponseHeaderPacket();
         resp.head.statement_id = stmt_id;
-        resp.head.num_columns = (short) fieldMetaDataList.size();
-        resp.head.num_params = (short) paramCounts;
+        resp.head.num_columns = fieldMetaDataList.size();
+        resp.head.num_params = paramCounts;
 
         // common
         int charsetIndex = 63;

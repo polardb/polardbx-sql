@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// TODO:
 public class FilesAccessor extends AbstractAccessor {
     private static final Logger LOGGER = LoggerFactory.getLogger("oss");
 
@@ -64,7 +63,7 @@ public class FilesAccessor extends AbstractAccessor {
 
     private static final String CHANGE_FILE_META_SIZE_ROW_HASH_LIFE =
         "update " + FILES_TABLE
-            + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ?, `file_hash` = ?, `life_cycle`= "
+            + " set `extent_size`= ?, `table_rows` = ?, `file_hash` = ?, `file_meta` = ? , `life_cycle`= "
             + OSSMetaLifeCycle.READY.ordinal()
             + "  where `file_id` = ?";
 
@@ -224,10 +223,10 @@ public class FilesAccessor extends AbstractAccessor {
     public void validFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount, Long orcHash) {
         Map<Integer, ParameterContext> params = new HashMap<>(5);
         int index = 0;
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setBytes, fileMeta);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, fileSize);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, rowCount);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, orcHash);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setBytes, fileMeta);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, primaryKey);
         try {
             DdlMetaLogUtil.logSql(CHANGE_FILE_META_SIZE_ROW_HASH_LIFE, params);

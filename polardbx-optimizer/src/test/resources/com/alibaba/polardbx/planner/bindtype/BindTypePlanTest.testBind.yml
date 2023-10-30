@@ -41,7 +41,7 @@
   plan: |
     select *
     from `t1` as `s`
-    where (`s`.`name` = convert(? using 'utf8'))
+    where (`s`.`name` = convert(? using 'utf8')  collate 'utf8_general_ci')
 
 -
   sql: |
@@ -50,7 +50,7 @@
   plan: |
     select *
     from `t2` as `s`
-    where (`s`.`name` = convert(? using 'gbk'))
+    where (`s`.`name` = convert(? using 'gbk')  collate 'gbk_chinese_ci')
 
 -
   sql: |
@@ -59,7 +59,7 @@
   plan: |
     select *
     from `t3` as `s`
-    where (`s`.`name` = convert(? using 'latin1'))
+    where (`s`.`name` = convert(? using 'latin1')  collate 'latin1_swedish_ci')
 
 -
   sql: |
@@ -68,7 +68,7 @@
   plan: |
     select *
     from `t5` as `s`
-    where (`s`.`name` = convert(? using 'gbk'))
+    where (`s`.`name` = convert(? using 'gbk')  collate 'gbk_chinese_ci')
 
 -
   sql: |
@@ -78,7 +78,7 @@
     select *
     from `t5` as `s`,
     `t1` on (`s`.`id` = `t1`.`id`)
-    where (`s`.`name` = convert(? using 'gbk'))
+    where (`s`.`name` = convert(? using 'gbk')  collate 'gbk_chinese_ci')
 
 -
   sql: |
@@ -88,7 +88,7 @@
     select *
     from `t6` as `s`,
     `t1` on (`s`.`id` = `t1`.`id`)
-    where (`s`.`name` = convert(? using 'utf16le'))
+    where (`s`.`name` = convert(? using 'utf16le')  collate 'utf16le_general_ci')
 
 -
   sql: |
@@ -106,7 +106,7 @@
   plan: |
     insert
     into `t6`
-    values(?, convert(? using 'utf16le'), ?)
+    values(?, convert(? using 'utf16le')  collate 'utf16le_general_ci', ?)
 
 -
   sql: |
@@ -122,7 +122,7 @@
   plan: |
     insert
     into `t6` (`id`, `name`)
-    values(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le'))
+    values(?, convert(? using 'utf16le')  collate 'utf16le_general_ci'),(?, convert(? using 'utf16le')  collate 'utf16le_general_ci'),(?, convert(? using 'utf16le')  collate 'utf16le_general_ci')
 
 -
   sql: |
@@ -131,7 +131,7 @@
   plan: |
     replace
     into `t6` (`id`, `name`)
-    values(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le')),(?, convert(? using 'utf16le'))
+    values(?, convert(? using 'utf16le')  collate 'utf16le_general_ci'),(?, convert(? using 'utf16le')  collate 'utf16le_general_ci'),(?, convert(? using 'utf16le')  collate 'utf16le_general_ci')
 
 -
   sql: |
@@ -146,7 +146,7 @@
     update t6 set name = x'12E1' where id = x'E11E';
 
   plan: |
-    update `t6` set `name` = convert(? using 'utf16le')
+    update `t6` set `name` = convert(? using 'utf16le')  collate 'utf16le_general_ci'
     where (`id` = ?)
 
 -
@@ -158,7 +158,7 @@
     into `t6`
     (select *
     from `t5`
-    where (`t5`.`name` = convert(? using 'gbk')))
+    where (`t5`.`name` = convert(? using 'gbk')  collate 'gbk_chinese_ci'))
 
 -
   sql: |
@@ -201,7 +201,7 @@
   plan: |
     select *
     from `t5`
-    where (`name` in (convert(? using 'gbk'), convert(? using 'gbk'), convert(? using 'gbk')))
+    where (`name` in (convert(? using 'gbk')  collate 'gbk_chinese_ci', convert(? using 'gbk')  collate 'gbk_chinese_ci', convert(? using 'gbk')  collate 'gbk_chinese_ci'))
 -
   sql: |
     select * from t5 where id in (x'5E', x'6E', x'8E');
@@ -216,7 +216,7 @@
 #    select 0xE58891E7BD9AE6B688E781ADE588B6E5BAA6;
 #
 #  plan: |
-#    select convert(? using 'utf8') as `0xe58891e7bd9ae6b688e781ade588b6e5baa6`
+#    select convert(? using 'utf8')  collate 'utf8_general_ci' as `0xe58891e7bd9ae6b688e781ade588b6e5baa6`
 
 -
   sql: |
@@ -232,7 +232,7 @@
   plan: |
     select *
     from `t6` as `s`
-    where (`s`.`name` <> convert(? using 'utf16le'))
+    where (`s`.`name` <> convert(? using 'utf16le')  collate 'utf16le_general_ci')
 
 -
   sql: |
@@ -241,7 +241,7 @@
   plan: |
     select *
     from `t6` as `s`
-    where (`s`.`name` between (convert(? using 'utf16le')) and ?)
+    where (`s`.`name` between (convert(? using 'utf16le')  collate 'utf16le_general_ci') and ?)
 
 -
   sql: |
@@ -256,7 +256,7 @@
     update optest.t6 set name = x'12E1' where id = x'E11E';
 
   plan: |
-    update `optest`.`t6` set `name` = convert(? using 'utf16le')
+    update `optest`.`t6` set `name` = convert(? using 'utf16le')  collate 'utf16le_general_ci'
     where (`id` = ?)
 
 -
@@ -264,5 +264,5 @@
     update `optest`.`t6` set name = x'12E1' where id = x'E11E';
 
   plan: |
-    update `optest`.`t6` set `name` = convert(? using 'utf16le')
+    update `optest`.`t6` set `name` = convert(? using 'utf16le')  collate 'utf16le_general_ci'
     where (`id` = ?)

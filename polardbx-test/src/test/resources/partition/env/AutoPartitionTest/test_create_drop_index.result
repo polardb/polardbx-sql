@@ -14,8 +14,8 @@ t_order,CREATE TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	INDEX `i_0` (`seller_id`),
-	UNIQUE INDEX `i_1` (`order_id`)
+	UNIQUE INDEX `order_id` (`order_id`),
+	INDEX `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SHOW FULL CREATE TABLE t_order;
 Table,Create Table
@@ -24,13 +24,17 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
-	LOCAL KEY `_local_i_0` (`seller_id`)
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 ALTER TABLE `t_order`
 	ADD UNIQUE CLUSTERED INDEX `ucgsi` (`order_id`);
@@ -47,8 +51,8 @@ t_order,CREATE TABLE `t_order` (
 	PRIMARY KEY (`x`),
 	CLUSTERED INDEX `cgsi` (`seller_id`),
 	INDEX `gsi` (`seller_id`),
-	INDEX `i_0` (`seller_id`),
-	UNIQUE INDEX `i_1` (`order_id`),
+	UNIQUE INDEX `order_id` (`order_id`),
+	INDEX `seller_id` (`seller_id`),
 	UNIQUE CLUSTERED INDEX `ucgsi` (`order_id`),
 	UNIQUE INDEX `ugsi` (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
@@ -59,26 +63,38 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	CLUSTERED INDEX /* cgsi_$ */ `cgsi` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	GLOBAL INDEX /* gsi_$ */ `gsi` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE CLUSTERED INDEX /* ucgsi_$ */ `ucgsi` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* ugsi_$ */ `ugsi` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
+	CLUSTERED INDEX /* cgsi_$ */ `cgsi` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* gsi_$ */ `gsi` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* ucgsi_$ */ `ucgsi` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* ugsi_$ */ `ugsi` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
 	UNIQUE LOCAL KEY `_local_ucgsi` (`order_id`),
 	UNIQUE LOCAL KEY `_local_ugsi` (`order_id`),
-	LOCAL KEY `_local_i_0` (`seller_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`),
 	LOCAL KEY `_local_cgsi` (`seller_id`),
 	LOCAL KEY `_local_gsi` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 ALTER TABLE `t_order`
-	DROP INDEX `i_0`;
+	DROP INDEX `seller_id`;
 ALTER TABLE `t_order`
-	DROP INDEX `i_1`;
+	DROP INDEX `order_id`;
 DROP INDEX `ucgsi` ON `t_order`;
 DROP INDEX `cgsi` ON `t_order`;
 ALTER TABLE `t_order`
@@ -102,6 +118,6 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	PRIMARY KEY (`x`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 DROP TABLE IF EXISTS `t_order`;

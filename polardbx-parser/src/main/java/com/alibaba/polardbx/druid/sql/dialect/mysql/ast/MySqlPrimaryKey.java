@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlPrimaryKey extends MySqlKey implements SQLPrimaryKey {
 
-    public MySqlPrimaryKey(){
+    public MySqlPrimaryKey() {
         dbType = DbType.mysql;
     }
 

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
@@ -31,6 +33,16 @@ public class LogicalChangeConsensusLeader extends BaseDdlOperation {
     public LogicalChangeConsensusLeader(RelOptCluster cluster, RelTraitSet traitSet, SqlDdl sqlDdl,
                                         RelDataType rowType) {
         super(cluster, traitSet, sqlDdl, rowType);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public static LogicalChangeConsensusLeader create(ChangeConsensusRole input) {

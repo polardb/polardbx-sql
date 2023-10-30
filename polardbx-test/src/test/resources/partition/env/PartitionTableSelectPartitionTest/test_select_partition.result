@@ -59,25 +59,3 @@ select a,c from tbl_with_gsi1 partition(p4) force index(idxc) where c>0 order by
 a,c
 33,300
 44,300
-# partition selection for flashbach query
-/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 partition(p1) as of timestamp '2022-01-01 00:00:00';
-Logical ExecutionPlan
-Gather(concurrent=true)
-  LogicalView(tables="tbl_with_gsi1[p1]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS OF TIMESTAMP ? AS `tbl_with_gsi1`")
-HitCache:false
-Source:null
-TemplateId: NULL
-/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 tt partition(p1) as of timestamp '2022-01-01 00:00:00';
-Logical ExecutionPlan
-Gather(concurrent=true)
-  LogicalView(tables="tbl_with_gsi1[p1]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS OF TIMESTAMP ? AS `tbl_with_gsi1`")
-HitCache:false
-Source:null
-TemplateId: NULL
-/*+TDDL:plancache=false*/ explain select * from tbl_with_gsi1 as of timestamp '2022-01-01 00:00:00' as tt partition(p1);
-Logical ExecutionPlan
-Gather(concurrent=true)
-  LogicalView(tables="tbl_with_gsi1[p1]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS OF TIMESTAMP ? AS `tbl_with_gsi1`")
-HitCache:false
-Source:null
-TemplateId: NULL

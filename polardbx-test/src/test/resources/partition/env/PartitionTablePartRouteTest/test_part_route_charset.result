@@ -250,8 +250,10 @@ WHERE c = 'A'
 	OR c = 'b'
 	OR c = 'bB';
 Logical ExecutionPlan
-Gather(concurrent=true)
-  LogicalView(tables="lc_tbl3[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c` FROM `lc_tbl3` AS `lc_tbl3` WHERE ((((((((`c` = ?) OR (`c` = ?)) OR (`c` = ?)) OR (`c` = ?)) OR (`c` = ?)) OR (`c` = ?)) OR (`c` = ?)) OR (`c` = ?))")
+MaterializedSemiJoin(condition="c = ROW_VALUE", type="semi")
+  Gather(concurrent=true)
+    LogicalView(tables="lc_tbl3[p0,p2,p1,p3]", shardCount=4, sql="SELECT `c` FROM `lc_tbl3` AS `lc_tbl3` WHERE (`c` IN (...))")
+  DynamicValues(tuples=[{ ?0 }, { ?1 }, { ?2 }, { ?3 }, { ?4 }, { ?5 }, { ?6 }, { ?7 }])
 SELECT part_route('', 'lc_tbl3', 'A');
 part_route('', 'lc_tbl3', 'A')
 p0

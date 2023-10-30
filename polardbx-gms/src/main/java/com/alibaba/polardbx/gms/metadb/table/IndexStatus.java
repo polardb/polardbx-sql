@@ -101,6 +101,10 @@ public enum IndexStatus {
         return WRITABLE.contains(this);
     }
 
+    public boolean isBackfillStatus() {
+        return WRITE_ONLY == this;
+    }
+
     public boolean isIndexTableCreated() {
         return INDEX_TABLE_CREATED.contains(this);
     }

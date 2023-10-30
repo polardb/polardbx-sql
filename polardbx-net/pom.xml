@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -57,6 +57,11 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>${jsr305.version}</version>
+        </dependency>
 
         <!-- for ssl private key parser -->
         <dependency>
@@ -73,6 +78,12 @@
             <groupId>com.alibaba</groupId>
             <artifactId>fastjson</artifactId>
             <version>${fastjson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 </project>

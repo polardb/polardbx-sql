@@ -36,23 +36,23 @@ import java.util.List;
 
 public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplaceable {
 
-    protected SQLTableSource      left;
-    protected JoinType            joinType;
-    protected SQLTableSource      right;
-    protected SQLExpr             condition;
+    protected SQLTableSource left;
+    protected JoinType joinType;
+    protected SQLTableSource right;
+    protected SQLExpr condition;
     protected final List<SQLExpr> using = new ArrayList<SQLExpr>();
-    protected boolean             natural = false;
-    protected UDJ                 udj; // for maxcompute
+    protected boolean natural = false;
+    protected UDJ udj; // for maxcompute
 
-    public SQLJoinTableSource(String alias){
+    public SQLJoinTableSource(String alias) {
         super(alias);
     }
 
-    public SQLJoinTableSource(){
+    public SQLJoinTableSource() {
 
     }
 
-    public SQLJoinTableSource(SQLTableSource left, JoinType joinType, SQLTableSource right, SQLExpr condition){
+    public SQLJoinTableSource(SQLTableSource left, JoinType joinType, SQLTableSource right, SQLExpr condition) {
         this.setLeft(left);
         this.setJoinType(joinType);
         this.setRight(right);
@@ -295,7 +295,7 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
         public final String name;
         public final String name_lcase;
 
-        JoinType(String name){
+        JoinType(String name) {
             this.name = name;
             this.name_lcase = name.toLowerCase();
         }
@@ -304,7 +304,6 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
             return joinType.name;
         }
     }
-
 
     public void cloneTo(SQLJoinTableSource x) {
         x.alias = alias;
@@ -319,7 +318,7 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
             x.setRight(right.clone());
         }
 
-        if(condition != null){
+        if (condition != null) {
             x.setCondition(condition.clone());
         }
 
@@ -380,12 +379,11 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
             rightJoin.setLeft(a);
             rightJoin.setRight(b);
 
-
             boolean on_ab_match = false;
             if (on_ab instanceof SQLBinaryOpExpr) {
                 SQLBinaryOpExpr on_ab_binaryOpExpr = (SQLBinaryOpExpr) on_ab;
                 if (on_ab_binaryOpExpr.getLeft() instanceof SQLPropertyExpr
-                        && on_ab_binaryOpExpr.getRight() instanceof SQLPropertyExpr) {
+                    && on_ab_binaryOpExpr.getRight() instanceof SQLPropertyExpr) {
                     String leftOwnerName = ((SQLPropertyExpr) on_ab_binaryOpExpr.getLeft()).getOwnernName();
                     String rightOwnerName = ((SQLPropertyExpr) on_ab_binaryOpExpr.getRight()).getOwnernName();
 
@@ -449,11 +447,11 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
                 SQLJoinTableSource join = (SQLJoinTableSource) tableSource;
 
                 if (join.right.equals(right)
-                        && this.condition != null && this.condition.equals(join.condition)
-                        && joinLeft.right.equals(join.left)
-                        && this.joinType == join.joinType
-                        && joinLeft.condition != null && joinLeft.condition.equals(condition)
-                        && joinLeft.joinType == joinType) {
+                    && this.condition != null && this.condition.equals(join.condition)
+                    && joinLeft.right.equals(join.left)
+                    && this.joinType == join.joinType
+                    && joinLeft.condition != null && joinLeft.condition.equals(condition)
+                    && joinLeft.joinType == joinType) {
                     return true;
                 }
             }
@@ -530,15 +528,14 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
         return findTableSourceWithColumn(hash, columnName, 0);
     }
 
-
     public SQLJoinTableSource findTableSourceWithColumn(SQLName a, SQLName b) {
         if (left.findTableSourceWithColumn(a) != null
-                && right.findTableSourceWithColumn(b) != null) {
+            && right.findTableSourceWithColumn(b) != null) {
             return this;
         }
 
         if (right.findTableSourceWithColumn(a) != null
-                && left.findTableSourceWithColumn(b) != null) {
+            && left.findTableSourceWithColumn(b) != null) {
             return this;
         }
 
@@ -573,7 +570,7 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
             return rightMatch;
         }
 
-        if(rightMatch == null) {
+        if (rightMatch == null) {
             return leftMatch;
         }
 
@@ -590,12 +587,12 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
         }
 
         if (left.containsAlias(alias_a)
-                && right.containsAlias(alias_b)) {
+            && right.containsAlias(alias_b)) {
             return true;
         }
 
         return right.containsAlias(alias_a)
-                && left.containsAlias(alias_b);
+            && left.containsAlias(alias_b);
     }
 
     public boolean conditionContainsTable(String alias) {
@@ -657,16 +654,30 @@ public class SQLJoinTableSource extends SQLTableSourceImpl implements SQLReplace
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLJoinTableSource that = (SQLJoinTableSource) o;
 
-        if (natural != that.natural) return false;
-        if (left != null ? !left.equals(that.left) : that.left != null) return false;
-        if (joinType != that.joinType) return false;
-        if (right != null ? !right.equals(that.right) : that.right != null) return false;
-        if (condition != null ? !condition.equals(that.condition) : that.condition != null) return false;
+        if (natural != that.natural) {
+            return false;
+        }
+        if (left != null ? !left.equals(that.left) : that.left != null) {
+            return false;
+        }
+        if (joinType != that.joinType) {
+            return false;
+        }
+        if (right != null ? !right.equals(that.right) : that.right != null) {
+            return false;
+        }
+        if (condition != null ? !condition.equals(that.condition) : that.condition != null) {
+            return false;
+        }
         return using.equals(that.using);
     }
 

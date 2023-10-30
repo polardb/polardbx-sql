@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSetLocalityPreparedData;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -110,23 +111,34 @@ public class AlterTableGroupSetLocalityJobFactory extends DdlJobFactory {
             new BackgroupRebalanceTask(preparedData.getSchemaName(), preparedData.getRebalanceSql());
         DdlTask tableGroupSyncTask =
             new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
-        if (!preparedData.getWithRebalance()) {
-            //case expand locality, change meta info only.
+
+        boolean needToGetCreateTableGroupLock =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ACQUIRE_CREATE_TABLE_GROUP_LOCK);
+        if (needToGetCreateTableGroupLock) {
             executableDdlJob.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                changeMetaTask,
-                tablesSyncTask,
-                tableGroupSyncTask
+                generateAlterTableGroupSetLocalityJob()
             ));
+            preparedData.setNeedToGetTableGroupLock(true);
         } else {
-            //case shrink or expire locality, call meta.
-            executableDdlJob.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                changeMetaTask,
-                tablesSyncTask,
-                tableGroupSyncTask,
-                rebalanceTask
-            ));
+            preparedData.setNeedToGetTableGroupLock(false);
+            if (!preparedData.getWithRebalance()) {
+                //case expand locality, change meta info only.
+                executableDdlJob.addSequentialTasks(Lists.newArrayList(
+                    validateTask,
+                    changeMetaTask,
+                    tablesSyncTask,
+                    tableGroupSyncTask
+                ));
+            } else {
+                //case shrink or expire locality, call meta.
+                executableDdlJob.addSequentialTasks(Lists.newArrayList(
+                    validateTask,
+                    changeMetaTask,
+                    tablesSyncTask,
+                    tableGroupSyncTask,
+                    rebalanceTask
+                ));
+            }
         }
         return executableDdlJob;
     }
@@ -139,18 +151,35 @@ public class AlterTableGroupSetLocalityJobFactory extends DdlJobFactory {
 
     @Override
     protected void excludeResources(Set<String> resources) {
-        resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
-        TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
-                .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
-            resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
+        if (preparedData.getNeedToGetTableGroupLock()) {
+            resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
+            TableGroupConfig tableGroupConfig =
+                OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+                    .getTableGroupConfigByName(preparedData.getTableGroupName());
+            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+                String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+                resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
+            }
         }
     }
 
     @Override
     protected void sharedResources(Set<String> resources) {
+    }
+
+    private SubJobTask generateAlterTableGroupSetLocalityJob() {
+        String sql = genSubJobSql();
+        SubJobTask subJobTask = new SubJobTask(preparedData.getSchemaName(), sql, null);
+        subJobTask.setParentAcquireResource(true);
+        return subJobTask;
+    }
+
+    private String genSubJobSql() {
+        List<String> params = Lists.newArrayList(
+            ConnectionParams.ACQUIRE_CREATE_TABLE_GROUP_LOCK.getName() + "=false"
+        );
+        String hint = String.format("/*+TDDL:CMD_EXTRA(%s)*/", StringUtils.join(params, ","));
+        return String.format(hint + preparedData.getSourceSql());
     }
 
 }

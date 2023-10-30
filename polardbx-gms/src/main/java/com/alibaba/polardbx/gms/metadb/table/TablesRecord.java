@@ -67,5 +67,4 @@ public class TablesRecord extends TablesInfoSchemaRecord {
     public void setLogicalColumnOrder() {
         flag |= FLAG_LOGICAL_COLUMN_ORDER;
     }
-
 }

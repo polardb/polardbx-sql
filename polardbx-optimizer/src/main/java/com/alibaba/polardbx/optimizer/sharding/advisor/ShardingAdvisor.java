@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.sharding.advisor;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -29,7 +26,6 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -44,10 +40,6 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
-import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
-import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.clearspring.analytics.util.Lists;
 import org.apache.calcite.rel.RelNode;
@@ -66,9 +58,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -215,8 +205,7 @@ public class ShardingAdvisor {
         if (executionPlan == null) {
             return null;
         }
-        if (!(executionPlan.getAst().getKind().belongsTo(SqlKind.QUERY) || executionPlan.getAst().getKind()
-            .belongsTo(SqlKind.DML))) {
+        if (!(executionPlan.getAst().getKind().belongsTo(SqlKind.QUERY))) {
             return null;
         }
         if (!suitableSql(executionPlan.getPlan(), schemaName)) {

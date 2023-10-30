@@ -39,12 +39,12 @@ public class ShowGitCommit {
     private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
+
     private static final Properties GIT_PROPERTIES = initGitProperties();
 
     private static Properties initGitProperties() {
         try {
-
             Properties pro = new Properties();
             InputStream in =
                 ShowGitCommit.class.getClassLoader().getResourceAsStream("META-INF/polardbx/git.properties");
@@ -54,7 +54,6 @@ public class ShowGitCommit {
         } catch (Exception ignore) {
             return new Properties();
         }
-
     }
 
     private static final String GIT_BRANCH = GIT_PROPERTIES.getProperty("git.branch", "master");
@@ -78,9 +77,6 @@ public class ShowGitCommit {
 
         fields[i] = PacketUtil.getField("BUILD_VERSION", Fields.FIELD_TYPE_VAR_STRING);
         fields[i].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
-
     }
 
     private static RowDataPacket getGitCommitData(String charset) {
@@ -92,7 +88,7 @@ public class ShowGitCommit {
         return gitInfoData;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -105,24 +101,28 @@ public class ShowGitCommit {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
-
-        byte packetId = eof.packetId;
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         RowDataPacket gitCommitInfo = getGitCommitData(c.getCharset());
 
-        gitCommitInfo.packetId = ++packetId;
+        gitCommitInfo.packetId = ++tmpPacketId;
         proxy = gitCommitInfo.write(proxy);
 
         /*proxy = GIT_COMMIT_INFO.write(proxy);
         GIT_COMMIT_INFO.packetId = ++packetId;*/
 
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 }

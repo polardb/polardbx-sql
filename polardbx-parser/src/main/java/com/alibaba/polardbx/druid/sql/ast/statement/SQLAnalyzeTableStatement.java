@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -25,15 +26,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLAnalyzeTableStatement extends SQLStatementImpl {
-    protected final List<SQLExprTableSource> tableSources    = new ArrayList<SQLExprTableSource>();
+    protected final List<SQLExprTableSource> tableSources = new ArrayList<SQLExprTableSource>();
 
-    private SQLPartitionRef     partition;
-    private boolean             forColums = false;
-    private boolean             cacheMetadata;
-    private boolean             noscan;
-    private boolean             computeStatistics;
+    private SQLPartitionRef partition;
+    private boolean forColums = false;
+    private boolean cacheMetadata;
+    private boolean noscan;
+    private boolean computeStatistics;
 
-    private SQLIdentifierExpr   adbSchema; // for ADB
+    private SQLIdentifierExpr adbSchema; // for ADB
     private List<SQLIdentifierExpr> adbColumns = new ArrayList<SQLIdentifierExpr>(); // for ADB
     private List<SQLIdentifierExpr> adbColumnsGroup = new ArrayList<SQLIdentifierExpr>(); // for ADB
     private SQLExpr adbWhere; // for ADB
@@ -174,5 +175,10 @@ public class SQLAnalyzeTableStatement extends SQLStatementImpl {
 
     public void setComputeStatistics(boolean computeStatistics) {
         this.computeStatistics = computeStatistics;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

@@ -1,0 +1,94 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop tablegroup if exists sp_tg;
+create tablegroup if not exists sp_tg;
+
+  ## rc_lc_ntp
+create table if not exists rc_lc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (1000, 2000)),
+subpartition p1sp2 values in ( (2000, 2000))
+),
+partition p2 values less than ( maxvalue, maxvalue ) (
+subpartition p2sp1 values in ( (1000, 2000)),
+subpartition p2sp2 values in ( (2000, 2000)),
+subpartition p2sp3 values in ( (3000, 2000))
+)
+)
+tablegroup=sp_tg;
+
+  ## rc_lc_ntp
+create table if not exists rc_lc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (1000, 2000)),
+subpartition p1sp2 values in ( (2000, 2000))
+),
+partition p2 values less than ( maxvalue, maxvalue ) (
+subpartition p2sp1 values in ( (1000, 2000)),
+subpartition p2sp2 values in ( (2000, 2000)),
+subpartition p2sp3 values in ( (3000, 2000))
+)
+)
+tablegroup=sp_tg;
+
+show full create table rc_lc_ntp;
+show full create table rc_lc_ntp2;
+
+insert into rc_lc_ntp (a,b,c,d,e) values (1000, 2000, '1999-01-01', 'ab', 'row1');
+insert into rc_lc_ntp (a,b,c,d,e) values (2000, 2000, '2020-01-01', 'a', 'row2');
+insert into rc_lc_ntp (a,b,c,d,e) values (1000, 2000, '2021-01-01', 'ab', 'row3');
+insert into rc_lc_ntp (a,b,c,d,e) values (2000, 2000, '2022-01-01', 'ab', 'row4');
+insert into rc_lc_ntp (a,b,c,d,e) values (3000, 2000, '2023-01-01', 'ab', 'row5');
+
+insert into rc_lc_ntp2 (a,b,c,d,e) values (1000, 2000, '1999-01-01', 'ab', 'row1');
+insert into rc_lc_ntp2 (a,b,c,d,e) values (2000, 2000, '2020-01-01', 'a', 'row2');
+insert into rc_lc_ntp2 (a,b,c,d,e) values (1000, 2000, '2021-01-01', 'ab', 'row3');
+insert into rc_lc_ntp2 (a,b,c,d,e) values (2000, 2000, '2022-01-01', 'ab', 'row4');
+insert into rc_lc_ntp2 (a,b,c,d,e) values (3000, 2000, '2023-01-01', 'ab', 'row5');
+
+
+  ## modify sb, add val, tg
+alter tablegroup sp_tg modify subpartition p2sp3 add values ( (2100, 3100), (2200, 3200) );
+
+  ## modify sb, drop val, tg
+alter tablegroup sp_tg modify subpartition p2sp3 drop values ( (2100, 3100), (2200, 3200) );
+
+
+  ## modify sb, add val
+alter table rc_lc_ntp modify subpartition p2sp1 add values ( (2000, 3000));
+
+  ## modify sb, drop val
+alter table rc_lc_ntp modify subpartition p2sp1 drop values ( (2000, 3000));
+
+  ## modify sb, add vals
+alter table rc_lc_ntp modify subpartition (p2sp1 add values ( (2000, 3002), (2000, 3003), (2000, 3004) ));
+
+  ## modify sb, drop vals
+alter table rc_lc_ntp modify subpartition p2sp1 drop values ( (2000, 3002));
+
+  ## modify sb, drop vals
+alter table rc_lc_ntp modify subpartition p2sp1 drop values ( (2000, 3003), (2000, 3004));
+
+  ## set tablegroup
+alter table rc_lc_ntp set tablegroup=sp_tg force;
+
+show full create table rc_lc_ntp;
+show full create table rc_lc_ntp2;

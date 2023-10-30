@@ -62,8 +62,8 @@ public class StringTimeParser extends MySQLTimeParserBase {
             .toArray(new byte[][] {});
 
     private static final byte[][] MONTHS = Arrays.stream(new String[] {
-        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
-        "December"})
+            "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+            "December"})
         .map(String::getBytes)
         .collect(Collectors.toList())
         .toArray(new byte[][] {});
@@ -1238,7 +1238,9 @@ public class StringTimeParser extends MySQLTimeParserBase {
 
             int alphaPos = 0, matchPos = 0;
             for (alphaPos = startPos;
-                 alphaPos < alphaEnd && toAlphaUpper(timestampAsBytes[alphaPos]) == toAlphaUpper(word[matchPos]);
+                 alphaPos < alphaEnd
+                     && matchPos < word.length
+                     && toAlphaUpper(timestampAsBytes[alphaPos]) == toAlphaUpper(word[matchPos]);
                  alphaPos++, matchPos++) {
             }
             if (alphaPos == alphaEnd) {

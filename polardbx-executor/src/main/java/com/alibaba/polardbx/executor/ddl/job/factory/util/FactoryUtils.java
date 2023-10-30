@@ -16,16 +16,21 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.util;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class FactoryUtils {
@@ -113,5 +118,20 @@ public class FactoryUtils {
             return tableGroupConfig.getTableGroupRecord().getTg_name();
         }
         return null;
+    }
+
+    public static List<DdlTask> getFkTableSyncTasks(String schemaName, String logicalTableName) {
+        List<DdlTask> taskList = new ArrayList<DdlTask>();
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+        Map<String, ForeignKeyData> foreignKeys = tableMeta.getForeignKeys();
+        for (Map.Entry<String, ForeignKeyData> e : foreignKeys.entrySet()) {
+            taskList.add(new TableSyncTask(e.getValue().refSchema, e.getValue().refTableName));
+        }
+        Map<String, ForeignKeyData> refForeignKeys = tableMeta.getReferencedForeignKeys();
+        for (Map.Entry<String, ForeignKeyData> e : refForeignKeys.entrySet()) {
+            taskList.add(new TableSyncTask(e.getValue().schema, e.getValue().tableName));
+        }
+        return taskList;
     }
 }

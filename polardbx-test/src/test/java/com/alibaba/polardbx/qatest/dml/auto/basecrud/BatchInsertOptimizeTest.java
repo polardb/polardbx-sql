@@ -46,6 +46,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertWithMessage;
 
+
 public class BatchInsertOptimizeTest extends AutoCrudBasedLockTestCase {
 
     private static int INSERT_NUM = 5000;

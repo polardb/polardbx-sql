@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.config;
 
 import com.alibaba.fastjson.parser.ParserConfig;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.InstanceRole;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
@@ -42,7 +43,6 @@ public class ConfigDataMode {
 
     // Default isolation level be set in `ServerLoader.configSystem`
     private static int txIsolation;
-
     private static String cluster;
 
     static {
@@ -132,6 +132,33 @@ public class ConfigDataMode {
         }
     }
 
+    public enum LearnerMode {
+        ONLY_READ("ONLY_READ"),
+        ALLOW_INIT_DML("ALLOW_INIT_DML"),
+        ALLOW_USE_DML("ALLOW_USE_DML");
+
+        private String name;
+
+        LearnerMode(String name) {
+            this.name = name;
+        }
+
+        public static LearnerMode nameOf(String m) {
+            for (LearnerMode mode : LearnerMode.values()) {
+                if (StringUtils.equalsIgnoreCase(mode.name(), m)) {
+                    return mode;
+                }
+            }
+
+            return null;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+    }
+
     public static Mode getMode() {
         return mode;
     }
@@ -172,11 +199,20 @@ public class ConfigDataMode {
     // ========= The instance role of Server =========
     // Check master for all DB type
     public static boolean isMasterMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER;
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
+            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+                DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_INIT_DML) > 0);
     }
 
     public static boolean isSlaveMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.LEARNER;
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE && (
+            DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_USE_DML) < 0);
+    }
+
+    public static boolean needInitMasterModeResource() {
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
+            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+                DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ONLY_READ) > 0);
     }
 
     public static long getRefreshConfigTimestamp() {

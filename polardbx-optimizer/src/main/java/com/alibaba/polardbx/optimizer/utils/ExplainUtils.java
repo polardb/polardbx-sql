@@ -25,9 +25,11 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.Util;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -271,5 +273,11 @@ public class ExplainUtils {
         }
 
         return result.toString();
+    }
+
+    public static String getTimeStamp(Date date) {
+        SimpleDateFormat sdfDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");//dd/MM/yyyy
+        String strDate = sdfDate.format(date);
+        return strDate;
     }
 }

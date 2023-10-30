@@ -16,45 +16,14 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.oss;
 
-import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.executor.ddl.job.builder.DropPartitionTableBuilder;
-import com.alibaba.polardbx.executor.ddl.job.builder.DropTableBuilder;
-import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.DropOssFilesTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileRemoveTsTask;
-import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
-import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 
-import java.sql.Connection;
-import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
-
-import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 
 public class AlterTableAsOfTimeStampJobFactory extends DdlJobFactory {
     private String schemaName;

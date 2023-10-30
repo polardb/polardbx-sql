@@ -121,7 +121,8 @@ public class DdlEngineAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEMA_NAME = DELETE_BASE + WHERE_SCHEMA;
 
-    private static final String SELECT_ARCHIVE_SPECIFIC = SELECT_FULL + " from " + DDL_ENGINE_TABLE_ARCHIVE + WHERE_JOB_ID;
+    private static final String SELECT_ARCHIVE_SPECIFIC =
+        SELECT_FULL + " from " + DDL_ENGINE_TABLE_ARCHIVE + WHERE_JOB_ID;
 
     private static final String DELETE_ARCHIVE_BASE = "delete from " + DDL_ENGINE_TABLE_ARCHIVE;
 
@@ -129,7 +130,8 @@ public class DdlEngineAccessor extends AbstractAccessor {
 
     private static final String DELETE_ARCHIVE_BY_SCHEMA_NAME = DELETE_ARCHIVE_BASE + WHERE_SCHEMA;
 
-    private static final String ARCHIVE_BASE = "insert into " + DDL_ENGINE_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TABLE;
+    private static final String ARCHIVE_BASE =
+        "insert into " + DDL_ENGINE_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TABLE;
 
     private static final String ARCHIVE_SPECIFIC = ARCHIVE_BASE + WHERE_JOB_ID;
 
@@ -178,7 +180,7 @@ public class DdlEngineAccessor extends AbstractAccessor {
 
     public List<DdlEngineRecord> query(List<Long> jobIds) {
         try {
-            if(CollectionUtils.isEmpty(jobIds)){
+            if (CollectionUtils.isEmpty(jobIds)) {
                 return new ArrayList<>();
             }
             String sql = String.format(SELECT_SPECIFIC_LIST, concatIds(jobIds));
@@ -389,7 +391,7 @@ public class DdlEngineAccessor extends AbstractAccessor {
         }
     }
 
-    public int archive(long jobId){
+    public int archive(long jobId) {
         try {
             final Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});

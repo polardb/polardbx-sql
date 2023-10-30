@@ -22,28 +22,17 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperatorBinding;
 import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.SqlWriter;
-import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 public class SqlAlterTypeOperator extends SqlSpecialOperator {
     public SqlAlterTypeOperator() {
-        super("ALTER_TYPE", SqlKind.DEFAULT, 100, true,
-            ReturnTypes.explicit(SqlTypeName.ANY), InferTypes.RETURN_TYPE,
-            OperandTypes.ZERO_OR_ONE);
-    }
-
-    public SqlAlterTypeOperator(SqlTypeName sqlTypeName) {
-        super("ALTER_TYPE", SqlKind.DEFAULT, 100, true,
-            ReturnTypes.explicit(sqlTypeName), InferTypes.RETURN_TYPE,
-            OperandTypes.ZERO_OR_ONE);
+        super("ALTER_TYPE", SqlKind.DEFAULT, 100, true, ReturnTypes.ARG0, InferTypes.RETURN_TYPE, OperandTypes.ONE);
     }
 
     @Override
-    public void unparse(SqlWriter writer, SqlCall call, int leftPrec,
-                        int rightPrec) {
+    public void unparse(SqlWriter writer, SqlCall call, int leftPrec, int rightPrec) {
         if (!call.getOperandList().isEmpty()) {
             writer.keyword(getName());
             final SqlWriter.Frame frame = writer.startList("(", ")");

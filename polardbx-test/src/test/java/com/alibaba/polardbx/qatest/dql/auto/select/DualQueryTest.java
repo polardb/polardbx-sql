@@ -26,6 +26,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class DualQueryTest extends AutoReadBaseTestCase {
     @Parameterized.Parameters(name = "{index}:table0={0}")
     public static List<String[]> prepare() {

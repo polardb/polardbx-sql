@@ -60,7 +60,6 @@ public class TimestampAdd extends AbstractScalarFunction {
     }
 
     private MySQLIntervalType cachedIntervalType;
-    private MySQLInterval cachedInterval;
     //
     //      TIMESTAMP_ADD
     //      /    |    \
@@ -92,17 +91,15 @@ public class TimestampAdd extends AbstractScalarFunction {
         MySQLIntervalType intervalType = cachedIntervalType;
 
         // prepare interval object
-        if (cachedInterval == null) {
-            String intervalValue = DataTypes.StringType.convertFrom(valueObj);
-            try {
-                cachedInterval = MySQLIntervalType.parseInterval(intervalValue, intervalType);
-            } catch (Throwable t) {
-                // for invalid interval value
+        MySQLInterval interval;
+        String intervalValue = DataTypes.StringType.convertFrom(valueObj);
+        try {
+            interval = MySQLIntervalType.parseInterval(intervalValue, intervalType);
+            if (interval == null) {
                 return null;
             }
-        }
-        MySQLInterval interval = cachedInterval;
-        if (interval == null) {
+        } catch (Throwable t) {
+            // for invalid interval value
             return null;
         }
 

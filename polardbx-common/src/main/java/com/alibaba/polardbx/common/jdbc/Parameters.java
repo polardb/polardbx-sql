@@ -28,6 +28,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,10 @@ public class Parameters implements Serializable {
     private List<Map<Integer, ParameterContext>> batchParams = null;
     private boolean batch = false;
     private Map<Integer, ParameterContext> params = new HashMap<Integer, ParameterContext>();
-
+    private Map<Integer, ParameterContext> listBatchParameters;
+    /**
+     * Insert 的 Batch 数量
+     */
     private int batchSize = 0;
 
     private int batchIndex = 0;
@@ -91,8 +95,57 @@ public class Parameters implements Serializable {
         if (isBatch() && this.batchParams != null) {
             return this.batchParams;
         } else {
-            return Arrays.asList(params);
+            return Collections.singletonList(params);
         }
+    }
+
+    public void addParams(Map<Integer, ParameterContext> params) {
+        if (this.params != null) {
+            this.params.putAll(params);
+        } else {
+            this.params = params;
+        }
+    }
+
+    /**
+     * used in:
+     * 1. X-Driver batch prepare insert/update
+     * 2. jdbc-driver prepare batch insert
+     */
+    public Map<Integer, ParameterContext> getBatchPreparedParameters() {
+        if (!batch) {
+            return params;
+        } else {
+            return convertBatchPreparedParameters();
+        }
+    }
+
+    private synchronized Map<Integer, ParameterContext> convertBatchPreparedParameters() {
+        if (this.listBatchParameters != null) {
+            return this.listBatchParameters;
+        }
+        if (batchParams.isEmpty()) {
+            this.listBatchParameters = new HashMap<>();
+            return this.listBatchParameters;
+        }
+        final float loadFactor = 0.8f;
+        int expectedSize = batchParams.size() * batchParams.get(0).size();
+        this.listBatchParameters = new HashMap<>((int) (expectedSize * 1.3 + 1), loadFactor);
+        int newIndex = 1;
+        for (Map<Integer, ParameterContext> map : batchParams) {
+            for (Map.Entry<Integer, ParameterContext> entry : map.entrySet()) {
+                ParameterContext oldPc = entry.getValue();
+                ParameterContext newPc = new ParameterContext();
+                newPc.setParameterMethod(oldPc.getParameterMethod());
+                Object[] args = oldPc.getArgs();
+                Object[] newArgs = Arrays.copyOf(args, args.length);
+                newArgs[0] = newIndex;
+                newPc.setArgs(newArgs);
+                listBatchParameters.put(newIndex, newPc);
+                newIndex++;
+            }
+        }
+        return this.listBatchParameters;
     }
 
     public void setBatchParams(List<Map<Integer, ParameterContext>> batchParams) {

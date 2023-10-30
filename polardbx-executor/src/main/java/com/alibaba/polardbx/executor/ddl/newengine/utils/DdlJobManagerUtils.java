@@ -80,6 +80,7 @@ public class DdlJobManagerUtils {
     public static int updateSupportedCommands(long jobId,
                                               boolean supportContinue,
                                               boolean supportCancel,
+                                              boolean skipSubJob,
                                               Connection connection) {
         DdlEngineAccessor ddlEngineAccessor = new DdlEngineAccessor();
         ddlEngineAccessor.setConnection(connection);
@@ -89,6 +90,9 @@ public class DdlJobManagerUtils {
         }
         if (supportCancel) {
             record.setSupportCancel();
+        }
+        if (skipSubJob) {
+            record.setSkipSubjob();
         }
         ddlEngineAccessor.updateSupportedCommands(jobId, record.supportedCommands);
         return record.supportedCommands;
@@ -102,7 +106,8 @@ public class DdlJobManagerUtils {
      */
     public static int updateSupportedCommands(long jobId,
                                               boolean supportContinue,
-                                              boolean supportCancel) {
+                                              boolean supportCancel,
+                                              boolean skipSubJob) {
         return new DdlEngineAccessorDelegate<Integer>() {
             @Override
             protected Integer invoke() {
@@ -112,6 +117,9 @@ public class DdlJobManagerUtils {
                 }
                 if (supportCancel) {
                     record.setSupportCancel();
+                }
+                if (skipSubJob) {
+                    record.setSkipSubjob();
                 }
                 return engineAccessor.updateSupportedCommands(jobId, record.supportedCommands);
             }

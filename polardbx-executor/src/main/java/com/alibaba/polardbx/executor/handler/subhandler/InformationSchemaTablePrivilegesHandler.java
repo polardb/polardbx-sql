@@ -32,6 +32,9 @@ public class InformationSchemaTablePrivilegesHandler extends BaseVirtualViewSubC
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
+        if (ConfigDataMode.isFastMock()) {
+            return cursor;
+        }
         PolarPrivManager.getInstance()
             .listTablePrivileges(executionContext.getPrivilegeContext().getPolarUserInfo())
             .forEach(cursor::addRow);

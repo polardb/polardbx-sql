@@ -24,11 +24,9 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResult
  * @author jilong.ljl
  */
 public class StatisticResult {
-
-    public final static StatisticResult EMPTY = build().setValue(-1L);
-
     private Object value;
     private StatisticResultSource source;
+    private StatisticTrace trace;
 
     public static StatisticResult build() {
         return new StatisticResult();
@@ -46,8 +44,9 @@ public class StatisticResult {
         return ((Number) value).longValue();
     }
 
-    public StatisticResult setValue(Object value) {
+    public StatisticResult setValue(Object value, StatisticTrace trace) {
         this.value = value;
+        this.trace = trace;
         return this;
     }
 
@@ -62,10 +61,17 @@ public class StatisticResult {
 
     @Override
     public String toString() {
-        if (this == EMPTY) {
+        if (this.getSource() == StatisticResultSource.NULL) {
             return "empty";
         }
         return value + ":" + source.name();
     }
 
+    public StatisticTrace getTrace() {
+        return trace;
+    }
+
+    public void setTrace(StatisticTrace trace) {
+        this.trace = trace;
+    }
 }

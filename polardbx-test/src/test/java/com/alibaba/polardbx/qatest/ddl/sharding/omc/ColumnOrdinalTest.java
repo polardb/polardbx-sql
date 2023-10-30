@@ -35,7 +35,6 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.ResultSet;
@@ -105,9 +104,13 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
         this.useInstantAddColumn = useInstantAddColumn;
     }
 
+    @Before
+    public void init() {
+        setGlobalSupportInstantAddColumn(useInstantAddColumn);
+    }
+
     @Test
     public void testModifyColumnOrdinal() throws SQLException {
-        setGlobalSupportInstantAddColumn(useInstantAddColumn);
         String tableName = "omc_modify_column_ordinal_test_tbl";
         testColumnOrdinalInternal(tableName, MODIFY_PARAMS, MODIFY_COLUMNS, MODIFY_GSI_COLUMNS, true);
         testColumnOrdinalInternal(tableName, MODIFY_PARAMS, MODIFY_COLUMNS, MODIFY_GSI_COLUMNS, false);
@@ -115,7 +118,6 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testChangeColumnOrdinal() throws SQLException {
-        setGlobalSupportInstantAddColumn(useInstantAddColumn);
         String tableName = "omc_change_column_ordinal_test_tbl";
         testColumnOrdinalInternal(tableName, CHANGE_PARAMS, CHANGE_COLUMNS, CHANGE_GSI_COLUMNS, true);
         testColumnOrdinalInternal(tableName, CHANGE_PARAMS, CHANGE_COLUMNS, CHANGE_GSI_COLUMNS, false);
@@ -245,5 +247,39 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
             }
         }
         return new DDLExtInfo();
+    }
+
+    @Test
+    public void generatedColumnTest() {
+        String tableName = "dn_gen_col_alter_tbl";
+        dropTableIfExists(tableName);
+        String createTable =
+            String.format("create table %s (a int primary key, b int, c int as (a), d int, e int)", tableName);
+        String partDef = " dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partDef);
+
+        String alter = String.format("alter table %s modify column b bigint first, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s modify column b bigint after e, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s modify column d bigint first, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s modify column d bigint after e, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s change column b f bigint first, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s change column b f bigint after e, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s change column d f bigint first, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
+
+        alter = String.format("alter table %s change column d f bigint after e, algorithm=omc", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, alter, "");
     }
 }

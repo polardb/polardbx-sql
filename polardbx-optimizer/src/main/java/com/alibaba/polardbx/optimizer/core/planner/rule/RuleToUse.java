@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MPPMaterializedViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppBKAJoinConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppCorrelateConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppDynamicValuesConverRule;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppFilterConvertRule
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppHashAggConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppHashGroupJoinConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppHashJoinConvertRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppHashWindowConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppLimitConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppLogicalViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppMaterializedSemiJoinConvertRule;
@@ -136,6 +138,7 @@ public class RuleToUse {
     private static final ImmutableList<RelOptRule> CALCITE_PUSH_FILTER_BASE = ImmutableList.of(
         FilterJoinRule.FILTER_ON_JOIN,
         FilterJoinRule.JOIN,
+        FilterAggregateTransposeRule.INSTANCE,
         PushFilterRule.LOGICALUNION,
         FilterCorrelateRule.INSTANCE,
         CorrelateProjectRule.INSTANCE,
@@ -154,6 +157,7 @@ public class RuleToUse {
     public static final ImmutableList<RelOptRule> CALCITE_PUSH_FILTER_POST = ImmutableList
         .<RelOptRule>builder()
         .addAll(CALCITE_PUSH_FILTER_BASE)
+        .add(TddlFilterJoinRule.TDDL_FILTER_ON_JOIN)
         .add(FilterProjectTransposeRule.INSTANCE)
         .build();
 
@@ -194,7 +198,8 @@ public class RuleToUse {
         PushSemiJoinRule.INSTANCE,
         PushSemiJoinDirectRule.INSTANCE,
         PushJoinRule.INSTANCE,
-        PushFilterRule.VIRTUALVIEW);
+        PushFilterRule.VIRTUALVIEW,
+        RemoveJoinConditionFilterRule.INSTANCE);
 
     /**
      * <pre>
@@ -214,7 +219,8 @@ public class RuleToUse {
         PushCorrelateRule.INSTANCE,
         PushJoinRule.INSTANCE,
         PushSemiJoinRule.INSTANCE,
-        PushSemiJoinDirectRule.INSTANCE
+        PushSemiJoinDirectRule.INSTANCE,
+        RemoveJoinConditionFilterRule.INSTANCE
     );
 
     /**
@@ -434,6 +440,7 @@ public class RuleToUse {
         AggJoinToToHashGroupJoinRule.INSTANCE,
         // window
         LogicalWindowToSortWindowRule.INSTANCE,
+        LogicalWindowToHashWindowRule.INSTANCE,
         // Push Sort
         PushSortRule.PLAN_ENUERATE,
         // Push Filter
@@ -466,6 +473,8 @@ public class RuleToUse {
         // Convert
         DrdsExpandConvertRule.INSTANCE,
         DrdsProjectConvertRule.INSTANCE,
+        DrdsRecursiveCTEAnchorConvertRule.INSTANCE,
+        DrdsRecursiveCTEConvertRule.INSTANCE,
         DrdsFilterConvertRule.INSTANCE,
         DrdsCorrelateConvertRule.INSTANCE,
         DrdsSortConvertRule.INSTANCE,
@@ -481,6 +490,7 @@ public class RuleToUse {
         DrdsLogicalTableLookupConvertRule.INSTANCE,
         DrdsVirtualViewConvertRule.INSTANCE,
         DrdsDynamicConvertRule.INSTANCE,
+        DrdsMaterializedViewConvertRule.INSTANCE,
         DrdsOutFileConvertRule.INSTANCE
     );
 
@@ -505,6 +515,7 @@ public class RuleToUse {
         MppSortAggConvertRule.INSTANCE,
         // Window Convert
         MppSortWindowConvertRule.INSTANCE,
+        MppHashWindowConvertRule.INSTANCE,
         // Sort Convert
         MppMemSortConvertRule.INSTANCE,
         MppLimitConvertRule.INSTANCE,
@@ -520,7 +531,8 @@ public class RuleToUse {
         MppCorrelateConvertRule.INSTANCE,
         MppFilterConvertRule.INSTANCE,
         MppLogicalViewConvertRule.INSTANCE,
-        MppVirtualViewConvertRule.INSTANCE
+        MppVirtualViewConvertRule.INSTANCE,
+        MPPMaterializedViewConvertRule.INSTANCE
     );
 
     public static final ImmutableList<RelOptRule> RUNTIME_FILTER = ImmutableList.of(

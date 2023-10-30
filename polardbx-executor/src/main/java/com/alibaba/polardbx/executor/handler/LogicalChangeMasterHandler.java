@@ -16,19 +16,26 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.cdc.CdcConstants;
+import com.alibaba.polardbx.common.cdc.ResultCode;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.PooledHttpHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.net.util.CdcTargetUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc;
-import com.alibaba.polardbx.rpc.cdc.ChangeMasterRequest;
-import com.alibaba.polardbx.rpc.cdc.RplCommandResponse;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlChangeMaster;
 
 import com.alibaba.fastjson.JSON;
+import org.apache.http.entity.ContentType;
 
+/**
+ *
+ */
 public class LogicalChangeMasterHandler extends LogicalReplicationBaseHandler {
 
     public LogicalChangeMasterHandler(IRepository repo) {
@@ -40,13 +47,19 @@ public class LogicalChangeMasterHandler extends LogicalReplicationBaseHandler {
         LogicalDal dal = (LogicalDal) logicalPlan;
         SqlChangeMaster sqlNode = (SqlChangeMaster) dal.getNativeSqlNode();
 
-        ChangeMasterRequest request = ChangeMasterRequest.newBuilder()
-            .setRequest(JSON.toJSONString(sqlNode.getParams()))
-            .build();
-
-        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub =
-            CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
-        RplCommandResponse response = blockingStub.changeMaster(request);
-        return handleRplCommandResponse(response, blockingStub.getChannel());
+        String daemonEndpoint = CdcTargetUtil.getReplicaDaemonMasterTarget();
+        String res;
+        try {
+            res = PooledHttpHelper.doPost("http://" + daemonEndpoint + "/replica/changeMaster",
+                ContentType.APPLICATION_JSON,
+                JSON.toJSONString(sqlNode.getParams()), 10000);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+        }
+        ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
+        if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, httpResult.getMsg());
+        }
+        return new AffectRowCursor(0);
     }
 }

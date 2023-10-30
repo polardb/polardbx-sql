@@ -20,5 +20,5 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 
 interface PlCommandHandler {
-    void handle(ByteString sql, ServerConnection c, boolean hasMore);
+    boolean handle(ByteString sql, ServerConnection c, boolean hasMore);
 }

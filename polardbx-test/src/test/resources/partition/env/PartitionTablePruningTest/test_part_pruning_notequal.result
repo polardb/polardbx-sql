@@ -46,7 +46,7 @@ ORDER BY a, b, c;
 Logical ExecutionPlan
 Project(a="a", b="b")
   MergeSort(sort="a ASC,b ASC,c ASC")
-    LogicalView(tables="tbl_rc[p3,p4,p9,p10]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `tbl_rc` AS `tbl_rc` WHERE ((`b` <> ?) AND ((`a` = ?) OR (`a` = ?))) ORDER BY `a`, `b`, `c`")
+    LogicalView(tables="tbl_rc[p3,p4,p9,p10]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `tbl_rc` AS `tbl_rc` WHERE ((`a` IN(?, ?)) AND (`b` <> ?)) ORDER BY `a`, `b`, `c`")
 SELECT a, b
 FROM tbl_rc
 WHERE (a = 300

@@ -25,7 +25,7 @@ public class MySqlUpdateTableSource extends SQLTableSourceImpl {
 
     private MySqlUpdateStatement update;
 
-    public MySqlUpdateTableSource(MySqlUpdateStatement update){
+    public MySqlUpdateTableSource(MySqlUpdateStatement update) {
         this.update = update;
     }
 
@@ -55,7 +55,6 @@ public class MySqlUpdateTableSource extends SQLTableSourceImpl {
 
     @Override
     public MySqlUpdateTableSource clone() {
-
 
         MySqlUpdateTableSource x = new MySqlUpdateTableSource(this.update);
 

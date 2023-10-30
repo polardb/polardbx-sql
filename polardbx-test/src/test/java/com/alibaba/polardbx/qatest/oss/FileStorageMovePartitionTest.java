@@ -3,9 +3,11 @@ package com.alibaba.polardbx.qatest.oss;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.BaseTestCase;
+import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
@@ -67,11 +69,22 @@ public class FileStorageMovePartitionTest extends BaseTestCase {
         }
     }
 
+    @AfterClass
+    static public void DropDatabase() {
+        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            Statement statement = conn.createStatement();
+            statement.execute(String.format("drop database if exists %s ", testDataBase1));
+            statement.execute(String.format("drop database if exists %s ", testDataBase2));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
     private void checkTotalCount(Connection innoConn, Connection ossConn,
                                  long countTotal, String innodbTestTableName, String ossTestTableName)
         throws SQLException {
-        assertWithMessage(ossTestTableName + " 丢数据").that(FullTypeTestUtil.count(ossConn, ossTestTableName))
-            .isEqualTo(countTotal - FullTypeTestUtil.count(innoConn, innodbTestTableName));
+        assertWithMessage(ossTestTableName + " 丢数据").that(FileStorageTestUtil.count(ossConn, ossTestTableName))
+            .isEqualTo(countTotal - FileStorageTestUtil.count(innoConn, innodbTestTableName));
 
     }
 
@@ -89,8 +102,9 @@ public class FileStorageMovePartitionTest extends BaseTestCase {
         try (Connection innoConn = getPolardbxConnection(innoDataBase);
             Connection ossConn = getPolardbxConnection(ossDataBase)) {
             // prepare table
-            FullTypeTestUtil.prepareInnoTable(innoConn, innodbTableName, 20, 20);
-            FullTypeTestUtil.prepareTTLTable(ossConn, ossDataBase, ossTableName, innoDataBase, innodbTableName, engine);
+            FileStorageTestUtil.prepareInnoTable(innoConn, innodbTableName, 20, false);
+            FileStorageTestUtil.prepareTTLTable(ossConn, ossDataBase, ossTableName, innoDataBase, innodbTableName,
+                engine);
 
             // get local partition
             List<String> localPartitions = new ArrayList<>();
@@ -130,15 +144,15 @@ public class FileStorageMovePartitionTest extends BaseTestCase {
             // move partition oss table without data
             movePartition(ossConn, ossTg, ossPart, dns);
             // check count
-            assertWithMessage(ossTableName + " 非空").that(FullTypeTestUtil.count(ossConn, ossTableName))
+            assertWithMessage(ossTableName + " 非空").that(FileStorageTestUtil.count(ossConn, ossTableName))
                 .isEqualTo(0);
-            long countTotal = FullTypeTestUtil.count(innoConn, innodbTableName);
+            long countTotal = FileStorageTestUtil.count(innoConn, innodbTableName);
 
             // expire local partition
             JdbcUtil.executeUpdate(innoConn, String.format(expire, innodbTableName, localPartitions.get(lpCount++)));
 
             // check count
-            long countBeforeMove = FullTypeTestUtil.count(ossConn, ossTableName);
+            long countBeforeMove = FileStorageTestUtil.count(ossConn, ossTableName);
             assertWithMessage(ossTableName + " 为空").that(countBeforeMove).isGreaterThan(0);
             checkTotalCount(innoConn, ossConn, countTotal, innodbTableName, ossTableName);
 

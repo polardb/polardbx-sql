@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalBaseline;
+import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
@@ -49,6 +50,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_BASELINE;
@@ -144,12 +146,17 @@ public class LogicalBaselineHandler extends HandlerCommon {
         case "ADD": {
             String hint = sqlBaseline.getHint();
             String parameterizedSql = sqlBaseline.getParameterizedSql();
-            return baselineAdd(hint, parameterizedSql, executionContext, false);
+            return baselineAdd(hint, parameterizedSql, executionContext, false, false);
+        }
+        case "HINT": {
+            String hint = sqlBaseline.getHint();
+            String parameterizedSql = sqlBaseline.getParameterizedSql();
+            return baselineAdd(hint, parameterizedSql, executionContext, true, true);
         }
         case "FIX": {
             String hint = sqlBaseline.getHint();
             String parameterizedSql = sqlBaseline.getParameterizedSql();
-            return baselineAdd(hint, parameterizedSql, executionContext, true);
+            return baselineAdd(hint, parameterizedSql, executionContext, true, false);
         }
 
         case "LOAD":
@@ -185,7 +192,8 @@ public class LogicalBaselineHandler extends HandlerCommon {
         return result;
     }
 
-    private Cursor baselineAdd(String hint, String parameterizedSql, ExecutionContext executionContext, boolean fix) {
+    private Cursor baselineAdd(String hint, String parameterizedSql, ExecutionContext executionContext, boolean fix,
+                               boolean hintBind) {
         String schemaName = executionContext.getSchemaName();
         ArrayResultCursor result = new ArrayResultCursor("baseline");
         result.addColumn("BASELINE_ID", DataTypes.IntegerType);
@@ -197,12 +205,35 @@ public class LogicalBaselineHandler extends HandlerCommon {
         planExecutor.init();
 
         ExecutionPlan executionPlan = Planner.getInstance().plan(hint + " " + parameterizedSql, executionContext);
+        if (executionPlan.getConstantParams() != null) {
+            throw new TddlRuntimeException(ERR_BASELINE,
+                "not support baseline add plan with generated column substitution");
+        }
+
         Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schemaName);
         BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
         RelNode plan = executionPlan.getPlan();
         SqlNode ast = executionPlan.getAst();
+        boolean withPushdownHint = Optional
+            .ofNullable(executionPlan.getHintCollection())
+            .map(HintConverter.HintCollection::pushdownSqlOrRoute)
+            .orElse(false);
         if (baselineInfo == null) {
             baselineInfo = PlanManager.getInstance().createBaselineInfo(parameterizedSql, ast, executionContext);
+        } else if (withPushdownHint || hintBind) {
+            // For one logical sql exists at most one baseline with pushdown hint
+            result.addRow(new Object[] {baselineInfo.getId(), "ExecutionPlan exists"});
+            return result;
+        }
+
+        if (hintBind) {
+            baselineInfo.setHint(hint);
+            baselineInfo.setRebuildAtLoad(true);
+            baselineInfoMap.put(parameterizedSql, baselineInfo);
+            BaselineSyncController baselineSyncController = new BaselineSyncController();
+            baselineSyncController.updateBaselineSync(schemaName, baselineInfo);
+            result.addRow(new Object[] {baselineInfo.getId(), "HINT BIND :" + hint});
+            return result;
         }
         String planJsonString = PlanManagerUtil.relNodeToJson(plan);
         PlanInfo planInfo =
@@ -211,6 +242,14 @@ public class LogicalBaselineHandler extends HandlerCommon {
                     PlanManagerUtil.getPlanOrigin(plan), ast, executionContext);
         planInfo.setFixed(fix);
         planInfo.setFixHint(hint);
+
+        // Rebuild at load for plan with pushdown hint
+        if (withPushdownHint) {
+            baselineInfo.setHint(hint);
+            baselineInfo.setRebuildAtLoad(true);
+            // Skip post planner if pushdown hint used
+            baselineInfo.setUsePostPlanner(executionPlan.isUsePostPlanner());
+        }
 
         PlanInfo existedPlanInfo = baselineInfo.getAcceptedPlans().get(planInfo.getId());
         if (existedPlanInfo != null) {
@@ -324,6 +363,9 @@ public class LogicalBaselineHandler extends HandlerCommon {
         result.addColumn("FIXED", DataTypes.TinyIntType);
         result.addColumn("ACCEPTED", DataTypes.TinyIntType);
         result.addColumn("ORIGIN", DataTypes.StringType);
+        result.addColumn("IS_REBUILD_AT_LOAD", DataTypes.StringType);
+        result.addColumn("HINT", DataTypes.StringType);
+        result.addColumn("USE_POST_PLANNER", DataTypes.StringType);
         for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
             if (!baselineIdSet.isEmpty() && !baselineIdSet.contains(baselineInfo.getId())) {
                 continue;
@@ -331,6 +373,24 @@ public class LogicalBaselineHandler extends HandlerCommon {
 
             List<PlanInfo> displayList = new ArrayList<>(baselineInfo.getAcceptedPlans().values());
             displayList.addAll(baselineInfo.getUnacceptedPlans().values());
+
+            // rebuild at load meaning this baseline only record hint instead of caching plans.
+            if (baselineInfo.isRebuildAtLoad()) {
+                Object[] row = new Object[10];
+                row[0] = baselineInfo.getId();
+                row[1] = baselineInfo.getParameterSql();
+                row[2] = 0;
+                row[3] = "";
+                row[4] = 1;
+                row[5] = 1;
+                row[6] = "";
+                row[7] = baselineInfo.isRebuildAtLoad() + "";
+                row[8] = baselineInfo.getHint();
+                row[9] = baselineInfo.isUsePostPlanner() + "";
+                result.addRow(row);
+                continue;
+            }
+
             for (PlanInfo planInfo : displayList) {
                 String explainString;
                 try {
@@ -339,7 +399,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
                 } catch (Throwable throwable) {
                     explainString = throwable.getMessage();
                 }
-                Object[] row = new Object[7];
+                Object[] row = new Object[10];
                 row[0] = baselineInfo.getId();
                 row[1] = baselineInfo.getParameterSql();
                 row[2] = planInfo.getId();
@@ -347,6 +407,9 @@ public class LogicalBaselineHandler extends HandlerCommon {
                 row[4] = planInfo.isFixed();
                 row[5] = planInfo.isAccepted();
                 row[6] = planInfo.getOrigin();
+                row[7] = baselineInfo.isRebuildAtLoad() + "";
+                row[8] = baselineInfo.getHint();
+                row[9] = baselineInfo.isUsePostPlanner() + "";
                 result.addRow(row);
             }
         }

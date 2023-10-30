@@ -21,6 +21,8 @@ import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.validator.DataOperator;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataOperator;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
 import org.junit.Ignore;
 import org.junit.Test;

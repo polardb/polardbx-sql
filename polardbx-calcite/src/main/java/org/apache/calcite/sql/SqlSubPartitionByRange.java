@@ -27,12 +27,7 @@ import java.util.List;
  * @author luoyanxin
  */
 public class SqlSubPartitionByRange extends SqlSubPartitionBy {
-    private List<SqlNode> columns = new ArrayList<>();
-
-    public SqlSubPartitionByRange(SqlNode subPartitionsCount, SqlParserPos sqlParserPos) {
-        super(subPartitionsCount, sqlParserPos);
-    }
-    public List<SqlNode> getColumns() {
-        return columns;
+    public SqlSubPartitionByRange(SqlParserPos sqlParserPos) {
+        super(sqlParserPos);
     }
 }

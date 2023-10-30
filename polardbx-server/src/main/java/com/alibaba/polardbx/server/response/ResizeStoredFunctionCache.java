@@ -28,8 +28,8 @@ import com.alibaba.polardbx.server.ServerConnection;
  * @author yuehan.wcf
  */
 public class ResizeStoredFunctionCache {
-    public static void response(ByteString stmt, ServerConnection c,
-                                int offset, boolean hasMore) {
+    public static boolean response(ByteString stmt, ServerConnection c,
+                                   int offset, boolean hasMore) {
         String newSizeStr = stmt.substring(offset).trim();
         try {
             int newSize = Integer.parseInt(newSizeStr);
@@ -40,5 +40,6 @@ public class ResizeStoredFunctionCache {
         }
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 }

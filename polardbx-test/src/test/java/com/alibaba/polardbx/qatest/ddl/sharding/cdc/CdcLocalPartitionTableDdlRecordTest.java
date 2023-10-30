@@ -30,6 +30,7 @@ import java.util.Calendar;
  * created by ziyang.lb
  **/
 public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
+    private int startYear = Calendar.getInstance().get(Calendar.YEAR) - 1;
     private String T_ORDER = String.format("CREATE TABLE `t_order` (\n"
         + "\t`id` bigint(20) DEFAULT NULL,\n"
         + "\t`gmt_modified` datetime NOT NULL,\n"
@@ -42,7 +43,7 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
         + "INTERVAL 1 MONTH\n"
         + "EXPIRE AFTER 12\n"
         + "PRE ALLOCATE 6\n"
-        + "PIVOTDATE NOW()\n", Calendar.getInstance().get(Calendar.YEAR) - 2);
+        + "PIVOTDATE NOW()\n", startYear);
 
     @Test
     public void testCdcDdlRecord() throws SQLException, InterruptedException {
@@ -90,7 +91,7 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
         // Test Step
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("ALTER TABLE t_order EXPIRE LOCAL PARTITION p%s%s01",
-            Calendar.getInstance().get(Calendar.YEAR) - 1,
+            startYear,
             StringUtils.leftPad(String.valueOf(Calendar.getInstance().get(Calendar.MONTH) + 1), 2, "0"));
         stmt.execute(sql);
         Assert.assertEquals("", getDdlRecordSql(tokenHints));
@@ -115,7 +116,7 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
         tokenHints = buildTokenHints();
         sql = tokenHints + "alter table t1\n"
             + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
-            + "STARTWITH '2021-01-01'\n"
+            + "STARTWITH " + String.format("'%s-01-01'", startYear) + "\n"
             + "INTERVAL 1 MONTH\n"
             + "EXPIRE AFTER 12\n"
             + "PRE ALLOCATE 6\n"

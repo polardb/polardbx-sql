@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.partition.datatype;
 
 import com.alibaba.polardbx.common.SQLModeFlags;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.type.MySQLResultType;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -27,6 +29,7 @@ import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.optimizer.core.datatype.BytesType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import com.alibaba.polardbx.optimizer.core.datatype.JsonType;
@@ -296,7 +299,7 @@ public class PartitionDataTypeUtils {
     }
 
     static PredicateBoolean isAlwaysTrueOrFalse(PartitionField field, TypeConversionStatus conversionStatus,
-                                   SqlKind comparisonKind) {
+                                                SqlKind comparisonKind) {
         DataType fieldType = field.dataType();
         MySQLStandardFieldType standardFieldType = field.mysqlStandardFieldType();
         MySQLResultType resultType = standardFieldType.toResultType();
@@ -423,6 +426,8 @@ public class PartitionDataTypeUtils {
         } else if ((l == INT_RESULT || l == DECIMAL_RESULT)
             && (r == INT_RESULT || r == DECIMAL_RESULT)) {
             resType = MySQLResultType.DECIMAL_RESULT;
+        } else if (l == STRING_RESULT && r == DECIMAL_RESULT) {
+            resType = MySQLResultType.DECIMAL_RESULT; //avoid truncate
         } else {
             resType = MySQLResultType.REAL_RESULT;
         }
@@ -494,5 +499,24 @@ public class PartitionDataTypeUtils {
     private static boolean isCollationComparable(DataType fieldType, DataType resultType) {
         return resultType.isUtf8Encoding()
             || fieldType.getCollationName() == resultType.getCollationName();
+    }
+
+    public static Object javaObjectFromPartitionField(PartitionField partFld,
+                                                      SessionProperties sessionProperties) {
+        DataType dataType = partFld.dataType();
+
+        dataType.getSqlType();
+        Object result = null;
+        if (DataTypeUtil.isStringType(dataType)) {
+            result = partFld.stringValue(sessionProperties).toStringUtf8();
+        } else if (DataTypeUtil.isUnderLongType(dataType)) {
+            result = partFld.longValue();
+        } else if (DataTypeUtil.isDateType(dataType)) {
+            result = partFld.stringValue(sessionProperties).toStringUtf8();
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "Unsupported to fetch java object from datatype of ");
+        }
+        return result;
     }
 }

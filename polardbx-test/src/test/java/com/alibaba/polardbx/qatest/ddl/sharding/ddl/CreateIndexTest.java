@@ -34,6 +34,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardDbI
 import static com.alibaba.polardbx.qatest.validator.DataValidator.isIndexExist;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.isIndexExistByInfoSchema;
 
+
 public class CreateIndexTest extends AsyncDDLBaseNewDBTestCase {
 
     private List<Connection> phyConnectionList;

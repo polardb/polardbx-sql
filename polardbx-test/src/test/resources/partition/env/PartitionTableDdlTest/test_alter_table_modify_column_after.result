@@ -21,7 +21,9 @@ tbl,CREATE TABLE `tbl` (
 	`d` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`) PARTITION BY KEY (`b`) PARTITIONS #@#
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(`a`)
 (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
@@ -37,7 +39,9 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`) PARTITION BY KEY (`b`) PARTITIONS #@#
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(`a`)
 (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
@@ -53,7 +57,9 @@ tbl,CREATE TABLE `tbl` (
 	`c` int(11) NOT NULL,
 	`b` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`) PARTITION BY KEY (`b`) PARTITIONS #@#
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(`a`)
 (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
@@ -69,16 +75,18 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`) PARTITION BY KEY (`b`) PARTITIONS #@#
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(`a`)
 (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
 /* tablegroup = `tg` */
-## error_msg: $# optimize error by Change column name or type included in GSI is not recommended #$
+## error_msg: $# optimize error #$
 alter table `tbl` modify column `c` varchar(11) after d;
-optimize error by Change column name or type included in GSI is not recommended
+optimize error
 show full create table `tbl`;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
@@ -87,7 +95,9 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`) PARTITION BY KEY (`b`) PARTITIONS #@#
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(`a`)
 (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,

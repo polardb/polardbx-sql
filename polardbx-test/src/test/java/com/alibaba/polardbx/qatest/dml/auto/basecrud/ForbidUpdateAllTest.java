@@ -42,7 +42,7 @@ import static org.hamcrest.CoreMatchers.is;
  * @author arnkore 2017-03-31 19:09
  */
 
-@RunWith(Parameterized.class)
+
 public class ForbidUpdateAllTest extends AutoCrudBasedLockTestCase {
     @Rule
     public final ExpectedException thrown = ExpectedException.none();

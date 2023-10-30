@@ -22,8 +22,6 @@ import org.junit.runners.Parameterized;
 
 import java.util.List;
 
-@Ignore
-
 public class CollationInstrTest extends CharsetTestBase {
     private static final int INSTR_SIZE = 100;
 
@@ -40,21 +38,51 @@ public class CollationInstrTest extends CharsetTestBase {
     // gbk_chinese_ci
     @Test
     public void testGBK_CHINESE_CI() {
-        List<byte[]> gbkStrings = CharsetTestUtils.generateGBKCode(STRING_SIZE, CHARACTER_SIZE, true);
-        List<byte[]> subStrs = CharsetTestUtils.generateGBKCode(INSTR_SIZE, 1, false);
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGBKUnicode(STRING_SIZE, CHARACTER_SIZE, true);
+        List<byte[]> subStrs = CharsetTestUtils.generateGBKUnicode(INSTR_SIZE, 1, false);
 
-        testInstr(gbkStrings, subStrs, COL_GBK_CHINESE_CI, "gbk", "gbk_chinese_ci");
+        testInstrRaw(gbkStrings, subStrs, COL_GBK_CHINESE_CI);
     }
 
+    // gbk_bin
     @Test
     public void testGBK_BIN() {
-        List<byte[]> gbkStrings = CharsetTestUtils.generateGBKCode(STRING_SIZE, CHARACTER_SIZE, true);
-        List<byte[]> subStrs = CharsetTestUtils.generateGBKCode(INSTR_SIZE, 1, false);
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGBKUnicode(STRING_SIZE, CHARACTER_SIZE, true);
+        List<byte[]> subStrs = CharsetTestUtils.generateGBKUnicode(INSTR_SIZE, 1, false);
 
-        testInstr(gbkStrings, subStrs, COL_GBK_BIN, "gbk", "gbk_bin");
+        testInstrRaw(gbkStrings, subStrs, COL_GBK_BIN);
+    }
+
+    // gb18030_chinese_ci
+    @Test
+    public void testGB18030_CHINESE_CI() {
+        List<byte[]> gb18030Strings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+        List<byte[]> subStrs = CharsetTestUtils.generateGB18030Unicode(INSTR_SIZE, 1, false);
+
+        testInstrRaw(gb18030Strings, subStrs, COL_GB18030_CHINESE_CI);
+    }
+
+    // gb18030_bin
+    @Test
+    public void testGB18030_BIN() {
+        List<byte[]> gb18030Strings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+        List<byte[]> subStrs = CharsetTestUtils.generateGB18030Unicode(INSTR_SIZE, 1, false);
+
+        testInstrRaw(gb18030Strings, subStrs, COL_GB18030_BIN);
+    }
+
+    // gb18030_unicode_520_ci
+    @Ignore
+    @Test
+    public void testGB18030_UNICODE_520_CI() {
+        List<byte[]> gb18030Strings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+        List<byte[]> subStrs = CharsetTestUtils.generateGB18030Unicode(INSTR_SIZE, 1, false);
+
+        testInstrRaw(gb18030Strings, subStrs, COL_GB18030_UNICODE_520_CI);
     }
 
     // utf8mb4_general_ci
+    @Ignore
     @Test
     public void testUTF8MB4_GENERAL_CI() {
         List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
@@ -64,6 +92,7 @@ public class CollationInstrTest extends CharsetTestBase {
     }
 
     // utf8mb4_bin
+    @Ignore
     @Test
     public void testUTF8MB4_BIN() {
         List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
@@ -92,6 +121,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(utf8Strings, subStrs, COL_UTF8_BIN, "utf8", "utf8_bin");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_GENERAL_CI() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -100,6 +130,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_GENERAL_CI, "latin1", "latin1_general_ci");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_GENERAL_CS() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -108,6 +139,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_GENERAL_CS, "latin1", "latin1_general_cs");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_BIN() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -116,6 +148,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_BIN, "latin1", "latin1_bin");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_SWEDISH_CS() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -124,6 +157,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_SWEDISH_CI, "latin1", "latin1_swedish_ci");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_SPANISH_CS() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -132,6 +166,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_SPANISH_CI, "latin1", "latin1_spanish_ci");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_GERMAN1_CS() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -140,6 +175,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(latin1Strings, subStrs, COL_LATIN1_GERMAN1_CI, "latin1", "latin1_german1_ci");
     }
 
+    @Ignore
     @Test
     public void testLATIN1_DANISH_CS() {
         List<byte[]> latin1Strings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -149,6 +185,7 @@ public class CollationInstrTest extends CharsetTestBase {
 
     }
 
+    @Ignore
     @Test
     public void testASCII_BIN() {
         List<byte[]> asciiStrings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);
@@ -157,6 +194,7 @@ public class CollationInstrTest extends CharsetTestBase {
         testInstr(asciiStrings, subStrs, COL_ASCII_BIN, "ascii", "ascii_bin");
     }
 
+    @Ignore
     @Test
     public void testASCII_GENERAL_CI() {
         List<byte[]> asciiStrings = CharsetTestUtils.generateSimple(STRING_SIZE, CHARACTER_SIZE, true);

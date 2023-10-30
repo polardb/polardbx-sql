@@ -1,0 +1,338 @@
+DROP TABLE IF EXISTS `t_order`;
+SET sql_mode = '';
+CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	GLOBAL INDEX(`seller_id`) PARTITION BY KEY (seller_id)
+)
+PARTITION BY KEY (order_id);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+INSERT INTO t_order (order_id, seller_id)
+VALUES ('12345', '678910'),
+	('23456', '7891011'),
+	('34567', '89101112'),
+	('45678', '910111213'),
+	('56789', '101112131415');
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(30);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(30) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(30) CHARACTER SET utf8;
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(30) CHARACTER SET utf8 DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id bigint(11);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` bigint(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,101112131415
+SELECT *
+FROM t_order
+WHERE seller_id = 7891011;
+order_id,seller_id
+23456,7891011
+SELECT *
+FROM t_order
+WHERE seller_id = 101112131415;
+order_id,seller_id
+56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(10);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id char(10);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+SELECT *
+FROM t_order
+WHERE seller_id = '7891011';
+order_id,seller_id
+23456,7891011
+SELECT *
+FROM t_order
+WHERE seller_id = '1011121314';
+order_id,seller_id
+56789,1011121314
+ALTER TABLE `t_order`
+	MODIFY COLUMN order_id varchar(30);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(30) DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+ALTER TABLE `t_order`
+	MODIFY COLUMN order_id varchar(30) CHARACTER SET utf8;
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(30) CHARACTER SET utf8 DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+ALTER TABLE `t_order`
+	MODIFY COLUMN order_id bigint(11);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` bigint(11) DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+SELECT *
+FROM t_order
+WHERE order_id = 12345;
+order_id,seller_id
+12345,678910
+SELECT *
+FROM t_order
+WHERE order_id = 45678;
+order_id,seller_id
+45678,910111213
+ALTER TABLE `t_order`
+	MODIFY COLUMN order_id varchar(10);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(10) DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+ALTER TABLE `t_order`
+	MODIFY COLUMN order_id char(11);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` char(11) DEFAULT NULL,
+	`seller_id` char(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+order_id,seller_id
+12345,678910
+23456,7891011
+34567,89101112
+45678,910111213
+56789,1011121314
+SELECT *
+FROM t_order
+WHERE order_id = 12345;
+order_id,seller_id
+12345,678910
+SELECT *
+FROM t_order
+WHERE order_id = 45678;
+order_id,seller_id
+45678,910111213

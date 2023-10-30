@@ -20,9 +20,6 @@ import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.gms.module.LogLevel;
-import com.alibaba.polardbx.gms.module.LogPattern;
-import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -32,11 +29,14 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IDataSourceGetter;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.module.ModuleLogInfo;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
@@ -64,7 +64,7 @@ import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.forceAnalyze
  * @author chenmo.cm
  */
 public class LogicalAnalyzeTableHandler extends HandlerCommon {
-    private static final Logger logger = LoggerFactory.getLogger("statistics");
+    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
 
     public LogicalAnalyzeTableHandler(IRepository repo) {
         super(repo);

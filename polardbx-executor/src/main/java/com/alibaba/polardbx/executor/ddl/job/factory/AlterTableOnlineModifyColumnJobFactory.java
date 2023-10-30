@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
@@ -32,24 +34,24 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableChangeColumn;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableModifyColumn;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
-import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
-import com.alibaba.polardbx.executor.ddl.job.task.backfill.OnlineModifyColumnBackFillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.backfill.ColumnBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
-import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcOnlineModifyDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableColumnDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CheckColumnTask;
 import com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn.OnlineModifyColumnAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn.OnlineModifyColumnDropMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn.OnlineModifyColumnInitMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn.OnlineModifyColumnStopMultiWriteTask;
 import com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn.OnlineModifyColumnSwapMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -199,6 +201,11 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
             this.newColumnTypeNullable =
                 TableColumnUtils.getDataDefFromColumnDefWithoutUniqueNullable(changeColumn.getNewColumnDefinition());
 
+            if (changeColumn.getNewColumnDefinition().getGeneratedAlawsAs() != null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    String.format("Column [%s] can not be modified to a generated column", oldColumnName));
+            }
+
         } else {
             MySqlAlterTableModifyColumn modifyColumn = (MySqlAlterTableModifyColumn) alterItem;
             this.oldColumnName = SQLUtils.normalizeNoTrim(modifyColumn.getNewColumnDefinition().getColumnName());
@@ -220,6 +227,11 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
                 TableColumnUtils.getDataDefFromColumnDefWithoutUnique(modifyColumn.getNewColumnDefinition());
             this.newColumnTypeNullable =
                 TableColumnUtils.getDataDefFromColumnDefWithoutUniqueNullable(modifyColumn.getNewColumnDefinition());
+
+            if (modifyColumn.getNewColumnDefinition().getGeneratedAlawsAs() != null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    String.format("Column [%s] can not be modified to a generated column", oldColumnName));
+            }
         }
         this.withUniqueConstraint = this.newColumnTypeForChecker.getConstraints().stream()
             .anyMatch(sqlColumnConstraint -> sqlColumnConstraint instanceof SQLColumnUniqueKey);
@@ -248,7 +260,7 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
 
         this.useChecker = preparedData.isUseChecker();
         this.useSimpleChecker = prepareData.isUseSimpleChecker();
-        this.checkerColumnName = preparedData.getCheckerColumnName();
+        this.checkerColumnName = preparedData.getCheckerColumnNames().get(0);
 
         this.skipBackfill = preparedData.isSkipBackfill();
 
@@ -259,6 +271,66 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         }
 
         this.useInstantAddColumn = canUseInstantAddColumn();
+    }
+
+    public static DdlTask genColumnNotNullableTasks(String columnName, String colDef, String colDefNullable,
+                                                    String schemaName, String tableName,
+                                                    PhysicalPlanData physicalPlanData) {
+        String tableNameWithBacktick = surroundWithBacktick(tableName);
+        // Nullable to not nullable, colDef is not nullable
+        String sqlFormatter =
+            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDef);
+        String reverseSqlFormatter =
+            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDefNullable);
+        String sql = String.format(sqlFormatter, tableNameWithBacktick);
+        String reverseSql = String.format(reverseSqlFormatter, tableNameWithBacktick);
+        String sqlTemplate = String.format(sqlFormatter, "?");
+        String reverseSqlTemplate = String.format(reverseSqlFormatter, "?");
+        return genAlterTablePhyTask(sql, reverseSql, sqlTemplate, reverseSqlTemplate, schemaName, tableName, "INPLACE",
+            "INPLACE", physicalPlanData);
+    }
+
+    public static DdlTask genColumnNullableTasks(String columnName, String colDef, String colDefNullable,
+                                                 String schemaName, String tableName,
+                                                 PhysicalPlanData physicalPlanData) {
+        String tableNameWithBacktick = surroundWithBacktick(tableName);
+        // Not nullable to nullable, coldef is not nullable
+        String sqlFormatter =
+            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDefNullable);
+        String reverseSqlFormatter =
+            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDef);
+        String sql = String.format(sqlFormatter, tableNameWithBacktick);
+        String reverseSql = String.format(reverseSqlFormatter, tableNameWithBacktick);
+        String sqlTemplate = String.format(sqlFormatter, "?");
+        String reverseSqlTemplate = String.format(reverseSqlFormatter, "?");
+        return genAlterTablePhyTask(sql, reverseSql, sqlTemplate, reverseSqlTemplate, schemaName, tableName, "INPLACE",
+            "INPLACE", physicalPlanData);
+    }
+
+    public static DdlTask genAlterTablePhyTask(String sql, String reverseSql, String sqlTemplate,
+                                               String reverseSqlTemplate, String schemaName, String tableName,
+                                               String algorithm, String reverseAlgorithm,
+                                               PhysicalPlanData physicalPlanData) {
+        sql = sql + " ,ALGORITHM=" + algorithm;
+        if (!StringUtils.isEmpty(reverseSql)) {
+            reverseSql = reverseSql + ", ALGORITHM=" + reverseAlgorithm;
+        }
+
+        sqlTemplate = sqlTemplate + ", ALGORITHM=" + algorithm;
+        if (!StringUtils.isEmpty(reverseSqlTemplate)) {
+            reverseSqlTemplate = reverseSqlTemplate + ", ALGORITHM=" + reverseAlgorithm;
+        }
+
+        PhysicalPlanData newPhysicalPlanData = physicalPlanData.clone();
+        newPhysicalPlanData.setSqlTemplate(sqlTemplate);
+        AlterTablePhyDdlTask task;
+        task = new AlterTablePhyDdlTask(schemaName, tableName, newPhysicalPlanData);
+        task.setSourceSql(sql);
+        if (!StringUtils.isEmpty(reverseSql)) {
+            task.setRollbackSql(reverseSql);
+            task.setRollbackSqlTemplate(reverseSqlTemplate);
+        }
+        return task;
     }
 
     @Override
@@ -295,10 +367,12 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         List<List<DdlTask>> columnBackFillTasks = new ArrayList<>();
         if (!skipBackfill) {
             columnBackFillTasks.add(ImmutableList.of(
-                new OnlineModifyColumnBackFillTask(schemaName, logicalTableName, oldColumnName, newColumnName)));
+                new ColumnBackFillTask(schemaName, logicalTableName, ImmutableList.of(oldColumnName),
+                    ImmutableList.of(newColumnName), true, false)));
             for (String gsiName : coveringGsi) {
                 columnBackFillTasks.add(ImmutableList.of(
-                    new OnlineModifyColumnBackFillTask(schemaName, gsiName, oldColumnName, newColumnName)));
+                    new ColumnBackFillTask(schemaName, gsiName, ImmutableList.of(oldColumnName),
+                        ImmutableList.of(newColumnName), true, false)));
             }
         }
 
@@ -314,7 +388,7 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
                 coveringGsi, gsiDbIndex, gsiPhyTableName, newColumnNullable);
         DdlTask swapColumnTableSyncTask = new TableSyncTask(schemaName, logicalTableName);
 
-        DdlTask cdcDdlMarkTask = new CdcOnlineModifyDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcDdlMarkTask = new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, true);
 
         DdlTask stopMultiWriteTask =
             new OnlineModifyColumnStopMultiWriteTask(schemaName, logicalTableName, isChange, newColumnName,
@@ -335,20 +409,24 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         List<List<DdlTask>> columnNotNullableTasks = new ArrayList<>();
         if (!newColumnNullable) {
             columnNotNullableTasks.add(ImmutableList.of(
-                genColumnNotNullableTasks(newColumnName, newColumnType, newColumnTypeNullable, logicalTableName)));
+                genColumnNotNullableTasks(newColumnName, newColumnType, newColumnTypeNullable, schemaName,
+                    logicalTableName, physicalPlanDataMap.get(logicalTableName))));
             for (String gsiName : coveringGsi) {
                 columnNotNullableTasks.add(ImmutableList.of(
-                    genColumnNotNullableTasks(newColumnName, newColumnType, newColumnTypeNullable, gsiName)));
+                    genColumnNotNullableTasks(newColumnName, newColumnType, newColumnTypeNullable, schemaName, gsiName,
+                        physicalPlanDataMap.get(gsiName))));
             }
         }
 
         List<List<DdlTask>> columnNullableTasks = new ArrayList<>();
         if (!oldColumnNullable) {
             columnNullableTasks.add(ImmutableList.of(
-                genColumnNullableTasks(dropColumnName, oldColumnType, oldColumnTypeNullable, logicalTableName)));
+                genColumnNullableTasks(dropColumnName, oldColumnType, oldColumnTypeNullable, schemaName,
+                    logicalTableName, physicalPlanDataMap.get(logicalTableName))));
             for (String gsiName : coveringGsi) {
                 columnNullableTasks.add(ImmutableList.of(
-                    genColumnNullableTasks(dropColumnName, oldColumnType, oldColumnTypeNullable, gsiName)));
+                    genColumnNullableTasks(dropColumnName, oldColumnType, oldColumnTypeNullable, schemaName, gsiName,
+                        physicalPlanDataMap.get(gsiName))));
             }
         }
 
@@ -378,23 +456,24 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(allTasks);
 
-        addConcurrentTasks(executableDdlJob, initTableSyncTask, addColumnLogicalTask, addColumnPhyTasks);
-        addConcurrentTasks(executableDdlJob, addColumnTableSyncTask, barrierTask1, columnBackFillTasks);
-        addConcurrentTasks(executableDdlJob, barrierTask1, barrierTask2, columnNotNullableTasks);
-        addConcurrentTasks(executableDdlJob, barrierTask2, barrierTask3, addLocalIndexTasks);
-        addConcurrentTasks(executableDdlJob, barrierTask3, barrierTask4, checkColumnTasks);
-        addConcurrentTasks(executableDdlJob, barrierTask4, swapColumnLogicalTask, swapColumnPhyTasks);
-        addConcurrentTasks(executableDdlJob, swapColumnTableSyncTask, barrierTask5, swapAndDropLocalIndexTasks);
-        addConcurrentTasks(executableDdlJob, barrierTask5, stopMultiWriteTask, columnNullableTasks);
-        addConcurrentTasks(executableDdlJob, stopMultiWriteTableSyncTask, dropColumnLogicalTask, dropColumnPhyTasks);
+        executableDdlJob.addConcurrentTasksBetween(initTableSyncTask, addColumnLogicalTask, addColumnPhyTasks);
+        executableDdlJob.addConcurrentTasksBetween(addColumnTableSyncTask, barrierTask1, columnBackFillTasks);
+        executableDdlJob.addConcurrentTasksBetween(barrierTask1, barrierTask2, columnNotNullableTasks);
+        executableDdlJob.addConcurrentTasksBetween(barrierTask2, barrierTask3, addLocalIndexTasks);
+        executableDdlJob.addConcurrentTasksBetween(barrierTask3, barrierTask4, checkColumnTasks);
+        executableDdlJob.addConcurrentTasksBetween(barrierTask4, swapColumnLogicalTask, swapColumnPhyTasks);
+        executableDdlJob.addConcurrentTasksBetween(swapColumnTableSyncTask, barrierTask5, swapAndDropLocalIndexTasks);
+        executableDdlJob.addConcurrentTasksBetween(barrierTask5, stopMultiWriteTask, columnNullableTasks);
+        executableDdlJob.addConcurrentTasksBetween(stopMultiWriteTableSyncTask, dropColumnLogicalTask,
+            dropColumnPhyTasks);
 
-        executableDdlJob.setExceptionActionForAllSuccessor(validateTask, DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+        executableDdlJob.setExceptionActionForAllSuccessor(validateTask, DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
         // TODO(qianjing): rollback swapColumnLogicalTask
         executableDdlJob.setExceptionActionForAllSuccessor(swapColumnLogicalTask, DdlExceptionAction.PAUSE);
         // Do not try to recover SubJobTask since it already tries to recover during subjob execution
         for (List<DdlTask> addLocalIndexTask : addLocalIndexTasks) {
             for (DdlTask ddlTask : addLocalIndexTask) {
-                ddlTask.setExceptionAction(DdlExceptionAction.ROLLBACK);
+                ddlTask.setExceptionAction(DdlExceptionAction.PAUSE);
             }
         }
 
@@ -421,10 +500,14 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
             String addSqlTemplate = String.format(addSqlFormatter, "?");
             String dropSqlTemplate = String.format(dropSqlFormatter, "?");
 
-            result.add(genAlterTablePhyTask(addSql, dropSql, addSqlTemplate, dropSqlTemplate, tableName, "INPLACE"));
+            result.add(
+                genAlterTablePhyTask(addSql, dropSql, addSqlTemplate, dropSqlTemplate, schemaName, tableName, "INPLACE",
+                    "INPLACE", physicalPlanDataMap.get(tableName)));
             result.add(
                 new CheckColumnTask(schemaName, tableName, checkerColumnName, oldColumnName, newColumnName, false));
-            result.add(genAlterTablePhyTask(dropSql, addSql, dropSqlTemplate, addSqlTemplate, tableName, "INPLACE"));
+            result.add(
+                genAlterTablePhyTask(dropSql, addSql, dropSqlTemplate, addSqlTemplate, schemaName, tableName, "INPLACE",
+                    "INPLACE", physicalPlanDataMap.get(tableName)));
         }
         return result;
     }
@@ -480,11 +563,12 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         alterTableStmt.getTableOptions().clear();
         alterTableStmt.getItems().clear();
         alterTableStmt.getItems().add(addColumn);
+        alterTableStmt.setAfterSemi(false);
         String addColumnSql = alterTableStmt.toString();
         alterTableStmt.getTableSource().setExpr("?");
         String addColumnSqlTemplate = alterTableStmt.toString();
-
-        return genAlterTablePhyTask(addColumnSql, "", addColumnSqlTemplate, "", tableName, "DEFAULT");
+        return genAlterTablePhyTask(addColumnSql, "", addColumnSqlTemplate, "", schemaName, tableName,
+            useInstantAddColumn ? "INSTANT" : "INPLACE", "INPLACE", physicalPlanDataMap.get(tableName));
     }
 
     private DdlTask genSwapColumnPhyTask(String tableName) {
@@ -493,7 +577,8 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         }
         // TODO(qianjing): Find a better way to do this: If we use wrong type, alter table will fail and ddl is stuck
         return genAlterTablePhyTask(genSwapColumnSql(tableName, false, false), genSwapColumnSql(tableName, true, false),
-            genSwapColumnSql(tableName, false, true), genSwapColumnSql(tableName, true, true), tableName, "INPLACE");
+            genSwapColumnSql(tableName, false, true), genSwapColumnSql(tableName, true, true), schemaName, tableName,
+            "INPLACE", "INPLACE", physicalPlanDataMap.get(tableName));
     }
 
     private String genSwapColumnSql(String tableName, boolean reverse, boolean template) {
@@ -514,39 +599,11 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         String dropColumnSqlFormatter =
             String.format("ALTER TABLE %%s DROP COLUMN %s", surroundWithBacktick(dropColumnName));
         return genAlterTablePhyTask(String.format(dropColumnSqlFormatter, tableNameWithBacktick), "",
-            String.format(dropColumnSqlFormatter, "?"), "", tableName, "INPLACE");
+            String.format(dropColumnSqlFormatter, "?"), "", schemaName, tableName, "INPLACE",
+            "INPLACE", physicalPlanDataMap.get(tableName));
     }
 
-    private DdlTask genColumnNotNullableTasks(String columnName, String colDef, String colDefNullable,
-                                              String tableName) {
-        String tableNameWithBacktick = surroundWithBacktick(tableName);
-        // Nullable to not nullable, colDef is not nullable
-        String sqlFormatter =
-            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDef);
-        String reverseSqlFormatter =
-            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDefNullable);
-        String sql = String.format(sqlFormatter, tableNameWithBacktick);
-        String reverseSql = String.format(reverseSqlFormatter, tableNameWithBacktick);
-        String sqlTemplate = String.format(sqlFormatter, "?");
-        String reverseSqlTemplate = String.format(reverseSqlFormatter, "?");
-        return genAlterTablePhyTask(sql, reverseSql, sqlTemplate, reverseSqlTemplate, tableName, "INPLACE");
-    }
-
-    private DdlTask genColumnNullableTasks(String columnName, String colDef, String colDefNullable, String tableName) {
-        String tableNameWithBacktick = surroundWithBacktick(tableName);
-        // Not nullable to nullable, coldef is not nullable
-        String sqlFormatter =
-            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDefNullable);
-        String reverseSqlFormatter =
-            String.format("ALTER TABLE %%s MODIFY COLUMN %s %s", surroundWithBacktick(columnName), colDef);
-        String sql = String.format(sqlFormatter, tableNameWithBacktick);
-        String reverseSql = String.format(reverseSqlFormatter, tableNameWithBacktick);
-        String sqlTemplate = String.format(sqlFormatter, "?");
-        String reverseSqlTemplate = String.format(reverseSqlFormatter, "?");
-        return genAlterTablePhyTask(sql, reverseSql, sqlTemplate, reverseSqlTemplate, tableName, "INPLACE");
-    }
-
-    private List<List<DdlTask>> genAddLocalIndexTasks() {
+    public List<List<DdlTask>> genAddLocalIndexTasks() {
         if (localIndexes.isEmpty() && prepareData.getNewUniqueIndexNameMap().isEmpty()) {
             return Collections.emptyList();
         }
@@ -731,9 +788,9 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
 
     private DdlTask genAlterTablePhyTask(String sql, String reverseSql, String sqlTemplate, String reverseSqlTemplate,
                                          String tableName, String algorithm) {
-        sql = sql + " ,ALGORITHM=" + algorithm;
+        sql = sql + ", ALGORITHM=" + algorithm;
         if (!StringUtils.isEmpty(reverseSql)) {
-            reverseSql = reverseSql + " ,ALGORITHM=" + algorithm;
+            reverseSql = reverseSql + ", ALGORITHM=" + algorithm;
         }
 
         sqlTemplate = sqlTemplate + " ,ALGORITHM=" + algorithm;
@@ -766,7 +823,7 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
     }
 
     private boolean canUseInstantAddColumn() {
-        DataSource dataSource = CommonMetaChanger.getPhyDataSource(schemaName, dbIndex);
+        DataSource dataSource = DdlHelper.getPhyDataSource(schemaName, dbIndex);
         return executionContext.getParamManager().getBoolean(ConnectionParams.SUPPORT_INSTANT_ADD_COLUMN)
             && TableInfoManager.isInstantAddColumnSupportedByPhyDb(dataSource, dbIndex);
     }

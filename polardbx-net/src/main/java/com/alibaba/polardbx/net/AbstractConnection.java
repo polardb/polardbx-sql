@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.net;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.buffer.BufferQueue;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.packet.AuthPacket;
@@ -38,6 +38,8 @@ import java.util.Deque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ;
 
 /**
  * @author xianmao.hexm
@@ -194,7 +196,7 @@ public abstract class AbstractConnection implements NIOConnection {
         lastReadTime = TimeUtil.currentTimeMillis();
         if (got < 0) {
             logout();
-            throw new EOFException();
+            throw new TddlRuntimeException(ERR_PACKET_READ, "end of stream has been reached unexpectedly");
         }
         buffer.writerIndex(buffer.writerIndex() + got);
         netInBytes += got;
@@ -283,7 +285,7 @@ public abstract class AbstractConnection implements NIOConnection {
                 mm.readUB3();
                 byte compressedSequenceId = mm.read(); // 收到压缩的sequenceId可以为0
                 if (compressedSequenceId < 0) {
-                    throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
+                    throw new TddlRuntimeException(ERR_PACKET_READ,
                         "compress sequenceId is: " + compressedSequenceId);
                 }
                 beforeCompressPayloadLen = mm.readUB3();
@@ -294,7 +296,7 @@ public abstract class AbstractConnection implements NIOConnection {
                 buffer.position(offset);
 
                 if (length < 0) {
-                    throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
+                    throw new TddlRuntimeException(ERR_PACKET_READ,
                         "length: " + length + " is invalid, beforeCompressPayloadLen: " + beforeCompressPayloadLen);
                 }
 
@@ -331,7 +333,7 @@ public abstract class AbstractConnection implements NIOConnection {
 
                     if (data == null) {
                         throw new TddlRuntimeException(
-                            com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
+                            ERR_PACKET_READ,
                             "beforeCompressPayloadLen: " + beforeCompressPayloadLen);
                     }
                 }
@@ -353,7 +355,7 @@ public abstract class AbstractConnection implements NIOConnection {
                         if (fullCompressPack.length < 4) {
                             if (byteBuffer.remaining() + fullCompressPack.length < 4) {
                                 throw new TddlRuntimeException(
-                                    com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
+                                    ERR_PACKET_READ,
                                     "can not get compress length: ");
                             }
 

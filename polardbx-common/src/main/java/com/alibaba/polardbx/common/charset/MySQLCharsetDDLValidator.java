@@ -93,6 +93,14 @@ public class MySQLCharsetDDLValidator {
             .orElse(false);
     }
 
+    public static boolean checkIfMySql80NewCollation(String collationNameStr) {
+        CollationName collationName = CollationName.of(collationNameStr, false);
+        if (collationName != null) {
+            return collationName.isMySQL80NewSupported();
+        }
+        return false;
+    }
+
     public static boolean checkCharsetSupported(String charsetStr, String collationStr, boolean checkImplementation) {
         try {
             if (!TStringUtil.isEmpty(charsetStr) && !TStringUtil.isEmpty(collationStr)) {

@@ -74,17 +74,21 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_name=?";
 
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME_AND_EXECUTOR_TYPE =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS
+            + " where table_schema=? and table_name=? and executor_type = ?";
+
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_SCHEDULE_TYPE =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where schedule_type=?";
 
-    private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_GROUP_NAME =
-        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_group_name=?";
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_EXECUTOR_TYPE =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where executor_type=?";
 
     private static final String RENAME_TABLE_BY_TABLE_NAME =
         "update " + SCHEDULED_JOBS + " set table_name = ?, schedule_name = ? where table_schema=? and table_name=?";
 
-    private static final String GET_TABLE_SCHEDULED_JOBS_BY_EXECUTOR_TYPE =
-        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where executor_type=?";
+    private static final String GET_TABLE_SCHEDULED_JOBS_BY_TABLE_GROUP_NAME =
+        "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " where table_schema=? and table_group_name=?";
 
     private static final String POLL_SQL =
         "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS + " "
@@ -107,6 +111,15 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             return MetaDbUtil.insert(INSERT_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to insert into " + SCHEDULED_JOBS, "insert into", e);
+        }
+    }
+
+    public int insertIgnoreFail(ScheduledJobsRecord record) {
+        try {
+            return MetaDbUtil.insert(INSERT_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
+        } catch (Exception e) {
+            logger.error("Failed to insert into " + SCHEDULED_JOBS, e);
+            return 0;
         }
     }
 
@@ -161,6 +174,19 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
             return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME, params, ScheduledJobsRecord.class,
                 connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ScheduledJobsRecord> query(String schemaName, String tableName, String executorType) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, executorType);
+            return MetaDbUtil.query(GET_TABLE_SCHEDULED_JOBS_BY_TABLE_NAME_AND_EXECUTOR_TYPE, params,
+                ScheduledJobsRecord.class, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to query " + SCHEDULED_JOBS, "query", e);
         }

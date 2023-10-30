@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mpp.metadata;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
@@ -324,6 +325,120 @@ public class DefinedJsonSerde {
                 propagateIfInstanceOf(e.getCause(), IOException.class);
                 throw Throwables.propagate(e.getCause());
             }
+        }
+    }
+
+    public static class PruneRawStringSerializer extends StdSerializer<PruneRawString> {
+
+        private final TypeSerializer typeSerializer;
+
+        public PruneRawStringSerializer() {
+            super(PruneRawString.class);
+            this.typeSerializer = new AsPropertyTypeSerializer(new InternalTypeResolver(), null, TYPE_PROPERTY);
+        }
+
+        @Override
+        public void serializeWithType(
+            PruneRawString value, JsonGenerator g, SerializerProvider provider, TypeSerializer typeSer)
+            throws IOException {
+            WritableTypeId typeIdDef = typeSer.writeTypePrefix(g, typeSer.typeId(value, JsonToken.VALUE_STRING));
+            this.serialize(value, g, provider);
+            typeSer.writeTypeSuffix(g, typeIdDef);
+        }
+
+        @Override
+        public void serialize(PruneRawString value, JsonGenerator generator, SerializerProvider provider)
+            throws IOException {
+            if (value == null) {
+                provider.defaultSerializeNull(generator);
+                return;
+            }
+
+            try {
+                //1. serialize the lists
+                List objects = value.getObjList();
+                int len = objects.size();
+                generator.writeStartArray(value, len);
+                if (len > 0) {
+                    for (int i = 0; i < objects.size(); i++) {
+                        Object object = objects.get(i);
+                        if (object == null) {
+                            provider.defaultSerializeNull(generator);
+                            continue;
+                        }
+                        Class<?> objectType = object.getClass();
+                        if (!DynamicConfig.getInstance().useJdkDefaultSer() ||
+                            supportJsonClasses.contains(objectType)) {
+                            //use json
+                            JsonSerializer<Object> objectSerializer =
+                                serializerCache.get(objectType, () -> createSerializer(provider, objectType));
+                            objectSerializer.serializeWithType(object, generator, provider, typeSerializer);
+                        } else {
+                            //use jdk which is low efficiency!
+                            GenericJsonVal genericParameterVal = new GenericJsonVal(object);
+                            JsonSerializer<Object> objectSerializer =
+                                serializerCache.get(
+                                    objectType, () -> createSerializer(provider, genericParameterVal.getClass()));
+                            objectSerializer.serializeWithType(
+                                genericParameterVal, generator, provider, typeSerializer);
+                        }
+                    }
+                }
+                generator.writeEndArray();
+            } catch (ExecutionException e) {
+                propagateIfInstanceOf(e.getCause(), IOException.class);
+                throw Throwables.propagate(e.getCause());
+            }
+        }
+    }
+
+    public static class PruneRawStringDeserializer extends StdDeserializer<PruneRawString> {
+
+        private final TypeDeserializer typeDeserializer;
+
+        public PruneRawStringDeserializer() {
+            super(ParameterContext.class);
+            this.typeDeserializer = new AsPropertyTypeDeserializer(
+                TypeFactory.defaultInstance().constructType(Object.class),
+                new InternalTypeResolver(),
+                TYPE_PROPERTY,
+                false,
+                null);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public PruneRawString deserialize(JsonParser jsonParser, DeserializationContext deserializationContext)
+            throws IOException {
+
+            // 1. deSerialize lists
+            List<Object> objects = new ArrayList<>();
+            JsonToken t;
+            boolean startWithFieldName = false;
+            if (jsonParser.currentToken() == JsonToken.FIELD_NAME) {
+                jsonParser.nextToken();
+                startWithFieldName = true;
+            }
+            //start array
+            while ((t = jsonParser.nextToken()) != JsonToken.END_ARRAY) {
+                try {
+                    if (t == JsonToken.VALUE_NULL) {
+                        objects.add(null);
+                    } else {
+                        Object ret = typeDeserializer.deserializeTypedFromAny(jsonParser, deserializationContext);
+                        if (ret instanceof GenericJsonVal) {
+                            ret = ((GenericJsonVal) ret).getObject();
+                        }
+                        objects.add(ret);
+                    }
+                } catch (Exception var9) {
+                    throw new IOException(var9);
+                }
+            }
+            if (startWithFieldName) {
+                jsonParser.nextToken();
+            }
+            return new PruneRawString(objects, PruneRawString.PRUNE_MODE.RANGE, 0, objects.size(), null);
         }
     }
 

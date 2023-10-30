@@ -19,11 +19,32 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnReference;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableChangeColumn;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableModifyColumn;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.RecycleBinManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -36,32 +57,53 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.SerializableClassMapper;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlAddPrimaryKey;
+import org.apache.calcite.sql.SqlAlterSpecification;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlChangeColumn;
+import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlDropPrimaryKey;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.EqualsContext;
+import org.apache.calcite.util.Litmus;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
+import static com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler.reorgLogicalColumnOrder;
 
 public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
@@ -77,6 +119,8 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
         initDdlContext(logicalDdlPlan, executionContext);
 
+        // Validate the plan on file storage first
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         // Validate the plan first and then return immediately if needed.
         boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
 
@@ -89,17 +133,21 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         }
 
         // Build a specific DDL job by subclass.
-        DdlJob ddlJob = returnImmediately?
-            new TransientDdlJob():
+        DdlJob ddlJob = returnImmediately ?
+            new TransientDdlJob() :
             buildDdlJob(logicalDdlPlan, executionContext);
 
         // Validate the DDL job before request.
         validateJob(logicalDdlPlan, ddlJob, executionContext);
 
+        if (executionContext.getDdlContext().getExplain()) {
+            return buildExplainResultCursor(logicalDdlPlan, ddlJob, executionContext);
+        }
+
         // Handle the client DDL request on the worker side.
         handleDdlRequest(ddlJob, executionContext);
 
-        if (executionContext.getDdlContext().isSubJob()){
+        if (executionContext.getDdlContext().isSubJob()) {
             return buildSubJobResultCursor(ddlJob, executionContext);
         }
         return buildResultCursor(logicalDdlPlan, ddlJob, executionContext);
@@ -120,10 +168,20 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         return new AffectRowCursor(new int[] {0});
     }
 
+    protected Cursor buildExplainResultCursor(BaseDdlOperation baseDdl, DdlJob ddlJob, ExecutionContext ec) {
+        ArrayResultCursor result = new ArrayResultCursor("Logical ExecutionPlan");
+        result.addColumn("Execution Plan", DataTypes.StringType);
+        result.initMeta();
+        for (String row : ddlJob.getExplainInfo()) {
+            result.addRow(new String[] {row});
+        }
+        return result;
+    }
+
     protected Cursor buildSubJobResultCursor(DdlJob ddlJob, ExecutionContext executionContext) {
         long taskId = executionContext.getDdlContext().getParentTaskId();
         long subJobId = executionContext.getDdlContext().getJobId();
-        if((ddlJob instanceof TransientDdlJob) && subJobId == 0L){
+        if ((ddlJob instanceof TransientDdlJob) && subJobId == 0L) {
             // -1 means no need to run
             subJobId = -1L;
         }
@@ -140,7 +198,6 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
      * @return Indicate if need to return immediately
      */
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
-        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         return false;
     }
 
@@ -151,7 +208,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         CommonValidator.validateDdlJob(logicalDdlPlan.getSchemaName(), logicalDdlPlan.getTableName(), ddlJob, LOGGER,
             executionContext);
 
-        checkTaskName(ddlJob.createTaskIterator().getAllTasks());
+        checkTaskName(ddlJob.getAllTasks());
     }
 
     protected void initDdlContext(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
@@ -174,7 +231,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             return;
         }
         DdlContext ddlContext = executionContext.getDdlContext();
-        if (ddlContext.isSubJob()){
+        if (ddlContext.isSubJob()) {
             DdlEngineRequester.create(ddlJob, executionContext).executeSubJob(
                 ddlContext.getParentJobId(), ddlContext.getParentTaskId(), ddlContext.isForRollback());
         } else {
@@ -224,7 +281,8 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         if (null != logicalDdlPlan.getTableNameNode()) {
             final PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(phyTable);
             if (partitionInfo != null) {
-                PartitionLocation location = partitionInfo.getPartitionBy().getPartitions().get(0).getLocation();
+                PartitionLocation location =
+                    partitionInfo.getPartitionBy().getPhysicalPartitions().get(0).getLocation();
                 phyTable = location.getPhyTableName();
                 dbIndex = location.getGroupKey();
             }
@@ -250,9 +308,12 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             Row row;
             if ((row = cursor.next()) != null) {
                 final String primaryTableDefinition = row.getString(1);
+                // reorder column
+                String sql = reorgLogicalColumnOrder(logicalDdlPlan.getSchemaName(), logicalDdlPlan.getTableName(),
+                    primaryTableDefinition);
                 final SqlCreateTable primaryTableNode =
-                    (SqlCreateTable) new FastsqlParser().parse(primaryTableDefinition, executionContext).get(0);
-                return new Pair<>(primaryTableDefinition, primaryTableNode);
+                    (SqlCreateTable) new FastsqlParser().parse(sql, executionContext).get(0);
+                return new Pair<>(sql, primaryTableNode);
             }
 
             return null;
@@ -261,6 +322,196 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
                 cursor.close(new ArrayList<>());
             }
         }
+    }
+
+    protected Pair<String, SqlCreateTable> genPrimaryTableInfoAfterModifyColumn(BaseDdlOperation logicalDdlPlan,
+                                                                                ExecutionContext executionContext,
+                                                                                Map<String, String> virtualColumnMap,
+                                                                                Map<String, String> columnNewDef,
+                                                                                List<String> oldPrimaryKeys) {
+        Pair<String, SqlCreateTable> primaryTableInfo = genPrimaryTableInfo(logicalDdlPlan, executionContext);
+        oldPrimaryKeys.addAll(primaryTableInfo.getValue().getPrimaryKey().getColumns()
+            .stream().map(e -> e.getColumnNameStr().toLowerCase()).collect(Collectors.toList()));
+
+        SqlAlterTable sqlAlterTable = (SqlAlterTable) logicalDdlPlan.getNativeSqlNode();
+
+        final List<SQLStatement> statementList =
+            SQLUtils.parseStatementsWithDefaultFeatures(primaryTableInfo.getKey(), JdbcConstants.MYSQL);
+        final MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
+
+        boolean isFirst = false;
+        String alterSourceSql;
+        SqlIdentifier colName = null;
+        SqlIdentifier afterColName = null;
+        SqlColumnDeclaration newColumnDef = null;
+        SQLColumnDefinition newColumnDefinition = null;
+        for (SqlAlterSpecification sqlAlterSpecification : sqlAlterTable.getAlters()) {
+            if (sqlAlterSpecification instanceof SqlModifyColumn) {
+                SqlModifyColumn sqlModifyColumn = (SqlModifyColumn) sqlAlterSpecification;
+                isFirst = sqlModifyColumn.isFirst();
+                afterColName = sqlModifyColumn.getAfterColumn();
+                colName = sqlModifyColumn.getColName();
+                alterSourceSql = sqlModifyColumn.getSourceSql();
+
+                final List<SQLStatement> alterStatement =
+                    SQLUtils.parseStatementsWithDefaultFeatures(alterSourceSql, JdbcConstants.MYSQL);
+                newColumnDefinition = ((MySqlAlterTableModifyColumn) alterStatement.get(0)
+                    .getChildren().get(1)).getNewColumnDefinition();
+            } else if (sqlAlterSpecification instanceof SqlChangeColumn) {
+                SqlChangeColumn sqlChangeColumn = (SqlChangeColumn) sqlAlterSpecification;
+                if (!sqlChangeColumn.getOldName()
+                    .equalsDeep(sqlChangeColumn.getNewName(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "Do not support changing column name of sharding key");
+                }
+
+                isFirst = sqlChangeColumn.isFirst();
+                afterColName = sqlChangeColumn.getAfterColumn();
+                colName = sqlChangeColumn.getOldName();
+                alterSourceSql = sqlChangeColumn.getSourceSql();
+
+                final List<SQLStatement> alterStatement =
+                    SQLUtils.parseStatementsWithDefaultFeatures(alterSourceSql, JdbcConstants.MYSQL);
+                newColumnDefinition = ((MySqlAlterTableChangeColumn) alterStatement.get(0)
+                    .getChildren().get(1)).getNewColumnDefinition();
+            } else if (sqlAlterSpecification instanceof SqlDropPrimaryKey) {
+                final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
+                while (it.hasNext()) {
+                    SQLTableElement tableElement = it.next();
+                    if (tableElement instanceof SQLColumnDefinition) {
+                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                        if (null != columnDefinition.getConstraints()) {
+                            final Iterator<SQLColumnConstraint> constraintIt =
+                                columnDefinition.getConstraints().iterator();
+                            while (constraintIt.hasNext()) {
+                                final SQLColumnConstraint constraint = constraintIt.next();
+                                if (constraint instanceof SQLColumnPrimaryKey) {
+                                    constraintIt.remove();
+                                } else if (constraint instanceof SQLColumnReference) {
+                                    // remove foreign key
+                                    constraintIt.remove();
+                                }
+                            }
+                        }
+                    } else if (tableElement instanceof MySqlPrimaryKey) {
+                        it.remove();
+                    }
+                }
+                continue;
+            } else if (sqlAlterSpecification instanceof SqlAddPrimaryKey) {
+                SqlAddPrimaryKey sqlAddPrimaryKey = (SqlAddPrimaryKey) sqlAlterSpecification;
+                final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
+                Set<String> colNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                sqlAddPrimaryKey.getColumns().forEach(e -> colNameSet.add(e.getColumnNameStr()));
+
+                boolean hasImplicitKey = false;
+                while (it.hasNext()) {
+                    SQLTableElement tableElement = it.next();
+                    if (tableElement instanceof SQLColumnDefinition) {
+                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                        if (colNameSet.contains(SQLUtils.normalizeNoTrim(columnDefinition.getColumnName()))) {
+                            SQLNotNullConstraint sqlNotNullConstraint = new SQLNotNullConstraint();
+                            columnDefinition.addConstraint(sqlNotNullConstraint);
+                            if (columnDefinition.getDefaultExpr() instanceof SQLNullExpr) {
+                                columnDefinition.setDefaultExpr(null);
+                            }
+                            colNameSet.remove(SQLUtils.normalizeNoTrim(columnDefinition.getColumnName()));
+                        }
+                        if (StringUtils.equalsIgnoreCase(IMPLICIT_COL_NAME,
+                            SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName()))) {
+                            hasImplicitKey = true;
+                        }
+                    } else if (tableElement instanceof MySqlPrimaryKey) {
+                        it.remove();
+                    }
+                }
+
+                if (!colNameSet.isEmpty()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "Unknown column " + colNameSet);
+                }
+
+                // add new primary key
+                List<SQLSelectOrderByItem> colNames = sqlAddPrimaryKey.getColumns().stream()
+                    .map(e -> new SQLSelectOrderByItem(new SQLIdentifierExpr(e.getColumnNameStr())))
+                    .collect(Collectors.toList());
+
+                MySqlPrimaryKey newPrimaryKey = new MySqlPrimaryKey();
+                SQLIndexDefinition indexDefinition = newPrimaryKey.getIndexDefinition();
+                indexDefinition.setKey(true);
+                indexDefinition.setType("PRIMARY");
+
+                indexDefinition.getColumns().addAll(colNames);
+
+                stmt.getTableElementList().add(newPrimaryKey);
+
+                // add local index for implicit key (auto increment)
+                if (hasImplicitKey) {
+                    MySqlKey implicitKey = new MySqlKey();
+                    implicitKey.setName(IMPLICIT_KEY_NAME);
+                    SQLIndexDefinition indexDef = implicitKey.getIndexDefinition();
+                    indexDef.setKey(true);
+                    indexDef.getColumns().add(new SQLSelectOrderByItem(new SQLIdentifierExpr(IMPLICIT_COL_NAME)));
+
+                    stmt.getTableElementList().add(implicitKey);
+                }
+                continue;
+            } else {
+                continue;
+            }
+
+            int first = -1;
+            int m = 0;
+            boolean isAutoIncrement = false;
+            for (; m < stmt.getTableElementList().size(); ++m) {
+                SQLTableElement tableElement = stmt.getTableElementList().get(m);
+                if (tableElement instanceof SQLColumnDefinition) {
+                    first = first == -1 ? m : first;
+                    final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                    final String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
+                    if (columnName.equalsIgnoreCase(colName.getLastName())) {
+                        isAutoIncrement = columnDefinition.isAutoIncrement();
+                        stmt.getTableElementList().remove(m);
+                        break;
+                    }
+                }
+            }
+
+            int n = 0;
+            if (afterColName != null) {
+                for (; n < stmt.getTableElementList().size(); ++n) {
+                    SQLTableElement tableElement = stmt.getTableElementList().get(n);
+                    if (tableElement instanceof SQLColumnDefinition) {
+                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                        final String columnName =
+                            SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
+                        if (columnName.equalsIgnoreCase(afterColName.getLastName())) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (isFirst) {
+                stmt.getTableElementList().add(first, newColumnDefinition);
+            } else if (afterColName != null) {
+                stmt.getTableElementList().add(n + 1, newColumnDefinition);
+            } else {
+                stmt.getTableElementList().add(m, newColumnDefinition);
+            }
+
+            if (!isAutoIncrement) {
+                String colNameStr = colName.getLastName();
+                virtualColumnMap.put(colNameStr, GsiUtils.generateRandomGsiName(colNameStr));
+                columnNewDef.put(colNameStr, TableColumnUtils.getDataDefFromColumnDefNoDefault(newColumnDefinition));
+            }
+        }
+
+        String sourceSql = stmt.toString();
+        SqlCreateTable primaryTableNode =
+            (SqlCreateTable) new FastsqlParser().parse(sourceSql, executionContext).get(0);
+
+        return new Pair<>(sourceSql, primaryTableNode);
     }
 
     protected boolean isAvailableForRecycleBin(String tableName, ExecutionContext executionContext) {

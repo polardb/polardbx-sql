@@ -86,9 +86,13 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
         String sql = String.format("create %s sequence %s ", seqType, seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        assertThat(getSequenceNextVal(seqName)).isAtLeast(1L);
-        simpleCheckSequence(seqName, seqType);
+        if (seqType.equals("simple") || seqType.equals("new")) {
+            assertThat(getSequenceNextVal(seqName)).isEqualTo(1L);
+        } else {
+            assertThat(getSequenceNextVal(seqName)).isAtLeast(1L);
+        }
 
+        simpleCheckSequence(seqName, seqType);
     }
 
     /**
@@ -108,8 +112,7 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testCreateSequenceWithMaxValue() throws Exception {
-        if (!seqType.toLowerCase().contains("simple")) {
-            // Only for Simple Sequence
+        if (!seqType.equals("simple") && !seqType.equals("new")) {
             return;
         }
         String sql = String.format("create %s sequence %s maxvalue 2", seqType, seqName);
@@ -118,7 +121,8 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
         getSequenceNextVal(seqName);
         getSequenceNextVal(seqName);
 
-        JdbcUtil.executeUpdateFailed(tddlConnection, "select " + seqName + ".nextval", "exceeds maximum value allowed");
+        JdbcUtil.executeUpdateFailed(tddlConnection, "select " + seqName + ".nextval",
+            "exceeds maximum value allowed", "has run out");
     }
 
     /**
@@ -126,8 +130,7 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testCreateSequenceWithCycle() throws Exception {
-        if (!seqType.toLowerCase().contains("simple")) {
-            // Only for Simple Sequence
+        if (!seqType.equals("simple") && !seqType.equals("new")) {
             return;
         }
         String sql = String.format("create %s sequence %s maxvalue 2 cycle", seqType, seqName);
@@ -147,7 +150,7 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
         String sql = String.format("create %s sequence %s start with 10", seqType, seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        if (!isSpecialSequence(seqType)) {
+        if (!seqType.equals("group") && !seqType.equals("time")) {
             assertThat(getSequenceNextVal(seqName)).isEqualTo(10);
         }
     }
@@ -157,14 +160,24 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testCreateSequenceWithStartWithLargeThanMaxValue() {
-        if (!seqType.toLowerCase().contains("simple")) {
-            // Only for Simple Sequence
+        if (!seqType.equals("simple") && !seqType.equals("new")) {
             return;
         }
         String sql = String.format("create %s sequence %s start with 10 maxvalue 9", seqType, seqName);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        JdbcUtil.executeUpdateFailed(tddlConnection, "select " + seqName + ".nextval", "exceeds maximum value allowed");
+        if (seqType.equals("new")) {
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "structure or number is invalid");
+        } else {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        }
+
+        sql = "select " + seqName + ".nextval";
+
+        if (seqType.equals("new")) {
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "is not found");
+        } else {
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "exceeds maximum value allowed");
+        }
     }
 
     /**
@@ -172,8 +185,7 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testCreateSequenceWithStartWithIncrementBy() throws Exception {
-        if (!seqType.toLowerCase().contains("simple")) {
-            // Only for Simple Sequence
+        if (!seqType.equals("simple") && !seqType.equals("new")) {
             return;
         }
         String sql = String.format("create %s sequence %s start with 2 maxvalue 10 increment by 3", seqType, seqName);

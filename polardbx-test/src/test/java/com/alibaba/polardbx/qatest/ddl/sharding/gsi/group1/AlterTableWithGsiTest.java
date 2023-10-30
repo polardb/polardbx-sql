@@ -29,6 +29,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -892,12 +893,12 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s modify column a bigint(10) primary key", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "do not support change column name or type on primary key or sharding key on table with gsi");
+            "Do not support modify sharding key column type on drds mode database");
 
         sql = String.format("alter table %s modify column b varchar(40)", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "do not support change column name or type on primary key or sharding key on table with gsi");
+            "Do not support modify sharding key column type on drds mode database");
 
         final String looseHint = "/*+TDDL:cmd_extra(ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI=true)*/";
 
@@ -1001,6 +1002,23 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         dropTableIfExists(primaryTable);
     }
 
+    protected static TableChecker getTableChecker(Connection conn, String tableName) {
+        final String sql = String.format("show create table %s", tableName);
+        try (final ResultSet resultSet = JdbcUtil.executeQuerySuccess(conn, sql)) {
+            Assert.assertTrue(resultSet.next());
+            String createTableStr = resultSet.getString(2);
+            ;
+            if (isMySQL80()) {
+                createTableStr = createTableStr.replaceAll(" CHARACTER SET \\w+", "")
+                    .replaceAll(" COLLATE \\w+", "")
+                    .replaceAll(" DEFAULT COLLATE = \\w+", "");
+            }
+            return TableChecker.buildTableChecker(createTableStr);
+        } catch (Exception e) {
+            throw new RuntimeException("show create table failed!", e);
+        }
+    }
+
     /**
      * @since 5.1.19
      */
@@ -1022,13 +1040,13 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s change column a a1 bigint(10) primary key", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "do not support change column name or type on primary key or sharding key on table with gsi");
+            "Do not support change sharding key column type on drds mode database ");
 
         final String looseHint = "/*+TDDL:cmd_extra(ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI=true)*/";
 
         sql = String.format(looseHint + "alter table %s change column b b1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql,
-            "do not support change column name or type on primary key or sharding key on table with gsi");
+            "Do not support change sharding key column type on drds mode database ");
 
         sql = String.format(looseHint + "alter table %s change column c c1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
@@ -1571,6 +1589,7 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
      */
     @Test
     public void testAlterTableMultiGroupOneAtomWithGsi_error_add_index() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
 
         final String primaryTable = tableName + "_6";
         final String indexTable = indexTableName + "_6";
@@ -1606,7 +1625,7 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         final String referenceTable = tableName + "reference";
         dropTableIfExists(referenceTable);
         sql = String.format(HINT_CREATE_GSI + "create table " + createOption
-            + "%s(a int primary key,b varchar(30), c varchar(30), d varchar(30), e varchar(30)"
+            + "%s(a int primary key,b varchar(30), c varchar(30), d varchar(30), e varchar(30), key(d)"
             + ") dbpartition by hash(a) dbpartitions 2", referenceTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
@@ -1614,9 +1633,9 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
             primaryTable,
             indexTable,
             referenceTable);
-        //JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Duplicated index name " + indexTable);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Duplicated index name " + indexTable);
 
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "do not support foreign key");
+//        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "do not support foreign key");
         dropTableIfExists(referenceTable);
         dropTableIfExists(primaryTable);
     }
@@ -1791,5 +1810,20 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "unknown charset name 'utf2'");
 
         dropTableIfExists(primaryTable);
+    }
+
+    public String showCreateTable(Connection conn, String tbName) {
+        String sql = "show create table " + tbName;
+
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            assertThat(rs.next()).isTrue();
+            return rs.getString("Create Table");
+        } catch (SQLException e) {
+            logger.error(e.getMessage(), e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return null;
     }
 }

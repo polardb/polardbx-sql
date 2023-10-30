@@ -35,20 +35,24 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableColumnBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropColumnCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertColumnMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexColumnStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * an interesting gsi-relevant task generator
@@ -69,10 +73,12 @@ public class GsiTaskFactory {
             primaryTableName,
             indexName,
             IndexStatus.CREATING,
-            IndexStatus.PUBLIC
+            IndexStatus.PUBLIC,
+            false
         ).onExceptionTryRecoveryThenRollback();
 
         taskList.add(publicTask);
+
         return taskList;
     }
 
@@ -86,7 +92,12 @@ public class GsiTaskFactory {
                                                     String indexName,
                                                     boolean stayAtDeleteOnly,
                                                     boolean stayAtWriteOnly,
-                                                    boolean stayAtBackFill) {
+                                                    boolean stayAtBackFill,
+                                                    Map<String, String> virtualColumns,
+                                                    PhysicalPlanData physicalPlanData,
+                                                    TableMeta tableMeta,
+                                                    boolean repartition,
+                                                    String originalDdl) {
         List<DdlTask> taskList = new ArrayList<>();
 
         DdlTask deleteOnlyTask = new GsiUpdateIndexStatusTask(
@@ -94,28 +105,32 @@ public class GsiTaskFactory {
             primaryTableName,
             indexName,
             IndexStatus.CREATING,
-            IndexStatus.DELETE_ONLY
+            IndexStatus.DELETE_ONLY,
+            true
         ).onExceptionTryRecoveryThenRollback();
         DdlTask writeOnlyTask = new GsiUpdateIndexStatusTask(
             schemaName,
             primaryTableName,
             indexName,
             IndexStatus.DELETE_ONLY,
-            IndexStatus.WRITE_ONLY
+            IndexStatus.WRITE_ONLY,
+            true
         ).onExceptionTryRecoveryThenRollback();
         DdlTask writeReOrgTask = new GsiUpdateIndexStatusTask(
             schemaName,
             primaryTableName,
             indexName,
             IndexStatus.WRITE_ONLY,
-            IndexStatus.WRITE_REORG
+            IndexStatus.WRITE_REORG,
+            true
         ).onExceptionTryRecoveryThenRollback();
         DdlTask publicTask = new GsiUpdateIndexStatusTask(
             schemaName,
             primaryTableName,
             indexName,
             IndexStatus.WRITE_REORG,
-            IndexStatus.PUBLIC
+            IndexStatus.PUBLIC,
+            true
         ).onExceptionTryRecoveryThenRollback();
 
         taskList.add(deleteOnlyTask);
@@ -128,12 +143,17 @@ public class GsiTaskFactory {
         if (stayAtWriteOnly) {
             return taskList;
         }
-        taskList.add(new LogicalTableBackFillTask(schemaName, primaryTableName, indexName));
+        taskList.add(new LogicalTableBackFillTask(schemaName, primaryTableName, indexName, virtualColumns));
         if (stayAtBackFill) {
             return taskList;
         }
         taskList.add(writeReOrgTask);
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
+        if (!tableMeta.isAutoPartition() && !repartition) {
+            CdcGsiDdlMarkTask cdcDdlMarkTask =
+                new CdcGsiDdlMarkTask(schemaName, physicalPlanData, primaryTableName, originalDdl);
+            taskList.add(cdcDdlMarkTask);
+        }
         taskList.add(publicTask);
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
         return taskList;
@@ -155,7 +175,8 @@ public class GsiTaskFactory {
                 primaryTableName,
                 indexName,
                 statusChange.getKey(),
-                statusChange.getValue()
+                statusChange.getValue(),
+                true
             );
             taskList.add(changeStatus);
             taskList.add(new TableSyncTask(schemaName, primaryTableName));
@@ -184,9 +205,9 @@ public class GsiTaskFactory {
         taskList.add(insertColumnMetaTask);
 
         // Add column
-        for (Pair<TableStatus, TableStatus> change : TableStatus.schemaChangeForAddColumn()) {
-            TableStatus before = change.getKey();
-            TableStatus after = change.getValue();
+        for (Pair<ColumnStatus, ColumnStatus> change : ColumnStatus.schemaChangeForAddColumn()) {
+            ColumnStatus before = change.getKey();
+            ColumnStatus after = change.getValue();
             // change status
             DdlTask task = changeGsiColumnStatus(schemaName, primaryTableName, indexName, columns, before, after);
             taskList.add(task);
@@ -195,7 +216,7 @@ public class GsiTaskFactory {
             taskList.add(new TableSyncTask(schemaName, primaryTableName));
 
             // backfill
-            if (after.equals(TableStatus.WRITE_REORG) && CollectionUtils.isNotEmpty(backfillColumns)) {
+            if (after.equals(ColumnStatus.WRITE_REORG) && CollectionUtils.isNotEmpty(backfillColumns)) {
                 DdlTask columnBackFillTask =
                     new LogicalTableColumnBackFillTask(schemaName, primaryTableName, indexName, backfillColumns);
                 taskList.add(columnBackFillTask);
@@ -212,7 +233,7 @@ public class GsiTaskFactory {
         List<String> columnsDef = new ArrayList<>();
 
         final MySqlCreateTableStatement astCreateIndexTable = (MySqlCreateTableStatement) SQLUtils
-            .parseStatements(primaryTableDefinition, JdbcConstants.MYSQL).get(0).clone();
+            .parseStatementsWithDefaultFeatures(primaryTableDefinition, JdbcConstants.MYSQL).get(0).clone();
 
         String onUpdate = null;
         String defaultCurrentTime = null;
@@ -306,10 +327,12 @@ public class GsiTaskFactory {
                                                                         String primaryTableDefinition,
                                                                         String indexName,
                                                                         List<String> columns,
-                                                                        ExecutionContext executionContext) {
+                                                                        ExecutionContext executionContext,
+                                                                        RelOptCluster cluster) {
         String sql = genAlterGlobalIndexAddColumnsSql(primaryTableDefinition, indexName, columns, executionContext);
         AlterTableBuilder alterTableBuilder =
-            AlterTableBuilder.createGsiAddColumnsBuilder(schemaName, indexName, sql, columns, executionContext);
+            AlterTableBuilder.createGsiAddColumnsBuilder(schemaName, indexName, sql, columns, executionContext,
+                cluster);
         DdlPhyPlanBuilder builder = alterTableBuilder.build();
         PhysicalPlanData clusterIndexPlan = builder.genPhysicalPlanData();
         AlterTableJobFactory jobFactory = new AlterTableJobFactory(
@@ -339,7 +362,7 @@ public class GsiTaskFactory {
             new GsiDropColumnCleanUpTask(schemaName, primaryTableName, indexName, columns);
         taskList.add(cleanUpTask);
 
-        for (Pair<TableStatus, TableStatus> statusChange : TableStatus.schemaChangeForDropColumn()) {
+        for (Pair<ColumnStatus, ColumnStatus> statusChange : ColumnStatus.schemaChangeForDropColumn()) {
             DdlTask changeStatus = changeGsiColumnStatus(schemaName, primaryTableName, indexName, columns,
                 statusChange.getKey(), statusChange.getValue());
             taskList.add(changeStatus);
@@ -351,7 +374,7 @@ public class GsiTaskFactory {
 
     private static GsiUpdateIndexColumnStatusTask changeGsiColumnStatus(String schemaName, String primaryTableName,
                                                                         String indexName, List<String> columns,
-                                                                        TableStatus before, TableStatus after) {
+                                                                        ColumnStatus before, ColumnStatus after) {
         return new GsiUpdateIndexColumnStatusTask(
             schemaName,
             primaryTableName,

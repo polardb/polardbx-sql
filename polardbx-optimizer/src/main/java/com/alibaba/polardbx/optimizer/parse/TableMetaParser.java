@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
@@ -150,7 +152,7 @@ public class TableMetaParser {
                 primaryKey = parseIndex(tableName, columnsMap,
                     new SqlIndexDefinition(SqlParserPos.ZERO, false, null, null, null, null, null, null,
                         ImmutableList.of(new SqlIndexColumnName(SqlParserPos.ZERO, probPk, null, null)),
-                        null, null, null, null, null, null, false, null), true, true);
+                        null, null, null, null, null, null, false, null, true), true, true);
             }
         }
 
@@ -188,9 +190,13 @@ public class TableMetaParser {
         boolean nullable =
             Optional.ofNullable(def.getNotNull()).map(cn -> SqlColumnDeclaration.ColumnNull.NULL == cn).orElse(true);
         RelDataType type = def.getDataType().deriveType(factory, nullable);
-        final String defaultStr = Optional.ofNullable(def.getDefaultExpr()).map(Object::toString)
+        String defaultStr = Optional.ofNullable(def.getDefaultExpr()).map(Object::toString)
             .orElseGet(() -> Optional.ofNullable(def.getDefaultVal()).map(Object::toString)
                 .filter(d -> !"NULL".equalsIgnoreCase(d)).orElse(null));
+
+        if (def.isGeneratedAlwaysLogical()) {
+            defaultStr = def.getGeneratedAlwaysExpr().toString();
+        }
 
         Field field = new Field(tableName,
             columnName,
@@ -201,7 +207,16 @@ public class TableMetaParser {
             def.isAutoIncrement(),
             false
         );
-        return Pair.of(columnName, new ColumnMeta(tableName, columnName, null, field));
+
+        ColumnMeta columnMeta;
+        if (def.isGeneratedAlwaysLogical()) {
+            columnMeta = new ColumnMeta(tableName, columnName, null, field, ColumnStatus.PUBLIC,
+                ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN);
+        } else {
+            columnMeta = new ColumnMeta(tableName, columnName, null, field);
+        }
+
+        return Pair.of(columnName, columnMeta);
     }
 
     private static IndexMeta parseIndex(String tableName, Map<String, ColumnMeta> columnsMap, SqlIndexDefinition def) {

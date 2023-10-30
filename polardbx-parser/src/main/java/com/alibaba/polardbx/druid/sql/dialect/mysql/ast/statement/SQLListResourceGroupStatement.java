@@ -20,7 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateStatement;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLListResourceGroupStatement
-        extends SQLStatementImpl implements SQLCreateStatement {
+    extends SQLStatementImpl implements SQLCreateStatement {
 
     public void accept0(SQLASTVisitor v) {
         if (v.visit(this)) {

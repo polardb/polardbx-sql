@@ -18,15 +18,23 @@ package com.alibaba.polardbx.optimizer.locality;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -37,16 +45,52 @@ import java.util.stream.Collectors;
  * @since 2022/03
  */
 public class LocalityInfoUtils {
+
+    private static final String DN_PREFIX = "dn=";
+
+    private static final String BALANCE_PREFIX = "balance_single_table=";
+
+    private static final String STORAGE_POOL_PREFIX = "storage_pools=";
+
     public static LocalityDesc Intersect(LocalityDesc localityDesc1, LocalityDesc localityDesc2) {
         if (localityDesc1.holdEmptyDnList()) {
             return localityDesc2;
         } else if (localityDesc2.holdEmptyDnList()) {
             return localityDesc1;
         } else {
-            List<String> dnList =
-                localityDesc1.getDnList().stream().filter(dn -> localityDesc2.getDnList().contains(dn))
-                    .collect(Collectors.toList());
-            return new LocalityDesc(dnList);
+            Set<String> dnSet =
+                localityDesc1.getDnSet().stream().map(String::new)
+                    .collect(Collectors.toSet());
+            dnSet.retainAll(localityDesc2.getDnSet());
+            return new LocalityDesc(dnSet);
+        }
+    }
+
+    public static String allocatePhyDb(String schemaName, LocalityDesc localityDesc) {
+        List<String> groupNames =
+            getGroupDetails(schemaName, localityDesc.getDnList()).values().stream().map(o -> o.getGroupName()).collect(
+                Collectors.toList());
+        if (groupNames.isEmpty()) {
+            String errMessage =
+                String.format("unable to allocate physical db for invalid locality [%s]", localityDesc.toString());
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, errMessage);
+        }
+        Random random = new Random();
+        int index = random.nextInt(groupNames.size()); // 生成一个0到list.size()-1之间的随机整数
+        String groupName = groupNames.get(index); // 获取对应索引的元素
+        return GroupInfoUtil.buildPhysicalDbNameFromGroupName(groupName);
+    }
+
+    public static Map<String, GroupDetailInfoRecord> getGroupDetails(String schema, List<String> storageInsts) {
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
+            accessor.setConnection(conn);
+            List<GroupDetailInfoRecord> records =
+                accessor.getGroupDetailInfoByInstIdAndDbName(InstIdUtil.getInstId(), schema)
+                    .stream().filter(o -> storageInsts.contains(o.storageInstId)).collect(Collectors.toList());
+            return records.stream().collect(Collectors.toMap(GroupDetailInfoRecord::getGroupName, x -> x));
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
         }
     }
 
@@ -60,9 +104,9 @@ public class LocalityInfoUtils {
         } else if (localityDesc2.holdEmptyDnList()) {
             return localityDesc2;
         } else {
-            HashSet<String> dnSet = new HashSet<>(localityDesc1.getDnList());
+            Set<String> dnSet = localityDesc1.getDnSet().stream().map(String::new).collect(Collectors.toSet());
             dnSet.addAll(localityDesc2.getDnList());
-            return new LocalityDesc(dnSet.stream().collect(Collectors.toList()));
+            return new LocalityDesc(dnSet);
         }
     }
 
@@ -91,22 +135,49 @@ public class LocalityInfoUtils {
     }
 
     public static void checkTableGroupLocalityCompatiable(String schemaName, String tableGroupName,
+                                                          Map<String, String> moveOut,
+                                                          Map<String, String> targetLocality) {
+        Map<String, List<GroupDetailInfoExRecord>> allowedGroup =
+            getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroupName);
+        for (String partition : moveOut.keySet()) {
+            if (targetLocality.containsKey(partition)) {
+                LocalityDesc targetPartLocality = LocalityInfoUtils.parse(targetLocality.get(partition));
+                if (!targetPartLocality.matchStorageInstance(moveOut.get(partition))) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_CHECK_ARGUMENTS,
+                        String.format("alter tablegroup operation not compatebale with partition [%s].[%s] locality ",
+                            tableGroupName, partition), null);
+                }
+            } else {
+                Set<String> targetAllowedDnIds =
+                    allowedGroup.get(partition).stream().map(o -> o.getStorageInstId()).collect(
+                        Collectors.toSet());
+                if (!targetAllowedDnIds.contains(moveOut.get(partition))) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_CHECK_ARGUMENTS,
+                        String.format("alter tablegroup operation not compatebale with partition [%s].[%s] locality ",
+                            tableGroupName, partition), null);
+                }
+            }
+        }
+    }
+
+    public static void checkTableGroupLocalityCompatiable(String schemaName, String tableGroupName,
                                                           Collection<String> partitions, CheckAction checkAction) {
         String dbLocality = LocalityManager.getInstance().getLocalityOfDb(
                 DbInfoManager.getInstance().getDbInfo(schemaName).id)
             .getLocality();
-        LocalityDesc schemaLocality = LocalityDesc.parse(dbLocality);
+        LocalityDesc schemaLocality = LocalityInfoUtils.parse(dbLocality);
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager().
             getTableGroupConfigByName(tableGroupName);
-        LocalityDesc allowedTableGroupLocality = Intersect(schemaLocality, tableGroupConfig.getLocalityDesc());
+        Map<String, List<GroupDetailInfoExRecord>> allowedGroupInfo =
+            getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroupName);
 
         for (String partition : partitions) {
-            LocalityDesc partitionGroupLocality = LocalityDesc.parse(
-                tableGroupConfig.getPartitionGroupByName(partition).getLocality()
-            );
-            LocalityDesc allowedPartitionGroupLocality =
-                partitionGroupLocality.holdEmptyDnList() ? allowedTableGroupLocality : partitionGroupLocality;
+            List<String> allowedPartitionGroupDns =
+                allowedGroupInfo.get(partition).stream().map(o -> o.storageInstId).collect(Collectors.toList());
+            LocalityDesc allowedPartitionGroupLocality = LocalityDesc.parse(
+                LocalityDesc.DN_PREFIX +
+                    org.apache.commons.lang.StringUtils.join(allowedPartitionGroupDns, ","));
             if (!checkAction.checkPartition(partition, allowedPartitionGroupLocality)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_CHECK_ARGUMENTS,
                     String.format("alter tablegroup operation not compatebale with partition [%s].[%s] locality ",
@@ -123,12 +194,17 @@ public class LocalityInfoUtils {
 
     public static List<GroupDetailInfoExRecord> getAllowedGroupInfoOfTableGroup(String schemaName,
                                                                                 String tableGroupName) {
+        // we would only get dnSet, not full dnSet here.
+        LocalityDesc dbLocalityDesc =
+            LocalityInfoUtils.parse(LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality());
         List<GroupDetailInfoExRecord> groupDetailInfoExRecordList = TableGroupLocation.getOrderedGroupList(schemaName);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        LocalityDesc localityDesc = tableGroupConfig.getLocalityDesc();
+        LocalityDesc localityDesc = LocalityInfoUtils.parse(tableGroupConfig.getLocalityDesc().toString());
         if (localityDesc.holdEmptyDnList()) {
-            return groupDetailInfoExRecordList;
+            return groupDetailInfoExRecordList.stream()
+                .filter(o -> dbLocalityDesc.matchStorageInstance(o.storageInstId))
+                .collect(Collectors.toList());
         } else {
             return groupDetailInfoExRecordList.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
                 .collect(Collectors.toList());
@@ -138,30 +214,104 @@ public class LocalityInfoUtils {
     public static Map<String, List<GroupDetailInfoExRecord>> getAllowedGroupInfoOfPartitionGroup(String schemaName,
                                                                                                  String tableGroupName) {
         List<GroupDetailInfoExRecord> groupDetailInfoExRecordList = TableGroupLocation.getOrderedGroupList(schemaName);
+        LocalityDesc dbLocalityDesc =
+            LocalityInfoUtils.parse(LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality());
+        List<GroupDetailInfoExRecord> tgRecords =
+            groupDetailInfoExRecordList.stream().filter(o -> dbLocalityDesc.matchStorageInstance(o.storageInstId))
+                .collect(Collectors.toList());
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords().stream()
-            .filter(partitionGroup -> !StringUtils.isEmpty(partitionGroup.getLocality())).collect(Collectors.toList());
+        LocalityDesc tgLocalityDesc = LocalityInfoUtils.parse(tableGroupConfig.getLocalityDesc().toString());
+        if (!tgLocalityDesc.holdEmptyDnList()) {
+            tgRecords =
+                groupDetailInfoExRecordList.stream().filter(o -> tgLocalityDesc.matchStorageInstance(o.storageInstId))
+                    .collect(Collectors.toList());
+        }
+
+        List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
+//            .filter(partitionGroup -> !StringUtils.isEmpty(partitionGroup.getLocality())).collect(Collectors.toList());
 
         Map<String, List<GroupDetailInfoExRecord>> groupInfoOfPartitionGroups = new HashMap<>();
         for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
-            LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecord.locality);
+            LocalityDesc localityDesc = LocalityInfoUtils.parse(partitionGroupRecord.locality);
             if (!localityDesc.holdEmptyDnList()) {
                 List<GroupDetailInfoExRecord> records =
                     groupDetailInfoExRecordList.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
                         .collect(Collectors.toList());
                 groupInfoOfPartitionGroups.put(partitionGroupRecord.partition_name, records);
+            } else {
+                groupInfoOfPartitionGroups.put(partitionGroupRecord.partition_name, tgRecords);
             }
         }
         return groupInfoOfPartitionGroups;
     }
 
-    public static List<GroupDetailInfoExRecord> getAllowedGroupInfoOfPartitionGroup(String schemaName,
-                                                                                    String tableGroupName,
-                                                                                    String partitiongGroupName) {
-        List<GroupDetailInfoExRecord> groupDetailInfoExRecordList = TableGroupLocation.getOrderedGroupList(schemaName);
+    public static Map<String, String> getAllowedStoragePoolOfPartitionGroup(String schemaName,
+                                                                            String tableGroupName) {
+        String dbLocality = LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality();
+        String tgStoragePoolName = LocalityInfoUtils.parse(dbLocality).getPrimaryStoragePoolName();
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
+        if (!StringUtils.isEmpty(tableGroupConfig.getLocalityDesc().getPrimaryStoragePoolName())) {
+            tgStoragePoolName = tableGroupConfig.getLocalityDesc().getPrimaryStoragePoolName();
+        }
+        List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
+        Map<String, String> storagePoolOfPartitionGroups = new HashMap<>();
+        for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
+            String storagePoolName = tgStoragePoolName;
+            LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecord.locality);
+            if (!StringUtils.isEmpty(localityDesc.getPrimaryStoragePoolName())) {
+                storagePoolName = localityDesc.getPrimaryStoragePoolName();
+            }
+            storagePoolName = Optional.ofNullable(storagePoolName).orElse(StoragePoolManager.DEFAULT_STORAGE_POOL_NAME);
+            storagePoolOfPartitionGroups.put(partitionGroupRecord.partition_name, storagePoolName);
+        }
+        return storagePoolOfPartitionGroups;
+    }
+
+    public static List<GroupDetailInfoExRecord> getAllowedGroupInfoOfPartitionGroup(String schemaName,
+                                                                                    String tableGroupName,
+                                                                                    String firstLevelPartition,
+                                                                                    Set<String> partitionGroups,
+                                                                                    boolean ignorePartGroupLocality) {
+        List<GroupDetailInfoExRecord> groupDetailInfoExRecordList = TableGroupLocation.getOrderedGroupList(schemaName);
+        LocalityDesc dbLocalityDesc =
+            LocalityInfoUtils.parse(LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality());
+        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+            .getTableGroupConfigByName(tableGroupName);
+        List<GroupDetailInfoExRecord> records = groupDetailInfoExRecordList.stream()
+            .filter(o -> dbLocalityDesc.matchStorageInstance(o.storageInstId))
+            .collect(Collectors.toList());
+        LocalityDesc tgLocalityDesc = tableGroupConfig.getLocalityDesc();
+        if (!tgLocalityDesc.holdEmptyDnList()) {
+            records = records.stream()
+                .filter(o -> tableGroupConfig.getLocalityDesc().matchStorageInstance(o.storageInstId))
+                .collect(Collectors.toList());
+        }
+        if (!ignorePartGroupLocality) {
+            List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords().stream()
+                .filter(partitionGroup -> partitionGroups.contains(partitionGroup.getPartition_name()))
+                .collect(Collectors.toList());
+            if (GeneralUtil.isEmpty(partitionGroupRecords)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_CHECK_ARGUMENTS,
+                    String.format("can't find the partitionGroup [%s].[%s] ",
+                        tableGroupConfig.getTableGroupRecord().getTg_name(), firstLevelPartition));
+            }
+            LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecords.get(0).locality);
+            if (!localityDesc.holdEmptyDnList()) {
+                records =
+                    records.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
+                        .collect(Collectors.toList());
+            }
+        }
+        return records;
+    }
+
+    public static Boolean withoutRestrictedAllowedGroup(String schemaName, Long tableGroupId,
+                                                        String partitiongGroupName) {
+        List<GroupDetailInfoExRecord> groupDetailInfoExRecordList = TableGroupLocation.getOrderedGroupList(schemaName);
+        TableGroupConfig tableGroupConfig =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords().stream()
             .filter(partitionGroup -> partitionGroup.getPartition_name().equalsIgnoreCase(partitiongGroupName))
             .collect(Collectors.toList());
@@ -174,6 +324,60 @@ public class LocalityInfoUtils {
                 groupDetailInfoExRecordList.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
                     .collect(Collectors.toList());
         }
-        return records;
+        return groupDetailInfoExRecordList.equals(records);
+    }
+
+    public static Boolean withoutRestrictedLocality(List<GroupDetailInfoExRecord> groupDetailInfoExRecordList,
+                                                    TableGroupConfig tableGroupConfig) {
+        LocalityDesc tgLocalityDesc = LocalityDesc.parse(tableGroupConfig.getTableGroupRecord().locality);
+        if (!tgLocalityDesc.holdEmptyDnList()) {
+            List<GroupDetailInfoExRecord> records =
+                groupDetailInfoExRecordList.stream().filter(o -> tgLocalityDesc.matchStorageInstance(o.storageInstId))
+                    .collect(Collectors.toList());
+            if (groupDetailInfoExRecordList.size() != records.size()) {
+                return false;
+            }
+        }
+        for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
+            LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecord.locality);
+            if (!localityDesc.holdEmptyDnList()) {
+                List<GroupDetailInfoExRecord> records =
+                    groupDetailInfoExRecordList.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
+                        .collect(Collectors.toList());
+                if (groupDetailInfoExRecordList.size() != records.size()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    public static Boolean withSingleTableBalanceLocality(TableGroupConfig tableGroupConfig) {
+        LocalityDesc tgLocalityDesc = LocalityDesc.parse(tableGroupConfig.getTableGroupRecord().locality);
+        return tgLocalityDesc.getBalanceSingleTable();
+    }
+
+    public static LocalityDesc parse(String str) {
+        LocalityDesc result = LocalityDesc.parse(str);
+        if (!result.getStoragePoolNames().isEmpty()) {
+            List<String> storagePoolNames = result.getStoragePoolNames();
+            String primaryStoragePoolName = result.getPrimaryStoragePoolName();
+            Set<String> fullDnSet = new HashSet<>();
+            for (String storagePoolName : storagePoolNames) {
+                if (StoragePoolManager.getInstance().inValidStoragePoolName(storagePoolName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                        "invalid locality: '%s', storage pool name not defined '%s'",
+                        str, storagePoolName));
+                }
+                StoragePoolInfo storagePoolInfo = StoragePoolManager.getInstance().getStoragePoolInfo(storagePoolName);
+                fullDnSet.addAll(LocalityDesc.parse(DN_PREFIX + storagePoolInfo.getDnIds()).getDnSet());
+            }
+            StoragePoolInfo storagePoolInfo =
+                StoragePoolManager.getInstance().getStoragePoolInfo(primaryStoragePoolName);
+            result.setDnSet(LocalityDesc.parse(DN_PREFIX + storagePoolInfo.getDnIds()).getDnSet());
+            result.setFullDnSet(fullDnSet);
+            result.setPrimaryDnId(storagePoolInfo.getUndeletableDnId());
+        }
+        return result;
     }
 }

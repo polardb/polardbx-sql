@@ -17,45 +17,30 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.IdGenerator;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.Assert;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
-import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
-import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupRenamePartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSetLocalityJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.handler.LogicalRebalanceHandler;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
-import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSetLocality;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupSetLocality;
-import org.apache.calcite.sql.SqlRebalance;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
 
 public class LogicalAlterTableGroupSetLocalityHandler extends LogicalCommonDdlHandler {
 
@@ -95,6 +80,8 @@ public class LogicalAlterTableGroupSetLocalityHandler extends LogicalCommonDdlHa
 
         initDdlContext(logicalDdlPlan, executionContext);
 
+        // Validate the plan on file storage first
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         // Validate the plan first and then return immediately if needed.
         boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
 

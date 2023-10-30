@@ -125,7 +125,7 @@ public class PhyTableOpBuildParams {
      * Label if the physical sql of query is using any lock like " FOR UPDATE" and so on.
      * , The default value of lockMode of PhyTableOperation is UNDEF
      */
-    protected SqlSelect.LockMode lockMode;
+    protected SqlSelect.LockMode lockMode = null;
 
     /**
      * Label if there is only one PhyTableOperation and go to pushdown by PostPlanner after pruning LogicalView

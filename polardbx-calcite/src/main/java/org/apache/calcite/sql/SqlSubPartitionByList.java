@@ -24,8 +24,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  * @author luoyanxin
  */
 public class SqlSubPartitionByList extends SqlSubPartitionBy {
-    protected String column;
-    public SqlSubPartitionByList(SqlNode subPartitionsCount, SqlParserPos sqlParserPos) {
-        super(subPartitionsCount, sqlParserPos);
+    public SqlSubPartitionByList(SqlParserPos sqlParserPos) {
+        super(sqlParserPos);
     }
 }

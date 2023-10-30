@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
@@ -34,15 +35,14 @@ import java.util.TreeMap;
 
 public class ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVisitor {
 
-    private String schemaName;
-    protected Map<String, String> logTblToPhyTblMapping = new TreeMap<String, String>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+    protected Map<String, String> logTblToPhyTblMapping =
+        new TreeMap<String, String>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
     protected boolean onlyContainBroadcastTbl = true;
     protected String singleTblGroup = null;
 
     public ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor(String defaultSchemaName,
                                                            ExecutionContext executionContext) {
         super(defaultSchemaName, executionContext);
-        this.schemaName = defaultSchemaName;
     }
 
     @Override
@@ -53,7 +53,18 @@ public class ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor extends ReplaceTabl
         if (!(sqlNode instanceof SqlIdentifier)) {
             return sqlNode;
         }
-        final String logicalTableName = ((SqlIdentifier) sqlNode).getLastName();
+
+        String schemaName;
+        final String logicalTableName;
+        if (((SqlIdentifier) sqlNode).isSimple()) {
+            schemaName = defaultSchemaName;
+            logicalTableName = ((SqlIdentifier) sqlNode).getLastName();
+        } else {
+            ImmutableList<String> names = ((SqlIdentifier) sqlNode).names;
+            schemaName = names.get(names.size() - 2);
+            logicalTableName = ((SqlIdentifier) sqlNode).getLastName();
+        }
+
         String physicalTableName;
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName)
@@ -65,7 +76,8 @@ public class ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor extends ReplaceTabl
             physicalTableName = partitionInfo.getPrefixTableName();
             if (partitionInfo.isGsiSingleOrSingleTable()) {
                 this.onlyContainBroadcastTbl = false;
-                this.singleTblGroup = partitionInfo.getPartitionBy().getPartitions().get(0).getLocation().getGroupKey();
+                this.singleTblGroup =
+                    partitionInfo.getPartitionBy().getPhysicalPartitions().get(0).getLocation().getGroupKey();
             }
 
             logTblToPhyTblMapping.put(logicalTableName, physicalTableName);
@@ -96,10 +108,6 @@ public class ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor extends ReplaceTabl
         return super.addAliasForDelete(delete);
     }
 
-    public String getSchemaName() {
-        return schemaName;
-    }
-
     public Map<String, String> getLogTblToPhyTblMapping() {
         return logTblToPhyTblMapping;
     }
@@ -107,7 +115,6 @@ public class ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor extends ReplaceTabl
     public boolean isOnlyContainBroadcastTbl() {
         return onlyContainBroadcastTbl;
     }
-
 
     public String getSingleTblGroup() {
         return singleTblGroup;

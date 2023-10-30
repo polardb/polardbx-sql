@@ -48,6 +48,7 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableMap;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
@@ -80,6 +81,7 @@ public class CheckGsiTask extends BaseBackfillTask {
     private final String extraCmd;
     private final boolean primaryBroadCast;
     private final boolean gsiBroadCast;
+    private Map<String, String> virtualColumnMap;
 
     public static CheckGsiTask create(CheckGsiPrepareData prepareData) {
         return new CheckGsiTask(
@@ -98,7 +100,8 @@ public class CheckGsiTask extends BaseBackfillTask {
             prepareData.isCorrect(),
             prepareData.getExtraCmd(),
             false,
-            false
+            false,
+            null
         );
     }
 
@@ -112,7 +115,8 @@ public class CheckGsiTask extends BaseBackfillTask {
                         boolean correct,
                         String extraCmd,
                         boolean primaryBroadCast,
-                        boolean gsiBroadCast) {
+                        boolean gsiBroadCast,
+                        Map<String, String> virtualColumnMap) {
         super(schemaName);
         this.tableName = tableName;
         this.indexName = indexName;
@@ -123,6 +127,7 @@ public class CheckGsiTask extends BaseBackfillTask {
         this.extraCmd = extraCmd;
         this.primaryBroadCast = primaryBroadCast;
         this.gsiBroadCast = gsiBroadCast;
+        this.virtualColumnMap = virtualColumnMap;
     }
 
     @Override
@@ -133,6 +138,11 @@ public class CheckGsiTask extends BaseBackfillTask {
         // fast checker
         if (isUseFastChecker(ec) && fastCheck(ec)) {
             return;
+        }
+
+        if (isUseFastChecker(ec) && MapUtils.isNotEmpty(virtualColumnMap)) {
+            throw GeneralUtil.nestedException(
+                "Fast checker failed. Please try to rollback/recover this job");
         }
 
         // slow checker
@@ -207,6 +217,11 @@ public class CheckGsiTask extends BaseBackfillTask {
             return;
         }
 
+        if (isUseFastChecker(ec) && MapUtils.isNotEmpty(virtualColumnMap)) {
+            throw GeneralUtil.nestedException(
+                "Fast checker failed. Please try to rollback/recover this job");
+        }
+
         Checker checker = buildChecker(ec);
         checker.setInBackfill(true);
         checker.setJobId(ec.getDdlJobId());
@@ -254,7 +269,8 @@ public class CheckGsiTask extends BaseBackfillTask {
         final int parallelism = ec.getParamManager().getInt(ConnectionParams.GSI_FASTCHECKER_PARALLELISM);
         final int maxRetryTimes = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_RETRY_TIMES);
 
-        FastChecker fastChecker = GsiFastChecker.create(schemaName, tableName, indexName, parallelism, ec);
+        FastChecker fastChecker =
+            GsiFastChecker.create(schemaName, tableName, indexName, virtualColumnMap, parallelism, ec);
         if (dstPhyDbAndTables != null) {
             fastChecker.setDstPhyDbAndTables(dstPhyDbAndTables);
         }

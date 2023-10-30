@@ -18,23 +18,33 @@ package com.alibaba.polardbx.executor.ddl.job.factory.oss;
 
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.BindingArchiveTableMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableAddTablesMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableFormatTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableGenerateDataTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateArchiveTableEventLogTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesPartitionInfoMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.BindingArchiveTableMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableAddTablesMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableFormatTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableGenerateDataMppTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableGenerateDataTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateOssPartitionTable;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.LockUtil;
@@ -43,6 +53,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.eclipse.jetty.util.StringUtil;
 
+import java.sql.Connection;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,11 +70,13 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
     private ArchiveMode archiveMode;
 
     public CreatePartitionOssTableJobFactory(boolean autoPartition, boolean hasTimestampColumnDefault,
-                                             Map<String, String> binaryColumnDefaultValues,
+                                             Map<String, String> specialDefaultValues,
+                                             Map<String, Long> specialDefaultValueFlags,
                                              PhysicalPlanData physicalPlanData, ExecutionContext executionContext,
                                              CreateTablePreparedData preparedData, Engine tableEngine,
                                              ArchiveMode archiveMode) {
-        super(autoPartition, hasTimestampColumnDefault, binaryColumnDefaultValues, physicalPlanData, executionContext);
+        super(autoPartition, hasTimestampColumnDefault, specialDefaultValues, specialDefaultValueFlags, null,
+            physicalPlanData, executionContext);
         this.preparedData = preparedData;
         this.tableEngine = tableEngine;
         this.archiveMode = archiveMode;
@@ -70,6 +84,43 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
 
     @Override
     protected void validate() {
+        if (archiveMode == ArchiveMode.TTL
+            && preparedData.getLoadTableSchema() != null
+            && preparedData.getLoadTableName() != null) {
+            try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+                String ttlTableSchema = preparedData.getLoadTableSchema();
+                String ttlTableName = preparedData.getLoadTableName();
+                TableInfoManager tableInfoManager = executionContext.getTableInfoManager();
+                tableInfoManager.setConnection(conn);
+                TableLocalPartitionRecord record =
+                    tableInfoManager.getLocalPartitionRecord(ttlTableSchema, ttlTableName);
+
+                // not a local partition table
+                if (record == null) {
+                    throw GeneralUtil.nestedException(
+                        MessageFormat.format("{0}.{1} is not a local partition table.",
+                            ttlTableSchema, ttlTableName));
+                }
+
+                String oldArchiveTableSchema = record.getArchiveTableSchema();
+                String oldArchiveTableName = record.getArchiveTableName();
+
+                // already has archive table but don't allow replace it.
+                if (oldArchiveTableSchema != null || oldArchiveTableName != null) {
+                    boolean allowReplace =
+                        executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_REPLACE_ARCHIVE_TABLE);
+
+                    if (!allowReplace) {
+                        throw GeneralUtil.nestedException(
+                            MessageFormat.format(
+                                "The table {0}.{1} already has archive table {2}.{3}, please use connection param: ALLOW_REPLACE_ARCHIVE_TABLE=true to allow replace archive table.",
+                                ttlTableSchema, ttlTableName, oldArchiveTableSchema, oldArchiveTableName));
+                    }
+                }
+            } catch (Throwable t) {
+                throw new TddlNestableRuntimeException(t);
+            }
+        }
     }
 
     @Override
@@ -142,11 +193,50 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
             new CreateOssTableFormatTask(schemaName, logicalTableName, physicalPlanData, this.tableEngine);
         taskList.add(createOssTableFormatTask);
 
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        executableDdlJob.addSequentialTasks(taskList);
+        List<Long> taskIdList = new ArrayList<>();
+
+        // handle task id
+        createOssTableFormatTask.setTaskId(ID_GENERATOR.nextId());
+        taskIdList.add(createOssTableFormatTask.getTaskId());
+
+        DdlTask tailTask;
         // oss data loading
-        CreateOssTableGenerateDataTask createOssTableGenerateDataTask
-            = new CreateOssTableGenerateDataTask(schemaName, logicalTableName, physicalPlanData,
-            preparedData.getLoadTableSchema(), preparedData.getLoadTableName(), tableEngine, archiveMode);
-        taskList.add(createOssTableGenerateDataTask);
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MPP_FILE_STORE_BACKFILL)
+            && !StringUtils.isEmpty(preparedData.getLoadTableName())) {
+            EmptyTask emptyTask = new EmptyTask(schemaName);
+            tailTask = emptyTask;
+            int totalNum = OSSTaskUtils.getMppParallelism(executionContext,
+                executionContext.getSchemaManager(preparedData.getLoadTableSchema())
+                    .getTable(preparedData.getLoadTableName()));
+            for (int serialNum = 0; serialNum < totalNum; serialNum++) {
+                CreateOssTableGenerateDataMppTask createOssTableGenerateDataMppTask
+                    = new CreateOssTableGenerateDataMppTask(schemaName, logicalTableName, physicalPlanData,
+                    preparedData.getLoadTableSchema(), preparedData.getLoadTableName(), tableEngine, archiveMode,
+                    totalNum, serialNum);
+
+                createOssTableGenerateDataMppTask.setTaskId(ID_GENERATOR.nextId());
+                taskIdList.add(createOssTableGenerateDataMppTask.getTaskId());
+
+                executableDdlJob.addTask(createOssTableGenerateDataMppTask);
+                executableDdlJob.addTaskRelationship(createOssTableFormatTask, createOssTableGenerateDataMppTask);
+                executableDdlJob.addTaskRelationship(createOssTableGenerateDataMppTask, emptyTask);
+            }
+            executableDdlJob.setMaxParallelism(OSSTaskUtils.getArchiveParallelism(executionContext));
+        } else {
+            CreateOssTableGenerateDataTask createOssTableGenerateDataTask
+                = new CreateOssTableGenerateDataTask(schemaName, logicalTableName, physicalPlanData,
+                preparedData.getLoadTableSchema(), preparedData.getLoadTableName(), tableEngine, archiveMode);
+            createOssTableGenerateDataTask.setTaskId(ID_GENERATOR.nextId());
+            taskIdList.add(createOssTableGenerateDataTask.getTaskId());
+
+            executableDdlJob.addTask(createOssTableGenerateDataTask);
+            executableDdlJob.addTaskRelationship(createOssTableFormatTask, createOssTableGenerateDataTask);
+            tailTask = createOssTableGenerateDataTask;
+        }
+
+        taskList.clear();
 
         // binding archive table to source table
         if (archiveMode == ArchiveMode.TTL
@@ -161,13 +251,6 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
             taskList.add(bindingArchiveTableMetaTask);
         }
 
-        // handle task id
-        createOssTableFormatTask.setTaskId(ID_GENERATOR.nextId());
-        createOssTableGenerateDataTask.setTaskId(ID_GENERATOR.nextId());
-        List<Long> taskIdList = new ArrayList<>();
-        taskIdList.add(createOssTableFormatTask.getTaskId());
-        taskIdList.add(createOssTableGenerateDataTask.getTaskId());
-
         // update file timestamp
         UpdateFileCommitTsTask updateFileCommitTsTask =
             new UpdateFileCommitTsTask(tableEngine.name(), schemaName, logicalTableName, taskIdList);
@@ -176,6 +259,12 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
         // show table meta
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, logicalTableName);
         taskList.add(showTableMetaTask);
+
+        // record event log
+        CreateArchiveTableEventLogTask createArchiveTableEventLogTask =
+            new CreateArchiveTableEventLogTask(schemaName, logicalTableName, preparedData.getLoadTableSchema(),
+                preparedData.getLoadTableName(), archiveMode, tableEngine);
+        taskList.add(createArchiveTableEventLogTask);
 
         // sync source table
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
@@ -189,22 +278,16 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
                 new CreateTableShowTableMetaTask(preparedData.getLoadTableSchema(), preparedData.getLoadTableName());
             taskList.add(showLoadTableMetaTask);
 
-            TableSyncTask loadTableSyncTask = new TableSyncTask(preparedData.getLoadTableSchema(), preparedData.getLoadTableName());
+            TableSyncTask loadTableSyncTask =
+                new TableSyncTask(preparedData.getLoadTableSchema(), preparedData.getLoadTableName());
             taskList.add(loadTableSyncTask);
         }
 
-        ExecutableDdlJob4CreateOssPartitionTable result = new ExecutableDdlJob4CreateOssPartitionTable();
-        result.addSequentialTasks(taskList);
-
-        result.setCreatePartitionTableValidateTask(validateTask);
-        result.setCreateTableAddTablesPartitionInfoMetaTask(addPartitionInfoTask);
-        result.setCreateTablePhyDdlTask(phyDdlTask);
-        result.setCreateOssTableAddTablesMetaTask(createOssTableAddTablesMetaTask);
-        result.setCreateOssTableFormatTask(createOssTableFormatTask);
-        result.setCreateOssTableGenerateDataTask(createOssTableGenerateDataTask);
-        result.setCreateTableShowTableMetaTask(showTableMetaTask);
-        result.setTableSyncTask(tableSyncTask);
-
-        return result;
+        executableDdlJob.addSequentialTasksAfter(tailTask, taskList);
+        if (selectSql != null) {
+            throw new TddlNestableRuntimeException(
+                String.format("Don't support create table select in oss."));
+        }
+        return executableDdlJob;
     }
 }

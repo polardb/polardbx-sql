@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -33,6 +32,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Locale;
@@ -84,6 +84,11 @@ public class MockSchemaManager extends AbstractLifecycle implements SchemaManage
             }
         }
         return false;
+    }
+
+    @Override
+    public Collection<TableMeta> getAllTables() {
+        return tableMetaMap.values();
     }
 
     public TableMeta buildDualTable() {

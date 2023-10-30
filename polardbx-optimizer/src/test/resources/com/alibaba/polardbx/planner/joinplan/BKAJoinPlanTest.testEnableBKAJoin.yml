@@ -1,5 +1,4 @@
--
-  sql: |
+- sql: |
     /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
     from
 
@@ -27,8 +26,7 @@
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` WHERE (`name` IN (...))")
 
--
-  sql: |
+- sql: |
     /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
     from
 
@@ -56,8 +54,7 @@
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` WHERE ((`name` = 5) AND (`name` IN (...)))")
 
--
-  sql: |
+- sql: |
     /*+TDDL:BKA_JOIN((t_shard_id1,t_shard_business_id), t_shard_name)*/ select
       c.name,
       case b.business_id
@@ -78,8 +75,7 @@
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name` WHERE (`name` IN (...))")
 
--
-  sql: |
+- sql: |
     select * from t_shard_id1 a join (select id + 1 as id, name from t_shard_business_id) b on a.id = b.id ;
 
   plan: |
@@ -91,8 +87,7 @@
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`id` IN (...))")
 
--
-  sql: |
+- sql: |
     /*+TDDL:BKA_JOIN(t_shard_business_id,t_shard_id1)*/ select * from t_shard_id1 a join (select count(*) as id, name from t_shard_business_id group by name) b on a.name = b.name ;
 
   plan: |
@@ -105,8 +100,7 @@
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`name` IN (...))")
 
--
-  sql: |
+- sql: |
     /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
     from
       t_composite_pk_shard_id a
@@ -121,3 +115,80 @@
           LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_name` AS `t_shard_name`")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].t_composite_pk_shard_id", shardCount=4, sql="SELECT `id`, `id1` FROM `t_composite_pk_shard_id` AS `t_composite_pk_shard_id` WHERE (((`id`, `id1`)) IN (...))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+     join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name where a.id = 'a';
+
+  plan: |
+    project(id="id")
+      bkajoin(condition="name = id1", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `name` from `t_shard_name` as `t_shard_name` where (`id` = 'a')")
+        logicalview(tables="optest_0000.t_composite_pk_shard_id", sql="select `id`, `id1` from `t_composite_pk_shard_id` as `t_composite_pk_shard_id` where ((`id` = 'a') and (`id1` in (...)))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+     left join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name where a.id = 'a';
+
+  plan: |
+    project(id="id")
+      bkajoin(condition="id1 = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `name` from `t_shard_name` as `t_shard_name` where ((`id` = 'a') and (`name` in (...)))")
+        logicalview(tables="optest_0000.t_composite_pk_shard_id", sql="select `id`, `id1` from `t_composite_pk_shard_id` as `t_composite_pk_shard_id` where (`id` = 'a')")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_null_safe1, t_null_safe2)*/ select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id <=> t_null_safe1.id;
+
+  plan: |
+    bkajoin(condition="id <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2` where (`id` in (...))")
+
+- sql: |
+    select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id <=> t_null_safe1.id_nullable;
+
+  plan: |
+    hashjoin(condition="id <=> id_nullable", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2`")
+
+- sql: |
+    select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id_nullable <=> t_null_safe1.id;
+
+  plan: |
+    hashjoin(condition="id_nullable <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2`")
+
+- sql: |
+    /*+TDDL: IN_SUB_QUERY_THRESHOLD=8 */ select * from tt where c1 in (1,1,1,1,1,1,1,1,1,1) and c2 in (3,4);
+
+  plan: |
+    project(c1="c1", c2="c2")
+      bkajoin(condition="expr$0 = c1", type="inner")
+        hashagg(group="expr$0")
+          dynamicvalues(tuples=[{ 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }])
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` where ((`c2` in(3, 4)) and (`c1` in (...)))")
+
+- sql: |
+    /*+TDDL: IN_SUB_QUERY_THRESHOLD=8 */ select * from tt where c1 in (1,1) and c2 in (3,4);
+
+  plan: |
+    phytableoperation(tables="optest_0001.[tt]", sql="select `tt`.`c1`, `tt`.`c2` from ? as `tt` where ((`tt`.`c1` in (1, 1)) and (`tt`.`c2` in (3, 4)))")

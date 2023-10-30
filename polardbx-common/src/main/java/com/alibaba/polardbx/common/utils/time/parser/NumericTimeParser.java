@@ -87,7 +87,7 @@ public class NumericTimeParser extends MySQLTimeParserBase {
             if (n instanceof Double || n instanceof Float) {
                 double value = n.doubleValue();
                 return parseDatetimeFromReal(value, flags);
-            } else if (n instanceof Short || n instanceof Integer || n instanceof Long) {
+            } else if (n instanceof Byte || n instanceof Short || n instanceof Integer || n instanceof Long) {
                 long value = n.longValue();
                 return parseDatetimeFromInteger(value, flags);
             } else if (n instanceof Decimal) {

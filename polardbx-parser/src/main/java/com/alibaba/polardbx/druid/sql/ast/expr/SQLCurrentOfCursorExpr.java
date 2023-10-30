@@ -31,11 +31,11 @@ public class SQLCurrentOfCursorExpr extends SQLExprImpl implements SQLReplaceabl
 
     private SQLName cursorName;
 
-    public SQLCurrentOfCursorExpr(){
+    public SQLCurrentOfCursorExpr() {
 
     }
 
-    public SQLCurrentOfCursorExpr(SQLName cursorName){
+    public SQLCurrentOfCursorExpr(SQLName cursorName) {
         this.cursorName = cursorName;
     }
 
@@ -81,7 +81,6 @@ public class SQLCurrentOfCursorExpr extends SQLExprImpl implements SQLReplaceabl
     public List<SQLObject> getChildren() {
         return Collections.<SQLObject>singletonList(this.cursorName);
     }
-
 
     @Override
     public int hashCode() {

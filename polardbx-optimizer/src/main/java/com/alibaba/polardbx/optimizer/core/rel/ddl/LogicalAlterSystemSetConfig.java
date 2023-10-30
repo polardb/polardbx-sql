@@ -33,6 +33,16 @@ public class LogicalAlterSystemSetConfig extends BaseDdlOperation {
         super(cluster, traitSet, sqlDdl, rowType);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public static LogicalAlterSystemSetConfig create(AlterSystemSetConfig input) {
         return new LogicalAlterSystemSetConfig(input.getCluster(), input.getTraitSet(), input.getAst(),
             input.getRowType());

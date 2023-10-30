@@ -48,6 +48,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @since 5.0.1
  */
 
+
 public class InnerJoinTest extends ReadBaseTestCase {
 
     private static AtomicBoolean shardingAdvise = new AtomicBoolean(false);

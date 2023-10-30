@@ -45,7 +45,7 @@ public class InformationSchemaPhysicalProcesslistHandler extends BaseVirtualView
         String sql = "show full physical_processlist";
 
         ExecutionContext newExecutionContext = executionContext.copy();
-        newExecutionContext.setTestMode(false);
+        newExecutionContext.newStatement();
         ExecutionPlan executionPlan = Planner.getInstance().plan(
             sql, newExecutionContext);
         return ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);

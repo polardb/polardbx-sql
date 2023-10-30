@@ -16,47 +16,45 @@
 
 package com.alibaba.polardbx.optimizer.sharding.label;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
 import com.alibaba.polardbx.optimizer.sharding.utils.LabelUtil;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.mapping.Mapping;
 
-import com.google.common.collect.ImmutableList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * {@link SnapshotLabel} is a snapshot of the child of {@link SnapshotLabel#rel}
  *
  * @author chenmo.cm
- * @date 2019-08-14 13:58
  */
 public abstract class SnapshotLabel extends AbstractLabel {
 
-    protected SnapshotLabel(LabelType type, RelNode rel, Label input){
+    protected SnapshotLabel(LabelType type, RelNode rel, Label input) {
         super(type,
             ImmutableList.of(input),
             rel,
             FullRowType.createSnapshot(input),
-            LabelUtil.identityColumnMapping(input.getRowType().getFieldCount()),
+            LabelUtil.identityColumnMapping(input.getColumnMapping().getSourceCount()),
             // rel might be a project or an aggregate, so use the input's rowType as currentBaseRowType
-            input.getRowType(),
+            ((AbstractLabel) input).currentBaseRowType,
             null,
             null,
-            new PredicateNode[input.getRowType().getFieldCount()],
+            new PredicateNode[input.getColumnConditionMap().length],
             new ArrayList<>());
     }
 
     protected SnapshotLabel(LabelType type, List<Label> inputs, RelNode rel, FullRowType fullRowType,
                             Mapping columnMapping, RelDataType currentBaseRowType, PredicateNode pullUp,
                             PredicateNode pushdown, PredicateNode[] columnConditionMap,
-                            List<PredicateNode> predicates){
+                            List<PredicateNode> predicates) {
         super(type,
             inputs,
             rel,

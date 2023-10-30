@@ -21,7 +21,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;

@@ -31,10 +31,21 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.RecycleBinManager.RecycleBinParam;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalDropTableHandler;
+import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.rel.ddl.DropTable;
+import org.apache.calcite.sql.SqlDropTable;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang.RandomStringUtils;
 
 import javax.sql.DataSource;
@@ -47,14 +58,13 @@ import java.util.List;
 import java.util.Map;
 
 public class RecycleBin extends AbstractLifecycle {
-    private static final Logger logger = LoggerFactory.getLogger(RecycleBin.class);
     public static final String tableName = GmsSystemTables.RECYCLE_BIN;
     public static final String PREFIX = "BIN_";
     public static final int SUFFIX_LENGTH = 20;
     public static final int NAME_LENGTH = PREFIX.length() + SUFFIX_LENGTH;
     public static final String FILE_STORAGE_PREFIX = "FILE_STORAGE_BIN_";
     public static final int FILE_STORAGE_BIN_NAME_LENGTH = FILE_STORAGE_PREFIX.length() + SUFFIX_LENGTH;
-
+    private static final Logger logger = LoggerFactory.getLogger(RecycleBin.class);
     private String appName;
     private String schemaName;
     private ITDataSource dataSource;
@@ -109,25 +119,27 @@ public class RecycleBin extends AbstractLifecycle {
     }
 
     public void purge(boolean expired) {
+        purge(expired, null, null);
+    }
+
+    public void purge(boolean expired, IRepository repo, ExecutionContext executionContext) {
         List<RecycleBinParam> result = getAll(expired);
         for (RecycleBinParam param : result) {
-            purgeTable(param.name, false);
+            purgeTable(param.name, false, repo, executionContext);
         }
 
     }
 
-    public void purgeTable(String name, boolean check) {
+    public void purgeTable(String name, boolean check, IRepository repo, ExecutionContext executionContext) {
         RecycleBinParam param = get(name);
-        if (check) {
-            if (param == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't find table in recycle bin");
-            }
+
+        if (check && param == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't find table in recycle bin");
         }
 
         String hint = "";
         if (param.name.startsWith(FILE_STORAGE_PREFIX)) {
             if (check) {
-//                throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't purge this table");
                 hint = "/*+TDDL: " + ConnectionProperties.PURGE_FILE_STORAGE_TABLE + "=true */";
             } else {
                 // background do not purge oss table
@@ -137,8 +149,21 @@ public class RecycleBin extends AbstractLifecycle {
 
         try {
             logger.info("purge table:" + appName + "," + name + "," + check);
-            //DDL have dblock, so if have conflict will throw exception
-            doExecuteUpdate(String.format(hint + " drop table IF EXISTS `%s` purge", name), dataSource);
+
+            if (repo != null) {
+                // Execute a DROP TABLE under current context.
+                if (TStringUtil.isNotEmpty(hint)) {
+                    executionContext.getExtraCmds().put(ConnectionProperties.PURGE_FILE_STORAGE_TABLE, Boolean.TRUE);
+                }
+                LogicalDropTable logicalDropTable = genLogicalDropTablePlan(name, executionContext);
+                String sql = String.format(" drop table IF EXISTS `%s` purge", name);
+                executionContext.setOriginSql(sql);
+                executeDropTable(logicalDropTable, repo, executionContext);
+            } else {
+                // Execute a DROP TABLE with a new TConnection.
+                doExecuteUpdate(String.format(hint + " drop table IF EXISTS `%s` purge", name), dataSource);
+            }
+
             delete(name);
         } catch (SQLException e) {
             logger.error("purge table:" + appName + "," + name + "," + check, e);
@@ -161,8 +186,8 @@ public class RecycleBin extends AbstractLifecycle {
                 ConnectionProperties.RECYCLEBIN_RETAIN_HOURS,
                 TddlConstants.DEFAULT_RETAIN_HOURS);
             where = "`schema_name` = '" + schemaName + "' and";
-            sql = String.format(
-                "select `gmt_create`,`name`, `original_name` from %s where %s `gmt_create` < DATE_SUB(now(), INTERVAL %d HOUR) order by id asc",
+            sql = String.format("select `gmt_create`,`name`, `original_name` from %s where %s `gmt_create` < "
+                    + "DATE_SUB(now(), INTERVAL %d HOUR) order by id asc",
                 tableName, where, retainHours);
         }
         try {
@@ -243,7 +268,8 @@ public class RecycleBin extends AbstractLifecycle {
             connection = dataSource.getConnection();
             statement = connection.createStatement();
             String sql =
-                "select `table_name` from information_schema.key_column_usage where referenced_table_name = %s and table_schema= %s and referenced_table_schema = %s";
+                "select `table_name` from information_schema.key_column_usage where referenced_table_name = %s and "
+                    + "table_schema= %s and referenced_table_schema = %s";
             ResultSet resultSet = statement.executeQuery(String
                 .format(sql, TStringUtil.quoteString(tableName), TStringUtil.quoteString(appName),
                     TStringUtil.quoteString(appName)));
@@ -340,6 +366,35 @@ public class RecycleBin extends AbstractLifecycle {
                 connection.close();
             }
         }
+    }
+
+    private void executeDropTable(LogicalDropTable logicalDropTable, IRepository repo,
+                                  ExecutionContext executionContext) {
+        LogicalDropTableHandler logicalDropTableHandler = new LogicalDropTableHandler(repo);
+        logicalDropTableHandler.handle(logicalDropTable, executionContext);
+    }
+
+    private LogicalDropTable genLogicalDropTablePlan(String logicalTableName, ExecutionContext executionContext) {
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = executionContext.getSchemaName();
+        }
+
+        ReplaceTableNameWithQuestionMarkVisitor visitor =
+            new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);
+
+        SqlIdentifier logicalTableNameNode = new SqlIdentifier(logicalTableName, SqlParserPos.ZERO);
+
+        SqlDropTable sqlDropTable = new SqlDropTable(SqlParserPos.ZERO, true, logicalTableNameNode, true);
+        sqlDropTable = (SqlDropTable) sqlDropTable.accept(visitor);
+
+        RelOptCluster cluster = SqlConverter.getInstance(executionContext).createRelOptCluster(null);
+        DropTable dropTable = DropTable.create(cluster, sqlDropTable, logicalTableNameNode);
+        executionContext.setOriginSql(dropTable.toString());
+
+        LogicalDropTable logicalDropTable = LogicalDropTable.create(dropTable);
+        logicalDropTable.setSchemaName(schemaName);
+
+        return logicalDropTable;
     }
 
     public String getAppName() {

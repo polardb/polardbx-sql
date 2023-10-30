@@ -74,6 +74,12 @@ public class TddlConstants {
     public static final String AUTO_LOCAL_INDEX_PREFIX = "_local_";
 
     public static final String AUTO_SHARD_KEY_PREFIX = "auto_shard_key_";
+    public static final int MAX_LOCAL_INDEX_NAME_LENGTH = 64;
+    // max len of shard_cols of local index name is 49=64-15(len of 'auto_shard_key_')
+    public static final int MAX_SHARD_COLS_LOCAL_INDEX_NAME_LENGTH =
+        MAX_LOCAL_INDEX_NAME_LENGTH - TddlConstants.AUTO_SHARD_KEY_PREFIX.length();
 
     public static final String SQL_MODE = "sql_mode";
+
+    public static final String FOREIGN_KEY_PREFIX = "";
 }

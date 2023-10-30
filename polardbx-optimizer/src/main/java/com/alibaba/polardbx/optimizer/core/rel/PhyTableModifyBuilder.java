@@ -28,7 +28,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -494,7 +494,7 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
             return;
         }
         Map<String, Set<String>> replicateDbIndexAndPhycialTables = new HashMap<>();
-        for (PartitionSpec partitionSpec : tableMeta.getNewPartitionInfo().getPartitionBy().getPartitions()) {
+        for (PartitionSpec partitionSpec : tableMeta.getNewPartitionInfo().getPartitionBy().getPhysicalPartitions()) {
             if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
                 .canWrite(tableMeta, partitionSpec.getName()) && !ComplexTaskPlanUtils
                 .isDeleteOnly(tableMeta, partitionSpec.getName())) {

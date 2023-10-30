@@ -16,22 +16,20 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group3;
 
-import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.calcite.util.Pair;
-import org.hamcrest.Matchers;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
@@ -48,12 +46,11 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
     private static final String DML_WRITE_ONLY = "GSI_DEBUG=\"GsiStatus2\"";
     private boolean supportReturning = false;
 
-    public InsertIgnoreTest() {
-        try {
-            this.supportReturning =
-                StorageInfoManager.checkSupportReturning(ConnectionManager.getInstance().getMysqlDataSource());
-        } catch (Exception ignore) {
-        }
+    @Before
+    public void before() {
+        this.supportReturning = useXproto()
+            && Optional.ofNullable(getStorageProperties(tddlConnection).get("supportsReturning"))
+            .map(Boolean::parseBoolean).orElse(false);
     }
 
     private static String buildCmdExtra(String... params) {
@@ -493,7 +490,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     /**
      * 有 PK 有 UK
-     * 有 NULL，不走 Returning
+     * LOCAL UK 有 NULL，走 Returning
      */
     @Test
     public void tableWithPkWithUk_returning() {
@@ -536,7 +533,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), is(15));
+        Assert.assertThat(trace.size(), is(3));
 
         selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
             tddlConnection);
@@ -592,7 +589,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     /**
      * 有 PK 有 UK
-     * 有 NULL，不走 Returning
+     * LOCAL UK 有 NULL，走 Returning
      */
     @Test
     public void tableWithPkWithUk2_returning() {
@@ -635,7 +632,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), is(4));
+        Assert.assertThat(trace.size(), is(3));
 
         selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
             tddlConnection);
@@ -3474,14 +3471,21 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testLogicalInsertIgnoreUsingIn() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
 
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl", " dbpartition by hash(id)", false, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl", " dbpartition by hash(id)", true, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", true, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", true, true, false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl", " dbpartition by hash(id)", false,
+            true, true, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", false, true,
+            false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", false, true,
+            false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl", " dbpartition by hash(id)", true,
+            true, true, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", true, true,
+            false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", true, true,
+            false, REPLACE_PARAMS);
     }
 
     @Test
@@ -3513,6 +3517,108 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
             sql = String.format("drop database %s", dbName);
             JdbcUtil.executeUpdateSuccess(conn, sql);
         }
+    }
+
+    @Test
+    public void testInsertIgnoreUGSI_returning() throws SQLException {
+        if (!supportReturning) {
+            return;
+        }
+        final String tableName = "insert_ignore_returing_ugsi_tbl";
+        final String indexName = tableName + "_gsi";
+
+        final String createTable = "create table " + tableName + " (\n"
+            + "  `a` int primary key,\n"
+            + "  `b` int,\n"
+            + "  `c` int \n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8";
+        final String partitionDef =
+            " dbpartition by hash(c)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        final String createIndex =
+            "create global unique index " + indexName + " on " + tableName + "(b) dbpartition by hash(b)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createIndex);
+        final String createIndexMysql =
+            "create unique index " + indexName + " on " + tableName + "(`b`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createIndexMysql);
+
+        String insertSql = "insert into " + tableName + " values (3,null,5)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insertSql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insertSql);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        String insertIgnoreSql = "insert ignore into " + tableName + " values (3,null,5)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + insertIgnoreSql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insertIgnoreSql);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        final List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        checkGsi(tddlConnection, indexName);
+    }
+
+    @Test
+    public void insertIgnoreSelectSubqueryTest() throws Exception {
+        final String tableName1 = "insert_ignore_select_subquery_test1";
+        final String tableName2 = "insert_ignore_select_subquery_test2";
+        final String indexName1 = tableName1 + "_gsi";
+        final String tableBody = "  `id` int(11) NOT NULL auto_increment,\n"
+            + "  `name` varchar(30) DEFAULT NULL,\n"
+            + "  `create_time` datetime DEFAULT NULL,\n"
+            + "  `int_col1` int DEFAULT NULL,\n"
+            + "  `int_col2` int DEFAULT NULL,\n"
+            + "  `int_col3` int DEFAULT NULL,\n"
+            + "  `int_col4` int DEFAULT NULL,\n"
+            + "  `int_col5` int DEFAULT NULL,\n"
+            + "  `int_col6` int DEFAULT NULL,\n"
+            + "  PRIMARY KEY (`id`)\n"
+            + "  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 \n";
+
+        // Create table
+        final String createTable1 = "create table " + tableName1 + " (\n" + tableBody;
+        final String createTable2 = "create table " + tableName2 + " (\n" + tableBody;
+        final String partitionDef = " DBPARTITION BY HASH(id)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable1 + partitionDef);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable2 + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable1);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable2);
+
+        // Create index
+        final String createIndex = "create global unique index " + indexName1 + " on " + tableName1
+            + "(`int_col4`) dbpartition by hash(int_col4)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createIndex);
+        final String createIndexMysql =
+            "create unique index " + indexName1 + " on " + tableName1 + "(`int_col4`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createIndexMysql);
+
+        // Init data
+        String sql = String.format("insert into %s(name, create_time, int_col2, int_col3) values"
+            + "(\"a\", \"2013-04-05 06:34:12\", 0, 1), "
+            + "(\"b\", \"2013-04-05 06:34:12\", 0, 2), "
+            + "(\"c\", \"2013-04-05 06:34:12\", 0, 3)", tableName2);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+        sql = String.format("insert ignore into %s select * from %s", tableName1, tableName2);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Test correlate subquery
+        sql = String.format("insert ignore into %s (int_col1, int_col2, int_col3, name, create_time, int_col4)\n"
+            + "select distinct (ar.id), 1500000039, NULL, 'test0', '2020-03-03 18:20:17', null\n"
+            + "  from %s ar, %s arpr\n"
+            + "  where not exists (\n"
+            + "    select *\n"
+            + "    from %s\n"
+            + "    where int_col3    = ar.int_col3\n"
+            + "      and ar.int_col2 = 0\n"
+            + "    )\n", tableName1, tableName1, tableName2, tableName2);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        sql = "select name, create_time, int_col1, int_col2, int_col3, int_col4, int_col5, int_col6 from "
+            + tableName1 + " order by id";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, indexName1);
     }
 }
 

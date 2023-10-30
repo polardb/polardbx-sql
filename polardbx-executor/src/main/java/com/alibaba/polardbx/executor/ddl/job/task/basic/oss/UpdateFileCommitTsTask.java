@@ -96,4 +96,8 @@ public class UpdateFileCommitTsTask extends BaseGmsTask {
         }
     }
 
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+        updateSupportedCommands(true, false, null);
+    }
 }

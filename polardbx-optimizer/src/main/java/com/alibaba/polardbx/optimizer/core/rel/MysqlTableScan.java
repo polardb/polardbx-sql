@@ -94,7 +94,7 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
     @Override
     public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
         if (join != null) {
-            Index index = IndexUtil.selectJoinIndex(join);
+            Index index = IndexUtil.selectJoinIndex(join, false);
             if (index != null) {
                 this.accessIndexList = new ArrayList<>();
                 this.accessIndexList.add(index);
@@ -227,7 +227,7 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
         boolean hasJoinIndex = false;
 
         if (join != null) {
-            Index index = IndexUtil.selectJoinIndex(join);
+            Index index = IndexUtil.selectJoinIndex(join, false);
             if (index != null) {
                 pw.item("joinIndex", index.getIndexMeta().getPhysicalIndexName());
                 hasJoinIndex = true;

@@ -53,7 +53,7 @@ public interface NDVSketchService {
     /**
      * cal the ndv value
      */
-    StatisticResult getCardinality(String schema, String tableName, String columnName);
+    StatisticResult getCardinality(String schema, String tableName, String columnName, boolean isNeedTrace);
 
     Map<? extends String, ? extends Long> getCardinalityMap();
 
@@ -61,4 +61,6 @@ public interface NDVSketchService {
     String scheduleJobs();
 
     boolean sampleColumns(String schema, String logicalTableName);
+
+    long modifyTime(String schema, String tableName, String columnNames);
 }

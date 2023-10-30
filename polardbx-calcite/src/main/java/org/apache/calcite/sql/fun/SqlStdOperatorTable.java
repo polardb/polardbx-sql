@@ -191,6 +191,8 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
 
   public static final SqlSpecialOperator ALTER_TYPE = new SqlAlterTypeOperator();
 
+  public static final SqlSpecialOperator GEN_COL_WRAPPER_FUNC = new SqlGenColWrapperFuncOperator();
+
   /** <code>FILTER</code> operator filters which rows are included in an
    *  aggregate function. */
   public static final SqlFilterOperator FILTER = new SqlFilterOperator();
@@ -1349,7 +1351,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
   public static final SqlFunction OVERLAY = new SqlOverlayFunction();
 
   /** The "TRIM" function. */
-  public static final SqlFunction TRIM = SqlTrimFunction.INSTANCE;
+  public static final SqlFunction TRIM = new SqlTrimFunction("TRIM");
 
   public static final SqlFunction POSITION = new SqlPositionFunction();
 
@@ -1964,6 +1966,31 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           OperandTypes.COLLECTION,
           SqlFunctionCategory.SYSTEM);
 
+
+  /**
+   * UpdateXML(xml_target, xpath_expr, new_xml)
+   * This function replaces a single portion of a given fragment of XML markup xml_target with a new XML fragment
+   * new_xml, and then returns the changed XML. The portion of xml_target that is replaced matches an XPath expression
+   * xpath_expr supplied by the user.
+   */
+  public static final SqlFunction UPDATEXML = new SqlFunction("UPDATEXML",
+      SqlKind.OTHER_FUNCTION,
+      ReturnTypes.VARCHAR_2000,
+      InferTypes.FIRST_KNOWN,
+      OperandTypes.STRING_STRING_STRING,
+      SqlFunctionCategory.STRING);
+  /**
+   * ExtractValue(xml_frag, xpath_expr)
+   * ExtractValue() takes two string arguments, a fragment of XML markup xml_frag and an XPath expression xpath_expr
+   * (also known as a locator); it returns the text (CDATA) of the first text node which is a child of the element or
+   * elements matched by the XPath expression.
+   */
+  public static final SqlFunction EXTRACTVALUE = new SqlFunction("EXTRACTVALUE",
+      SqlKind.OTHER_FUNCTION,
+      ReturnTypes.VARCHAR_2000,
+      InferTypes.FIRST_KNOWN,
+      OperandTypes.STRING_STRING,
+      SqlFunctionCategory.STRING);
   /**
    * The item operator {@code [ ... ]}, used to access a given element of an
    * array or map. For example, {@code myArray[3]} or {@code "myMap['foo']"}.

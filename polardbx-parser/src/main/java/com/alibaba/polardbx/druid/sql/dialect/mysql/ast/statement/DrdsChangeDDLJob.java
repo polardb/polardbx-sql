@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
@@ -24,10 +25,6 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName DrdsChangeDDLJob
- * @description
- * @Author zzy
- * @Date 2019-07-22 17:01
  */
 public class DrdsChangeDDLJob extends MySqlStatementImpl implements SQLStatement {
 
@@ -73,4 +70,8 @@ public class DrdsChangeDDLJob extends MySqlStatementImpl implements SQLStatement
         this.groupAndTableNameList.add(groupAndTableName);
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

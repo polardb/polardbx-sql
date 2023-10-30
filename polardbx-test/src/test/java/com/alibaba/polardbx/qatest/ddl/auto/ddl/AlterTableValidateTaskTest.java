@@ -62,7 +62,7 @@ public class AlterTableValidateTaskTest extends BaseAutoPartitionNewPartition {
         dropTableIfExists(tddlConnection, "mengshi1");
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "create table mengshi1(a int,b char) partition by hash(a) partitions 16");
-        JdbcUtil.executeUpdateFailed(tddlConnection, "alter table mengshi1 modify column a int", "not supported");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table mengshi1 modify column a int");
     }
 
     @Test

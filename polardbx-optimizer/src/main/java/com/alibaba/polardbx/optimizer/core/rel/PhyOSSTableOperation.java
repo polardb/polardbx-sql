@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.google.protobuf.ByteString;
@@ -39,6 +40,7 @@ import java.util.Map;
 // todo
 public class PhyOSSTableOperation extends AbstractRelNode implements IPhyQueryOperation {
     private RelNode logicalPlan;
+
     protected String dbIndex;
     protected String schemaName;
     protected String sqlTemplate;
@@ -49,8 +51,11 @@ public class PhyOSSTableOperation extends AbstractRelNode implements IPhyQueryOp
     private int unionSize = 1;
     protected CursorMeta cursorMeta;
     protected int affectedRows = -1;
+
     protected Map<Integer, ParameterContext> param;
+
     protected ByteString sqlDigest = null;
+
     protected boolean replicateRelNode = false;
 
     public PhyOSSTableOperation(
@@ -67,9 +72,11 @@ public class PhyOSSTableOperation extends AbstractRelNode implements IPhyQueryOp
         this.sqlTemplate = sqlTemplate;
         this.nativeSqlNode = nativeSqlNode;
         this.dbType = dbType;
+
         this.logicalPlan = logicalPlan;
         this.sqlTemplate = sqlTemplate;
         this.nativeSqlNode = nativeSqlNode;
+
         this.rowType = rowType;
         this.cursorMeta = cursorMeta;
         if (cursorMeta == null && rowType != null) {
@@ -84,6 +91,7 @@ public class PhyOSSTableOperation extends AbstractRelNode implements IPhyQueryOp
     public void setParam(Map<Integer, ParameterContext> param) {
         this.param = param;
     }
+
 
     @Override
     public String getNativeSql() {

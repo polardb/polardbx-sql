@@ -23,16 +23,16 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlAlterEventStatement extends MySqlStatementImpl implements SQLAlterStatement {
-    private SQLName            definer;
-    private SQLName            name;
+    private SQLName definer;
+    private SQLName name;
 
     private MySqlEventSchedule schedule;
-    private boolean            onCompletionPreserve;
-    private SQLName            renameTo;
-    private Boolean            enable;
-    private boolean            disableOnSlave;
-    private SQLExpr            comment;
-    private SQLStatement       eventBody;
+    private boolean onCompletionPreserve;
+    private SQLName renameTo;
+    private Boolean enable;
+    private boolean disableOnSlave;
+    private SQLExpr comment;
+    private SQLStatement eventBody;
 
     public MySqlAlterEventStatement() {
         setDbType(DbType.mysql);

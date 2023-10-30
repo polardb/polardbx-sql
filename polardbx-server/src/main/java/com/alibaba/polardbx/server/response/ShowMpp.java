@@ -17,6 +17,10 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
+import com.alibaba.polardbx.gms.node.InternalNode;
+import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -27,9 +31,6 @@ import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
-import com.alibaba.polardbx.gms.node.InternalNode;
-import com.alibaba.polardbx.gms.node.InternalNodeManager;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -39,7 +40,7 @@ public final class ShowMpp {
     private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] FIELD_PACKETS = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket EOF_PACKET = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -57,18 +58,16 @@ public final class ShowMpp {
 
         FIELD_PACKETS[i] = PacketUtil.getField("LEADER", Fields.FIELD_TYPE_VAR_STRING);
         FIELD_PACKETS[i++].packetId = ++packetId;
-
-        EOF_PACKET.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         String charset = c.getCharset();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
-        executeInternal(proxy, charset, c.getSchema());
+        return executeInternal(proxy, charset, c.getSchema());
     }
 
-    public static void executeInternal(IPacketOutputProxy proxy, String charset, String schema) {
+    public static boolean executeInternal(IPacketOutputProxy proxy, String charset, String schema) {
 
         proxy.packetBegin();
 
@@ -80,31 +79,36 @@ public final class ShowMpp {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = EOF_PACKET.write(proxy);
+        if (!proxy.getConnection().isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = EOF_PACKET.packetId;
         for (InternalNode node : getNodes()) {
             RowDataPacket row = getRow(charset, node);
-            row.packetId = ++packetId;
+            row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 
     private static RowDataPacket getRow(String charset, InternalNode node) {
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
         row.add(StringUtil.encode(node.getInstId(), charset));
         row.add(StringUtil.encode(node.getHostPort(), charset));
-        row.add(StringUtil.encode(node.isMaster() ? "W" : "R", charset));
+        row.add(StringUtil.encode(ConfigDataMode.isMasterMode() ? "W" : "R", charset));
         row.add(StringUtil.encode(node.isLeader() ? "Y" : "N", charset));
         return row;
     }

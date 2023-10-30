@@ -16,19 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.TableScanIOEstimator;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.DeriveMode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -271,7 +271,7 @@ public class BKAJoin extends Join implements LookupJoin, PhysicalNode {
         if (lookupIndex != null) {
             return lookupIndex;
         }
-        lookupIndex = IndexUtil.selectJoinIndex(this);
+        lookupIndex = IndexUtil.selectJoinIndex(this, true);
         return lookupIndex;
     }
 
@@ -290,7 +290,7 @@ public class BKAJoin extends Join implements LookupJoin, PhysicalNode {
             RelDistribution childDistribution = childTraits.getDistribution();
             RelCollation childCollation = childTraits.getCollation();
             if (childDistribution == RelDistributions.ANY
-                    || childDistribution == RelDistributions.BROADCAST_DISTRIBUTED) {
+                || childDistribution == RelDistributions.BROADCAST_DISTRIBUTED) {
                 return null;
             }
             if (childId == 0) {

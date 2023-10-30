@@ -17,14 +17,17 @@
 package com.alibaba.polardbx.executor.ddl.newengine.cross;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
+import java.sql.Connection;
 import java.util.Set;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.COLON;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
@@ -39,7 +42,7 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
     @Override
     protected boolean checkIfPhyObjectDone() {
-        DdlHelper.waitUntilPhyDdlDone(schemaName, groupName, phyTableName, ddlContext.getTraceId());
+        DdlHelper.waitUntilPhyDDLDone(schemaName, groupName, phyTableName, ddlContext.getTraceId());
 
         String keyPrefix = genPhyObjectInfoKey();
         Set<String> phyObjectsDone = phyDdlExecutionRecord.getPhyObjectsDone();
@@ -56,7 +59,7 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
         if (TStringUtil.isBlank(phyObjectDoneBefore) && TStringUtil.isBlank(phyObjectDoneAfter)) {
             String phyObjectInfoForDebug;
 
-            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+            if (isRollBackRunning(ddlContext.getState())) {
                 isPhyObjectDone = true;
                 phyObjectInfoForDebug = keyPrefix;
             } else {
@@ -96,7 +99,7 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
             phyObjectInfoForDebug = phyObjectDoneBefore;
 
-            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+            if (isRollBackRunning(ddlContext.getState())) {
                 // Rolling back
                 isPhyObjectDone = TStringUtil.equalsIgnoreCase(currentHashcode, hashcodeBefore);
                 if (isPhyObjectDone) {
@@ -119,7 +122,7 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
         } else {
             // We think that the physical DDL has been done as long as
             // the hashcode record after physical DDL exists.
-            isPhyObjectDone = ddlContext.getState() != DdlState.ROLLBACK_RUNNING;
+            isPhyObjectDone = !isRollBackRunning(ddlContext.getState());
             if (!isPhyObjectDone) {
                 String[] partsAfter = phyObjectDoneAfter.split(COLON);
                 hashcodeBeforePhyDdl = partsAfter[3];
@@ -135,8 +138,9 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
     @Override
     protected boolean checkIfPhyObjectDoneByHashcode() {
-        String hashcodeAfterDdl = DdlHelper.genHashCodeForPhyTableDDL(schemaName, groupName, phyTableName);
-        return !TStringUtil.equalsIgnoreCase(hashcodeBeforePhyDdl, hashcodeAfterDdl);
+        int delay = executionContext.getParamManager().getInt(ConnectionParams.GET_PHY_TABLE_INFO_DELAY);
+        String hashcodeAfterDdl = DdlHelper.genHashCodeForPhyTableDDL(schemaName, groupName, phyTableName, delay);
+        return hashcodeBeforePhyDdl != null && !TStringUtil.equalsIgnoreCase(hashcodeBeforePhyDdl, hashcodeAfterDdl);
     }
 
     @Override
@@ -171,7 +175,8 @@ public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
     }
 
     protected String genPhyObjectInfo(boolean afterPhyDdl) {
-        return DdlHelper.genPhyTableInfoWithHashcode(schemaName, groupName, phyTableName, afterPhyDdl);
+        int delay = executionContext.getParamManager().getInt(ConnectionParams.GET_PHY_TABLE_INFO_DELAY);
+        return DdlHelper.genPhyTableInfoWithHashcode(schemaName, groupName, phyTableName, afterPhyDdl, delay);
     }
 
 }

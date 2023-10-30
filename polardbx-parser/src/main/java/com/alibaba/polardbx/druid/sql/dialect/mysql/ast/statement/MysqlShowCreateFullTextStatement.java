@@ -26,7 +26,6 @@ public class MysqlShowCreateFullTextStatement extends MySqlStatementImpl impleme
 
     private SQLName name;
 
-
     public SQLName getName() {
         return name;
     }

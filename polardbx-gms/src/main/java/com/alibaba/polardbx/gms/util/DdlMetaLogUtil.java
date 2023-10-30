@@ -51,6 +51,7 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.TABLE_CONSTRAINTS);
         ddlTables.add(GmsSystemTables.REFERENTIAL_CONSTRAINTS);
         ddlTables.add(GmsSystemTables.BACKFILL_OBJECTS);
+        ddlTables.add(GmsSystemTables.CHANGESET_OBJECT);
         ddlTables.add(GmsSystemTables.CHECKER_REPORTS);
         ddlTables.add(GmsSystemTables.DDL_JOBS);
         ddlTables.add(GmsSystemTables.DDL_ENGINE);
@@ -66,6 +67,8 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.TEST_SEQUENCE_OPT);
         ddlTables.add(GmsSystemTables.CONFIG_LISTENER);
         ddlTables.add(GmsSystemTables.SCALEOUT_OUTLINE);
+        ddlTables.add(GmsSystemTables.COLUMN_MAPPING);
+        ddlTables.add(GmsSystemTables.COLUMN_EVOLUTION);
         ddlTables.add(GmsSystemTables.SCALEOUT_BACKFILL_OBJECTS);
         ddlTables.add(GmsSystemTables.SCALEOUT_CHECKER_REPORTS);
     }

@@ -17,18 +17,14 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablegroup;
 
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,9 +36,9 @@ import java.util.stream.Stream;
  *
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
-public class AlterTableGroupDropPartitionTest extends AlterTableGroupBaseTest {
+public class AlterTableGroupDropPartitionTest extends AlterTableGroupTestBase {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> tableStatus =
         Stream.of(
@@ -98,7 +94,7 @@ public class AlterTableGroupDropPartitionTest extends AlterTableGroupBaseTest {
     @Before
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, false);
+            setUp(true, partitionRuleInfo, false, false, false);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

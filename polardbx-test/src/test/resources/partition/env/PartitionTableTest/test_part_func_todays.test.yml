@@ -1,3 +1,4 @@
+## DISABLE_FAST_SQL_PARSER
 ## test to_days
 drop table if exists tbl;
 CREATE TABLE `tbl` (
@@ -24,3 +25,58 @@ select * from tbl where (a<'2019-01-02' and a>='2009-12-31') or a between '1989-
 explain select * from tbl where a='1989-01-01' order by a;
 ## explain range select
 explain select * from tbl where (a<'2019-01-02' and a>='2009-12-31') or a between '1989-01-01' and '1989-11-01'  order by a;
+
+## test hash
+CREATE TABLE `tod1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_DAYS(`d`))
+PARTITIONS 16;
+show create table tod1;
+## prepare data
+insert into tod1 values('0000-01-01'),('2022-01-01'),('2022-07-01'),('2022-12-31');
+## range select
+select * from tod1 where (d > '0000-01-01' and d < '2022-07-01') or d between '2022-01-01' and '2022-07-01' order by d;
+## full scan
+select * from tod1 where d > '0000-01-01' order by d;
+explain select * from tod1 where d > '0000-01-01' order by d;
+select * from tod1 where d >'2021-12-30' and d < '2022-03-31' order by d;
+## enumeration
+select * from tod1 where d > '2021-12-30' and d < '2022-01-02' order by d;
+explain select * from tod1 where d > '2021-12-30' and d < '2022-01-02' order by d;
+
+## test range
+CREATE TABLE `tod2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`dt`))
+(PARTITION p0 VALUES LESS THAN(5),
+PARTITION p1 VALUES LESS THAN(10),
+PARTITION p2 VALUES LESS THAN(15),
+PARTITION pd VALUES LESS THAN(MAXVALUE));
+show create table tod2;
+## prepare data
+insert into tod2 values('0000-01-04 23:59:59'), ('0000-01-05 00:00:00'), ('0000-01-05 00:00:01'), ('0000-01-10'),('0000-01-15');
+## range select
+select * from tod2 where dt < '0000-01-05 00:00:02' order by dt;
+select * from tod2 where dt < '0000-01-05 00:00:01' order by dt;
+select * from tod2 where dt < '0000-01-10 00:00:00' order by dt;
+select * from tod2 where dt < '0000-01-15 00:00:00' order by dt;
+
+## test list
+CREATE TABLE `tod3` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(TO_DAYS(`dt`))
+(PARTITION p0 VALUES IN (1,2,3,4,5),
+PARTITION p1 VALUES IN(6,7,8,9,10),
+PARTITION p2 VALUES IN(11,12,13,14,15),
+PARTITION pd VALUES IN(default));
+show create table tod2;
+## prepare data
+insert into tod3 values('0000-01-05 23:59:58'), ('0000-01-06 00:00:00'), ('0000-01-11 00:00:01'), ('0000-01-16 00:00:00');
+## range select
+select * from tod3 where dt < '0000-01-05 23:59:59' order by dt;
+select * from tod3 where dt <= '0000-01-06 00:00:00' order by dt;
+select * from tod3 where dt < '0000-01-11 00:00:01' order by dt;
+select * from tod3 where dt < '0000-01-16 00:00:01' order by dt;

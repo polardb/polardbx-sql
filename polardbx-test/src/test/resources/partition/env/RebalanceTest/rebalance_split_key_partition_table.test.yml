@@ -1,0 +1,105 @@
+schemaName: "rebalance_test_d7"
+dnNum: 4
+singleBalanceCaseBeans:
+  - createTableActions:
+    - tableName: "t1"
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+                                 `c1` bigint NOT NULL,
+                                 `c2` datetime NOT NULL,
+                                 `c3` int NOT NULL
+         )
+             PARTITION BY KEY (c1, c2)
+         PARTITIONS 32;"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 0
+    - tableName: "t2"
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t2` (
+                                 `c1` varchar(10) NOT NULL,
+                                 `c2` datetime NOT NULL,
+                                 `c3` int NOT NULL
+         )
+             PARTITION BY KEY (c1, c2, c3)
+         PARTITIONS 32;"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 0
+    manipulateActions:
+    - conditionStmt: "select sleep(4)"
+      expectedConditionResult: ["0"]
+      manipulateStmt: "insert into t1 values(1, now(), 1)"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "select sleep(4)"
+      expectedConditionResult: ["0"]
+      manipulateStmt: "insert into t1 values(1, now(), 1)"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "select sleep(4)"
+      expectedConditionResult: ["0"]
+      manipulateStmt: "insert into t1 values(1, now(), 1)"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "select sleep(8)"
+      expectedConditionResult: ["0"]
+      manipulateStmt: "insert into t1 values(1, now(), 1)"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt:
+      expectedConditionResult: ["0"]
+      # 2**15=32768"
+      manipulateStmt: "insert into t1 select * from t1; insert into t1 select * from t1; insert into t1 select * from t1; 
+      insert into t1 select * from t1; insert into t1 select * from t1; insert into t1 select * from t1;
+      insert into t1 select * from t1; insert into t1 select * from t1; insert into t1 select * from t1;
+      insert into t1 select * from t1; insert into t1 select * from t1; insert into t1 select * from t1;   
+      insert into t1 select * from t1; insert into t1 select * from t1; insert into t1 select * from t1;"
+#      insert into t1 select * from t1; insert into t1 select * from t1; "
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt:
+      expectedConditionResult: ["0"]
+      # 2**15=32768"
+      manipulateStmt: "insert into t2 select * from t1"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt:
+      expectedConditionResult: [ "0" ]
+      manipulateStmt: "rebalance database policy = 'partition_balance'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "rebalance database policy = 'partition_balance'"
+      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog" ]
+      expectedManipulateColumns: [ 2 ]
+    - conditionStmt:
+      expectedConditionResult: [ "0" ]
+      manipulateStmt: "rebalance table t1 policy = 'auto_split_for_partition_balance' solve_level = 'hot_split'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt:
+      expectedConditionResult: [ "0" ]
+      manipulateStmt: "rebalance table t2 policy = 'auto_split_for_partition_balance' solve_level = 'hot_split'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "rebalance database policy = 'partition_balance'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "rebalance database policy = 'partition_balance'"
+      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"  ]
+      expectedManipulateColumns: [ 2 ]
+    dataDistributionCheckActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t1"
+      objectType: "table"
+      expectedMu: 0.2
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t2"
+      objectType: "table"
+      expectedMu: 0.2

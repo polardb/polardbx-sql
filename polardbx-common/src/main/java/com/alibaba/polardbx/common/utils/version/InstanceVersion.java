@@ -98,4 +98,5 @@ public class InstanceVersion {
     public static void setMYSQL80(boolean MYSQL80) {
         InstanceVersion.MYSQL80 = MYSQL80;
     }
+
 }

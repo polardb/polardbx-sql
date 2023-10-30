@@ -24,6 +24,8 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.function.BiConsumer;
 
 public interface IConnectionHolder {
 
@@ -46,5 +48,12 @@ public interface IConnectionHolder {
     }
 
     void kill();
+
+    /**
+     * For each physical connections, get group and connection id, and consume them.
+     */
+    void handleConnIds(BiConsumer<String, Long> consumer);
+
+    Set<String> getHeldSchemas();
 
 }

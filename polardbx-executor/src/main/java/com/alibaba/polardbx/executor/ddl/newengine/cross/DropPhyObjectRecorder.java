@@ -17,8 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.newengine.cross;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
+
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 public class DropPhyObjectRecorder extends GenericPhyObjectRecorder {
 
@@ -29,7 +32,13 @@ public class DropPhyObjectRecorder extends GenericPhyObjectRecorder {
     @Override
     protected boolean checkIfPhyObjectDone() {
         boolean phyObjectDone = super.checkIfPhyObjectDone();
-        return ddlContext.getState() == DdlState.ROLLBACK_RUNNING ? !phyObjectDone : phyObjectDone;
+        return isRollBackRunning(ddlContext.getState()) ? !phyObjectDone : phyObjectDone;
+    }
+
+    @Override
+    protected boolean checkIfPhyObjectDoneByHashcode() {
+        boolean phyTableExists = DdlHelper.checkIfPhyTableExists(schemaName, groupName, phyTableName);
+        return isRollBackRunning(ddlContext.getState()) ? phyTableExists : !phyTableExists;
     }
 
 }

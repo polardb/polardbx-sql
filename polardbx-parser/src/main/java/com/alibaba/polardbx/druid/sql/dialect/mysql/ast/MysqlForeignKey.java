@@ -25,11 +25,12 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
  * @author kiki
  */
 public class MysqlForeignKey extends SQLForeignKeyImpl {
-    private SQLName  indexName;
-    private boolean  hasConstraint;
-    private Match    referenceMatch;
+    private SQLName indexName;
+    private boolean hasConstraint;
+    private Match referenceMatch;
     protected Option onUpdate;
     protected Option onDelete;
+    private PushDown pushDown;
 
     public MysqlForeignKey() {
         dbType = DbType.mysql;
@@ -81,6 +82,7 @@ public class MysqlForeignKey extends SQLForeignKeyImpl {
         x.referenceMatch = referenceMatch;
         x.onUpdate = onUpdate;
         x.onDelete = onDelete;
+        x.pushDown = pushDown;
 
         return x;
     }
@@ -109,4 +111,11 @@ public class MysqlForeignKey extends SQLForeignKeyImpl {
         this.onDelete = onDelete;
     }
 
+    public PushDown getPushDown() {
+        return pushDown;
+    }
+
+    public void setPushDown(PushDown pushDown) {
+        this.pushDown = pushDown;
+    }
 }

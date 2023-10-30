@@ -134,4 +134,78 @@ public class NodeHintTest extends ReadBaseTestCase {
             JdbcUtil.executeSuccess(tddlConnection, s + String.format(pointSql, group5[3]));
         }
     }
+
+    @Test
+    public void testRandomNodeHint() {
+        String joinSql = "select * from %s a join %s b on a.pk = b.pk join %s c on a.integer_test = c.integer_test";
+        String subQuerySql = "select * from %s a where a.integer_test not in "
+            + "(select c.pk from %s b join %s c on b.integer_test = c.integer_test where a.pk < b.pk)";
+        String pointSql = "select * from %s a where bigint_test < 10";
+
+        String failed = "doesn't exist";
+
+        String[] hints = new String[] {
+            "/*+TDDL:random_node('0')*/",
+            "/*+TDDL:random_node('1')*/",
+            "/*+TDDL:random_node('0,1')*/",
+            "/*+TDDL:random_node('1,2,3', 2)*/",
+            "/*+TDDL:random_node()*/",
+        };
+
+        // point select
+        for (String nodeHint : hints) {
+            JdbcUtil.executeSuccess(tddlConnection, nodeHint + String.format(pointSql, group2[1]));
+            JdbcUtil.executeQueryFaied(tddlConnection, nodeHint + String.format(pointSql, group3[1]), failed);
+            JdbcUtil.executeQueryFaied(tddlConnection, nodeHint + String.format(pointSql, group4[1]), failed);
+            JdbcUtil.executeSuccess(tddlConnection, nodeHint + String.format(pointSql, group5[1]));
+        }
+
+        for (String nodeHint : hints) {
+            JdbcUtil.executeSuccess(tddlConnection,
+                nodeHint + String.format(joinSql, group2[1], group2[2], group2[3]));
+            JdbcUtil.executeSuccess(tddlConnection,
+                nodeHint + String.format(joinSql, group2[1], group5[2], group2[0]));
+            JdbcUtil.executeQueryFaied(tddlConnection, nodeHint +
+                String.format(joinSql, group1[2], group2[2], group2[0]), failed);
+
+            JdbcUtil.executeSuccess(tddlConnection,
+                nodeHint + String.format(subQuerySql, group2[1], group2[2], group2[3]));
+            JdbcUtil.executeSuccess(tddlConnection,
+                nodeHint + String.format(subQuerySql, group2[1], group5[2], group2[2]));
+            JdbcUtil.executeQueryFaied(tddlConnection, nodeHint +
+                String.format(subQuerySql, group1[2], group2[2], group2[0]), failed);
+        }
+
+        //test single table
+        for (int i = 0; i < hints.length; i++) {
+            switch (i) {
+            case 4:
+                JdbcUtil.executeSuccess(tddlConnection,
+                    hints[i] + String.format(joinSql, group1[1], group1[2], group1[3]));
+                JdbcUtil.executeSuccess(tddlConnection,
+                    hints[i] + String.format(subQuerySql, group1[1], group1[2], group1[3]));
+                JdbcUtil.executeSuccess(tddlConnection, hints[i] + String.format(pointSql, group1[3]));
+                break;
+            case 0:
+            case 1:
+            case 2:
+            case 3:
+                JdbcUtil.executeQueryFaied(tddlConnection,
+                    hints[i] + String.format(joinSql, group1[1], group1[2], group1[2]), failed);
+                JdbcUtil.executeQueryFaied(tddlConnection,
+                    hints[i] + String.format(subQuerySql, group1[1], group1[2], group1[3]), failed);
+                JdbcUtil.executeQueryFaied(tddlConnection, hints[i] + String.format(pointSql, group1[3]), failed);
+                break;
+            }
+        }
+
+        // test broadcast table
+        for (String s : hints) {
+            JdbcUtil.executeSuccess(tddlConnection,
+                s + String.format(joinSql, group5[1], group5[2], group5[0]));
+            JdbcUtil.executeSuccess(tddlConnection,
+                s + String.format(subQuerySql, group5[1], group5[2], group5[3]));
+            JdbcUtil.executeSuccess(tddlConnection, s + String.format(pointSql, group5[3]));
+        }
+    }
 }

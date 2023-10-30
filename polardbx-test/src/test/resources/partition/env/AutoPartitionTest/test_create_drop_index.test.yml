@@ -23,8 +23,8 @@ create index `gsi` on t_order(`seller_id`);
 show create table t_order;
 show full create table t_order;
 
-alter table `t_order` drop index `i_0`;
-alter table `t_order` drop index `i_1`;
+alter table `t_order` drop index `seller_id`;
+alter table `t_order` drop index `order_id`;
 
 drop index `ucgsi` on `t_order`;
 drop index `cgsi` on `t_order`;

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.cdc.entity;
 
+import lombok.Getter;
+
 /**
  * Created by ziyang.lb
  **/
@@ -34,6 +36,32 @@ public class DDLExtInfo {
      * should be set if polardbx_server_id variable is in execution context
      */
     private String serverId;
+
+    /**
+     * mark if used OMC with the ddl sql
+     */
+    private Boolean useOMC;
+
+    /**
+     * sub sequence for one task , support for multi mark in one task
+     */
+    private Long taskSubSeq;
+    /**
+     * sql mode for logic ddl event, null and empty for this field has different meaning
+     */
+    private String sqlMode = null;
+
+    private String originalDdl = null;
+
+    private Boolean isGsi = false;
+
+    private String groupName = null;
+
+    @Getter
+    private Boolean foreignKeysDdl = false;
+
+    @Getter
+    private String flags2;
 
     public Long getTaskId() {
         return taskId;
@@ -58,4 +86,61 @@ public class DDLExtInfo {
     public void setServerId(String serverId) {
         this.serverId = serverId;
     }
+
+    public Long getTaskSubSeq() {
+        return taskSubSeq;
+    }
+
+    public void setTaskSubSeq(Long taskSubSeq) {
+        this.taskSubSeq = taskSubSeq;
+    }
+
+    public Boolean getUseOMC() {
+        return useOMC;
+    }
+
+    public void setUseOMC(Boolean useOMC) {
+        this.useOMC = useOMC;
+    }
+
+    public String getSqlMode() {
+        return sqlMode;
+    }
+
+    public void setSqlMode(String sqlMode) {
+        this.sqlMode = sqlMode;
+    }
+
+    public String getOriginalDdl() {
+        return originalDdl;
+    }
+
+    public void setOriginalDdl(String originalDdl) {
+        this.originalDdl = originalDdl;
+    }
+
+    public Boolean getGsi() {
+        return isGsi;
+    }
+
+    public void setGsi(Boolean gsi) {
+        isGsi = gsi;
+    }
+
+    public String getGroupName() {
+        return groupName;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    public void setForeignKeysDdl(Boolean foreignKeysDdl) {
+        this.foreignKeysDdl = foreignKeysDdl;
+    }
+
+    public void setFlags2(String flags2) {
+        this.flags2 = flags2;
+    }
+
 }

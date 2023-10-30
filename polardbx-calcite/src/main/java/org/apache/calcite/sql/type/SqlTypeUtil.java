@@ -107,9 +107,9 @@ public abstract class SqlTypeUtil {
     /**
      * Returns whether the operands to a call are char type-comparable.
      *
-     * @param binding        Binding of call to operands
-     * @param operands       Operands to check for compatibility; usually the
-     *                       operands of the bound call, but not always
+     * @param binding Binding of call to operands
+     * @param operands Operands to check for compatibility; usually the
+     * operands of the bound call, but not always
      * @param throwOnFailure Whether to throw an exception on failure
      * @return whether operands are valid
      */
@@ -159,9 +159,9 @@ public abstract class SqlTypeUtil {
     /**
      * Promotes a type to a row type (does nothing if it already is one).
      *
-     * @param type      type to be promoted
+     * @param type type to be promoted
      * @param fieldName name to give field in row type; null for default of
-     *                  "ROW_VALUE"
+     * "ROW_VALUE"
      * @return row type
      */
     public static RelDataType promoteToRowType(
@@ -305,17 +305,17 @@ public abstract class SqlTypeUtil {
     /**
      * @return true if type is:
      * <pre>
-            TINYINT_UNSIGNED,
-            SMALLINT,
-            SMALLINT_UNSIGNED,
-            MEDIUMINT,
-            MEDIUMINT_UNSIGNED,
-            INTEGER,
-            INTEGER_UNSIGNED,
-            SIGNED,
-            UNSIGNED,
-            BIGINT,
-            BIGINT_UNSIGNED
+     * TINYINT_UNSIGNED,
+     * SMALLINT,
+     * SMALLINT_UNSIGNED,
+     * MEDIUMINT,
+     * MEDIUMINT_UNSIGNED,
+     * INTEGER,
+     * INTEGER_UNSIGNED,
+     * SIGNED,
+     * UNSIGNED,
+     * BIGINT,
+     * BIGINT_UNSIGNED
      * </pre>
      */
     public static boolean isIntTypes(RelDataType type) {
@@ -337,8 +337,8 @@ public abstract class SqlTypeUtil {
     /**
      * @return true if type is:
      * <pre>
-        CHAR,
-        VARCHAR
+     * CHAR,
+     * VARCHAR
      * </pre>
      */
     public static boolean isCharTypes(RelDataType type) {
@@ -352,11 +352,11 @@ public abstract class SqlTypeUtil {
     /**
      * @return true if type is:
      * <pre>
-            TIME,
-            TIME_WITH_LOCAL_TIME_ZONE,
-            TIMESTAMP,
-            TIMESTAMP_WITH_LOCAL_TIME_ZONE,
-            DATETIME
+     * TIME,
+     * TIME_WITH_LOCAL_TIME_ZONE,
+     * TIMESTAMP,
+     * TIMESTAMP_WITH_LOCAL_TIME_ZONE,
+     * DATETIME
      * </pre>
      */
     public static boolean isDatetimeTypes(RelDataType type) {
@@ -370,12 +370,12 @@ public abstract class SqlTypeUtil {
     /**
      * @return true if type is:
      * <pre>
-            TIME,
-            TIME_WITH_LOCAL_TIME_ZONE,
-            TIMESTAMP,
-            TIMESTAMP_WITH_LOCAL_TIME_ZONE,
-            DATETIME,
-            YEAR
+     * TIME,
+     * TIME_WITH_LOCAL_TIME_ZONE,
+     * TIMESTAMP,
+     * TIMESTAMP_WITH_LOCAL_TIME_ZONE,
+     * DATETIME,
+     * YEAR
      * </pre>
      */
     public static boolean isDatetimeYearTypes(RelDataType type) {
@@ -911,7 +911,7 @@ public abstract class SqlTypeUtil {
     /**
      * Tests whether a value can be assigned to a site.
      *
-     * @param toType   type of the target site
+     * @param toType type of the target site
      * @param fromType type of the source value
      * @return true iff assignable
      */
@@ -983,11 +983,11 @@ public abstract class SqlTypeUtil {
      * yet.  Once it is, this param (and the non-coerce rules of
      * {@link SqlTypeAssignmentRules}) should go away.
      *
-     * @param toType   target of assignment
+     * @param toType target of assignment
      * @param fromType source of assignment
-     * @param coerce   if true, the SQL rules for CAST are used; if false, the
-     *                 rules are similar to Java; e.g. you can't assign short x =
-     *                 (int) y, and you can't assign int x = (String) z.
+     * @param coerce if true, the SQL rules for CAST are used; if false, the
+     * rules are similar to Java; e.g. you can't assign short x =
+     * (int) y, and you can't assign int x = (String) z.
      * @return true iff cast is legal
      */
     public static boolean canCastFrom(
@@ -1089,11 +1089,11 @@ public abstract class SqlTypeUtil {
      * for non-null), and all component types are asserted to be nullable, since
      * SQL doesn't allow NOT NULL to be specified on attributes.
      *
-     * @param typeFactory   factory which should produced flattened type
-     * @param recordType    type with possible nesting
+     * @param typeFactory factory which should produced flattened type
+     * @param recordType type with possible nesting
      * @param flatteningMap if non-null, receives map from unflattened ordinal
-     *                      to flattened ordinal (must have length at least
-     *                      recordType.getFieldList().size())
+     * to flattened ordinal (must have length at least
+     * recordType.getFieldList().size())
      * @return flattened equivalent
      */
     public static RelDataType flattenRecordType(
@@ -1204,7 +1204,7 @@ public abstract class SqlTypeUtil {
         SqlTypeName typeName = type.getSqlTypeName();
         // rebuild the type to fit the SqlDataTypeSpec class.
         boolean unsigned = false;
-        if(SqlTypeName.UNSIGNED_TO_SIGNED.containsKey(typeName)) {
+        if (SqlTypeName.UNSIGNED_TO_SIGNED.containsKey(typeName)) {
             unsigned = true;
             typeName = SqlTypeName.UNSIGNED_TO_SIGNED.get(typeName);
         }
@@ -1289,7 +1289,7 @@ public abstract class SqlTypeUtil {
      * Adds collation and charset to a character type, returns other types
      * unchanged.
      *
-     * @param type        Type
+     * @param type Type
      * @param typeFactory Type factory
      * @return Type with added charset and collation, or unchanged type if it is
      * not a char type.
@@ -1310,7 +1310,7 @@ public abstract class SqlTypeUtil {
             // should create a new object each time
             collation = new SqlCollation(
                 charset,
-                CollationName.defaultCollation().name(),
+                null,
                 SqlCollation.Coercibility.IMPLICIT
             );
         }
@@ -1330,8 +1330,8 @@ public abstract class SqlTypeUtil {
      * <p>They need not come from the same factory.
      *
      * @param factory Type factory
-     * @param type1   First type
-     * @param type2   Second type
+     * @param type1 First type
+     * @param type2 Second type
      * @return whether types are equal, ignoring nullability
      */
     public static boolean equalSansNullability(
@@ -1355,11 +1355,42 @@ public abstract class SqlTypeUtil {
             factory.createTypeWithNullability(type2, type1.isNullable()));
     }
 
+    public static boolean canDirectModifyColumn(RelDataTypeFactory factory,
+                                                RelDataType source,
+                                                RelDataType target) {
+        if (source.equals(target)) {
+            return true;
+        }
+
+        if (isAny(source) || isAny(target)) {
+            return true;
+        }
+
+        if (source.equals(
+            factory.createTypeWithNullability(target, source.isNullable()))) {
+            return true;
+        }
+
+        if (source.getSqlTypeName() == SqlTypeName.CHAR && target.getSqlTypeName() == SqlTypeName.CHAR) {
+            return source.getCharset().equals(target.getCharset()) && source.getCollation()
+                .equals(target.getCollation())
+                && source.getPrecision() <= target.getPrecision();
+        }
+
+        if (source.getSqlTypeName() == SqlTypeName.VARCHAR && target.getSqlTypeName() == SqlTypeName.VARCHAR) {
+            return source.getCharset().equals(target.getCharset()) && source.getCollation()
+                .equals(target.getCollation())
+                && source.getPrecision() <= target.getPrecision();
+        }
+
+        return false;
+    }
+
     /**
      * Returns the ordinal of a given field in a record type, or -1 if the field
      * is not found.
      *
-     * @param type      Record type
+     * @param type Record type
      * @param fieldName Name of field
      * @return Ordinal of field
      */
@@ -1380,7 +1411,7 @@ public abstract class SqlTypeUtil {
      * to operate on inputs that are specified as field ordinals (e.g.
      * aggregate calls).
      *
-     * @param rowType        input row type
+     * @param rowType input row type
      * @param requiredFields ordinals of the projected fields
      * @return list of data types that are requested by requiredFields
      */
@@ -1680,7 +1711,6 @@ public abstract class SqlTypeUtil {
     public static boolean isTimestamp(RelDataType type) {
         return SqlTypeFamily.TIMESTAMP.contains(type);
     }
-
 
     /**
      * @return true if type is BINARY

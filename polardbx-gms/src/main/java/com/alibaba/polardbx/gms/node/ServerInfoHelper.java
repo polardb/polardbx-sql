@@ -24,6 +24,7 @@ import com.alibaba.polardbx.gms.topology.ServerInfoRecord;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * @author chenghui.lch

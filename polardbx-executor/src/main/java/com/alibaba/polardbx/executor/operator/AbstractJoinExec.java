@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
@@ -30,9 +29,9 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.row.JoinRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.JoinRelType;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,6 +61,8 @@ abstract class AbstractJoinExec extends AbstractExecutor {
 
     final ChunkConverter outerKeyChunkGetter;
     final ChunkConverter innerKeyChunkGetter;
+
+    final List<Integer> ignoreNullBlocks = new ArrayList<>();
 
     AbstractJoinExec(Executor outerInput,
                      Executor innerInput,
@@ -104,17 +105,25 @@ abstract class AbstractJoinExec extends AbstractExecutor {
         } else if (singleJoin) {
             final List<DataType> outer = outerInput.getDataTypes();
             final List<DataType> inner = innerInput.getDataTypes();
-            dataTypes =  ImmutableList.<DataType>builder()
+            dataTypes = ImmutableList.<DataType>builder()
                 .addAll(outer)
                 .addAll(inner.subList(0, 1)) // only keep the first column for single join
                 .build();
         } else {
             final List<DataType> outer = outerInput.getDataTypes();
             final List<DataType> inner = innerInput.getDataTypes();
-            dataTypes =  ImmutableList.<DataType>builder()
+            dataTypes = ImmutableList.<DataType>builder()
                 .addAll(joinType.leftSide(outer, inner))
                 .addAll(joinType.rightSide(outer, inner))
                 .build();
+        }
+
+        if (joinKeys != null) {
+            for (int i = 0; i < joinKeys.size(); i++) {
+                if (!joinKeys.get(i).isNullSafeEqual()) {
+                    ignoreNullBlocks.add(i);
+                }
+            }
         }
     }
 
@@ -162,13 +171,7 @@ abstract class AbstractJoinExec extends AbstractExecutor {
     }
 
     protected List<Integer> getIgnoreNullsInJoinKey() {
-        List<Integer> ret = new ArrayList<>(joinKeys.size());
-        for (int i = 0; i < joinKeys.size(); i++) {
-            if (!joinKeys.get(i).isNullSafeEqual()) {
-                ret.add(i);
-            }
-        }
-        return ret;
+        return ignoreNullBlocks;
     }
 
     protected void buildJoinRow(ChunksIndex chunksIndex, Chunk probeInputChunk, int position, int matchedPosition) {

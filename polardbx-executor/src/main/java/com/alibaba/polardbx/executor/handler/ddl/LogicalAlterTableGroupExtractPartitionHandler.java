@@ -36,6 +36,7 @@ public class LogicalAlterTableGroupExtractPartitionHandler extends LogicalCommon
         LogicalAlterTableGroupExtractPartition alterTableGroupExtractPartition =
             (LogicalAlterTableGroupExtractPartition) logicalDdlPlan;
         alterTableGroupExtractPartition.preparedData(executionContext);
+
         return AlterTableGroupExtractPartitionJobFactory
             .create(alterTableGroupExtractPartition.relDdl, alterTableGroupExtractPartition.getPreparedData(),
                 executionContext);
@@ -47,7 +48,7 @@ public class LogicalAlterTableGroupExtractPartitionHandler extends LogicalCommon
             (SqlAlterTableGroup) ((logicalDdlPlan).relDdl.getSqlNode()),
             logicalDdlPlan.getSchemaName(),
             executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

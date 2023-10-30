@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.cdc.RplConstants;
@@ -9,8 +25,11 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
 
+
+
 /**
  * @author shicai.xsc 2021/3/5 13:09
+ * @desc
  * @since 5.0.0.0
  */
 public class SqlChangeReplicationFilter extends SqlReplicationBase {
@@ -21,43 +40,16 @@ public class SqlChangeReplicationFilter extends SqlReplicationBase {
         keyWord = "CHANGE REPLICATION FILTER";
     }
 
-    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options) {
-        super(pos, options);
+    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel,
+                                      SqlNode subChannel) {
+        super(pos, options, channel, subChannel);
     }
 
-    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel) {
-        super(pos, options, channel);
-    }
 
     @Override
     protected void parseParams(String k, String v) {
         k = StringUtils.upperCase(k);
-        switch (k) {
-        case RplConstants.REPLICATE_DO_DB:
-            params.put(RplConstants.REPLICATE_DO_DB, v);
-            break;
-        case RplConstants.REPLICATE_IGNORE_DB:
-            params.put(RplConstants.REPLICATE_IGNORE_DB, v);
-            break;
-        case RplConstants.REPLICATE_DO_TABLE:
-            params.put(RplConstants.REPLICATE_DO_TABLE, v);
-            break;
-        case RplConstants.REPLICATE_IGNORE_TABLE:
-            params.put(RplConstants.REPLICATE_IGNORE_TABLE, v);
-            break;
-        case RplConstants.REPLICATE_WILD_DO_TABLE:
-            params.put(RplConstants.REPLICATE_WILD_DO_TABLE, v);
-            break;
-        case RplConstants.REPLICATE_WILD_IGNORE_TABLE:
-            params.put(RplConstants.REPLICATE_WILD_IGNORE_TABLE, v);
-            break;
-        case RplConstants.REPLICATE_REWRITE_DB:
-            params.put(RplConstants.REPLICATE_REWRITE_DB, v);
-            break;
-        default:
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT,
-                String.format("Unrecognized arguments: %s", k));
-        }
+        params.put(k, v);
     }
 
     public static class SqlChangeReplicationFilterOperator extends SqlReplicationOperator {

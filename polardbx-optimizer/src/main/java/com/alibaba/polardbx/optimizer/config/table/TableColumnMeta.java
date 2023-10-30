@@ -28,6 +28,7 @@ public class TableColumnMeta extends AbstractLifecycle {
 
     private final Pair<String, String> columnMultiWriteMapping;
     private final boolean modifying;
+    private boolean modifyPartitionKey;
 
     public TableColumnMeta(String tableSchema, String tableName, ColumnMeta sourceColumn, ColumnMeta targetColumn) {
         this.tableSchema = tableSchema;
@@ -44,6 +45,14 @@ public class TableColumnMeta extends AbstractLifecycle {
 
     protected boolean isModifying() {
         return modifying;
+    }
+
+    protected boolean isModifyPrimaryKey() {
+        return modifyPartitionKey;
+    }
+
+    public void setModifyPartitionKey(boolean modifyPartitionKey) {
+        this.modifyPartitionKey = modifyPartitionKey;
     }
 
     protected Pair<String, String> getColumnMultiWriteMapping() {

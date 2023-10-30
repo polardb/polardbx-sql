@@ -37,30 +37,29 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Serializable, SQLDbTypedObject, Comparable<SQLBinaryOpExpr> {
+public class SQLBinaryOpExpr extends SQLExprImpl
+    implements SQLReplaceable, Serializable, SQLDbTypedObject, Comparable<SQLBinaryOpExpr> {
 
-    private static final long   serialVersionUID = 1L;
-    protected SQLExpr           left;
-    protected SQLExpr           right;
+    private static final long serialVersionUID = 1L;
+    protected SQLExpr left;
+    protected SQLExpr right;
     protected SQLBinaryOperator operator;
-    protected DbType            dbType;
+    protected DbType dbType;
 
-
-
-    private boolean             bracket  = false;
+    private boolean bracket = false;
 
     // only for parameterized output
     protected transient List<SQLObject> mergedList;
 
-    public SQLBinaryOpExpr(){
+    public SQLBinaryOpExpr() {
 
     }
 
-    public SQLBinaryOpExpr(DbType dbType){
+    public SQLBinaryOpExpr(DbType dbType) {
         this.dbType = dbType;
     }
 
-    public SQLBinaryOpExpr(SQLExpr left, SQLBinaryOperator operator, SQLExpr right){
+    public SQLBinaryOpExpr(SQLExpr left, SQLBinaryOperator operator, SQLExpr right) {
         if (left != null) {
             left.setParent(this);
         }
@@ -84,8 +83,8 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
             }
         }
     }
-    
-    public SQLBinaryOpExpr(SQLExpr left, SQLBinaryOperator operator, SQLExpr right, DbType dbType){
+
+    public SQLBinaryOpExpr(SQLExpr left, SQLBinaryOperator operator, SQLExpr right, DbType dbType) {
         if (left != null) {
             left.setParent(this);
         }
@@ -112,7 +111,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         this.dbType = dbType;
     }
 
-    public SQLBinaryOpExpr(SQLExpr left, SQLExpr right, SQLBinaryOperator operator){
+    public SQLBinaryOpExpr(SQLExpr left, SQLExpr right, SQLBinaryOperator operator) {
         if (left != null) {
             left.setParent(this);
         }
@@ -212,16 +211,15 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         SQLBinaryOpExpr other = (SQLBinaryOpExpr) obj;
 
         return operator == other.operator
-                && SQLExprUtils.equals(left, other.left)
-                &&  SQLExprUtils.equals(right, other.right);
+            && SQLExprUtils.equals(left, other.left)
+            && SQLExprUtils.equals(right, other.right);
     }
 
     public boolean equals(SQLBinaryOpExpr other) {
         return operator == other.operator
-                && SQLExprUtils.equals(left, other.left)
-                &&  SQLExprUtils.equals(right, other.right);
+            && SQLExprUtils.equals(left, other.left)
+            && SQLExprUtils.equals(right, other.right);
     }
-
 
     public boolean equalsIgoreOrder(SQLBinaryOpExpr other) {
         if (this == other) {
@@ -236,9 +234,9 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         }
 
         return (Utils.equals(this.left, other.left)
-                    && Utils.equals(this.right, other.right))
-                || (Utils.equals(this.left, other.right)
-                    && Utils.equals(this.right, other.left));
+            && Utils.equals(this.right, other.right))
+            || (Utils.equals(this.left, other.right)
+            && Utils.equals(this.right, other.left));
     }
 
     public SQLBinaryOpExpr clone() {
@@ -339,7 +337,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
         List<SQLExpr> rightList = new ArrayList<SQLExpr>();
         rightList.add(binaryExpr.getRight());
-        for (SQLExpr left = binaryExpr.getLeft();;) {
+        for (SQLExpr left = binaryExpr.getLeft(); ; ) {
             if (left instanceof SQLBinaryOpExpr) {
                 SQLBinaryOpExpr leftBinary = (SQLBinaryOpExpr) left;
                 if (leftBinary.operator == op) {
@@ -356,7 +354,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         }
 
         for (int i = rightList.size() - 1; i >= 0; --i) {
-            SQLExpr right  = rightList.get(i);
+            SQLExpr right = rightList.get(i);
 
             if (right instanceof SQLBinaryOpExpr) {
                 SQLBinaryOpExpr binaryRight = (SQLBinaryOpExpr) right;
@@ -428,8 +426,8 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         }
 
         if (a instanceof SQLBinaryOpExpr
-                && b instanceof SQLBinaryOpExprGroup
-                && ((SQLBinaryOpExprGroup) b).getOperator() == SQLBinaryOperator.BooleanAnd) {
+            && b instanceof SQLBinaryOpExprGroup
+            && ((SQLBinaryOpExprGroup) b).getOperator() == SQLBinaryOperator.BooleanAnd) {
             SQLBinaryOpExprGroup group = (SQLBinaryOpExprGroup) b;
             group.add(0, a);
             return group;
@@ -500,7 +498,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
                 if (itemA.equals(itemB)) {
                     exist = true;
                 } else if (itemA instanceof SQLBinaryOpExpr
-                        && itemB instanceof SQLBinaryOpExpr) {
+                    && itemB instanceof SQLBinaryOpExpr) {
                     if (((SQLBinaryOpExpr) itemA).equalsIgoreOrder((SQLBinaryOpExpr) itemB)) {
                         exist = true;
                     }
@@ -602,59 +600,58 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         }
 
         switch (operator) {
-            case Concat:
-                if (leftDataType != null) {
-                    return leftDataType;
-                }
+        case Concat:
+            if (leftDataType != null) {
+                return leftDataType;
+            }
+            if (rightDataType != null) {
+                return rightDataType;
+            }
+            return SQLCharExpr.DATA_TYPE;
+        case BooleanXor:
+        case Modulus:
+        case Mod:
+        case DIV:
+        case Divide:
+            if (leftDataType != null) {
+                return leftDataType;
+            }
+            if (rightDataType != null) {
+                return rightDataType;
+            }
+            return null;
+        case Subtract:
+        case Add:
+        case Multiply:
+            if (leftDataType != null) {
                 if (rightDataType != null) {
-                    return rightDataType;
-                }
-                return SQLCharExpr.DATA_TYPE;
-            case BooleanXor:
-            case Modulus:
-            case Mod:
-            case DIV:
-            case Divide:
-                if (leftDataType != null) {
-                    return leftDataType;
-                }
-                if (rightDataType != null) {
-                    return rightDataType;
-                }
-                return null;
-            case Subtract:
-            case Add:
-            case Multiply:
-                if (leftDataType != null) {
-                    if (rightDataType != null) {
-                        if (leftDataType.nameHashCode64() == FnvHash.Constants.BIGINT
-                                && rightDataType.nameHashCode64() == FnvHash.Constants.NUMBER) {
-                            return rightDataType;
-                        }
-
-                        if (leftDataType.isInt()
-                                && rightDataType.nameHashCode64() == FnvHash.Constants.INTERVAL)
-                        {
-                            return rightDataType;
-                        }
-
-                        if ((leftDataType.nameHashCode64() == FnvHash.Constants.DATE
-                                || leftDataType.nameHashCode64() == FnvHash.Constants.DATETIME
-                                || leftDataType.nameHashCode64() == FnvHash.Constants.TIMESTAMP)
-                                && (
-                                rightDataType.nameHashCode64() == FnvHash.Constants.DATE
-                                        || rightDataType.nameHashCode64() == FnvHash.Constants.DATETIME
-                                        || rightDataType.nameHashCode64() == FnvHash.Constants.TIMESTAMP
-                        )) {
-                            return new SQLDataTypeImpl("BIGING");
-                        }
+                    if (leftDataType.nameHashCode64() == FnvHash.Constants.BIGINT
+                        && rightDataType.nameHashCode64() == FnvHash.Constants.NUMBER) {
+                        return rightDataType;
                     }
 
-                    return leftDataType;
+                    if (leftDataType.isInt()
+                        && rightDataType.nameHashCode64() == FnvHash.Constants.INTERVAL) {
+                        return rightDataType;
+                    }
+
+                    if ((leftDataType.nameHashCode64() == FnvHash.Constants.DATE
+                        || leftDataType.nameHashCode64() == FnvHash.Constants.DATETIME
+                        || leftDataType.nameHashCode64() == FnvHash.Constants.TIMESTAMP)
+                        && (
+                        rightDataType.nameHashCode64() == FnvHash.Constants.DATE
+                            || rightDataType.nameHashCode64() == FnvHash.Constants.DATETIME
+                            || rightDataType.nameHashCode64() == FnvHash.Constants.TIMESTAMP
+                    )) {
+                        return new SQLDataTypeImpl("BIGING");
+                    }
                 }
-                return null;
-            default:
-                return null;
+
+                return leftDataType;
+            }
+            return null;
+        default:
+            return null;
         }
     }
 
@@ -704,14 +701,11 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     /**
      * only for parameterized output
-     * @param v
-     * @param x
-     * @return
      */
     public static SQLBinaryOpExpr merge(ParameterizedVisitor v, SQLBinaryOpExpr x) {
         SQLObject parent = x.parent;
 
-        for (;;) {
+        for (; ; ) {
             if (x.right instanceof SQLBinaryOpExpr) {
                 SQLBinaryOpExpr rightBinary = (SQLBinaryOpExpr) x.right;
                 if (x.left instanceof SQLBinaryOpExpr) {
@@ -745,7 +739,8 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
         }
 
         // ID = ? OR ID = ? => ID = ?
-        if (x.operator == SQLBinaryOperator.BooleanOr && !v.isEnabled(VisitorFeature.OutputParameterizedQuesUnMergeInList)) {
+        if (x.operator == SQLBinaryOperator.BooleanOr && !v.isEnabled(
+            VisitorFeature.OutputParameterizedQuesUnMergeInList)) {
             if ((x.left instanceof SQLBinaryOpExpr) && (x.right instanceof SQLBinaryOpExpr)) {
                 SQLBinaryOpExpr leftBinary = (SQLBinaryOpExpr) x.left;
                 SQLBinaryOpExpr rightBinary = (SQLBinaryOpExpr) x.right;
@@ -758,7 +753,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
                 }
 
                 if (SQLExprUtils.isLiteralExpr(leftBinary.left) //
-                        && leftBinary.operator == SQLBinaryOperator.BooleanOr) {
+                    && leftBinary.operator == SQLBinaryOperator.BooleanOr) {
                     if (mergeEqual(leftBinary.right, x.right)) {
                         v.incrementReplaceCunt();
                         leftBinary.addMergedItem(rightBinary);
@@ -773,8 +768,6 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     /**
      * only for parameterized output
-     * @param item
-     * @return
      */
     private void addMergedItem(SQLBinaryOpExpr item) {
         if (mergedList == null) {
@@ -785,7 +778,6 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     /**
      * only for parameterized output
-     * @return
      */
     public List<SQLObject> getMergedList() {
         return mergedList;
@@ -793,9 +785,6 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     /**
      * only for parameterized output
-     * @param a
-     * @param b
-     * @return
      */
     private static boolean mergeEqual(SQLExpr a, SQLExpr b) {
         if (!(a instanceof SQLBinaryOpExpr)) {
@@ -829,34 +818,34 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     public static boolean isOr(SQLExpr x) {
         return x instanceof SQLBinaryOpExpr
-                && ((SQLBinaryOpExpr) x).getOperator() == SQLBinaryOperator.BooleanOr;
+            && ((SQLBinaryOpExpr) x).getOperator() == SQLBinaryOperator.BooleanOr;
     }
 
     public static boolean isAnd(SQLExpr x) {
         return x instanceof SQLBinaryOpExpr
-                && ((SQLBinaryOpExpr) x).getOperator() == SQLBinaryOperator.BooleanAnd;
+            && ((SQLBinaryOpExpr) x).getOperator() == SQLBinaryOperator.BooleanAnd;
     }
 
     public boolean isLeftNameAndRightLiteral() {
         return left instanceof SQLName
-                && right instanceof SQLLiteralExpr;
+            && right instanceof SQLLiteralExpr;
     }
 
     public boolean isLeftFunctionAndRightLiteral() {
         return left instanceof SQLMethodInvokeExpr
-                && right instanceof SQLLiteralExpr;
+            && right instanceof SQLLiteralExpr;
     }
 
     public boolean isNameAndLiteral() {
         return (left instanceof SQLLiteralExpr
-                    && right instanceof SQLName)
-                || (left instanceof SQLName
-                    && right instanceof SQLLiteralExpr);
+            && right instanceof SQLName)
+            || (left instanceof SQLName
+            && right instanceof SQLLiteralExpr);
     }
 
     public boolean isBothName() {
         return left instanceof SQLName
-                && right instanceof SQLName;
+            && right instanceof SQLName;
     }
 
     @Override
@@ -881,27 +870,27 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
 
     public boolean isLeftLiteralAndRightName() {
         return right instanceof SQLName
-                && left instanceof SQLLiteralExpr;
+            && left instanceof SQLLiteralExpr;
     }
 
     public static SQLBinaryOpExpr conditionEq(String column, String value) {
         return new SQLBinaryOpExpr(SQLUtils.toSQLExpr(column)
-                , SQLBinaryOperator.Equality, new SQLCharExpr(value));
+            , SQLBinaryOperator.Equality, new SQLCharExpr(value));
     }
 
     public static SQLBinaryOpExpr conditionEq(String column, int value) {
         return new SQLBinaryOpExpr(SQLUtils.toSQLExpr(column)
-                , SQLBinaryOperator.Equality, new SQLIntegerExpr(value));
+            , SQLBinaryOperator.Equality, new SQLIntegerExpr(value));
     }
 
     public static SQLBinaryOpExpr conditionLike(String column, String value) {
         return new SQLBinaryOpExpr(SQLUtils.toSQLExpr(column)
-                , SQLBinaryOperator.Like, new SQLCharExpr(value));
+            , SQLBinaryOperator.Like, new SQLCharExpr(value));
     }
 
     public static SQLBinaryOpExpr conditionLike(String column, SQLExpr value) {
         return new SQLBinaryOpExpr(SQLUtils.toSQLExpr(column)
-                , SQLBinaryOperator.Like, value);
+            , SQLBinaryOperator.Like, value);
     }
 
     public static SQLBinaryOpExpr eq(SQLExpr a, SQLExpr b) {

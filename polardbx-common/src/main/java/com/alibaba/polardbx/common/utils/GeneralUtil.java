@@ -26,8 +26,11 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 
+import java.io.BufferedReader;
 import java.io.Closeable;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -36,9 +39,9 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -462,7 +465,7 @@ public class GeneralUtil {
         if (param == null) {
             return Collections.emptyList();
         }
-        List<ParameterContext> p = new LinkedList<>();
+        List<ParameterContext> p = new ArrayList<>(param.size());
         for (int i = 1; i <= param.size(); i++) {
             if (param.get(i) == null) {
                 p.add(null);
@@ -516,6 +519,44 @@ public class GeneralUtil {
         return r;
     }
 
+    /**
+     * decode statistic trace info, like :
+     * Catalog:tpch_100g,lineitem,l_shipdate,null_1998-09-02
+     * Action:getRangeCount
+     * StatisticValue:693554944
+     * <p>
+     * after decode:
+     * key: Catalog:tpch_100g,lineitem,l_shipdate,null_1998-09-02 Action:getRangeCount
+     * value:693554944
+     *
+     * @param statisticTraceInfo statistic trace info, return by explain cost_trace
+     * @return normalize info for statistic trace info
+     */
+    public static Map<String, String> decode(String statisticTraceInfo) throws IOException {
+        if (StringUtils.isEmpty(statisticTraceInfo)) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> statisticTraceMap = Maps.newHashMap();
+        BufferedReader lineReader = new BufferedReader(new StringReader(statisticTraceInfo));
+        String line;
+        while ((line = lineReader.readLine()) != null) {
+            // find Key
+            line = line.trim();
+            if (line.startsWith("Catalog:")) {
+                String actionLine = lineReader.readLine().trim();
+                line = removeIdxSuffix(line);
+                String key = line + "\n" + actionLine;
+
+                String statisticResultLine = lineReader.readLine().trim();
+                if (statisticResultLine.length() > "StatisticValue:".length()) {
+                    statisticResultLine = statisticResultLine.substring("StatisticValue:".length());
+                }
+                statisticTraceMap.put(key, statisticResultLine);
+            }
+        }
+        return statisticTraceMap;
+    }
+
     public static void close(Connection x) {
         if (x == null) {
             return;
@@ -558,6 +599,44 @@ public class GeneralUtil {
             x.close();
         } catch (Exception e) {
             throw nestedException(e);
+        }
+    }
+
+    private static String buildFkReferenceName(Set<String> existingSymbols, String prefix) {
+        StringBuilder indexName = new StringBuilder(prefix);
+        int tryTime = 0;
+
+        while (existingSymbols.contains(indexName.toString().toUpperCase())) {
+            if (tryTime == 0) {
+                indexName.append("_").append(tryTime++);
+                continue;
+            }
+            int i = indexName.lastIndexOf("_");
+            indexName.delete(i, indexName.length());
+            indexName.append('_').append(tryTime++);
+        }
+
+        String identifier = indexName.toString().toLowerCase();
+        if (identifier.contains("`")) {
+            return "`" + identifier.replaceAll("`", "``") + "`";
+        }
+        return "`" + identifier + "`";
+    }
+
+    /**
+     * remove the suffix of gsi name
+     */
+    public static String removeIdxSuffix(String source) {
+        if (source.contains("_$")) {
+            int targetIndex = source.indexOf("_$");
+            int secondIndex = source.indexOf(",", targetIndex);
+            if (secondIndex != -1) {
+                return source.substring(0, targetIndex) + source.substring(secondIndex);
+            } else {
+                return source.substring(0, targetIndex);
+            }
+        } else {
+            return source;
         }
     }
 }

@@ -19,12 +19,14 @@ package com.alibaba.polardbx.optimizer;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTrace;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -44,6 +46,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -127,6 +131,22 @@ public class PlannerContext implements Context, PlannerContextWithParam {
      * Set before building plan.
      */
     private boolean addForcePrimary = false;
+
+    private boolean hasRecursiveCte = false;
+
+    /**
+     * statistic trace
+     */
+    private boolean isNeedStatisticTrace = false;
+    private List<StatisticTrace> statisticTraces = null;
+
+    /**
+     * record
+     */
+    private boolean enableSelectStatistics = false;
+
+    private Map<String, Set<String>> viewMap = null;
+    private Set<Integer> constantParamIndex = null;
 
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
@@ -503,5 +523,94 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setAddForcePrimary(boolean addForcePrimary) {
         this.addForcePrimary = addForcePrimary;
+    }
+
+    public boolean isEnableSelectStatistics() {
+        return enableSelectStatistics;
+    }
+
+    public void setEnableSelectStatistics(boolean enableSelectStatistics) {
+        this.enableSelectStatistics = enableSelectStatistics;
+        this.viewMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    }
+
+    public void addView(String schema, String view) {
+        if (!this.enableSelectStatistics) {
+            return;
+        }
+        this.viewMap.computeIfAbsent(schema, x -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER));
+        this.viewMap.get(schema).add(view);
+    }
+
+    public Map<String, Set<String>> getViewMap() {
+        return viewMap;
+    }
+
+    public boolean isNeedStatisticTrace() {
+        return isNeedStatisticTrace;
+    }
+
+    public void setNeedStatisticTrace(boolean needStatisticTrace) {
+        isNeedStatisticTrace = needStatisticTrace;
+    }
+
+    /**
+     * recode statistic trace info into planner context
+     */
+    public void recordStatisticTrace(StatisticTrace trace) {
+        if (statisticTraces == null) {
+            statisticTraces = Lists.newArrayList();
+        }
+        statisticTraces.add(trace);
+    }
+
+    public void clearStatisticTraceInfo() {
+        if (statisticTraces != null) {
+            statisticTraces.clear();
+        }
+    }
+
+    /**
+     * transform statistic trace info from Map to string
+     */
+    public String formatStatisticTrace() {
+        if (statisticTraces == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("STATISTIC TRACE INFO:\n");
+
+        // merge same trace
+        Map<String, Integer> traceMap = Maps.newHashMap();
+
+        for (StatisticTrace statisticTrace : statisticTraces) {
+            traceMap.merge(statisticTrace.print(), 1, (a, b) -> a + b);
+        }
+        for (Map.Entry<String, Integer> e : traceMap.entrySet()) {
+            if (e.getValue() != 1) {
+                sb.append("MULTI[" + e.getValue() + "]").append("\n");
+            }
+            sb.append(e.getKey()).append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * is plan contains recursive cte
+     */
+    public boolean isHasRecursiveCte() {
+        return hasRecursiveCte;
+    }
+
+    public void setHasRecursiveCte(boolean hasRecursiveCte) {
+        this.hasRecursiveCte = hasRecursiveCte;
+    }
+
+    public Set<Integer> getConstantParamIndex() {
+        return constantParamIndex;
+    }
+
+    public void setConstantParamIndex(Set<Integer> constantParamIndex) {
+        this.constantParamIndex = constantParamIndex;
     }
 }

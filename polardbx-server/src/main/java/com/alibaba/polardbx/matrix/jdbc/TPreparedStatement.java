@@ -88,4 +88,8 @@ public class TPreparedStatement extends TStatement implements ITPrepareStatement
     public void setParam(int parameterIndex, ParameterContext context) {
         params.getCurrentParameter().put(parameterIndex, context);
     }
+
+    public void addBatch() throws SQLException {
+        params.addBatch();
+    }
 }

@@ -1,0 +1,203 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `tb_decimal_2404` (
+`id` decimal(24,4) NOT NULL,
+`name` varchar(32) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 16;
+show create table tb_decimal_2404;
+Table,Create Table
+tb_decimal_2404,CREATE TABLE `tb_decimal_2404` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+show create table tb_decimal_2404;
+Table,Create Table
+tb_decimal_2404,CREATE TABLE `tb_decimal_2404` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+insert into tb_decimal_2404 values ('10.24','10.24');
+insert into tb_decimal_2404 values ('10.2448','10.2448');
+insert into tb_decimal_2404 values ('10.24491','10.24491');
+select * from tb_decimal_2404 where id ='10.24';
+id,name
+10.2400,10.24
+select * from tb_decimal_2404 where id ='10.2448';
+id,name
+10.2448,10.2448
+select * from tb_decimal_2404 where id ='10.2449';
+id,name
+10.2449,10.24491
+## auto part with decimal with scale=0
+CREATE TABLE `tb_decimal_2404_auto` (
+`id` decimal(24,4) NOT NULL,
+`name` varchar(32) DEFAULT NULL,
+primary key(id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+show create table tb_decimal_2404_auto;
+Table,Create Table
+tb_decimal_2404_auto,CREATE TABLE `tb_decimal_2404_auto` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+SINGLE
+## auto part with decimal with scale>0
+CREATE TABLE `tb_decimal_3630` (
+`id` decimal(36,30) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 16;
+show create table tb_decimal_3630;
+Table,Create Table
+tb_decimal_3630,CREATE TABLE `tb_decimal_3630` (
+	`id` decimal(36, 30) NOT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+CREATE TABLE `tb_decimal_sp_6530_6500` (
+`id` decimal(65,30) NOT NULL,
+`c1` decimal(65,0) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 4
+subpartition by list columns(`c1`)
+(
+subpartition sp1 VALUES IN (-9223372036854775807,-4294967295,-2147483647),
+subpartition sp2 VALUES IN (-16777215,0,16777215),
+subpartition sp3 VALUES IN (2147483647,4294967295),
+subpartition sp4 VALUES IN (9223372036854775807),
+subpartition sp5 VALUES IN (123456789012345678909999),
+subpartition spd VALUES IN (default)
+);
+show create table tb_decimal_sp_6530_6500;
+Table,Create Table
+tb_decimal_sp_6530_6500,CREATE TABLE `tb_decimal_sp_6530_6500` (
+	`id` decimal(65, 30) NOT NULL,
+	`c1` decimal(65, 0) NOT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`),
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 4
+SUBPARTITION BY LIST COLUMNS(`c1`)
+(SUBPARTITION sp1 VALUES IN (-9223372036854775807,-4294967295,-2147483647),
+ SUBPARTITION sp2 VALUES IN (-16777215,0,16777215),
+ SUBPARTITION sp3 VALUES IN (2147483647,4294967295),
+ SUBPARTITION sp4 VALUES IN (9223372036854775807),
+ SUBPARTITION sp5 VALUES IN (123456789012345678909999),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+set sql_mode='';
+insert into tb_decimal_sp_6530_6500 (id,c1) values ('12345678901234567890123456789012345.123456789012345678900123456789', '2147483647');
+insert into tb_decimal_sp_6530_6500 (id,c1) values ('12345678901234567890123456789012345.123456789012345678900123456795', '9223372036854775807');
+insert into tb_decimal_sp_6530_6500 (id,c1) values ('123456789012345678901234567890123450.123456789012345678900123456789', '9223372036854775807');
+## p1~p4
+explain  select * from tb_decimal_sp_6530_6500
+  where id >= '12345678901234567890123456789012345.123456789012345678900123456789'
+   and  id <= '12345678901234567890123456789012345.123456789012345678900123456795';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6530_6500[p1sp1,p1sp2,p1sp3,...p4spd]", shardCount=24, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6530_6500` AS `tb_decimal_sp_6530_6500` WHERE ((`id` >= ?) AND (`id` <= ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: ca3d48f0
+## empty
+explain  select * from tb_decimal_sp_6530_6500
+where id <= '12345678901234567890123456789012345.123456789012345678900123456789'
+and  id >= '12345678901234567890123456789012345.123456789012345678900123456795';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6530_6500[]", shardCount=0, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6530_6500` AS `tb_decimal_sp_6530_6500` WHERE ((`id` <= ?) AND (`id` >= ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 28ea75ac
+## p1~p4 , sp: sp4,spd
+explain  select * from tb_decimal_sp_6530_6500
+where c1 between 9223372036854775806 and 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6530_6500[p1sp4,p1spd,p2sp4,p2spd,p3sp4,p3spd,p4sp4,p4spd]", shardCount=8, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6530_6500` AS `tb_decimal_sp_6530_6500` WHERE (`c1` BETWEEN ? AND ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 284b7f21
+## p1~p4, sp: sp4,spd
+explain  select * from tb_decimal_sp_6530_6500
+where id >= '12345678901234567890123456789012345.123456789012345678900123456789'
+and  id <= '12345678901234567890123456789012345.123456789012345678900123456795'
+and c1 between 9223372036854775806 and 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6530_6500[p1sp4,p1spd,p2sp4,p2spd,p3sp4,p3spd,p4sp4,p4spd]", shardCount=8, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6530_6500` AS `tb_decimal_sp_6530_6500` WHERE ((`id` >= ?) AND (`id` <= ?) AND (`c1` BETWEEN ? AND ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 491ebac3
+CREATE TABLE `tb_decimal_sp_6500_6530` (
+`id` decimal(65,30) NOT NULL,
+`c1` decimal(65,0) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by list columns(`c1`)
+subpartition by key(id) subpartitions 4
+(
+partition p1 VALUES IN (-9223372036854775807,-4294967295,-2147483647),
+partition p2 VALUES IN (-16777215,0,16777215),
+partition p3 VALUES IN (2147483647,4294967295),
+partition p4 VALUES IN (9223372036854775807),
+partition p5 VALUES IN (123456789012345678909999),
+partition pd VALUES IN (default)
+);
+show create table tb_decimal_sp_6500_6530;
+Table,Create Table
+tb_decimal_sp_6500_6530,CREATE TABLE `tb_decimal_sp_6500_6530` (
+	`id` decimal(65, 30) NOT NULL,
+	`c1` decimal(65, 0) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`),
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST COLUMNS(`c1`)
+SUBPARTITION BY KEY(`id`)
+SUBPARTITIONS 4
+(PARTITION p1 VALUES IN (-9223372036854775807,-4294967295,-2147483647),
+ PARTITION p2 VALUES IN (-16777215,0,16777215),
+ PARTITION p3 VALUES IN (2147483647,4294967295),
+ PARTITION p4 VALUES IN (9223372036854775807),
+ PARTITION p5 VALUES IN (123456789012345678909999),
+ PARTITION pd VALUES IN (DEFAULT))
+## p:p4,pd
+## sp: sp1~sp4
+explain  select * from tb_decimal_sp_6500_6530
+where c1 between 9223372036854775806 and 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6500_6530[p4sp1,p4sp2,p4sp3,p4sp4,pdsp1,pdsp2,pdsp3,pdsp4]", shardCount=8, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6500_6530` AS `tb_decimal_sp_6500_6530` WHERE (`c1` BETWEEN ? AND ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 3badf1c7
+## p: p4,pd
+## sp: sp1~sp4
+explain  select * from tb_decimal_sp_6500_6530
+where id >= '12345678901234567890123456789012345.123456789012345678900123456789'
+and  id <= '12345678901234567890123456789012345.123456789012345678900123456790'
+and c1 between 9223372036854775806 and 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6500_6530[p4sp1,p4sp2,p4sp3,p4sp4,pdsp1,pdsp2,pdsp3,pdsp4]", shardCount=8, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6500_6530` AS `tb_decimal_sp_6500_6530` WHERE ((`id` >= ?) AND (`id` <= ?) AND (`c1` BETWEEN ? AND ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 4a0789e9
+## p:p4,pd,
+## sp: sp3
+explain  select * from tb_decimal_sp_6500_6530
+where id >= '12345678901234567890123456789012345.123456789012345678900123456789'
+and  id <= '12345678901234567890123456789012345.123456789012345678900123456789'
+and c1 between 9223372036854775806 and 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_sp_6500_6530[p4sp3,pdsp3]", shardCount=2, sql="SELECT `id`, `c1` FROM `tb_decimal_sp_6500_6530` AS `tb_decimal_sp_6500_6530` WHERE ((`id` >= ?) AND (`id` <= ?) AND (`c1` BETWEEN ? AND ?))")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 4a0789e9

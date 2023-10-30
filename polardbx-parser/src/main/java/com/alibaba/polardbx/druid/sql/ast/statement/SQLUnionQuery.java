@@ -29,14 +29,14 @@ import java.util.List;
 
 public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLDbTypedObject {
 
-    private boolean          bracket  = false;
+    private boolean bracket = false;
 
     private List<SQLSelectQuery> relations = new ArrayList<SQLSelectQuery>();
     private SQLUnionOperator operator = SQLUnionOperator.UNION;
-    private SQLOrderBy       orderBy;
+    private SQLOrderBy orderBy;
 
-    private SQLLimit         limit;
-    private DbType           dbType;
+    private SQLLimit limit;
+    private DbType dbType;
 
     public SQLUnionOperator getOperator() {
         return operator;
@@ -46,16 +46,15 @@ public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLD
         this.operator = operator;
     }
 
-    public SQLUnionQuery(){
+    public SQLUnionQuery() {
 
     }
 
-    public SQLUnionQuery(SQLSelectQuery left, SQLUnionOperator operator, SQLSelectQuery right){
+    public SQLUnionQuery(SQLSelectQuery left, SQLUnionOperator operator, SQLSelectQuery right) {
         this.setLeft(left);
         this.operator = operator;
         this.setRight(right);
     }
-
 
     public List<SQLSelectQuery> getRelations() {
         return relations;
@@ -147,7 +146,6 @@ public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLD
         }
         visitor.endVisit(this);
     }
-
 
     public SQLLimit getLimit() {
         return limit;
@@ -242,10 +240,10 @@ public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLD
         SQLSelectQuery right = getRight();
 
         if ((!bracket)
-                && left instanceof SQLUnionQuery
-                && ((SQLUnionQuery) left).getOperator() == operator
-                && !right.isBracket()
-                && orderBy == null) {
+            && left instanceof SQLUnionQuery
+            && ((SQLUnionQuery) left).getOperator() == operator
+            && !right.isBracket()
+            && orderBy == null) {
 
             SQLUnionQuery leftUnion = (SQLUnionQuery) left;
 
@@ -257,11 +255,11 @@ public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLD
                 SQLSelectQuery leftRight = leftUnion.getRight();
 
                 if ((!leftUnion.isBracket())
-                        && leftUnion.getOrderBy() == null
-                        && (!leftLeft.isBracket())
-                        && (!leftRight.isBracket())
-                        && leftLeft instanceof SQLUnionQuery
-                        && ((SQLUnionQuery) leftLeft).getOperator() == operator) {
+                    && leftUnion.getOrderBy() == null
+                    && (!leftLeft.isBracket())
+                    && (!leftRight.isBracket())
+                    && leftLeft instanceof SQLUnionQuery
+                    && ((SQLUnionQuery) leftLeft).getOperator() == operator) {
                     rights.add(leftRight);
                     leftUnion = (SQLUnionQuery) leftLeft;
                     continue;
@@ -281,16 +279,30 @@ public class SQLUnionQuery extends SQLObjectImpl implements SQLSelectQuery, SQLD
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLUnionQuery that = (SQLUnionQuery) o;
 
-        if (bracket != that.bracket) return false;
-        if (relations != null ? !relations.equals(that.relations) : that.relations != null) return false;
-        if (operator != that.operator) return false;
-        if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null) return false;
-        if (limit != null ? !limit.equals(that.limit) : that.limit != null) return false;
+        if (bracket != that.bracket) {
+            return false;
+        }
+        if (relations != null ? !relations.equals(that.relations) : that.relations != null) {
+            return false;
+        }
+        if (operator != that.operator) {
+            return false;
+        }
+        if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null) {
+            return false;
+        }
+        if (limit != null ? !limit.equals(that.limit) : that.limit != null) {
+            return false;
+        }
         return dbType == that.dbType;
     }
 

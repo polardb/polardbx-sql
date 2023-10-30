@@ -23,18 +23,24 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -93,12 +99,61 @@ public class IndexAdvisor {
         BROADCAST
     }
 
+    public static final String ANALYZE_FORMAT = "`%s`.`%s`";
+
     public IndexAdvisor(ExecutionPlan executionPlan, ExecutionContext executionContext) {
         this.executionPlan = executionPlan;
         this.executionContext = executionContext;
         this.plannerContext = PlannerContext.getPlannerContext(executionPlan.getPlan());
         this.mq = executionPlan.getPlan().getCluster().getMetadataQuery();
         this.configurationMap = new HashMap<>();
+    }
+
+    /**
+     * check whether any table in the query should refresh statistics
+     *
+     * @return an 'analyze table' advise if there are some tables should refresh statistics
+     */
+    public AdviceResult checkStatistics() {
+        SqlNode ast = executionPlan.getAst();
+        if (ast == null) {
+            return null;
+        }
+        if (!(ast.getKind().belongsTo(SqlKind.QUERY) || ast.getKind().belongsTo(SqlKind.DML))) {
+            return null;
+        }
+        // init
+        executionPlan.getPlan().getCluster().invalidateMetadataQuery();
+        this.mq = executionPlan.getPlan().getCluster().getMetadataQuery();
+        this.configurationMap = new HashMap<>();
+
+        // collect tables
+        RelNode unOptimizedPlan = executionContext.getUnOptimizedPlan();
+        RelNode logicalPlan = Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
+        TableScanFinder tableScanFinder = new TableScanFinder();
+        logicalPlan.accept(tableScanFinder);
+        List<Pair<String, TableScan>> tableScans = tableScanFinder.getResult();
+
+        Set<String> tables = Sets.newTreeSet(String::compareToIgnoreCase);
+        for (Pair<String, TableScan> pair : tableScans) {
+            String schemaName = pair.getKey().toLowerCase();
+            String tableName = CBOUtil.getTableMeta(pair.getValue().getTable()).getTableName().toLowerCase();
+            String fullTable = String.format(ANALYZE_FORMAT, schemaName, tableName);
+            if (StatisticManager.expired(schemaName, tableName)) {
+                tables.add(fullTable);
+            }
+        }
+        if (!tables.isEmpty()) {
+            StringBuilder infoBuilder = new StringBuilder();
+            infoBuilder.append("Statistics of tables are expired! You can try to analyze tables to refresh ");
+            infoBuilder.append("statistics during the low business period by `ANALYZE TABLE ");
+            infoBuilder.append(String.join(",", tables));
+            infoBuilder.append("`");
+            AdviceResult adviceResult = new AdviceResult(null, null);
+            adviceResult.setInfo(infoBuilder.toString());
+            return adviceResult;
+        }
+        return null;
     }
 
     public AdviceResult advise(AdviseType adviseType) {
@@ -198,17 +253,17 @@ public class IndexAdvisor {
 
         Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(executionPlan.getAst());
         String defaultSchemaName = executionContext.getSchemaName();
-        StringBuilder infoBuidler = new StringBuilder();
-        infoBuidler.append("Advisor can't not find any useful index. You can try to analyze tables to refresh ");
-        infoBuidler.append("statistics during the low business period by ");
-        infoBuidler.append("`ANALYZE TABLE ");
-        infoBuidler.append(tableSet.stream().map(pair -> {
+        StringBuilder infoBuilder = new StringBuilder();
+        infoBuilder.append("Advisor can't not find any useful index. You can try to analyze tables to refresh ");
+        infoBuilder.append("statistics during the low business period by ");
+        infoBuilder.append("`ANALYZE TABLE ");
+        infoBuilder.append(tableSet.stream().map(pair -> {
             String schemaName = pair.getKey() == null ? defaultSchemaName : pair.getKey();
             String tableName = pair.getValue();
-            return "`" + schemaName + "`.`" + tableName + "`";
+            return String.format(ANALYZE_FORMAT, schemaName, tableName);
         }).collect(Collectors.joining(",")));
-        infoBuidler.append("`");
-        adviceResult.setInfo(infoBuidler.toString());
+        infoBuilder.append("`");
+        adviceResult.setInfo(infoBuilder.toString());
         return adviceResult;
     }
 
@@ -286,6 +341,10 @@ public class IndexAdvisor {
             // currentLevel = lastLevel + levelOne
             for (CandidateIndex lastLevelCandidateIndex : lastLevelCandidateIndexSet) {
                 for (CandidateIndex levelOneCandidateIndex : candidateIndexLevelOne) {
+                    if (lastLevelCandidateIndex.isContainGsiPartColOfUnsupportedDataType()
+                        || levelOneCandidateIndex.isContainGsiPartColOfUnsupportedDataType()) {
+                        continue;
+                    }
                     Set<CandidateIndex> levelUpIndexSet =
                         levelUp(lastLevelCandidateIndex, levelOneCandidateIndex);
                     if (levelUpIndexSet == null) {
@@ -326,8 +385,9 @@ public class IndexAdvisor {
         return candidateMap;
     }
 
-    private Set<CandidateIndex> enumerateConfiguration(Map<String, Map<String, Set<CandidateIndex>>> candidateMap,
-                                                       RelNode logicalPlan, RelOptCost originalCost) {
+    private Set<CandidateIndex> enumerateConfiguration
+        (Map<String, Map<String, Set<CandidateIndex>>> candidateMap,
+         RelNode logicalPlan, RelOptCost originalCost) {
         // configuration enumeration - greedy search
         // schema.table.configuration independent property
         // we enumerate every schema.table best configuration and then add them together
@@ -341,7 +401,8 @@ public class IndexAdvisor {
             for (Map<String, Set<CandidateIndex>> tableMap : candidateMap.values()) {
                 for (Set<CandidateIndex> notExistsCandidateSet : tableMap.values()) {
                     int combinationSize = Math.min(notExistsCandidateSet.size(), combination);
-                    Set<Set<CandidateIndex>> combinationSet = Sets.combinations(notExistsCandidateSet, combinationSize);
+                    Set<Set<CandidateIndex>> combinationSet =
+                        Sets.combinations(notExistsCandidateSet, combinationSize);
                     for (Set<CandidateIndex> candidateIndexSet : combinationSet) {
                         tryConfiguration(logicalPlan, originalCost, candidateIndexSet);
                     }
@@ -509,7 +570,7 @@ public class IndexAdvisor {
     public Set<String> candidateBroadCastTable(SchemaManager schemaManager, Set<String> tables) {
         Set<String> candidateBroadCastTables = new TreeSet<>();
         for (String table : tables) {
-            if (schemaManager.getTable(table).getRowCount() < executionContext.getParamManager().getInt(
+            if (schemaManager.getTable(table).getRowCount(null) < executionContext.getParamManager().getInt(
                 ConnectionParams.INDEX_ADVISOR_BROADCAST_THRESHOLD)) {
                 candidateBroadCastTables.add(table);
             }
@@ -523,7 +584,7 @@ public class IndexAdvisor {
                                      TableMeta whatIfTableMeta,
                                      TableMeta oldTableMeta) {
         BroadcastInfo broadcastInfo = null;
-        if (oldTableMeta.getRowCount() < executionContext.getParamManager().getInt(
+        if (oldTableMeta.getRowCount(null) < executionContext.getParamManager().getInt(
             ConnectionParams.INDEX_ADVISOR_BROADCAST_THRESHOLD)) {
             if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
 
@@ -583,7 +644,6 @@ public class IndexAdvisor {
             whatIfSchemaManager.init();
             executionContext.getSchemaManagers().put(schemaName, whatIfSchemaManager);
         }
-
 
         Map<String, Map<String, BroadcastInfo>> broadcastTableInfo = new HashMap<>(schemaNames.size());
         for (String schemaName : schemaNames) {
@@ -645,8 +705,9 @@ public class IndexAdvisor {
                         sb.append("whatif rowcount ").append(mq.getRowCount(physicalPlan))
                             .append("\n");
                         sb.append(tableName).append("\n").
-                            append(RelUtils.toString(physicalPlan, executionContext.getParams().getCurrentParameter(),
-                                RexUtils.getEvalFunc(executionContext), executionContext))
+                            append(
+                                RelUtils.toString(physicalPlan, executionContext.getParams().getCurrentParameter(),
+                                    RexUtils.getEvalFunc(executionContext), executionContext))
                             .append(originalCost.toString()).append("\n").append(newCost.toString());
                     }
 
@@ -798,6 +859,12 @@ public class IndexAdvisor {
             return;
         }
 
+        // ignore the gsi of unsupported type for partTbl
+        if (currentLevelCandidateIndex.getTableMeta().getPartitionInfo() != null
+            && currentLevelCandidateIndex.isContainGsiPartColOfUnsupportedDataType()) {
+            return;
+        }
+
         // consider cardinality
         if (currentLevelCandidateIndex.isHighCardinality()
             && (currentLevelCandidateIndex.isNotCoverPrimaryUniqueKey() || currentLevelCandidateIndex.isGsi())
@@ -912,13 +979,18 @@ public class IndexAdvisor {
                         candidateIndexSet.add(candidateIndex);
                         break;
                     case GLOBAL_INDEX: {
+                        boolean allIdxColDataTypeSupportPart =
+                            checkIfAllIndexColDataTypeSupportPartition(schemaName, tableName, index);
                         if (rules.isEmpty()) {
                             candidateIndex = new CandidateIndex(schemaName, tableName, index, true, null);
+                            candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                             candidateIndexSet.add(candidateIndex);
                         } else {
                             boolean successOnce = false;
                             for (HumanReadableRule rule : rules) {
-                                candidateIndex = new CandidateIndex(schemaName, tableName, index, true, null);
+                                boolean isGsi = allIdxColDataTypeSupportPart;
+                                candidateIndex = new CandidateIndex(schemaName, tableName, index, isGsi, null);
+                                candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                                 boolean success = candidateIndex.changePartitionPolicy(rule);
                                 if (success) {
                                     candidateIndexSet.add(candidateIndex);
@@ -927,21 +999,27 @@ public class IndexAdvisor {
                             }
                             if (!successOnce) {
                                 candidateIndex = new CandidateIndex(schemaName, tableName, index, true, null);
+                                candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                                 candidateIndexSet.add(candidateIndex);
                             }
                         }
                         break;
                     }
                     case GLOBAL_COVERING_INDEX: {
+                        boolean allIdxColDataTypeSupportPart =
+                            checkIfAllIndexColDataTypeSupportPartition(schemaName, tableName, index);
+                        boolean isGsi = allIdxColDataTypeSupportPart;
                         if (rules.isEmpty()) {
-                            candidateIndex = new CandidateIndex(schemaName, tableName, index, true,
+                            candidateIndex = new CandidateIndex(schemaName, tableName, index, isGsi,
                                 coverableColumnSet.getCoverableColumns(schemaName, tableName));
+                            candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                             candidateIndexSet.add(candidateIndex);
                         } else {
                             boolean successOnce = false;
                             for (HumanReadableRule rule : rules) {
-                                candidateIndex = new CandidateIndex(schemaName, tableName, index, true,
+                                candidateIndex = new CandidateIndex(schemaName, tableName, index, isGsi,
                                     coverableColumnSet.getCoverableColumns(schemaName, tableName));
+                                candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                                 boolean success = candidateIndex.changePartitionPolicy(rule);
                                 if (success) {
                                     candidateIndexSet.add(candidateIndex);
@@ -949,8 +1027,9 @@ public class IndexAdvisor {
                                 successOnce = successOnce || success;
                             }
                             if (!successOnce) {
-                                candidateIndex = new CandidateIndex(schemaName, tableName, index, true,
+                                candidateIndex = new CandidateIndex(schemaName, tableName, index, isGsi,
                                     coverableColumnSet.getCoverableColumns(schemaName, tableName));
+                                candidateIndex.setContainGsiColOfUnsupportedDataType(!allIdxColDataTypeSupportPart);
                                 candidateIndexSet.add(candidateIndex);
                             }
                         }
@@ -966,6 +1045,32 @@ public class IndexAdvisor {
     }
 
     private boolean lessThan(RelOptCost cost1, RelOptCost cost2) {
-        return cost1.isLt(cost2) && (cost1.getIo() < 0.95 * cost2.getIo() || cost1.getNet() < 0.95 * cost2.getNet());
+        return cost1.isLt(cost2) && (cost1.getIo() < 0.95 * cost2.getIo()
+            || cost1.getNet() < 0.95 * cost2.getNet());
+    }
+
+    private boolean checkIfAllIndexColDataTypeSupportPartition(String dbName, String tbName, List<String> idxCols) {
+        TableMeta tbMata = OptimizerContext.getContext(dbName).getLatestSchemaManager().getTable(tbName);
+        List<ColumnMeta> idxColMetas = new ArrayList<>();
+        for (int i = 0; i < idxCols.size(); i++) {
+            String idxColName = idxCols.get(i);
+            ColumnMeta cm = tbMata.getColumnIgnoreCase(idxColName);
+            idxColMetas.add(cm);
+        }
+        for (int i = 0; i < idxColMetas.size(); i++) {
+            ColumnMeta cm = idxColMetas.get(i);
+            if (dataTypeNotSupportPartitionType(cm.getDataType())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean dataTypeNotSupportPartitionType(DataType dataType) {
+        return DataTypeUtil.equalsSemantically(DataTypes.YearType, dataType)
+            || DataTypeUtil.equalsSemantically(DataTypes.TimeType, dataType)
+            || DataTypeUtil.equalsSemantically(DataTypes.FloatType, dataType)
+            || DataTypeUtil.equalsSemantically(DataTypes.DoubleType, dataType)
+            || DataTypeUtil.equalsSemantically(DataTypes.DecimalType, dataType);
     }
 }

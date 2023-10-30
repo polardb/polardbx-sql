@@ -42,6 +42,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @since 5.0.1
  */
 
+
 public class InsertDuplicatedTest extends CrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

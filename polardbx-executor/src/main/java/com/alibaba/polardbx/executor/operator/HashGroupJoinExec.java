@@ -56,6 +56,9 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 
+import static com.alibaba.polardbx.executor.utils.ExecUtils.checkJoinKeysAllNullSafe;
+import static com.alibaba.polardbx.executor.utils.ExecUtils.checkJoinKeysNulSafe;
+
 /**
  * Hash Join Executor
  *

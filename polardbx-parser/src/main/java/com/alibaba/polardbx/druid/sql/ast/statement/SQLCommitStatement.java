@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLCommitStatement extends SQLStatementImpl {
@@ -48,7 +49,7 @@ public class SQLCommitStatement extends SQLStatementImpl {
         x.chain = chain;
         x.release = release;
 
-        if(transactionName != null) {
+        if (transactionName != null) {
             x.setTransactionName(transactionName.clone());
         }
         if (delayedDurability != null) {
@@ -141,5 +142,10 @@ public class SQLCommitStatement extends SQLStatementImpl {
             delayedDurability.setParent(this);
         }
         this.delayedDurability = delayedDurability;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.archive.reader;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 public interface BatchReader<T> extends Closeable {
     T readBatch();

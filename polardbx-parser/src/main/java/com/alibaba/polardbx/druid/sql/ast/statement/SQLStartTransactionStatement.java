@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.Collections;
@@ -27,11 +28,11 @@ import java.util.List;
 
 public class SQLStartTransactionStatement extends SQLStatementImpl {
 
-    private boolean              consistentSnapshot = false;
+    private boolean consistentSnapshot = false;
 
-    private boolean              begin              = false;
-    private boolean              work               = false;
-    private SQLExpr              name;
+    private boolean begin = false;
+    private boolean work = false;
+    private SQLExpr name;
 
     private List<SQLCommentHint> hints;
 
@@ -119,7 +120,7 @@ public class SQLStartTransactionStatement extends SQLStatementImpl {
         this.readOnly = readOnly;
     }
 
-    public static enum IsolationLevel{
+    public static enum IsolationLevel {
         SERIALIZABLE("SERIALIZABLE"),
         REPEATABLE_READ("REPEATABLE READ"),
         READ_COMMITTED("READ COMMITTED"),
@@ -127,15 +128,17 @@ public class SQLStartTransactionStatement extends SQLStatementImpl {
 
         private final String text;
 
-        IsolationLevel(String text)
-        {
+        IsolationLevel(String text) {
             this.text = text;
         }
 
-        public String getText()
-        {
+        public String getText() {
             return text;
         }
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

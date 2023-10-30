@@ -1,0 +1,251 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======= r-r =========
+## r-r-tp
+drop table if exists r_r_tp;
+create table if not exists r_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a) (
+subpartition sp0 values less than (100),
+subpartition sp1 values less than (maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_r_tp;
+
+## r-r-tp2
+drop table if exists r_r_tp2;
+create table if not exists r_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a)
+subpartition template
+(
+subpartition sp0 values less than (100),
+subpartition sp1 values less than (maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_r_tp2;
+
+
+## r-r-ntp
+drop table if exists r_r_ntp;
+create table if not exists r_r_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a)
+(
+partition p0 values less than (2020)
+(
+  subpartition sp0 values less than (100),
+  subpartition sp1 values less than (maxvalue)
+),
+partition p1 values less than (2021)
+(
+subpartition sp2 values less than (200),
+subpartition sp3 values less than (maxvalue)
+),
+partition p2 values less than (maxvalue)(
+subpartition sp4 values less than (300),
+subpartition sp5 values less than (maxvalue)
+)
+);
+show create table r_r_ntp;
+
+##======= r-rc =========
+## r-rc-tp
+drop table if exists r_rc_tp;
+create table if not exists r_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range columns (a,b) (
+subpartition sp0 values less than (100,100),
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_rc_tp;
+
+## r-rc-ntp
+drop table if exists r_rc_ntp;
+create table if not exists r_rc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range columns (a,b)
+(
+partition p0 values less than (2020) (
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+),
+partition p1 values less than (2021) (
+subpartition sp3 values less than (100,100),
+subpartition sp4 values less than (maxvalue, maxvalue)
+),
+partition p2 values less than (maxvalue) (
+subpartition sp5 values less than (maxvalue, maxvalue)
+)
+);
+show create table r_rc_ntp;
+
+##======= rc-r =========
+## rc-r-tp
+drop table if exists rc_r_tp;
+create table if not exists rc_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range (year(c)) (
+subpartition sp0 values less than (2020),
+subpartition sp1 values less than (2021),
+subpartition sp2 values less than (maxvalue)
+)
+(
+partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_r_tp;
+
+## rc-r-ntp
+drop table if exists rc_r_ntp;
+create table if not exists rc_r_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range (year(c))
+(
+partition p0 values less than ('2020-01-01','abc',100) (
+subpartition sp1 values less than (2021),
+subpartition sp2 values less than (maxvalue)
+),
+partition p1 values less than ('2022-01-01', 'efg',100) (
+subpartition sp3 values less than (2020),
+subpartition sp4 values less than (maxvalue)
+),
+partition p2 values less than (maxvalue, maxvalue, maxvalue) (
+subpartition sp5 values less than (maxvalue)
+)
+);
+show create table rc_r_ntp;
+
+##======= rc-rc =========
+## rc-rc-tp
+drop table if exists rc_rc_tp;
+create table if not exists rc_rc_tp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b) (
+  subpartition sp0 values less than (100,100),
+  subpartition sp1 values less than (200,200),
+  subpartition sp2 values less than (maxvalue, maxvalue)
+)
+( partition p0 values less than ('2020-01-01','abc',100),
+  partition p1 values less than ('2022-01-01', 'efg',100),
+  partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_rc_tp;
+
+## rc-rc-tp2 using subpartition template
+drop table if exists rc_rc_tp2;
+create table if not exists rc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b)
+subpartition template
+(
+subpartition sp0 values less than (100,100),
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+)
+( partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_rc_tp2;
+
+
+## rc-rc-ntp
+drop table if exists rc_rc_ntp;
+create table if not exists rc_rc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b)
+( partition p0 values less than ('2020-01-01','abc',100) (
+    subpartition sp0 values less than (100,100),
+    subpartition sp1 values less than (maxvalue, maxvalue)
+  ),
+  partition p1 values less than ('2022-01-01', 'efg',200) (
+    subpartition sp3 values less than (200,200),
+    subpartition sp4 values less than (maxvalue, maxvalue)
+  ),
+  partition p2 values less than (maxvalue, maxvalue, maxvalue) (
+    subpartition sp5 values less than (300,300),
+    subpartition sp6 values less than (maxvalue, maxvalue)
+  )
+);
+show create table rc_rc_ntp;
+
+
+
+
+

@@ -76,6 +76,7 @@ public class CacheCursor implements Cursor {
     private List<Throwable> ex = new ArrayList<>();
     private SpillMonitor spillMonitor;
     private ExecutionContext context;
+    private long rowCount = 0;
 
     public CacheCursor(
         ExecutionContext context, SpillerFactory spillerFactory, Cursor cursor, long estimateRowSize) {
@@ -185,7 +186,9 @@ public class CacheCursor implements Cursor {
 
     public void cacheAllRows() {
         Row currentRow;
+        rowCount = 0;
         while ((currentRow = cursor.next()) != null) {
+            rowCount++;
             try {
                 long rowSize = currentRow.estimateSize();
                 if (rowSize <= 0) {
@@ -293,5 +296,9 @@ public class CacheCursor implements Cursor {
     @Override
     public List<ColumnMeta> getReturnColumns() {
         return cursorMeta.getColumns();
+    }
+
+    public long getRowCount() {
+        return rowCount;
     }
 }

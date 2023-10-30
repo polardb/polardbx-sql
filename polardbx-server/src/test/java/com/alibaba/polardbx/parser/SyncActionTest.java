@@ -19,6 +19,8 @@ package com.alibaba.polardbx.parser;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.parser.ParserConfig;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.alibaba.polardbx.executor.sync.BaselineInvalidatePlanSyncAction;
+import com.alibaba.polardbx.executor.sync.ClearSeqCacheSyncAction;
 import com.alibaba.polardbx.server.response.ShowNodeSyncAction;
 import com.alibaba.polardbx.server.response.ShowSQLSlowSyncAction;
 import org.junit.Assert;
@@ -45,4 +47,19 @@ public class SyncActionTest {
         Object obj = JSON.parse(data);
         Assert.assertEquals(showNodeSyncAction.getClass(), obj.getClass());
     }
+
+    @Test
+    public void testBaselineInvalidatePlanSyncAction() {
+        ParserConfig parserConfig = ParserConfig.getGlobalInstance();
+        parserConfig.setAutoTypeSupport(true);
+        ParserConfig.getGlobalInstance()
+            .addAccept("com.alibaba.polardbx.executor.sync.BaselineInvalidatePlanSyncAction");
+
+        BaselineInvalidatePlanSyncAction action = new BaselineInvalidatePlanSyncAction("Test", "test_table", true);
+
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+        BaselineInvalidatePlanSyncAction obj = (BaselineInvalidatePlanSyncAction) JSON.parse(data);
+        Assert.assertEquals(action.isIsForce(), obj.isIsForce());
+    }
+
 }

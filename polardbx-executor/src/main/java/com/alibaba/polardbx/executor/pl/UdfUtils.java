@@ -20,7 +20,8 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
-import com.alibaba.polardbx.executor.pl.type.BasicTypeBuilders;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.type.BasicTypeBuilders;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
@@ -58,11 +59,6 @@ public class UdfUtils {
         SqlStdOperatorTable.instance().enableTypeCoercion(udf);
     }
 
-    // TODO : check collation and other situation
-    private static RelDataType createBasicSqlType(RelDataTypeSystem typeSystem, SQLDataType dataType) {
-        return BasicTypeBuilders.getTypeBuilder(dataType.getName()).createBasicSqlType(typeSystem, dataType);
-    }
-
     public static SqlUserDefinedFunction createSqlUdf(String createFunctionStr, boolean canPush) {
         SQLCreateFunctionStatement
             statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunctionStr).get(0);
@@ -70,13 +66,14 @@ public class UdfUtils {
         // create scalar function
         List<SQLParameter> inputParams = statement.getParameters();
         List<RelDataType> inputTypes =
-            inputParams.stream().map(t -> createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), t.getDataType()))
+            inputParams.stream()
+                .map(t -> DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), t.getDataType()))
                 .collect(Collectors.toList());
         List<String> inputNames =
             inputParams.stream().map(t -> t.getName().getSimpleName()).collect(Collectors.toList());
 
         RelDataType returnType =
-            createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
+            DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
 
         Function function = new TypeKnownScalarFunction(returnType, inputTypes, inputNames);
 

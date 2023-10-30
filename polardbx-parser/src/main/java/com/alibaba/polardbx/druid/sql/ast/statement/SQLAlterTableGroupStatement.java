@@ -24,8 +24,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLAlterTableGroupStatement extends SQLStatementImpl implements SQLAlterStatement {
-    private SQLName           name;
-
+    private SQLName name;
+    boolean alterByTable = false;
+    boolean alterIndexTg = false;
+    SQLName tblNameOfIndex = null;
     private List<SQLAssignItem> options = new ArrayList<SQLAssignItem>();
     private SQLAlterTableGroupItem item;
 
@@ -66,4 +68,27 @@ public class SQLAlterTableGroupStatement extends SQLStatementImpl implements SQL
         return options;
     }
 
+    public boolean isAlterByTable() {
+        return alterByTable;
+    }
+
+    public void setAlterByTable(boolean alterByTable) {
+        this.alterByTable = alterByTable;
+    }
+
+    public boolean isAlterIndexTg() {
+        return alterIndexTg;
+    }
+
+    public void setAlterIndexTg(boolean alterIndexTg) {
+        this.alterIndexTg = alterIndexTg;
+    }
+
+    public SQLName getTblNameOfIndex() {
+        return tblNameOfIndex;
+    }
+
+    public void setTblNameOfIndex(SQLName tblNameOfIndex) {
+        this.tblNameOfIndex = tblNameOfIndex;
+    }
 }

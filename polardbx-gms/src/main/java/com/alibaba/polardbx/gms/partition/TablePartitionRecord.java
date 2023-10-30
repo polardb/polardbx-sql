@@ -33,7 +33,7 @@ public class TablePartitionRecord implements SystemTableRecord {
     public final static int PARTITION_LEVEL_LOGICAL_TABLE = 0;
     public final static int PARTITION_LEVEL_PARTITION = 1;
     public final static int PARTITION_LEVEL_SUBPARTITION = 2;
-    public final static int PARTITION_LEVEL_NO_SUBPARTITION = -1;
+    public final static int PARTITION_LEVEL_NO_NEXT_PARTITION = -1;
 
     public final static int PARTITION_STATUS_LOGICAL_TABLE_ABSENT = 0;
     public final static int PARTITION_STATUS_LOGICAL_TABLE_PUBLIC = 1;
@@ -376,5 +376,35 @@ public class TablePartitionRecord implements SystemTableRecord {
 
     public void setPhyTable(String phyTable) {
         this.phyTable = phyTable;
+    }
+
+    public TablePartitionRecord copy() {
+        TablePartitionRecord rec = new TablePartitionRecord();
+        rec.id = this.id;
+        rec.parentId = this.parentId;
+        rec.createTime = this.createTime;
+        rec.updateTime = this.updateTime;
+        rec.tableSchema = this.tableSchema;
+        rec.tableName = this.tableName;
+        rec.spTempFlag = this.spTempFlag;
+        rec.groupId = this.groupId;
+        rec.metaVersion = this.metaVersion;
+        rec.autoFlag = this.autoFlag;
+        rec.tblType = this.tblType;
+        rec.partName = this.partName;
+        rec.partTempName = this.partTempName;
+        rec.partLevel = this.partLevel;
+        rec.nextLevel = this.nextLevel;
+        rec.partStatus = this.partStatus;
+        rec.partPosition = this.partPosition;
+        rec.partMethod = this.partMethod;
+        rec.partExpr = this.partExpr;
+        rec.partDesc = this.partDesc;
+        rec.partComment = this.partComment;
+        rec.partEngine = this.partEngine;
+        rec.partExtras = this.partExtras;
+        rec.partFlags = this.partFlags;
+        rec.phyTable = this.phyTable;
+        return rec;
     }
 }

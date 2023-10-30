@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.gsi.utils;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
@@ -146,9 +147,13 @@ public class Transformer {
             columnType = row.getParentCursorMeta().getColumnMeta(i).getDataType();
             value = row.getObject(i);
 
-            if (value instanceof ZeroDate || value instanceof ZeroTimestamp || value instanceof ZeroTime || value instanceof Decimal) {
+            if (value instanceof ZeroDate || value instanceof ZeroTimestamp || value instanceof ZeroTime
+                || value instanceof Decimal) {
                 // 针对 0000-00-00 的时间类型 setObject 会失败，setString 没问题
                 value = value.toString();
+                method = ParameterMethod.setString;
+            } else if (value instanceof Slice) {
+                value = ((Slice) value).toStringUtf8();
                 method = ParameterMethod.setString;
             } else if (value instanceof Slice) {
                 value = ((Slice) value).toStringUtf8();
@@ -200,7 +205,9 @@ public class Transformer {
     public static Map<Integer, ParameterContext> buildColumnParam(
         List<ColumnMeta> columnMetaList, List<String> values, Charset charset, PropUtil.LOAD_NULL_MODE defaultMode) {
         Preconditions.checkArgument(
-            values.size() == columnMetaList.size(), "The column's length less than the values' length");
+            values.size() == columnMetaList.size(),
+            String.format("The column's length is %s, while the value's length is %s", columnMetaList.size(),
+                values.size()));
         final Map<Integer, ParameterContext> parameterContexts = new HashMap<>();
         ParameterMethod method = null;
         for (int i = 0; i < columnMetaList.size(); i++) {

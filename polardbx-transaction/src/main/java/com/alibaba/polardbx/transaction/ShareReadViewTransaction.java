@@ -21,18 +21,22 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.thread.LockUtils;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.stats.TransactionStatistics;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
-import org.apache.hadoop.fs.viewfs.ConfigUtil;
 
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.StampedLock;
 
 /**
  * Support sharing a read view based on XA stmts
@@ -42,6 +46,7 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
 
     private final static Logger logger = LoggerFactory.getLogger(ShareReadViewTransaction.class);
     protected boolean shareReadView;
+    protected boolean primarySeq = true;
 
     public static final String TURN_OFF_TXN_GROUP_SQL = "SET innodb_transaction_group = OFF";
     public static final String TURN_ON_TXN_GROUP_SQL = "SET innodb_transaction_group = ON";
@@ -51,7 +56,9 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
      */
     private static final int MAX_READ_VIEW_COUNT = 10000;
 
-    private final AtomicInteger readViewConnCounter = new AtomicInteger(0);
+    private final AtomicInteger readViewConnCounter = new AtomicInteger(1);
+
+    protected Collection<Pair<StampedLock, Long>> txSharedLocks = null;
 
     public ShareReadViewTransaction(ExecutionContext executionContext,
                                     TransactionManager manager) {
@@ -66,12 +73,29 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
         conn.setInShareReadView(shareReadView);
         String xid;
         if (shareReadView) {
-            xid = XAUtils.XATransInfo.toXidString(id, group, primaryGroupUid, getReadViewSeq(group));
+            int seq;
+            if (primarySeq && group.equalsIgnoreCase(primaryGroup)) {
+                seq = 0;
+                primarySeq = false;
+            } else {
+                seq = getReadViewSeq(group);
+            }
+            conn.setShareReadViewSeq(seq);
+            xid = XAUtils.toXidString(id, group, primaryGroupUid, conn.getShareReadViewSeq());
         } else {
-            xid = XAUtils.XATransInfo.toXidString(id, group, primaryGroupUid);
+            xid = XAUtils.toXidString(id, group, primaryGroupUid);
         }
         conn.setTrxXid(xid);
         return xid;
+    }
+
+    protected String getGtrid() {
+        return XAUtils.toGtridString(id, primaryGroupUid);
+    }
+
+    protected String getBqual(String group, IConnection conn) {
+        return conn.isInShareReadView() ? XAUtils.toBqualString(group, conn.getShareReadViewSeq())
+            : XAUtils.toBqualString(group);
     }
 
     /**
@@ -130,21 +154,21 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
      * Use XA COMMIT ONE PHASE to commit transaction with only one shard.
      */
     protected void commitOneShardTrx() {
-        forEachHeldConnection((group, conn, participated) -> {
-            switch (participated) {
+        forEachHeldConnection((heldConn) -> {
+            switch (heldConn.getParticipated()) {
             case NONE:
-                rollbackNonParticipantSync(group, conn);
+                rollbackNonParticipantSync(heldConn.getGroup(), heldConn.getRawConnection());
                 break;
             case SHARE_READVIEW_READ:
-                rollbackNonParticipantShareReadViewSync(group, conn);
+                rollbackNonParticipantShareReadViewSync(heldConn.getGroup(), heldConn.getRawConnection());
                 break;
             case WRITTEN:
-                if (conn != primaryConnection) {
+                if (heldConn.getRawConnection() != primaryConnection) {
                     throw new AssertionError("commitOneShardTrx with non-primary participant");
                 }
 
                 try {
-                    innerCommitOneShardTrx(group, conn);
+                    innerCommitOneShardTrx(heldConn.getGroup(), heldConn.getRawConnection());
                 } catch (Throwable e) {
                     logger.error("XA COMMIT ONE PHASE failed on " + primaryGroup, e);
                     throw GeneralUtil.nestedException(e);
@@ -183,16 +207,14 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     protected void rollbackConnections() {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
             @Override
-            public boolean condition(String group, IConnection conn,
-                                     TransactionConnectionHolder.ParticipatedState participated) {
+            public boolean condition(TransactionConnectionHolder.HeldConnection heldConn) {
                 // Ignore non-participant connections. They were committed during prepare phase.
-                return participated.participatedTrx();
+                return heldConn.isParticipated();
             }
 
             @Override
-            public void execute(String group, IConnection conn,
-                                TransactionConnectionHolder.ParticipatedState participated) {
-                innerRollback(group, conn);
+            public void execute(TransactionConnectionHolder.HeldConnection heldConn) {
+                innerRollback(heldConn.getGroup(), heldConn.getRawConnection());
             }
         });
     }
@@ -204,10 +226,10 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
             try {
                 stmt.execute(getXAIdleRollbackSqls(xid));
             } catch (SQLException ex) {
-                if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_RMFAIL) {
+                if (ex.getErrorCode() == ErrorCode.ER_XAER_RMFAIL.getCode()) {
                     // XA ROLLBACK got ER_XAER_RMFAIL, XA transaction must in 'ACTIVE' state, so END and ROLLBACK.
                     stmt.execute(getXARollbackSqls(xid));
-                } else if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_NOTA) {
+                } else if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
                     logger.warn("XA ROLLBACK got ER_XAER_NOTA: " + xid, ex);
                 } else {
                     throw GeneralUtil.nestedException(ex);
@@ -222,15 +244,14 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
             // Retry XA ROLLBACK in asynchronous task.
             AsyncTaskQueue asyncQueue = getManager().getTransactionExecutor().getAsyncQueue();
             asyncQueue.submit(
-                () -> XAUtils.rollbackUntilSucceed(id, primaryGroupUid, group, dataSourceCache.get(group)));
+                () -> XAUtils.rollbackUntilSucceed(id, xid, dataSourceCache.get(group)));
         }
     }
 
     @Override
     public void commit() {
-        Lock lock = this.lock;
+        long commitStartTime = System.nanoTime();
         lock.lock();
-
         try {
             checkTerminated();
             checkCanContinue();
@@ -244,13 +265,25 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
                 return;
             }
 
-            Collection<Lock> txSharedLocks = acquireSharedLock();
+            Optional.ofNullable(OptimizerContext.getTransStat(primarySchema))
+                .ifPresent(s -> s.countCrossGroup.incrementAndGet());
+
+            this.txSharedLocks = acquireSharedLock();
             try {
                 commitMultiShardTrx();
             } finally {
-                releaseSharedLock(txSharedLocks);
+                if (!isAsyncCommit()) {
+                    LockUtils.releaseReadStampLocks(txSharedLocks);
+                }
             }
+        } catch (Throwable t) {
+            Optional.ofNullable(OptimizerContext.getTransStat(statisticSchema))
+                .ifPresent(s -> s.countCommitError.incrementAndGet());
+            stat.setIfUnknown(TransactionStatistics.Status.COMMIT_FAIL);
+            throw t;
         } finally {
+            stat.setIfUnknown(TransactionStatistics.Status.COMMIT);
+            stat.commitTime = System.nanoTime() - commitStartTime;
             lock.unlock();
         }
     }
@@ -271,7 +304,7 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     /**
      * Prepare on all XA connections
      */
-    protected abstract void prepareConnections();
+    protected abstract void prepareConnections(boolean asyncCommit);
 
     /**
      * Commit all connections including primary group
@@ -280,15 +313,24 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
 
     @Override
     public void rollback() {
-        Lock lock = this.lock;
+        long rollbackStartTime = System.nanoTime();
         lock.lock();
-
         try {
             cleanupAllConnections();
             connectionHolder.closeAllConnections();
 
-            TransactionLogger.info(id, getTrxLoggerPrefix() + " Aborted");
+            TransactionLogger.warn(id, getTrxLoggerPrefix() + " Aborted");
+
+            Optional.ofNullable(OptimizerContext.getTransStat(statisticSchema))
+                .ifPresent(s -> s.countRollback.incrementAndGet());
+            stat.setIfUnknown(TransactionStatistics.Status.ROLLBACK);
+        } catch (Throwable t) {
+            Optional.ofNullable(OptimizerContext.getTransStat(statisticSchema))
+                .ifPresent(s -> s.countRollbackError.incrementAndGet());
+            stat.setIfUnknown(TransactionStatistics.Status.ROLLBACK_FAIL);
+            throw t;
         } finally {
+            stat.rollbackTime = System.nanoTime() - rollbackStartTime;
             lock.unlock();
         }
     }
@@ -310,11 +352,11 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     }
 
     protected void discardConnections() {
-        forEachHeldConnection((group, conn, participated) -> {
+        forEachHeldConnection((heldConn) -> {
             // XA transaction must be 'PREPARED' state here, The
             // primary commit state is unknown, so we don't know how to
             // ROLLBACK or COMMIT.
-            discard(group, conn, null);
+            heldConn.getRawConnection().discard(null);
         });
     }
 

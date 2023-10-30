@@ -1,0 +1,18 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop database if exists `db-minus`;
+CREATE DATABASE IF NOT EXISTS `db-minus`
+DEFAULT CHARACTER SET = `utf8mb4`
+DEFAULT COLLATE = `utf8mb4_general_ci`
+mode='auto';
+show create database `db-minus`;
+
+CREATE TABLE `db-minus`.`tb-minus` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3;
+
+show create table `db-minus`.`tb-minus`;
+drop database if exists `db-minus`;

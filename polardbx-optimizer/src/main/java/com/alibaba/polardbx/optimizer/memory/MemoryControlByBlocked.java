@@ -20,23 +20,23 @@ import com.alibaba.polardbx.common.exception.MemoryNotEnoughException;
 
 /**
  * @author lijiu.lzw
- *
+ * <p>
  * 以阻塞的方式控制内存池大小，申请空间时会阻塞，直到空闲空间足够，以控制流量
  */
 public class MemoryControlByBlocked {
     private final MemoryPool memoryPool;
     private final MemoryAllocatorCtx memoryAllocatorCtx;
     private final long notifyMemorySize;
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     private final Object lock = new Object();
-
 
     public MemoryControlByBlocked(MemoryPool pool) {
         memoryPool = pool;
         memoryAllocatorCtx = memoryPool.getMemoryAllocatorCtx();
         notifyMemorySize = memoryPool.getMaxLimit() / 2;
     }
+
     public MemoryControlByBlocked(MemoryPool pool, MemoryAllocatorCtx ctx) {
         memoryPool = pool;
         memoryAllocatorCtx = ctx;
@@ -44,7 +44,7 @@ public class MemoryControlByBlocked {
     }
 
     public void allocate(long memorySize) {
-        synchronized(lock) {
+        synchronized (lock) {
             while (!closed) {
                 try {
                     memoryAllocatorCtx.allocateReservedMemory(memorySize);
@@ -65,7 +65,7 @@ public class MemoryControlByBlocked {
     }
 
     public void release(long memorySize) {
-        synchronized(lock) {
+        synchronized (lock) {
             //积累到大于Block_size，才会释放
             memoryAllocatorCtx.releaseReservedMemory(memorySize, false);
             if (memoryAllocatorCtx.getAllAllocated() <= notifyMemorySize) {
@@ -76,7 +76,7 @@ public class MemoryControlByBlocked {
     }
 
     public void close() {
-        synchronized(lock) {
+        synchronized (lock) {
             closed = true;
             lock.notifyAll();
         }

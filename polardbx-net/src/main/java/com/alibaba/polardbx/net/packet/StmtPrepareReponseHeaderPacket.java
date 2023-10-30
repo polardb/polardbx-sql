@@ -26,8 +26,8 @@ public class StmtPrepareReponseHeaderPacket extends MySQLPacket {
 
     public byte status = 00; // (1) always be 00
     public int statement_id;   // (4)
-    public short num_columns;    // (2) number of columns
-    public short num_params;     // (2) number of params
+    public int num_columns;    // (2) number of columns
+    public int num_params;     // (2) number of params
     public byte reserved_1 = 00; // (1) always be 00
     public short warning_count;  // (2) number of warnings
 

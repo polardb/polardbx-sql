@@ -22,6 +22,9 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.type.TransactionType;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
 import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -31,6 +34,8 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
@@ -38,6 +43,8 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -145,7 +152,8 @@ public class TransactionExecutor extends TopologyExecutor {
         try {
             if (transaction.getType() == TransactionType.XA) {
                 return executePutXA(plan, executionContext);
-            } else if (transaction.getType() == TransactionType.TSO) {
+            } else if (transaction.getType() == TransactionType.TSO
+                || transaction.getType() == TransactionType.TSO_2PC_OPT) {
                 return executePutTSO(plan, executionContext);
             } else {
                 throw new RuntimeException("impossible");
@@ -153,9 +161,9 @@ public class TransactionExecutor extends TopologyExecutor {
         } catch (TddlRuntimeException ex) {
             if (ex.getErrorCodeType() == ErrorCode.ERR_EXECUTE_ON_MYSQL
                 && ex.getCause() instanceof SQLException
-                && ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK) {
+                && ex.getErrorCode() == ErrorCode.ER_LOCK_DEADLOCK.getCode()) {
                 // Prevent this transaction from committing
-                transaction.setCrucialError(ErrorCode.ERR_TRANS_DEADLOCK);
+                transaction.setCrucialError(ErrorCode.ERR_TRANS_DEADLOCK, ex.getMessage());
             }
             throw ex;
         }

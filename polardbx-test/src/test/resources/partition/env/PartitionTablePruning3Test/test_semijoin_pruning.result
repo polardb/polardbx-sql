@@ -1,0 +1,33 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `student` (
+`id` bigint(20) NOT NULL,
+`name` varchar(32) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 3;
+CREATE TABLE `course` (
+`cid` bigint(20) NOT NULL,
+`cname` varchar(32) DEFAULT NULL,
+PRIMARY KEY (`cid`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(cid) partitions 3;
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select id from student where id in (1,6);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="student[p1,p2]", shardCount=2, sql="SELECT `id` FROM `student` AS `student` WHERE (`id` IN(?))", isDynamicParam="true")
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select cid from course where cid in (5,7);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="course[p1,p3]", shardCount=2, sql="SELECT `cid` FROM `course` AS `course` WHERE (`cid` IN(?))", isDynamicParam="true")
+select id from student where id != ALL (select cid from course where cid in (5,7)) and id in (1,6);
+id
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select id from student where id != ALL (select cid from course where cid in (5,7)) and id in (1,6);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="student[p1,p2,p3],course[p1,p2,p3]", shardCount=3, sql="SELECT `id` FROM `student` AS `student` WHERE ((`id` IN(?)) AND (`id` <> ALL (SELECT `cid` FROM `course` AS `course` WHERE ((`cid` IN(?)) AND (`cid` IN(?))))))", isDynamicParam="true")
+select id from student where id in (select cid from course where cid in (1,6)) and id in (1,6);
+id
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select id from student where id in (select cid from course where cid in (1,6)) and id in (1,6);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="student[p1,p2],course[p1,p2]", shardCount=2, sql="SELECT `id` FROM `student` AS `student` WHERE ((`id` IN(?)) AND (`id` IN (SELECT `cid` FROM `course` AS `course` WHERE ((`cid` IN(?)) AND (`cid` IN(?))))))", isDynamicParam="true")

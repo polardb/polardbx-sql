@@ -37,11 +37,14 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -62,6 +65,7 @@ import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.rel.AffectedRowsSum;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ExecutionPlanPropertiesVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
@@ -91,6 +95,7 @@ import com.alibaba.polardbx.optimizer.hint.operator.BaseHintOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdNode;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator.CmdBean;
+import com.alibaba.polardbx.optimizer.hint.operator.HintCmdRandomNode;
 import com.alibaba.polardbx.optimizer.hint.operator.HintPushOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintPushdownOperator;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
@@ -120,6 +125,7 @@ import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils.TableProperties;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -154,6 +160,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
@@ -184,10 +191,12 @@ import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.sql2rel.SqlToRelConverter;
 import org.apache.calcite.sql2rel.StandardConvertletTable;
 import org.apache.calcite.tools.RelBuilder;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -201,6 +210,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -566,6 +576,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
             logTbls.add(logTb);
             phyTbls.add(phyTblsOfOneGrp);
             for (String group : finalGroups) {
+                checkGroupPrivileges(group, ec);
                 PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
                     cluster, RelTraitSet.createEmpty(),
                     schemaName,
@@ -589,14 +600,19 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 // change suffix for node hint of select
                 // replace node 0 to single
                 if (visitor.shouldChooseSingleGroup()) {
-                    boolean zeroGroup = true;
+                    boolean forceSingleGroup = true;
                     for (HintCmdOperator operator : hintCollection.cmdHintResult) {
                         if (operator instanceof HintCmdNode && !((HintCmdNode) operator).isNodeZero()) {
-                            zeroGroup = false;
-                            break;
+                            forceSingleGroup = false;
+                        }
+                        // If group specified in RANDOM_NODE && not select single node for single table
+                        if (operator instanceof HintCmdRandomNode
+                            && ((HintCmdRandomNode) operator).isGroupSpecified()
+                            && !((HintCmdRandomNode) operator).isAllGroupSingle()) {
+                            forceSingleGroup = false;
                         }
                     }
-                    if (zeroGroup) {
+                    if (forceSingleGroup) {
                         for (Group group : OptimizerContext.getContext(schemaName).getMatrix().getGroups()) {
                             if (GroupInfoUtil.isSingleGroup(group.getName())) {
                                 finalGroups = ImmutableList.of(group.getName());
@@ -607,6 +623,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 }
             }
             for (String group : finalGroups) {
+                checkGroupPrivileges(group, ec);
                 PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
                     cluster, RelTraitSet.createEmpty(),
                     schemaName,
@@ -628,6 +645,13 @@ public class HintPlanner extends TddlSqlToRelConverter {
         final ExecutionPlan result = new ExecutionPlan(ast, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);
         return result;
+    }
+
+    private void checkGroupPrivileges(String group, ExecutionContext ec) {
+        if (StringUtils.equalsIgnoreCase(group, MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME)) {
+            PolarPrivUtil
+                .checkRootOnlyPriv(ec.getPrivilegeContext() != null ? ec.getPrivilegeContext().getUser() : null, group);
+        }
     }
 
     public <T> List<T> getLogicalTable(String schemaName, List<String> phyTables,
@@ -701,12 +725,16 @@ public class HintPlanner extends TddlSqlToRelConverter {
             Collection<TableRule> tables =
                 OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTables();
 
-            tables = tables.stream().filter(rule ->
-                rule.isBroadcast()
-                    || schemaManager.getTable(rule.getVirtualTbName()).isGsi()
-                    || schemaManager.getTable(rule.getVirtualTbName()).withGsi()
-            ).collect(Collectors.toSet());
+            tables = tables.stream().filter(
+                rule -> phyTables.contains(rule.getVirtualTbName())).collect(Collectors.toSet());
 
+            if (ConfigDataMode.isPolarDbX()) {
+                tables = tables.stream().filter(rule ->
+                    rule.isBroadcast()
+                        || schemaManager.getTable(rule.getVirtualTbName()).isGsi()
+                        || schemaManager.getTable(rule.getVirtualTbName()).withGsi()
+                ).collect(Collectors.toSet());
+            }
             Map<String, Set<String>> logicalTableMap = buildLogicalTableMap(tables);
 
             Set<String> partitionTables = partitionInfoManager.getPartitionTables();
@@ -885,6 +913,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
                     tableNames = lv.getTableNames();
                     pushed = lv;
+                    schemaName = lv.getSchemaName();
                 } // end of else
             } // end of if
 
@@ -892,6 +921,8 @@ public class HintPlanner extends TddlSqlToRelConverter {
              * build target table
              */
             Map<String, List<List<String>>> targetTable = new LinkedHashMap<>();
+            Map<String, Map<String, Comparative>> targetComparative = null;
+            Map<String, PartitionPruneStep> targetPartitionPruneStep = null;
 
             if (cmdBean.jsonHint()) {
                 /**
@@ -942,37 +973,64 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
                         finalGroups = cmdBean.getGroups();
                     } else if (cmdBean.groupSpecified()) {
+                        final AtomicInteger maxParamIndex = getMaxParamIndex(origin, ec);
+
                         Map<String, List<List<String>>> tmpTargetTable = null;
                         if (noTable) {
-                            Map<String, Map<String, Comparative>> comparatives =
-                                BaseHintOperator.buildComparative(cmdBean.getTable(),
-                                    cmdBean.getCondition(),
-                                    new LinkedList<Integer>(),
-                                    schemaName, ec);
-                            tableNames.addAll(comparatives.keySet());
+                            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                                // Old version partition algorithm
+                                Map<String, Map<String, Comparative>> comparatives =
+                                    BaseHintOperator.buildComparative(cmdBean.getTable(),
+                                        cmdBean.getCondition(),
+                                        new LinkedList<>(),
+                                        schemaName,
+                                        maxParamIndex,
+                                        ec);
+                                tableNames.addAll(comparatives.keySet());
 
-                            /**
-                             * tmpTargetTable = buildTargetTables(tableNames,
-                             * comparatives, param, schemaName);
-                             */
+                                tmpTargetTable =
+                                    HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
+                            } else {
+                                // New version partition algorithm
+                                Map<String, PartitionPruneStep> pruneStepMap =
+                                    BaseHintOperator.buildPartitionPruneStepMap(cmdBean.getTable(),
+                                        cmdBean.getCondition(),
+                                        new LinkedList<>(),
+                                        schemaName,
+                                        maxParamIndex,
+                                        ec);
+                                tableNames.addAll(pruneStepMap.keySet());
 
-                            tmpTargetTable =
-                                HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
-
-                        } else {
-                            Map<String, Map<String, Comparative>> comparatives = new HashMap<>();
-                            for (String tableName : tableNames) {
-                                comparatives.put(tableName, new HashMap<String, Comparative>());
+                                tmpTargetTable =
+                                    HintUtil.buildTargetTablesByPruneStepMap(tableNames, pruneStepMap, schemaName, ec);
                             }
 
-                            /**
-                             * tmpTargetTable = buildTargetTables(tableNames,
-                             * comparatives, param, schemaName);
-                             */
+                        } else {
 
-                            tmpTargetTable =
-                                HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
+                            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                                // Old version partition algorithm
+                                Map<String, Map<String, Comparative>> comparatives = new HashMap<>();
+                                for (String tableName : tableNames) {
+                                    comparatives.put(tableName, new HashMap<String, Comparative>());
+                                }
 
+                                tmpTargetTable =
+                                    HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
+                            } else {
+                                // New version partition algorithm
+                                Map<String, PartitionPruneStep> pruneStepMap = new HashMap<>();
+                                for (String tableName : tableNames) {
+                                    PartitionInfo partInfo =
+                                        ec.getSchemaManager(schemaName).getTable(tableName).getPartitionInfo();
+                                    pruneStepMap
+                                        .put(
+                                            tableName,
+                                            PartitionPruner.generatePartitionPrueStepInfo(partInfo, null, null, ec));
+                                }
+
+                                tmpTargetTable =
+                                    HintUtil.buildTargetTablesByPruneStepMap(tableNames, pruneStepMap, schemaName, ec);
+                            }
                         }
 
                         for (String group : cmdBean.getGroups()) {
@@ -982,55 +1040,90 @@ public class HintPlanner extends TddlSqlToRelConverter {
                         }
                         finalGroups.addAll(cmdBean.getGroups());
                     } else {
+                        final AtomicInteger maxParamIndex = getMaxParamIndex(origin, ec);
 
                         finalGroups = HintUtil.allGroup();
                         if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
-                            Map<String, Map<String, Comparative>> comparatives =
+                            // Old version partition algorithm
+                            final Map<String, Map<String, Comparative>> comparatives =
                                 BaseHintOperator.buildComparative(cmdBean.getTable(),
                                     cmdBean.getCondition(),
                                     new LinkedList<Integer>(),
-                                    schemaName, ec);
-                            if (noTable) {
-                                tableNames.addAll(comparatives.keySet());
+                                    schemaName,
+                                    maxParamIndex,
+                                    ec);
 
-                                /**
-                                 * targetTable = buildTargetTables(tableNames,
-                                 * comparatives, param, schemaName); } else {
-                                 * targetTable = buildTargetTables(tableNames,
-                                 * comparatives, param,
-                                 * OptimizerContext.getContext().getSchemaName());
-                                 */
+                            final boolean rexCallParamExists = comparatives
+                                .values()
+                                .stream()
+                                .anyMatch(e -> e
+                                    .values()
+                                    .stream()
+                                    .anyMatch(v ->
+                                        RexUtils.RexDynamicParamComparativeVisitor
+                                            .analyze(
+                                                v,
+                                                (r) -> true,
+                                                RexCallParam.class)));
 
-                                targetTable =
-                                    HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
+                            /**
+                             * For query with scalar function in partitioning condition,
+                             * set {@link LogicalView#comparativeHintCache} instead of
+                             * {@link LogicalView#targetTablesHintCache}
+                             */
+                            if (rexCallParamExists && realAst.isA(SqlKind.QUERY)) {
+                                targetComparative = comparatives;
                             } else {
+                                if (noTable) {
+                                    tableNames.addAll(comparatives.keySet());
+                                }
                                 targetTable =
                                     HintUtil.buildTargetTables(tableNames, comparatives, param, schemaName, ec);
-
                             }
                         } else {
+                            // New version partition algorithm
                             Map<String, PartitionPruneStep> pruneStepMap =
                                 BaseHintOperator.buildPartitionPruneStepMap(cmdBean.getTable(),
                                     cmdBean.getCondition(),
                                     new LinkedList<Integer>(),
-                                    schemaName, ec);
-                            if (noTable) {
-                                tableNames.addAll(pruneStepMap.keySet());
+                                    schemaName,
+                                    maxParamIndex,
+                                    ec);
 
-                                /**
-                                 * targetTable = buildTargetTables(tableNames,
-                                 * comparatives, param, schemaName); } else {
-                                 * targetTable = buildTargetTables(tableNames,
-                                 * comparatives, param,
-                                 * OptimizerContext.getContext().getSchemaName());
-                                 */
+                            // Amend partition prune step or might trigger NPE in following process
+                            final SchemaManager schemaManager = ec.getSchemaManager(schemaName);
+                            tableNames.forEach(tn -> {
+                                if (!pruneStepMap.containsKey(tn)) {
+                                    final PartitionInfo partInfo = schemaManager.getTable(tn).getPartitionInfo();
+                                    pruneStepMap
+                                        .put(
+                                            tn,
+                                            PartitionPruner.generatePartitionPrueStepInfo(partInfo, null, null, ec));
+                                }
+                            });
 
-                                targetTable =
-                                    HintUtil.buildTargetTablesByPruneStepMap(tableNames, pruneStepMap, schemaName, ec);
+                            boolean rexCallParamExists = pruneStepMap
+                                .values()
+                                .stream()
+                                .anyMatch(e -> RexUtils.RexNodePartitionPruneStepVisitor
+                                    .analyze(
+                                        e,
+                                        (r) -> true,
+                                        RexCallParam.class));
+
+                            /**
+                             * For query with scalar function in partitioning condition,
+                             * set {@link LogicalView#pruneStepHintCache} instead of
+                             * {@link LogicalView#targetTablesHintCache}
+                             */
+                            if (rexCallParamExists && realAst.isA(SqlKind.QUERY)) {
+                                targetPartitionPruneStep = pruneStepMap;
                             } else {
+                                if (noTable) {
+                                    tableNames.addAll(pruneStepMap.keySet());
+                                }
                                 targetTable =
                                     HintUtil.buildTargetTablesByPruneStepMap(tableNames, pruneStepMap, schemaName, ec);
-
                             }
                         }
 
@@ -1111,20 +1204,33 @@ public class HintPlanner extends TddlSqlToRelConverter {
             } else {
                 boolean dmlPushed = false;
 
-                if (targetTable != null && targetTable.isEmpty()) {
+                if (targetComparative == null && targetPartitionPruneStep == null && targetTable != null
+                    && targetTable.isEmpty()) {
                     //目标表个数为0，运行容易产生歧义
                     throw new TddlRuntimeException(ERR_TABLE_EMPTY_WITH_HINT);
                 }
 
                 // DML, DQL
                 if (pushed instanceof LogicalModifyView) {
-                    ((LogicalModifyView) pushed).setTargetTables(targetTable);
+                    if (targetComparative != null) {
+                        ((LogicalModifyView) pushed).setComparativeHintCache(targetComparative);
+                    } else if (targetPartitionPruneStep != null) {
+                        ((LogicalModifyView) pushed).setPruneStepHintCache(targetPartitionPruneStep);
+                    } else {
+                        ((LogicalModifyView) pushed).setTargetTables(targetTable);
+                    }
                     dmlPushed = true;
                 } else if (pushed instanceof LogicalInsert) {
                     ((LogicalInsert) pushed).setTargetTables(targetTable);
                     dmlPushed = true;
                 } else {
-                    ((LogicalView) pushed).setTargetTables(targetTable);
+                    if (targetComparative != null) {
+                        ((LogicalView) pushed).setComparativeHintCache(targetComparative);
+                    } else if (targetPartitionPruneStep != null) {
+                        ((LogicalView) pushed).setPruneStepHintCache(targetPartitionPruneStep);
+                    } else {
+                        ((LogicalView) pushed).setTargetTables(targetTable);
+                    }
                 }
 
                 /**
@@ -1173,6 +1279,40 @@ public class HintPlanner extends TddlSqlToRelConverter {
         return result;
     }
 
+    @NotNull
+    private static AtomicInteger getMaxParamIndex(RelNode origin, ExecutionContext ec) {
+        final AtomicInteger maxParamIndex = new AtomicInteger(0);
+
+        final Parameters params = ec.getParams();
+        if (null != params) {
+            final boolean isBatch = params.isBatch();
+            if (isBatch) {
+                final List<Map<Integer, ParameterContext>> batchParams = params.getBatchParameters();
+
+                for (Map<Integer, ParameterContext> m : batchParams) {
+                    for (Integer i : m.keySet()) {
+                        maxParamIndex.set(i > maxParamIndex.get() ? maxParamIndex.get() : i);
+                    }
+                }
+            } else {
+                for (Integer i : params.getCurrentParameter().keySet()) {
+                    maxParamIndex.set(i > maxParamIndex.get() ? maxParamIndex.get() : i);
+                }
+            }
+        }
+
+        RexUtils.RexDynamicParamShuttle.analyze(
+            origin,
+            (rex) -> {
+                if (maxParamIndex.get() < rex.getIndex()) {
+                    maxParamIndex.set(rex.getIndex());
+                }
+                return false;
+            });
+
+        return maxParamIndex;
+    }
+
     public static Map<String, List<List<String>>> fullTableScan(List<String> tableNames, String schemaName,
                                                                 ExecutionContext ec) {
         PartitionInfoManager partitionInfoManager =
@@ -1182,8 +1322,9 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
             List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();
             for (int i = 0; i < tableNames.size(); i++) {
-                PartitionPruneStep pruneStepInfo = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(schemaName,
-                    tableNames.get(i), ec);
+                PartitionPruneStep pruneStepInfo =
+                    PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(schemaName,
+                        tableNames.get(i), ec);
                 PartPrunedResult tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, ec);
                 allTbPrunedResults.add(tbPrunedResult);
             }
@@ -1211,6 +1352,24 @@ public class HintPlanner extends TddlSqlToRelConverter {
         if (finalGroups.size() <= 0) {
             // no group specified
             throw new NotSupportException("execute node/scan HINT without group or table specified");
+        }
+
+        boolean emptyTargetTable = targetTable.isEmpty()
+            || targetTable
+            .values()
+            .stream()
+            .allMatch(l ->
+                l.isEmpty()
+                    || l
+                    .stream()
+                    .allMatch(List::isEmpty));
+
+        final TddlRuleManager ruleManager = ec.getSchemaManager(schemaName).getTddlRuleManager();
+        final boolean allBroadcast = tableNames.stream().allMatch(ruleManager::isBroadCast);
+
+        if (emptyTargetTable && !tableNames.isEmpty() && !allBroadcast) {
+            // group specified but not physical exists in than group
+            throw new TddlRuntimeException(ERR_TABLE_EMPTY_WITH_HINT);
         }
 
         boolean single = (finalGroups.size() == 1);
@@ -1288,7 +1447,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 ((BaseDalOperation) origin).setTargetTable(targetTable);
 
                 return new ExecutionPlan(ast, origin, executionPlan.getCursorMeta());
-            } else if (origin instanceof DirectTableOperation) {
+            } else if (origin instanceof DirectTableOperation || origin instanceof DirectMultiDBTableOperation) {
                 return executionPlan;
             } else {
 
@@ -1477,7 +1636,9 @@ public class HintPlanner extends TddlSqlToRelConverter {
             BaseHintOperator.buildComparative(frc.getVirtualTableName(),
                 condition,
                 new LinkedList<Integer>(),
-                schemaName, ec);
+                schemaName,
+                null,
+                ec);
 
         if (noTable) {
             if (TStringUtil.isNotBlank(frc.getVirtualTableName())) {
@@ -2147,14 +2308,14 @@ public class HintPlanner extends TddlSqlToRelConverter {
         final SelectScope selectScope = validator.getRawSelectScope(select);
         for (SqlNode selectItem : selectScope.getExpandedSelectList()) {
             ++ordinal;
-            if (converted.equalsDeep(stripAs(selectItem), Litmus.IGNORE)) {
+            if (converted.equalsDeep(stripAs(selectItem), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                 return new RelFieldCollation(ordinal, direction, nullDirection);
             }
         }
 
         for (SqlNode extraExpr : extraExprs) {
             ++ordinal;
-            if (orderItem.equalsDeep(extraExpr, Litmus.IGNORE)) {
+            if (orderItem.equalsDeep(extraExpr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                 return new RelFieldCollation(ordinal, direction, nullDirection);
             }
         }

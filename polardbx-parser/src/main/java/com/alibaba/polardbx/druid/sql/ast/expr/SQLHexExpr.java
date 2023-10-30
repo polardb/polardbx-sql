@@ -27,7 +27,7 @@ public class SQLHexExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValuab
 
     private final String hex;
 
-    public SQLHexExpr(String hex){
+    public SQLHexExpr(String hex) {
         this.hex = hex;
     }
 
@@ -89,14 +89,13 @@ public class SQLHexExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValuab
         return HexBin.decode(this.hex);
     }
 
-    public SQLHexExpr clone () {
+    public SQLHexExpr clone() {
         return new SQLHexExpr(hex);
     }
 
     public byte[] getValue() {
         return toBytes();
     }
-
 
     public SQLCharExpr toCharExpr() {
         byte[] bytes = toBytes();

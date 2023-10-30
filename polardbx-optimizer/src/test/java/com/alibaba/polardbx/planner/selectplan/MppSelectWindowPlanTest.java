@@ -21,10 +21,6 @@ import org.junit.runners.Parameterized.Parameters;
 
 import java.util.List;
 
-/**
- * @author xiaoying 2020年11月16日 下午午19:20:11
- * @since 5.4.8
- */
 public class MppSelectWindowPlanTest extends PlanTestCommon {
 
     public MppSelectWindowPlanTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {

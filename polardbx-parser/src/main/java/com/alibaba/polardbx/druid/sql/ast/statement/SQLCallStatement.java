@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -28,20 +29,20 @@ import java.util.List;
 
 public class SQLCallStatement extends SQLStatementImpl {
 
-    private boolean             brace      = false;
+    private boolean brace = false;
 
-    private SQLVariantRefExpr   outParameter;
+    private SQLVariantRefExpr outParameter;
 
-    private SQLName             procedureName;
+    private SQLName procedureName;
 
     private final List<SQLExpr> parameters = new ArrayList<SQLExpr>();
-    
+
     public SQLCallStatement() {
-        
+
     }
-    
+
     public SQLCallStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public SQLVariantRefExpr getOutParameter() {
@@ -87,6 +88,11 @@ public class SQLCallStatement extends SQLStatementImpl {
         children.add(outParameter);
         children.add(procedureName);
         children.addAll(parameters);
+        return null;
+    }
+
+    @Override
+    public SqlType getSqlType() {
         return null;
     }
 }

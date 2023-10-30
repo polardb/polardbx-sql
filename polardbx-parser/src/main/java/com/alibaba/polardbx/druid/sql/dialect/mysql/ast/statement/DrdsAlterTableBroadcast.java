@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class DrdsAlterTableBroadcast extends MySqlObjectImpl implements SQLAlterTableItem {
 
-    public DrdsAlterTableBroadcast(){
+    public DrdsAlterTableBroadcast() {
 
     }
 

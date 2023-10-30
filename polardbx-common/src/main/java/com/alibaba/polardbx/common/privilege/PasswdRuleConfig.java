@@ -17,8 +17,7 @@
 package com.alibaba.polardbx.common.privilege;
 
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.lang.BooleanUtils;
 
 import java.util.LinkedHashSet;
@@ -51,6 +50,11 @@ public class PasswdRuleConfig {
         specialCharSet.add('&');
         specialCharSet.add('+');
         specialCharSet.add('=');
+    }
+
+    @VisibleForTesting
+    public PasswdRuleConfig() {
+
     }
 
     public PasswdRuleConfig(int minLength, int maxLength, int upperLetter, int lowerLetter, int letter, int digit,
@@ -104,11 +108,8 @@ public class PasswdRuleConfig {
 
     public boolean verifyPassword(String password) {
         if (password == null || password.length() < this.minLength || password.length() > this.maxLength) {
-
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects " + this.minLength + "-"
-                    + this.maxLength + " characters.",
-                null);
+            // 长度不符合
+            return false;
         }
 
         int upperLetter = 0;
@@ -135,33 +136,19 @@ public class PasswdRuleConfig {
         }
 
         if (upperLetter < this.upperLetter) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects at least " + this.upperLetter
-                    + " uppercase letter [A-Z].",
-                null);
+            return false;
         }
         if (lowerLetter < this.lowerLetter) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects at least " + this.lowerLetter
-                    + " lowercase letter [a-z].",
-                null);
+            return false;
         }
         if (letter < this.letter) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects at least " + this.letter
-                    + " letters [a-z|A-Z].",
-                null);
+            return false;
         }
         if (digit < this.digit) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects at least " + this.digit
-                    + " digits [0-9].",
-                null);
+            return false;
         }
         if (special <= 0 && this.specialChar) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD,
-                "ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD] Invalid password, expects special char and the special char must be one of '@#$%^&+='.",
-                null);
+            return false;
         }
 
         return true;

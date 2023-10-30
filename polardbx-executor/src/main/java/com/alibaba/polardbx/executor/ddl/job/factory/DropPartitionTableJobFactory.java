@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
@@ -72,7 +73,7 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
         DropTableHideTableMetaTask dropTableHideTableMetaTask =
             new DropTableHideTableMetaTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
-        CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
         DropPartitionTableRemoveMetaTask removeMetaTask =
             new DropPartitionTableRemoveMetaTask(schemaName, logicalTableName);
 
@@ -95,16 +96,19 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
          */
         tasks.add(validateTask);
         tasks.add(dropTableHideTableMetaTask);
-        Engine engine = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
+        Engine engine =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
         if (Engine.isFileStore(engine)) {
             // change file meta task
-            final ITimestampOracle timestampOracle = executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
+            final ITimestampOracle timestampOracle =
+                executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
             if (null == timestampOracle) {
                 throw new UnsupportedOperationException("Do not support timestamp oracle");
             }
 
             long ts = timestampOracle.nextTimestamp();
-            UpdateTableRemoveTsTask updateTableRemoveTsTask = new UpdateTableRemoveTsTask(engine.name(), schemaName, logicalTableName, ts);
+            UpdateTableRemoveTsTask updateTableRemoveTsTask =
+                new UpdateTableRemoveTsTask(engine.name(), schemaName, logicalTableName, ts);
             tasks.add(updateTableRemoveTsTask);
         }
         tasks.add(phyDdlTask);
@@ -116,6 +120,10 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
             tasks.add(syncTableGroup);
         }
         tasks.add(tableSyncTask);
+
+        // sync foreign key table meta
+        tasks.addAll(FactoryUtils.getFkTableSyncTasks(schemaName, logicalTableName));
+
         executableDdlJob.addSequentialTasks(tasks);
         //labels should be replaced by fields in ExecutableDdlJob4DropTable
         executableDdlJob.labelAsHead(validateTask);

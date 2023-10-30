@@ -22,6 +22,9 @@ import com.alibaba.polardbx.optimizer.parse.util.CharTypes;
 import com.alibaba.polardbx.server.util.ParseUtil;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * @author xianmao.hexm 2011-5-7 下午01:23:18
  */
@@ -42,8 +45,10 @@ public final class ServerParseSelect {
     public static final int EXTRACT_TRACE_ID = 13;
     public static final int SEQ_NEXTVAL_BENCHMARK = 14;
     public static final int SEQ_SKIP_BENCHMARK = 15;
-    public static final int SESSION_TRANSACTION_READ_ONLY = 16;
+    public static final int POLARDB_VERSION = 16;
+    public static final int SESSION_TRANSACTION_READ_ONLY = 17;
 
+    public static final Set<Integer> PREPARE_UNSUPPORTED_SELECT_TYPE;
     private static final char[] _VERSION_COMMENT = "VERSION_COMMENT".toCharArray();
     private static final char[] _IDENTITY = "IDENTITY".toCharArray();
     private static final char[] _LAST_INSERT_ID = "LAST_INSERT_ID".toCharArray();
@@ -54,7 +59,26 @@ public final class ServerParseSelect {
     private static final char[] _EXTRACT_TRACE_ID = "EXTRACT_TRACE_ID".toCharArray();
     private static final char[] _SEQ_NEXTVAL_BENCHMARK = "SEQ_NEXTVAL_BENCHMARK".toCharArray();
     private static final char[] _SEQ_SKIP_BENCHMARK = "SEQ_SKIP_BENCHMARK".toCharArray();
+    private static final char[] _POLARDB_VERSION = "POLARDB_VERSION".toCharArray();
     private static final char[] _SESSION_TRANSACTION_READ_ONLY = "SESSION.TRANSACTION_READ_ONLY".toCharArray();
+
+    static {
+        PREPARE_UNSUPPORTED_SELECT_TYPE = new HashSet<>();
+
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(VERSION_COMMENT);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(DATABASE);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(USER);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(VERSION);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(LASTTXCXID);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(SESSION_TX_READ_ONLY);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(CURRENT_TRANS_ID);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(CURRENT_TRANS_POLICY);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(LITERAL_NUMBER);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(TSO_TIMESTAMP);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(EXTRACT_TRACE_ID);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(SEQ_NEXTVAL_BENCHMARK);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(SEQ_SKIP_BENCHMARK);
+    }
 
     public static int parse(String stmt, int offset, Object[] exData) {
         return parse(ByteString.from(stmt), offset, exData);
@@ -78,6 +102,9 @@ public final class ServerParseSelect {
             case 'U':
             case 'u':
                 return userCheck(stmt, i);
+            case 'P':
+            case 'p':
+                return polardbVersionsCheck(stmt, i);
             case 'V':
             case 'v':
                 return versionCheck(stmt, i);
@@ -109,6 +136,20 @@ public final class ServerParseSelect {
                 return parseSeqBenchmark(stmt, i, exData);
             default:
                 return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    // SELECT POLARDB_VERSION/POLARDB_VERSIONS
+    private static int polardbVersionsCheck(ByteString stmt, int offset) {
+        if (ParseUtil.compare(stmt, offset, _POLARDB_VERSION)) {
+            offset = ParseUtil.move(stmt, offset + _POLARDB_VERSION.length, 0);
+            if (offset + 1 < stmt.length() && stmt.charAt(offset) == '(') {
+                offset = ParseUtil.move(stmt, offset + 1, 0);
+                if (offset < stmt.length() && stmt.charAt(offset) == ')') {
+                    return POLARDB_VERSION;
+                }
             }
         }
         return OTHER;
@@ -517,9 +558,21 @@ public final class ServerParseSelect {
 
     private static int currentTransCheck(ByteString stmt, int offset) {
         if (ParseUtil.compare(stmt, offset, _CURRENT_TRANS_ID)) {
-            return CURRENT_TRANS_ID;
+            offset = ParseUtil.move(stmt, offset + _CURRENT_TRANS_ID.length, 0);
+            if (offset + 1 < stmt.length() && stmt.charAt(offset) == '(') {
+                offset = ParseUtil.move(stmt, offset + 1, 0);
+                if (offset < stmt.length() && stmt.charAt(offset) == ')') {
+                    return CURRENT_TRANS_ID;
+                }
+            }
         } else if (ParseUtil.compare(stmt, offset, _CURRENT_TRANS_POLICY)) {
-            return CURRENT_TRANS_POLICY;
+            offset = ParseUtil.move(stmt, offset + _CURRENT_TRANS_POLICY.length, 0);
+            if (offset + 1 < stmt.length() && stmt.charAt(offset) == '(') {
+                offset = ParseUtil.move(stmt, offset + 1, 0);
+                if (offset < stmt.length() && stmt.charAt(offset) == ')') {
+                    return CURRENT_TRANS_POLICY;
+                }
+            }
         }
         return OTHER;
     }

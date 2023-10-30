@@ -29,7 +29,7 @@ tbl,CREATE TABLE `tbl` (
 	`a` int(11) NOT NULL,
 	`b` datetime NOT NULL,
 	`c` varchar(64) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`)
+	PRIMARY KEY (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SINGLE
 SELECT *
@@ -47,7 +47,7 @@ tbl,CREATE TABLE `tbl` (
 	`a` int(11) NOT NULL,
 	`b` datetime NOT NULL,
 	`c` varchar(64) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`)
+	PRIMARY KEY (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 BROADCAST
 SELECT *

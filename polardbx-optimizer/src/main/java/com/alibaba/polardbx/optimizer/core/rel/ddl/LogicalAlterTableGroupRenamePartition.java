@@ -16,8 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
+import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
@@ -30,9 +35,22 @@ public class LogicalAlterTableGroupRenamePartition extends LogicalAlterTableRena
     }
 
     public static LogicalAlterTableGroupRenamePartition create(DDL ddl) {
-        return new LogicalAlterTableGroupRenamePartition(ddl);
+        return new LogicalAlterTableGroupRenamePartition(AlterTablePartitionHelper.fixAlterTableGroupDdlIfNeed(ddl));
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
+        String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive tablegroup " + tableGroupName);
+    }
+
+    @Override
     public void prepareData(ExecutionContext ec) {
         preparedData = new AlterTableGroupRenamePartitionPreparedData();
         AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
@@ -44,5 +62,20 @@ public class LogicalAlterTableGroupRenamePartition extends LogicalAlterTableRena
         preparedData.setSchemaName(schemaName);
         preparedData.setChangePartitionsPair(sqlAlterTableGroupRenamePartition.getChangePartitionsPair());
         preparedData.setTableGroupName(tableGroupName);
+        preparedData.setSubPartitionRename(sqlAlterTableGroupRenamePartition.isSubPartitionsRename());
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
+        String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
+        return TableGroupNameUtil.isOssTg(tableGroupName);
+    }
+
+    @Override
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
+        String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
+        return !CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroupName);
     }
 }

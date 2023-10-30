@@ -85,4 +85,8 @@ public class SqlIndexHint extends SqlCall {
     public boolean useIndex() {
         return "USE INDEX".equalsIgnoreCase(this.indexKind.getNlsString().getValue());
     }
+
+    public String getIndexKind() {
+        return this.indexKind.getNlsString().getValue();
+    }
 }

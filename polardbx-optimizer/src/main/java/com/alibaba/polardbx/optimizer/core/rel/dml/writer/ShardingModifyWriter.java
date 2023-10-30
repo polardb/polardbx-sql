@@ -86,7 +86,7 @@ public class ShardingModifyWriter extends AbstractSingleWriter implements Distin
      * Mapping for source value of SET in input row
      * Null if type is DELETE
      */
-    protected final Mapping updateSetMapping;
+    protected Mapping updateSetMapping;
     /**
      * Mapping for columns used to group input rows, normally identical to pkMapping
      * if pkMapping and skMapping are identical, then groupingMapping is also identical to them
@@ -154,6 +154,10 @@ public class ShardingModifyWriter extends AbstractSingleWriter implements Distin
 
     public Mapping getUpdateSetMapping() {
         return updateSetMapping;
+    }
+
+    public void setUpdateSetMapping(Mapping updateSetMapping) {
+        this.updateSetMapping = updateSetMapping;
     }
 
     @Override

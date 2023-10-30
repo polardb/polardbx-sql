@@ -77,6 +77,7 @@
   ### 测试If 语句 ###
   # 测试控制流程
   drop table if exists t1;
+  drop view if exists t1;
   create table t1(id int, num int);
 
   ## 测试if语句
@@ -608,4 +609,83 @@ drop procedure if exists pro_test;
 
 call pro_test();
 
-drop procedure if exists pro_test;
+delimiter |;
+
+drop procedure if exists pro_test|
+
+create procedure pro_test()
+begin
+update test_procedure set c2 = 101 where c1 = 1;
+if row_count() > 0 then
+    set @x = 2;
+end if;
+update test_procedure set c2 = 101 where c1 = 101;
+if row_count() > 0 then
+    set @z = 2;
+end if;
+select @x,@z;
+end|
+
+drop table if exists test_procedure|
+create table test_procedure (c1 int, c2 varchar(20))|
+insert into test_procedure values (1,"1"), (2,"2")|
+
+call pro_test|
+
+select @x, @z|
+
+drop procedure if exists pro_test|
+
+drop table if exists test_procedure|
+create table test_procedure (c1 int, c2 varchar(20))|
+insert into test_procedure values (1,"1"), (2637,"2")|
+
+create procedure pro_test()
+begin
+select * from test_procedure where c2 = 1;
+if found_rows() > 0 then
+    set @x = 3;
+end if;
+select * from test_procedure where c2 = 102;
+if found_rows() > 0 then
+    set @z = 3;
+end if;
+select @x,@z;
+end|
+
+call pro_test|
+select @x, @z|
+
+drop table if exists test_procedure|
+drop procedure if exists pro_test|
+create procedure pro_test()
+begin
+declare aa char(20);
+declare bb char(20);
+declare cc char(20);
+declare dd char(20);
+declare xx varchar(255);
+declare yy varchar(255);
+declare zz varchar(255);
+declare idx int default 1;
+set aa = "xx,yy,z1-z2";
+set bb = "cc,zz";
+set cc = "aa";
+set xx = substring_index(aa, ",", idx);
+set yy = substring_index(substring_index(aa, ",", -idx), "-", idx);
+set zz = concat_ws(",", aa, bb, cc, dd);
+select xx, yy, zz into @x, @y, @z;
+end;|
+
+call pro_test|
+select @x, @y, @z|
+drop procedure if exists pro_test|
+
+# test blob as input param
+drop table if exists t_param_test|
+create table t_param_test(c1 char(255), c2 longblob, c3 blob, c4 tinyblob, c5 mediumblob);|
+create procedure pro_test(in data longblob) begin insert into t_param_test values ('111', data, data, data, data); end;|
+call pro_test(0xa4a5)|
+select * from t_param_test|
+drop procedure if exists pro_test|
+drop table if exists t_param_test|

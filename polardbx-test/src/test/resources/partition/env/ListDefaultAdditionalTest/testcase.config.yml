@@ -1,0 +1,9 @@
+test_add_partition
+test_add_subpartition_tb
+test_add_partition_tg
+test_extract_subpartition_tb
+test_extract_subpartition_tg
+test_merge_partition_tb_and_tg
+test_modify_partition
+test_modify_subpartition_tb
+test_modify_subpartition_tg

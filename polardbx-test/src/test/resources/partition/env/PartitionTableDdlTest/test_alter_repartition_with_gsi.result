@@ -36,7 +36,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `gu_idx_c` USING BTREE (`c`),
 	KEY `g_idx_b` USING BTREE (`b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
@@ -87,7 +87,7 @@ tbl2,CREATE TABLE `tbl2` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `gu_idx_c` USING BTREE (`c`),
 	KEY `g_idx_b` USING BTREE (`b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

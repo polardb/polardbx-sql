@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.alibaba.polardbx.qatest.ddl.sharding.cdc.CdcTestUtil.getServerId4Check;
+
 /**
  * 针对分区表的DDL打标测试
  * <p>
@@ -208,13 +210,13 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             stmt.execute(sql);
             Thread.sleep(2000);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
             tokenHints = buildTokenHints();
             sql = tokenHints + "create database " + dbName + " mode = 'auto' ";
             stmt.execute(sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
             sql = "use " + dbName;
             stmt.execute(sql);
@@ -224,7 +226,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             testHotKeySplitByGroup(stmt);
             testHotKeySplitByTable(stmt);
 
-            //test alter partition table group
+            //test alter partition table group 表组相关的DDL测试
             boolean createWithGsi = true;
             doDDl(stmt, "t_range_1", "t_range_2", PartitionType.Range, createWithGsi);
             doDDl(stmt, "t_range_column_1", "t_range_column_2", PartitionType.RangeColumn, createWithGsi);
@@ -290,7 +292,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             stmt.execute(sql);
             stmt.execute("use __cdc__");
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         }
     }
 
@@ -350,7 +352,8 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             sql = tokenHints + String.format("ALTER TABLE %s EXTRACT TO PARTITION pnew BY HOT VALUE(1990)", tableName);
             stmt.execute(sql);
             String rewriteSql = String.format("ALTER TABLE %s split PARTITION p0 into "
-                + "(PARTITION pnew VALUES IN((1990)) , PARTITION p0 VALUES IN(1991,1992))", tableName);
+                    + "(PARTITION pnew VALUES IN((1990)) , PARTITION `p0` VALUES IN (1991,1992) ENGINE = InnoDB)",
+                tableName);
             checkTableAfterAlterPartition(rewriteSql, null, tableName);
 
         } else if (partitionType == PartitionType.ListColumn) {
@@ -731,7 +734,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
     }
 
     private void testDropValues(Statement stmt, PartitionType partitionType) throws SQLException {
-        logger.info("start to test drop table partition with partition type " + partitionType);
+        logger.info("start to test modify table partition drop values with partition type " + partitionType);
         String tableName;
         String sql;
         String tokenHints;
@@ -765,7 +768,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
     }
 
     private void testAddValues(Statement stmt, PartitionType partitionType) throws SQLException {
-        logger.info("start to test drop table partition with partition type " + partitionType);
+        logger.info("start to test modify table partition add values with partition type " + partitionType);
         String tableName;
         String sql;
         String tokenHints;
@@ -804,7 +807,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         stmt.execute(sql);
         //打标的建表语句和传入的建表语句并不完全一样，此处只演示是否是create语句
         Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
     }
 
     private void doDDl(Statement stmt, String tableName1, String tableName2,
@@ -813,21 +816,21 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         String sql;
         String tokenHints;
 
-        // Test Step
+        // Test Step 测试drop table if exists
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("drop table if exists %s ", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 测试drop table if exists
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("drop table if exists %s ", tableName2);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 测试建表DDL
         for (int i = 0; i < 2; i++) {
             if (partitionType == PartitionType.Range) {
                 sql = String.format(CREATE_RANGE_TABLE_SQL, i == 0 ? tableName1 : tableName2);
@@ -853,10 +856,13 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
             stmt.execute(sql);
             //打标的建表语句和传入的建表语句并不完全一样，此处只演示是否是create语句
             Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         }
 
+        // 测试常规DDL，如加减列、重命令等
         tableName1 = testCommonDdl(stmt, tableName1, partitionType, createWithGsi);
+
+        // 测试表组相关操作
         if (partitionType.isPartitionTable()) {
             testTableGroupDdl(stmt, tableName1, tableName2, partitionType, createWithGsi);
         }
@@ -866,14 +872,14 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         sql = tokenHints + String.format("drop table %s", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("drop table %s", tableName2);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
     }
 
     private void testHotKeySplitByGroup(Statement stmt) throws SQLException {
@@ -1002,7 +1008,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         stmt.execute(sql);
         String rewriteSql = String.format("ALTER TABLEGROUP %s SPLIT INTO  PARTITIONS 1 BY HOT VALUE(88)", tableGroup);
         Assert.assertEquals(rewriteSql, getDdlRecordSql(rewriteSql));
-        Assert.assertEquals(serverId, getDdlExtInfo(rewriteSql).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(rewriteSql).getServerId());
         Assert.assertEquals(2, getDdlRecordSqlCount(rewriteSql));
         Assert.assertEquals(getDdlRecordTopology(rewriteSql, tables.get(0)), queryTopology(tables.get(0)));
         Assert.assertEquals(getDdlRecordTopology(rewriteSql, tables.get(1)), queryTopology(tables.get(1)));
@@ -1018,59 +1024,59 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         //--------------------------------------------------------------------------------
         //-----------------------------------Test Columns---------------------------------
         //--------------------------------------------------------------------------------
-        // Test Step
+        // Test Step 加列
         tokenHints = buildTokenHints();
         sql =
             tokenHints + String.format("alter table %s add column add1 varchar(20) not null default '111'", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 加列，指定列顺序
         tokenHints = buildTokenHints();
         sql =
             tokenHints + String
                 .format("alter table %s add column add2 varchar(20) not null default '222' after b", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 加列+减列
         tokenHints = buildTokenHints();
         sql =
             tokenHints + String.format("alter table %s add column add3 bigint default 0,drop column add2", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 更改列精度
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("alter table %s modify add1 varchar(50) not null default '111'", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 更改列
         tokenHints = buildTokenHints();
         sql = tokenHints + String
             .format("alter table %s change column add1 add111 varchar(50) not null default '111'", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 减列
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("alter table %s drop column add111", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
-        // Test Step
+        // Test Step 减列
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("alter table %s drop column add3", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         //--------------------------------------------------------------------------------
         //-------------------------------Test Local Indexes-------------------------------
@@ -1080,21 +1086,21 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         sql = tokenHints + String.format("alter table %s add index idx_test(`b`)", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("alter table %s add unique idx_job(`c`)", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         tokenHints = buildTokenHints();
         sql = tokenHints + String.format("create index idx_gmt on %s(`d`)", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         // 对于含有聚簇索引的表，引擎不支持一个语句里drop两个index，所以一个语句包含两个drop的sql就不用测试了
@@ -1109,7 +1115,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         sql = tokenHints + String.format("drop index idx_gmt on %s", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         //--------------------------------------------------------------------------------
         //--------------------------------------Test Gsi----------------------------------
@@ -1122,8 +1128,8 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
                 tokenHints + String
                     .format("CREATE GLOBAL INDEX g_i_test ON %s (`e`) PARTITION BY HASH(`e`)", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
@@ -1131,22 +1137,22 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
                 + "(`GMT_CREATED`) PARTITION BY HASH(`f`)", tableName1, tableName1);
             //+ "add column add1 varchar(20) not null default '111'";//gsi不支持混合模式，省事儿了，不用测了
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String.format("drop index g_i_test on %s", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String.format("alter table %s drop index g_i_test11", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
@@ -1160,24 +1166,24 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
                     + "PARTITION p0005 VALUES LESS THAN MAXVALUE\n"
                     + ")", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String.format("alter table %s drop index idx1122", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String
                 .format("alter table %s add column ccc111 timestamp default current_timestamp", tableName1);
             stmt.execute(sql);
-            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         }
 
         //--------------------------------------------------------------------------------
@@ -1189,7 +1195,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         sql = tokenHints + String.format("truncate table %s", tableName1);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         //--------------------------------------------------------------------------------
         //------------------------------------Test rename --------------------------------
@@ -1202,7 +1208,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         sql = tokenHints + String.format("rename table %s to %s", tableName1, newTableName);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         return newTableName;
     }
 
@@ -1256,14 +1262,14 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         tokenHints = buildTokenHints();
         sql = tokenHints + getTruncatePartitionSql(tableName2, partitionType);
         stmt.execute(sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         if (partitionType.isSupportDropPartition()) {
             tokenHints = buildTokenHints();
@@ -1296,7 +1302,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
     private void checkTableGroupDdl(String sql, String tokenHints, String tableName1, String tableName2)
         throws SQLException {
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         Assert.assertEquals(2, getDdlRecordSqlCount(tokenHints));
         Assert.assertEquals(getDdlRecordTopology(tokenHints, tableName1), queryTopology(tableName1));
         Assert.assertEquals(getDdlRecordTopology(tokenHints, tableName2), queryTopology(tableName2));
@@ -1304,7 +1310,8 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
 
     private void checkTableAfterAlterPartition(String sql, String tokenHints, String tableName) throws SQLException {
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints == null ? sql : tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints == null ? sql : tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId),
+            getDdlExtInfo(tokenHints == null ? sql : tokenHints).getServerId());
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints == null ? sql : tokenHints));
         Assert.assertEquals(getDdlRecordTopology(tokenHints == null ? sql : tokenHints, tableName),
             queryTopology(tableName));
@@ -1411,7 +1418,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         String toStorage = null;
         String partition = null;
         for (Map.Entry<String, String> entry : map.entrySet()) {
-            String temp = getOnePartitionByGroupName(entry.getKey(), tableName);
+            String temp = getFirstLevelPartitionByGroupName(entry.getKey(), tableName);
             if (StringUtils.isNotBlank(temp)) {
                 fromStorage = entry.getValue();
                 partition = temp;
@@ -1435,7 +1442,7 @@ public class CdcPartitionTableDdlRecordTest extends CdcBaseTest {
         String toStorage = null;
         String partition = null;
         for (Map.Entry<String, String> entry : map.entrySet()) {
-            String temp = getOnePartitionByGroupName(entry.getKey(), tableName);
+            String temp = getFirstLevelPartitionByGroupName(entry.getKey(), tableName);
             if (StringUtils.isNotBlank(temp)) {
                 fromStorage = entry.getValue();
                 partition = temp;

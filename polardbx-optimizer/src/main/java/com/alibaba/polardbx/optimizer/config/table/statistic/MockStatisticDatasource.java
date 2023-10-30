@@ -252,4 +252,9 @@ public class MockStatisticDatasource implements StatisticDataSource {
     public String scheduleJobs() {
         return null;
     }
+
+    @Override
+    public long ndvModifyTime(String schema, String tableName, String columnNames) {
+        return 0;
+    }
 }

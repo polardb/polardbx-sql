@@ -16,11 +16,29 @@
 
 package com.alibaba.polardbx.optimizer.partition.util;
 
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class StepExplainItem {
     public PartPrunedResult prunedResult;
     public String stepDesc = null;
+    public PartKeyLevel partLevel;
+
+    public boolean isSubPartStepOr = false;
+    public boolean useSubPartByTemp = false;
+    public List<PartitionPruneStep> targetSubSteps = new ArrayList<>();
+
+    public List<Integer> prunePartSpecPosiList = new ArrayList<>();
+    public List<Integer> parentSpecPosiList = new ArrayList<>();
+    public Map<Integer, PartPrunedResult> partSpecPosiToPruneResultMap = new HashMap<>();
+
     public StepExplainItem() {
     }
 

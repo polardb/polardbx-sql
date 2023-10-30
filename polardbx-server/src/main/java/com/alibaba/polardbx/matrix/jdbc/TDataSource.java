@@ -23,7 +23,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.logical.ITDataSource;
-import com.alibaba.polardbx.common.logger.LoggerInit;
+import com.alibaba.polardbx.common.model.App;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -36,6 +36,7 @@ import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.common.utils.version.Version;
+import com.alibaba.polardbx.config.ConfigDataHandler;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.PlanExecutor;
 import com.alibaba.polardbx.executor.common.RecycleBin;
@@ -57,15 +58,10 @@ import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.utils.ParamValidationUtils;
 import org.apache.commons.lang.StringUtils;
 
-import javax.sql.DataSource;
 import java.io.ByteArrayInputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
-import java.io.PrintWriter;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.text.MessageFormat;
-import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +69,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * matrix的jdbc datasource实现
@@ -84,14 +79,21 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TDataSource extends AbstractLifecycle implements ITDataSource {
 
     public final static Logger logger = LoggerFactory.getLogger(TDataSource.class);
+    private String appRuleString = null;
     private boolean sharding = true;
     // 是否不做sharding,如果为false跳过rule初始化
+    private String topologyFile = null;
+    private String schemaFile = null;
     private String appName = null;
     private String schemaName = null;
     private String unitName = null;
     private PlanExecutor executor = null;
     private Map<String, Object> connectionProperties = new HashMap<>(2);
     private MatrixConfigHolder configHolder;
+    private boolean useRemoteLocalRule = false;
+
+    private List<App> subApps = new ArrayList<>();
+
     private TddlRule tddlRule = null;
     /**
      * 用于并行查询的线程池，全局共享
@@ -99,18 +101,25 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
     private ServerThreadPool globalExecutorService = null;
     private boolean shareGlobalExecutor = false;
 
-
     // 写入模式，取值: center/unit (如果是center，并且当前是unit环境，则不启动tddl)
     private String writeMode = null;
+    // 是否需要在冷备机房中启动数据源，取值: true/false (如果是false，并且当前是冷备环境，则不启动tddl,其余情况均启动)
     private boolean stressTestValid = false;
     private SQLRecorder physicalRecorder = null;
     private SQLRecorder recorder = null;
+    private boolean dynamicRule = true;                                                      // 是否使用动态规则
 
+    private ConfigDataHandler connectionPropertiesCdh = null;
     private MatrixStatistics statistics = new MatrixStatistics();
 
     private IServerConfigManager serverConfigManager = null;
 
+    private String url = null;
+
     public static String globalConnectionProperties = null;
+
+    private Map<String, String> asiConf = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+
 
     private InternalTimeZone logicalDbTimeZone = null;
     /**
@@ -141,6 +150,12 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("TDataSource start init");
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("appName is: " + appName);
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("unitName is: " + unitName);
+        if (url != null) {
+            parseUrl(url);
+        }
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("schemaFile is: " + this.schemaFile);
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("topologyFile is: " + this.topologyFile);
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("subApps is: " + this.subApps);
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("writeMode is: " + this.writeMode);
 
         this.traceIdGenerator = IdGenerator.getIdGenerator();
@@ -188,6 +203,11 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
         configHolder.setAppName(appName);
         configHolder.setUnitName(unitName);
         configHolder.setSchemaName(schemaName);
+        configHolder.setRemoteLocalRule(useRemoteLocalRule);
+        configHolder.setTopologyFilePath(this.topologyFile);
+        configHolder.setSchemaFilePath(this.schemaFile);
+        configHolder.setAppRuleString(appRuleString);
+        configHolder.setDynamicRule(dynamicRule);
         configHolder.setSharding(this.sharding);
         configHolder.setTddlRule(this.tddlRule);
         configHolder.setStatistics(this.statistics);
@@ -324,7 +344,12 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
             if (key == null) {
                 continue;
             }
-            this.putConnectionProperties(key.toString(), globalP.getProperty(key.toString()));
+            if (ConnectionProperties.CN_GROUP_CONCAT_MAX_LEN.equalsIgnoreCase(key.toString())) {
+                this.putConnectionProperties(
+                    ConnectionProperties.GROUP_CONCAT_MAX_LEN, globalP.getProperty(key.toString()));
+            } else {
+                this.putConnectionProperties(key.toString(), globalP.getProperty(key.toString()));
+            }
         }
 
         if (configHolder != null && configHolder.isInited()) {
@@ -392,6 +417,74 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
             throw new SQLException(e);
 
         }
+    }
+
+    private void parseUrl(String url) {
+        if (!url.startsWith("jdbc:tddl:tdatasource")) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "不支持的URL，请使用jdbc:tddl:tdatasource:前缀");
+        }
+
+        int beginningOfSlashes = url.indexOf("//");
+
+        int index = url.indexOf("?");
+        String hostStuff;
+        String configNames;
+        String propsIter;
+        Properties urlProps = new Properties();
+        if (index != -1) {
+            hostStuff = url.substring(index + 1, url.length());
+            url = url.substring(0, index);
+            StringTokenizer slashIndex = new StringTokenizer(hostStuff, "&");
+
+            while (slashIndex.hasMoreTokens()) {
+                String numHosts = slashIndex.nextToken();
+                int propertiesTransformClassName = com.mysql.jdbc.StringUtils.indexOfIgnoreCase(0, numHosts, "=");
+                configNames = null;
+                propsIter = null;
+                if (propertiesTransformClassName != -1) {
+                    configNames = numHosts.substring(0, propertiesTransformClassName);
+                    if (propertiesTransformClassName + 1 < numHosts.length()) {
+                        propsIter = numHosts.substring(propertiesTransformClassName + 1);
+                    }
+                }
+
+                if (propsIter != null && propsIter.length() > 0 && configNames != null && configNames.length() > 0) {
+
+                    try {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter, "UTF-8"));
+                    } catch (UnsupportedEncodingException var21) {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter));
+                    } catch (NoSuchMethodError var22) {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter));
+                    }
+                }
+            }
+        }
+
+        appName = url.substring(beginningOfSlashes + 2);
+
+        if (urlProps.get("isDynamicRule") != null) {
+            dynamicRule = "true".equalsIgnoreCase(urlProps.get("isDynamicRule").toString());
+        }
+
+        if (urlProps.get("isSharding") != null) {
+            sharding = "true".equalsIgnoreCase(urlProps.get("isSharding").toString());
+        }
+
+        if (urlProps.get("topologyFile") != null) {
+            topologyFile = urlProps.get("topologyFile").toString();
+        }
+
+        if (urlProps.get("schemaFile") != null) {
+            schemaFile = urlProps.get("schemaFile").toString();
+        }
+
+        if (urlProps.get("TABLE_META_CACHE_EXPIRE_TIME") != null) {
+            schemaFile = urlProps.get("schemaFile").toString();
+        }
+
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("parse tdatasource by url:" + this.url + ", get appname:" + appName
+            + ", dynamicRule:" + dynamicRule + ", isSharding" + sharding);
     }
 
     public ServerThreadPool borrowExecutorService() {
@@ -573,6 +666,14 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
 
     public IServerConfigManager getServerConfigManager() {
         return serverConfigManager;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public Map<String, String> getAsiConf() {
+        return asiConf;
     }
 
     public void setServerConfigManager(IServerConfigManager serverConfigManager) {

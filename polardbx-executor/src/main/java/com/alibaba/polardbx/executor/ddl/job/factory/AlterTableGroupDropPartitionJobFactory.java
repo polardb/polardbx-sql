@@ -35,21 +35,16 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -62,7 +57,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                                                   Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                                   Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                   Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                                  Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                                  Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                                   ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -176,7 +171,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
             alterTableGroupDropPartitionBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableGroupDropPartitionBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableGroupDropPartitionBuilder.getOrderedTargetTablesLocations();
         return new AlterTableGroupDropPartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
@@ -193,7 +188,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             boolean skipBackfill = GeneralUtil.isEmpty(sourceTablesTopology.get(entry.getKey()));
             AlterTableGroupSubTaskJobFactory subTaskJobFactory =
-                new AlterTableGroupSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
+                new AlterTableGroupSubTaskJobFactory(ddl, preparedData, tablesPrepareData.get(entry.getKey()),
                     newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
                     targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
                     orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, skipBackfill, taskType,
@@ -223,29 +218,6 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                 bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1), dropUselessTableTask);
             executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
         }
-    }
-
-    public Map<String, Set<String>> getTheDeletedPartitionsLocation(String schemaName, String tableName) {
-        Map<String, Set<String>> deletedPhyTables = new HashMap<>();
-        PartitionInfo partitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
-        int num = 0;
-        List<String> outdatedPartitionNames = new ArrayList();
-        outdatedPartitionNames.addAll(preparedData.getOldPartitionNames());
-        outdatedPartitionNames.addAll(preparedData.getNewPartitionNames());
-        for (String oldPartitionName : outdatedPartitionNames) {
-            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                if (partitionSpec.getName().equalsIgnoreCase(oldPartitionName)) {
-                    PartitionLocation location = partitionSpec.getLocation();
-                    deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                        .add(location.getPhyTableName());
-                    num++;
-                    break;
-                }
-            }
-        }
-        assert num == preparedData.getOldPartitionNames().size() + preparedData.getNewPartitionNames().size();
-        return deletedPhyTables;
     }
 
     @Override

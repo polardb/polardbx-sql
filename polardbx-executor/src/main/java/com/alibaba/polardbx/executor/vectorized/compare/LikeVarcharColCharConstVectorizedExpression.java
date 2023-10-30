@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.vectorized.compare;
 
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
@@ -113,7 +114,9 @@ public class LikeVarcharColCharConstVectorizedExpression extends AbstractVectori
                     int j = sel[i];
 
                     Slice lSlice = ((Slice) leftInputVectorSlot.elementAt(j));
-
+                    if (lSlice == null) {
+                        lSlice = Slices.EMPTY_SLICE;
+                    }
                     output[j] = collationHandler.wildCompare(lSlice, operand1)
                         ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
@@ -121,7 +124,9 @@ public class LikeVarcharColCharConstVectorizedExpression extends AbstractVectori
                 for (int i = 0; i < batchSize; i++) {
 
                     Slice lSlice = ((Slice) leftInputVectorSlot.elementAt(i));
-
+                    if (lSlice == null) {
+                        lSlice = Slices.EMPTY_SLICE;
+                    }
                     output[i] = collationHandler.wildCompare(lSlice, operand1)
                         ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }

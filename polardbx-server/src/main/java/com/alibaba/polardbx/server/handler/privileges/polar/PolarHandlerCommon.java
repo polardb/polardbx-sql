@@ -77,7 +77,7 @@ public class PolarHandlerCommon {
 
     protected static void handleUserError(PrivManageResult res, ServerConnection c, PrivManageType type) {
         if (res.getResultCodes().get(0) == PrivManageCode.NO_PRIVILEGE) {
-            c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, CREATE_USER_NO_PRIVILEGE);
+            c.writeErrMessage(ErrorCode.ER_NO, CREATE_USER_NO_PRIVILEGE);
             return;
         }
 
@@ -92,13 +92,13 @@ public class PolarHandlerCommon {
         } else {
             error = String.format(DROP_USER_FAILED, String.join(",", users));
         }
-        c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+        c.writeErrMessage(ErrorCode.ER_NO, error);
     }
 
     protected static void handleGrantError(PrivManageResult res, ServerConnection c, PrivManageType type) {
         if (res.getResultCodes().get(0) == PrivManageCode.NO_PRIVILEGE) {
             String error = String.format(GRANT_NO_PRIVILEGE, res.getGranter().getIdentifier());
-            c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+            c.writeErrMessage(ErrorCode.ER_NO, error);
             return;
         }
 
@@ -113,13 +113,13 @@ public class PolarHandlerCommon {
         } else {
             error = String.format(REVOKE_FAILED, String.join(",", users));
         }
-        c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+        c.writeErrMessage(ErrorCode.ER_NO, error);
     }
 
     protected static void handleSetPasswordError(PrivManageResult res, ServerConnection c) {
         if (res.getResultCodes().get(0) == PrivManageCode.NO_PRIVILEGE) {
             String error = String.format(SET_PASSWORD_NO_PRIVILEGE, res.getGranter().getIdentifier());
-            c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+            c.writeErrMessage(ErrorCode.ER_NO, error);
             return;
         }
 
@@ -129,7 +129,7 @@ public class PolarHandlerCommon {
         }
 
         String error = String.format(SET_PASSWORD_FAILED, String.join(",", users));
-        c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+        c.writeErrMessage(ErrorCode.ER_NO, error);
     }
 
     protected static void checkMasterInstance() {

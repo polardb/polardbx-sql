@@ -128,7 +128,7 @@ public class ProcedurePacketTest extends BaseTestCase {
             if (rs.getInt(1) != 2) {
                 Assert.fail("select result not matched!");
             }
-            ResultSet child1 = checkChildRs(rs, 0);
+            ResultSet child1 = checkChildRs(rs, -1);
             // test select result
             child1 = checkChildRs(child1, 1);
             // test found_rows() after select
@@ -136,7 +136,7 @@ public class ProcedurePacketTest extends BaseTestCase {
             child1 = checkChildRs(child1, 1);
             // test row_count() after insert select
             child1 = checkChildRs(child1, 2);
-            child1 = checkChildRs(child1, 0);
+            child1 = checkChildRs(child1, -1);
             // test select result
             child1 = checkChildRs(child1, 1);
             // test found_rows()
@@ -144,7 +144,7 @@ public class ProcedurePacketTest extends BaseTestCase {
             child1 = checkChildRs(child1, 1);
             // test row_count() after update
             child1 = checkChildRs(child1, 2);
-            child1 = checkChildRs(child1, 0);
+            child1 = checkChildRs(child1, -1);
         }
     }
 
@@ -165,7 +165,7 @@ public class ProcedurePacketTest extends BaseTestCase {
         }
         if (childRs.getInt(1) != expectValue) {
             Assert.fail(
-                String.format("select result not matched, expect %s, but found %s!", childRs.getInt(1), expectValue));
+                String.format("select result not matched, expect %s, but found %s!", expectValue, childRs.getInt(1)));
         }
         return childRs;
     }

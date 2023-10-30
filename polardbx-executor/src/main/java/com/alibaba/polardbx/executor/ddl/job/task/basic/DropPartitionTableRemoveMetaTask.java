@@ -43,7 +43,7 @@ public class DropPartitionTableRemoveMetaTask extends BaseGmsTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
         //todo update version(missing)、notify(already have)、sync version(already have)、sync(missing)
         //or maybe move finalOperationsOnSuccess to DropTableSyncTask?
-        CommonMetaChanger.finalOperationsOnSuccess(schemaName, logicalTableName);
+        CommonMetaChanger.dropTableFinalOperationsOnSuccess(schemaName, logicalTableName);
     }
 
     @Override

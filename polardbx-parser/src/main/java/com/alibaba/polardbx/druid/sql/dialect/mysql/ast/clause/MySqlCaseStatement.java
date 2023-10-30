@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLIfStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
@@ -122,4 +123,8 @@ public class MySqlCaseStatement extends MySqlStatementImpl {
 
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

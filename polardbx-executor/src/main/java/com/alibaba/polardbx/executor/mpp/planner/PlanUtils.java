@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.mpp.planner;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -52,6 +53,12 @@ public class PlanUtils {
                 WorkloadUtil.isApWorkload(
                     context.getWorkloadType()), context.getTraceId(), context.getExtraCmds()));
         }
+
+        if (context.getExecuteMode() == ExecutorMode.TP_LOCAL && context.getParamManager().getInt(
+            ConnectionParams.PARALLELISM) == -1) {
+            context.getExtraCmds().put(ConnectionProperties.PARALLELISM, 1);
+        }
+
         int parallelism = ExecUtils.getParallelismForLocal(context);
 
         boolean isSpill =

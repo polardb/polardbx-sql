@@ -19,16 +19,17 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class SQLExportTableStatement extends SQLStatementImpl {
-    private SQLExprTableSource  table;
+    private SQLExprTableSource table;
     private List<SQLAssignItem> partition = new ArrayList<SQLAssignItem>();
-    private SQLExpr             to;
-    private SQLExpr             forReplication;
+    private SQLExpr to;
+    private SQLExpr forReplication;
 
     public SQLExportTableStatement() {
         dbType = DbType.mysql;
@@ -79,5 +80,10 @@ public class SQLExportTableStatement extends SQLStatementImpl {
             acceptChild(v, forReplication);
         }
         v.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

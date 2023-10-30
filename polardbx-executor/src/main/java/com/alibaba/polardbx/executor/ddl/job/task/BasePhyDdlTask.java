@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegat
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
@@ -49,9 +51,12 @@ import org.apache.calcite.sql.SqlDropTable;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 @Getter
 public abstract class BasePhyDdlTask extends BaseDdlTask {
@@ -85,6 +90,15 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
     public void rollbackImpl(ExecutionContext executionContext) {
         List<RelNode> rollbackPhysicalPlans = genRollbackPhysicalPlans(executionContext);
         executePhyDdl(rollbackPhysicalPlans, executionContext);
+    }
+
+    @Override
+    protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        DdlEngineAccessor ddlEngineAccessor = new DdlEngineAccessor();
+        ddlEngineAccessor.setConnection(metaDbConnection);
+
+        // todo: More accurate control of progress
+        ddlEngineAccessor.updateProgress(this.getJobId(), 0);
     }
 
     /**
@@ -158,7 +172,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
 
         int inputCount = phyDdlExecutionRecord.getNumPhyObjectsTotal();
 
-        if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING || !executionContext.needToRenamePhyTables()) {
+        if (isRollBackRunning(ddlContext.getState()) || !executionContext.needToRenamePhyTables()) {
             inputCount = 0;
         }
 
@@ -173,8 +187,9 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             // Errors/Warnings from physical DDLs.
             List<ExecutionContext.ErrorMessage> failedMsgs =
                 (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas()
-                    .get(ExecutionContext.FailedMessage);
-            if (failedMsgs != null && !failedMsgs.isEmpty()) {
+                    .get(ExecutionContext.FAILED_MESSAGE);
+
+            if (GeneralUtil.isNotEmpty(failedMsgs)) {
                 int countUnknownTables = 0;
                 for (ExecutionContext.ErrorMessage errMsg : failedMsgs) {
                     if (errMsg != null) {
@@ -199,7 +214,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             }
 
             // Exceptions from executor/cursor.
-            if (exceptions != null) {
+            if (GeneralUtil.isNotEmpty(exceptions)) {
                 for (Throwable e : exceptions) {
                     if (shouldIgnore(e, ignoredErrorCodeList)) {
                         continue;
@@ -214,11 +229,11 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             }
 
             if (countError == 0) {
-                // No any error actually.
+                // There are not any errors.
                 return;
             }
 
-            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+            if (isRollBackRunning(ddlContext.getState())) {
                 inputCount = objectDoneCount;
                 objectDoneCount = inputCount - objectDoneCount;
             }
@@ -349,5 +364,14 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
     @Override
     public String remark() {
         return "";
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        if (this.physicalPlanData != null) {
+            return this.physicalPlanData.explainInfo();
+        } else {
+            return new ArrayList<>();
+        }
     }
 }

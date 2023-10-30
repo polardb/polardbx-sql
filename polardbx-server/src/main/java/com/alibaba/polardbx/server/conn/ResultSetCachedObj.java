@@ -17,29 +17,40 @@
 package com.alibaba.polardbx.server.conn;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
+import com.alibaba.polardbx.executor.operator.CacheCursor;
+import com.alibaba.polardbx.matrix.jdbc.TResultSet;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
+import com.alibaba.polardbx.optimizer.memory.MemoryPool;
+import com.alibaba.polardbx.optimizer.memory.MemoryType;
+import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 
 import java.sql.ResultSet;
+import java.util.List;
 
 /**
  * @author yaozhili
  */
 public class ResultSetCachedObj {
+    private final Logger logger;
     private final ResultSet resultSet;
+    private final CacheResultCursor cacheCursor;
     private boolean firstRow;
     private boolean lastRow;
-    private ITransaction trx;
+    private long sqlSelectLimit;
 
-    public void setTrx(ITransaction trx) {
-        this.trx = trx;
-    }
-
-    public ITransaction getTrx() {
-        return trx;
-    }
-
-    public ResultSetCachedObj(ResultSet resultSet) {
-        this.resultSet = resultSet;
+    public ResultSetCachedObj(ResultSet resultSet, String traceId, MemoryPool memoryPool, Logger logger,
+                              long sqlSelectLimit) {
+        TResultSet tResultSet = (TResultSet) resultSet;
+        ResultCursor resultCursor = tResultSet.getResultCursor();
+        this.cacheCursor = new CacheResultCursor(resultCursor, traceId, sqlSelectLimit, memoryPool);
+        this.resultSet = new TResultSet(cacheCursor, tResultSet.getExtraCmd());
+        this.logger = logger;
+        this.sqlSelectLimit = sqlSelectLimit;
     }
 
     public ResultSet getResultSet() {
@@ -62,7 +73,7 @@ public class ResultSetCachedObj {
         this.lastRow = lastRow;
     }
 
-    public void close(Logger logger) {
+    public void close() {
         // Close the result set.
         if (null != resultSet) {
             try {
@@ -71,18 +82,64 @@ public class ResultSetCachedObj {
                 logger.warn(t.getMessage());
             }
         }
-        // Commit and close the trx.
-        if (null != trx) {
-            try {
-                trx.commit();
-            } catch (Throwable t) {
-                logger.warn(t.getMessage());
+    }
+
+    public long getRowCount() {
+        // Should be called after first doNext()
+        return cacheCursor.getCacheCursor().getRowCount();
+    }
+
+    private static class CacheResultCursor extends ResultCursor {
+        private final CacheCursor cacheCursor;
+        private final CursorMeta cursorMeta;
+        private final List<ColumnMeta> returnColumns;
+        private long sqlSelectLimit;
+
+        public CacheResultCursor(ResultCursor cursor, String traceId, long sqlSelectLimit, MemoryPool parentPool) {
+            super();
+            this.cursorMeta = cursor.getCursorMeta();
+            this.returnColumns = cursor.getReturnColumns();
+            this.sqlSelectLimit = sqlSelectLimit;
+
+            MemoryPool memoryPool = parentPool.getOrCreatePool(traceId, MemoryType.CURSOR_FETCH);
+            long estimateRowSize = returnColumns.stream().mapToLong(MemoryEstimator::estimateColumnSize).sum();
+            this.cacheCursor =
+                new CacheCursor(ServiceProvider.getInstance().getServer().getSpillerFactory(), cursor, memoryPool,
+                    estimateRowSize, new QuerySpillSpaceMonitor(traceId));
+        }
+
+        @Override
+        public Row doNext() {
+            // CacheCursor will cache all results on first next, which will be called in resultSetToHeaderPacket
+            if (sqlSelectLimit == 0) {
+                return null;
             }
-            try {
-                trx.close();
-            } catch (Throwable t) {
-                logger.warn(t.getMessage());
+            sqlSelectLimit--;
+
+            Row row = cacheCursor.next();
+            if (row != null && cursorMeta != null) {
+                row.setCursorMeta(cursorMeta);
             }
+            return row;
+        }
+
+        @Override
+        public List<Throwable> doClose(List<Throwable> exceptions) {
+            return cacheCursor.close(exceptions);
+        }
+
+        @Override
+        public List<ColumnMeta> getReturnColumns() {
+            return returnColumns;
+        }
+
+        @Override
+        public CursorMeta getCursorMeta() {
+            return cursorMeta;
+        }
+
+        public CacheCursor getCacheCursor() {
+            return cacheCursor;
         }
     }
 }

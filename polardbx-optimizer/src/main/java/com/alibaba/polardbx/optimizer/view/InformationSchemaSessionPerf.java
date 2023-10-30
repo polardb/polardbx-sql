@@ -77,7 +77,7 @@ public class InformationSchemaSessionPerf extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("TYPE", 22, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("REQUEST_STATUS", 23, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("FETCH_COUNT", 24, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("TOKEN_COUNT", 25, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("TOKEN_SIZE", 25, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("TIME_SINCE_REQUEST", 26, typeFactory.createSqlType(SqlTypeName.DOUBLE)));
         columns.add(new RelDataTypeFieldImpl(
             "DATA_PKT_RESPONSE_TIME", 27, typeFactory.createSqlType(SqlTypeName.DOUBLE)));

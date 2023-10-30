@@ -33,6 +33,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @since 5.3.9
  */
 
+
 public class JoinReorderTest extends ReadBaseTestCase {
 
     @Parameterized.Parameters(

@@ -27,9 +27,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import java.util.LinkedList;
 import java.util.List;
 
-/**
- * @author dylan
- */
 public class InformationSchemaRoutines extends VirtualView {
 
     public InformationSchemaRoutines(RelOptCluster cluster, RelTraitSet traitSet) {

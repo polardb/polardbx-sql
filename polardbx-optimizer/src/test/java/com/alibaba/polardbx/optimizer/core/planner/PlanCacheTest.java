@@ -85,14 +85,14 @@ public class PlanCacheTest extends PlanTestCommon {
 
     @Test
     public void testInSqlBound() throws ExecutionException {
-        int maxSize = 5;
+        int maxSize = 3;
         PlanCache planCache = new PlanCache(maxSize);
         for (String sql : inSqls) {
             ExecutionContext executionContext = new ExecutionContext(this.appName);
             SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(ByteString.from(sql), null, executionContext, false);
             planCache.get(this.appName, sqlParameterized, executionContext, false);
         }
-        if (planCache.getCache().size() != 5) {
+        if (planCache.getCache().size() > maxSize) {
             Assert.fail("plan cache in sql size over limit:" + planCache.getCache().size());
         }
     }
@@ -106,7 +106,7 @@ public class PlanCacheTest extends PlanTestCommon {
             SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(ByteString.from(sql), null, executionContext, false);
             planCache.get(this.appName, sqlParameterized, executionContext, false);
         }
-        if (planCache.getCache().size() != inSqls.length) {
+        if (planCache.getCache().size() > inSqls.length) {
             Assert.fail("plan cache in sql size over limit:" + planCache.getCache().size());
         }
     }

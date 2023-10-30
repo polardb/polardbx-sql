@@ -31,10 +31,10 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaFullTableGroup;
@@ -83,13 +83,20 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                 String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
                 String partitionString = "";
                 int partCnt = 0;
+                int subPartCnt = 0;
 
                 if (isNotFull) {
                     int logTblCnt = 0;
                     int idxTblCnt = 0;
                     int tableCount = tableGroupConfig.getTableCount();
+
                     String actualPartStr = "";
                     String maxPartStr = "";
+
+                    String actualSubPartStr = "";
+                    String maxSubPartStr = "";
+                    String subPartTempStr = "";
+
                     boolean isSingleTbOrBroadcastTb = false;
                     if (tableCount > 0) {
                         List<TablePartRecordInfoContext> tbInfoList = tableGroupConfig.getTables();
@@ -116,20 +123,40 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
 
                         partCnt = tableMeta.getPartitionInfo().getPartitionBy().getPartitions().size();
                         if (!isSingleTbOrBroadcastTb) {
-                            List<ColumnMeta> maxPartColMeta =
-                                PartitionInfoUtil.getMaxPartColumnMetasInfoForTableGroup(schemaName, tgName);
-                            List<ColumnMeta> actualPartColMeta =
-                                PartitionInfoUtil.getActualPartColumnMetasInfoForTableGroup(schemaName, tgName);
+                            List<List<ColumnMeta>> allLevelMaxActPartColMeta =
+                                PartitionInfoUtil.getAllLevelMaxPartColumnMetasInfoForTableGroup(schemaName, tgName);
+
+                            List<List<ColumnMeta>> allLevelActualPartColMeta =
+                                PartitionInfoUtil.getAllLevelActualPartColumnMetasInfoForTableGroup(schemaName, tgName);
 
                             actualPartStr =
                                 tableMeta.getPartitionInfo().getPartitionBy()
-                                    .normalizePartitionKeyIgnoreColName(actualPartColMeta.size());
+                                    .normalizePartitionKeyIgnoreColName(allLevelActualPartColMeta.get(0).size());
                             maxPartStr =
                                 tableMeta.getPartitionInfo().getPartitionBy()
-                                    .normalizePartitionKeyIgnoreColName(maxPartColMeta.size());
+                                    .normalizePartitionKeyIgnoreColName(allLevelMaxActPartColMeta.get(0).size());
+
+                            PartitionByDefinition subPartByDef =
+                                tableMeta.getPartitionInfo().getPartitionBy().getSubPartitionBy();
+                            boolean useSubPartTemp = subPartByDef != null;
+                            if (useSubPartTemp) {
+                                subPartCnt = tableMeta.getPartitionInfo().getAllPhysicalPartitionCount();
+                                subPartTempStr = String.valueOf(subPartByDef.isUseSubPartTemplate());
+                                actualSubPartStr = subPartByDef.normalizePartitionKeyIgnoreColName(
+                                    allLevelActualPartColMeta.get(1).size());
+                                maxSubPartStr = subPartByDef.normalizePartitionKeyIgnoreColName(
+                                    allLevelMaxActPartColMeta.get(1).size());
+                            } else {
+                                subPartTempStr = "FALSE";
+                                actualSubPartStr = "NO_PART_KEY";
+                                maxSubPartStr = "NO_PART_KEY";
+                            }
                         } else {
                             actualPartStr = "NO_PART_KEY";
                             maxPartStr = "NO_PART_KEY";
+                            subPartTempStr = "FALSE";
+                            actualSubPartStr = "NO_PART_KEY";
+                            maxSubPartStr = "NO_PART_KEY";
                         }
                     }
 
@@ -140,9 +167,16 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                         DataTypes.StringType.convertFrom(tableGroupRecord.locality),
                         DataTypes.StringType.convertFrom(tableGroupRecord.primary_zone),
                         DataTypes.IntegerType.convertFrom(tableGroupRecord.manual_create),
+
                         DataTypes.StringType.convertFrom(actualPartStr),
                         DataTypes.StringType.convertFrom(maxPartStr),
                         DataTypes.LongType.convertFrom(partCnt),
+
+                        DataTypes.StringType.convertFrom(actualSubPartStr),
+                        DataTypes.StringType.convertFrom(maxSubPartStr),
+                        DataTypes.StringType.convertFrom(subPartTempStr),
+                        DataTypes.LongType.convertFrom(subPartCnt),
+
                         DataTypes.LongType.convertFrom(logTblCnt),
                         DataTypes.LongType.convertFrom(idxTblCnt),
                     });
@@ -156,15 +190,13 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                             if (tableCount == 0) {
                                 try {
                                     PartitionInfo partInfo = tableMeta.getPartitionInfo();
-                                    int actualPartColCnt = PartitionInfoUtil.getActualPartitionColumns(partInfo).size();
-                                    if (partInfo.getPartitionBy().getStrategy() == PartitionStrategy.HASH) {
-                                        actualPartColCnt = 1;
-                                    }
+                                    List<Integer> allLevelActualPartColCnts = partInfo.getAllLevelActualPartColCounts();
                                     partitionString =
                                         tableMeta.getPartitionInfo().getPartitionBy()
-                                            .normalizePartitionByInfo(tableGroupConfig, true, actualPartColCnt);
+                                            .normalizePartitionByDefForShowTableGroup(tableGroupConfig, true,
+                                                allLevelActualPartColCnts);
                                 } catch (Throwable t) {
-                                    logger.error(t);
+                                    logger.warn(t);
                                     continue;
                                 }
                             } else {

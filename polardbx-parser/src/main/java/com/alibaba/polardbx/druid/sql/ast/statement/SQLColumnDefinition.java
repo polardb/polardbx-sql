@@ -36,56 +36,60 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElement, SQLObjectWithDataType, SQLReplaceable, SQLDbTypedObject {
-    protected DbType                          dbType;
+public class SQLColumnDefinition extends SQLObjectImpl
+    implements SQLTableElement, SQLObjectWithDataType, SQLReplaceable, SQLDbTypedObject {
+    protected DbType dbType;
 
-    protected SQLName                         name;
-    protected SQLDataType                     dataType;
-    protected SQLExpr                         defaultExpr;
-    protected final List<SQLColumnConstraint> constraints   = new ArrayList<SQLColumnConstraint>(0);
-    protected SQLExpr                         comment;
+    protected SQLName name;
+    protected SQLDataType dataType;
+    protected SQLExpr defaultExpr;
+    protected final List<SQLColumnConstraint> constraints = new ArrayList<SQLColumnConstraint>(0);
+    protected SQLExpr comment;
 
-    protected Boolean                         enable;
-    protected Boolean                         validate;
-    protected Boolean                         rely;
+    protected Boolean enable;
+    protected Boolean validate;
+    protected Boolean rely;
 
     // for mysql
-    protected boolean                         autoIncrement = false;
-    protected SQLExpr                         onUpdate;
-    protected SQLExpr                         format;
-    protected SQLExpr                         storage;
-    protected SQLExpr                         charsetExpr;
-    protected SQLExpr                         collateExpr;
-    protected SQLExpr                         asExpr;
-    protected boolean                         stored        = false;
-    protected boolean                         virtual       = false;
-    protected boolean                         visible       = false;
-    protected AutoIncrementType               sequenceType;
-    protected boolean                         preSort       = false; // for ads
-    protected int                             preSortOrder  = 0; // for ads
+    protected boolean autoIncrement = false;
+    protected SQLExpr onUpdate;
+    protected SQLExpr format;
+    protected SQLExpr storage;
+    protected SQLExpr charsetExpr;
+    protected SQLExpr collateExpr;
+    protected SQLExpr asExpr;
+    protected boolean stored = false;
+    protected boolean virtual = false;
+    protected boolean logical = false; // for polarx logical generated column
+    protected boolean visible = false;
+    protected AutoIncrementType sequenceType;
+    protected boolean preSort = false; // for ads
+    protected int preSortOrder = 0; // for ads
 
-    protected Identity                        identity;
+    protected Identity identity;
 
     // for ads
-    protected SQLExpr                         generatedAlawsAs;
-    protected SQLExpr                         delimiter; // for ads
-    protected SQLExpr                         delimiterTokenizer; // for ads3.0 multivalue
-    protected SQLExpr                         nlpTokenizer; // for ads3.0 multivalue
-    protected SQLExpr                         valueType; // for ads3.0 multivalue
-    protected boolean                         disableIndex  = false; //for ads
-    protected SQLExpr                         jsonIndexAttrsExpr;    // for ads
-    protected SQLAnnIndex                     annIndex;
-    private SQLExpr                           unitCount;
-    private SQLExpr                           unitIndex;
-    private SQLExpr                           step;
-    private SQLCharExpr                       encode;
-    private SQLCharExpr                       compression;
+    protected SQLExpr generatedAlawsAs;
+    protected SQLExpr delimiter; // for ads
+    protected SQLExpr delimiterTokenizer; // for ads3.0 multivalue
+    protected SQLExpr nlpTokenizer; // for ads3.0 multivalue
+    protected SQLExpr valueType; // for ads3.0 multivalue
+    protected boolean disableIndex = false; //for ads
+    protected SQLExpr jsonIndexAttrsExpr;    // for ads
+    protected SQLAnnIndex annIndex;
+    private SQLExpr unitCount;
+    private SQLExpr unitIndex;
+    private SQLExpr step;
+    private SQLCharExpr encode;
+    private SQLCharExpr compression;
 
     // for aliyun data lake anlytics
-    private List<SQLAssignItem>               mappedBy;
-    private List<SQLAssignItem>               colProperties;
+    private List<SQLAssignItem> mappedBy;
+    private List<SQLAssignItem> colProperties;
 
-    public SQLColumnDefinition(){
+    private boolean defaultExprHasLp = false;
+
+    public SQLColumnDefinition() {
 
     }
 
@@ -204,8 +208,8 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
 
         if (parent instanceof SQLCreateTableStatement) {
             return ((SQLCreateTableStatement) parent)
-                    .isPrimaryColumn(
-                            nameHashCode64());
+                .isPrimaryColumn(
+                    nameHashCode64());
         }
 
         return false;
@@ -220,8 +224,8 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
 
         if (parent instanceof SQLCreateTableStatement) {
             return ((SQLCreateTableStatement) parent)
-                    .isPrimaryColumn(
-                            nameHashCode64());
+                .isPrimaryColumn(
+                    nameHashCode64());
         }
 
         return false;
@@ -243,9 +247,9 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
         }
 
         return partitioning.isPartitionByColumn(
-                nameHashCode64());
+            nameHashCode64());
     }
-    
+
     public void addConstraint(SQLColumnConstraint constraint) {
         if (constraint != null) {
             constraint.setParent(this);
@@ -299,6 +303,14 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
 
     public void setStored(boolean stored) {
         this.stored = stored;
+    }
+
+    public boolean isLogical() {
+        return logical;
+    }
+
+    public void setLogical(boolean logical) {
+        this.logical = logical;
     }
 
     public SQLExpr getCharsetExpr() {
@@ -366,6 +378,14 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
         this.storage = storage;
     }
 
+    public boolean isDefaultExprHasLp() {
+        return defaultExprHasLp;
+    }
+
+    public void setDefaultExprHasLp(boolean defaultExprHasLp) {
+        this.defaultExprHasLp = defaultExprHasLp;
+    }
+
     @Override
     public boolean replace(SQLExpr expr, SQLExpr target) {
         if (defaultExpr == expr) {
@@ -404,7 +424,7 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
         private Integer minValue;
         private Integer maxValue;
 
-        public Identity(){
+        public Identity() {
 
         }
 
@@ -462,7 +482,7 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
             visitor.endVisit(this);
         }
 
-        public Identity clone () {
+        public Identity clone() {
             Identity x = new Identity();
             x.seed = seed;
             x.increment = increment;
@@ -490,7 +510,7 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
         SQLColumnDefinition x = new SQLColumnDefinition();
         x.setDbType(dbType);
 
-        if(name != null) {
+        if (name != null) {
             x.setName(name.clone());
         }
 
@@ -542,8 +562,13 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
             x.setAsExpr(asExpr.clone());
         }
 
+        if (generatedAlawsAs != null) {
+            x.setGeneratedAlawsAs(generatedAlawsAs.clone());
+        }
+
         x.stored = stored;
         x.virtual = virtual;
+        x.logical = logical;
 
         if (identity != null) {
             x.setIdentity(identity.clone());
@@ -594,6 +619,8 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
             }
         }
 
+        x.setDefaultExprHasLp(this.isDefaultExprHasLp());
+
         return x;
     }
 
@@ -609,7 +636,6 @@ public class SQLColumnDefinition extends SQLObjectImpl implements SQLTableElemen
         enable = null;
         validate = null;
         rely = null;
-
 
         if (this.name instanceof SQLIdentifierExpr) {
             SQLIdentifierExpr identExpr = (SQLIdentifierExpr) this.name;

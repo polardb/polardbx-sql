@@ -51,6 +51,7 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_UNKNO
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_TABLE_EXISTS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_UNKNOWN_TABLE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_VIOLATION;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 public class GenericPhyObjectRecorder {
 
@@ -126,7 +127,7 @@ public class GenericPhyObjectRecorder {
         }
 
         if (isCurrentPlanSuccessful()) {
-            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+            if (isRollBackRunning(ddlContext.getState())) {
                 recordObjectRollback();
             } else {
                 recordObjectNormal();
@@ -138,7 +139,7 @@ public class GenericPhyObjectRecorder {
         boolean successful = true;
 
         List<ExecutionContext.ErrorMessage> errorMessages =
-            (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
+            (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas().get(ExecutionContext.FAILED_MESSAGE);
 
         if (GeneralUtil.isNotEmpty(errorMessages)) {
             // Copy a new list to avoid conflict since original list may be updated concurrently.
@@ -153,16 +154,9 @@ public class GenericPhyObjectRecorder {
                         TStringUtil.containsIgnoreCase(pureErrorMessage, tableName)) {
                         // Check if we can ignore the error.
                         successful = checkIfIgnoreSqlStateAndErrorCode(null, errorMessage.getCode());
-                        if (successful) {
-                            // Record the error message for final determination.
-                            phyDdlExecutionRecord.addErrorIgnored(errorMessage);
-                        } else {
+                        if (!successful) {
                             // Check if the physical object is actually done.
                             successful = checkIfPhyObjectDoneByHashcode();
-                            if (successful) {
-                                // Record the error message for final determination.
-                                phyDdlExecutionRecord.addErrorIgnored(errorMessage);
-                            }
                         }
                     }
                 }
@@ -236,7 +230,7 @@ public class GenericPhyObjectRecorder {
 
         boolean exceptionIgnored = false;
 
-        if (t != null && ddlContext.getState() != DdlState.ROLLBACK_RUNNING) {
+        if (t != null && !isRollBackRunning(ddlContext.getState())) {
             if (t instanceof SQLException) {
                 SQLException e = (SQLException) t;
                 exceptionIgnored = checkIfIgnoreSqlStateAndErrorCode(e.getSQLState(), e.getErrorCode());
@@ -244,6 +238,10 @@ public class GenericPhyObjectRecorder {
                 TddlRuntimeException e = (TddlRuntimeException) t;
                 exceptionIgnored = checkIfIgnoreSqlStateAndErrorCode(e.getSQLState(), e.getErrorCode());
             }
+        }
+
+        if (!exceptionIgnored) {
+            exceptionIgnored = checkIfPhyObjectDoneByHashcode();
         }
 
         if (exceptionIgnored) {
@@ -285,7 +283,7 @@ public class GenericPhyObjectRecorder {
     protected boolean checkIfIgnoreSqlStateAndErrorCode(String sqlState, int errorCode) {
         boolean errorIgnored = false;
 
-        if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+        if (isRollBackRunning(ddlContext.getState())) {
             // Don't support idempotent rollback for now.
             switch (ddlContext.getDdlType()) {
             case CREATE_TABLE:

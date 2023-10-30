@@ -56,7 +56,6 @@ public final class PhyTableOperation extends BaseTableOperation {
     /**
      * List<String>: the physical table set used by one table partition sql(such join, e.g)
      * The list of List<String>: the table partition list of physical table set
-     *
      */
     private List<List<String>> tableNames;
     private Map<Integer, ParameterContext> param;
@@ -90,7 +89,7 @@ public final class PhyTableOperation extends BaseTableOperation {
      * </pre>
      */
     PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, CursorMeta cursorMeta,
-                             RelNode logicalPlan) {
+                      RelNode logicalPlan) {
         super(cluster, traitSet, rowType, cursorMeta, logicalPlan);
     }
 
@@ -143,7 +142,7 @@ public final class PhyTableOperation extends BaseTableOperation {
         }
 
         /**
-         * 由于 PhyTableOperation 的物理SQL对应的叁数化参数（即this.param）
+         * 由于 PhyTableOperation 的物理SQL对应的参数（即this.param）
          * 全部会在
          *  PhyTableScanBuilder 或 PhyTableScanBuilderForMpp 或 PhyTableModifyBuilder
          *  中计算完成，所以这里就不再需要依赖逻辑SQL级别的参数化参数（即传入参数 param）进行重新计算
@@ -154,7 +153,7 @@ public final class PhyTableOperation extends BaseTableOperation {
     @Override
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
                                                                            ExecutionContext executionContext) {
-        return getDbIndexAndParam(param, null , executionContext);
+        return getDbIndexAndParam(param, null, executionContext);
     }
 
     @Override
@@ -244,7 +243,7 @@ public final class PhyTableOperation extends BaseTableOperation {
                     } else {
                         valStr = v.toString();
                         if (v instanceof byte[]) {
-                            valStr =  "0x" + HexBin.encode((byte[]) v);
+                            valStr = "0x" + HexBin.encode((byte[]) v);
                         }
                     }
                     builder.append(valStr);
@@ -282,7 +281,6 @@ public final class PhyTableOperation extends BaseTableOperation {
         explainTermsForDisplay(writer);
         return super.toString() + String.format("@[%s]", writer.asString());
     }
-
 
     public long getExecMemCost() {
         return execMemCost;

@@ -20,22 +20,28 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement.ValuesClause;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class SQLInsertInto extends SQLStatementImpl implements SQLReplaceable {
-    protected SQLExprTableSource        tableSource;
-    protected final List<SQLExpr>       columns = new ArrayList<SQLExpr>();
-    protected transient String          columnsString;
-    protected transient long            columnsStringHash;
-    protected SQLSelect                 query;
-    protected final List<ValuesClause>  valuesList = new ArrayList<ValuesClause>();
-    protected boolean                   overwrite  = false;
-    protected List<SQLAssignItem>       partitions;
+    protected SQLExprTableSource tableSource;
+    protected final List<SQLExpr> columns = new ArrayList<SQLExpr>();
+    protected transient String columnsString;
+    protected transient long columnsStringHash;
+    protected SQLSelect query;
+    protected final List<ValuesClause> valuesList = new ArrayList<ValuesClause>();
+    protected boolean overwrite = false;
+    protected List<SQLAssignItem> partitions;
 
-    public SQLInsertInto(){
+    public SQLInsertInto() {
 
     }
 
@@ -143,7 +149,7 @@ public abstract class SQLInsertInto extends SQLStatementImpl implements SQLRepla
     public List<SQLExpr> getColumns() {
         return columns;
     }
-    
+
     public void addColumn(SQLExpr column) {
         if (column != null) {
             column.setParent(this);
@@ -165,7 +171,7 @@ public abstract class SQLInsertInto extends SQLStatementImpl implements SQLRepla
             valuesList.set(0, values);
         }
     }
-    
+
     public List<ValuesClause> getValuesList() {
         return valuesList;
     }
@@ -212,6 +218,14 @@ public abstract class SQLInsertInto extends SQLStatementImpl implements SQLRepla
 
     public List<SQLAssignItem> getPartitions() {
         return partitions;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        if (query != null) {
+            return SqlType.INSERT_INTO_SELECT;
+        }
+        return SqlType.INSERT;
     }
 
 }

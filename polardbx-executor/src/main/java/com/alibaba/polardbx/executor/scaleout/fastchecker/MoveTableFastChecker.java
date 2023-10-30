@@ -19,18 +19,17 @@ package com.alibaba.polardbx.executor.scaleout.fastchecker;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
-import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
-import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,23 +41,32 @@ import java.util.stream.Collectors;
  * @author luoyanxin
  */
 public class MoveTableFastChecker extends FastChecker {
-    public MoveTableFastChecker(String schemaName, String srcLogicalTableName, Map<String, String> sourceTargetGroup,
+    public MoveTableFastChecker(String schemaName, String srcLogicalTableName, String dstLogicalTableName,
                                 Map<String, Set<String>> srcPhyDbAndTables, Map<String, Set<String>> dstPhyDbAndTables,
-                                List<String> srcColumns,
+                                List<String> srcColumns, List<String> dstColumns, List<String> srcPks,
+                                List<String> dstPks, long parallelism, int lockTimeOut,
                                 PhyTableOperation planSelectHashCheckSrc,
+                                PhyTableOperation planSelectHashCheckWithUpperBoundSrc,
+                                PhyTableOperation planSelectHashCheckWithLowerBoundSrc,
+                                PhyTableOperation planSelectHashCheckWithLowerUpperBoundSrc,
                                 PhyTableOperation planSelectHashCheckDst,
+                                PhyTableOperation planSelectHashCheckWithUpperBoundDst,
+                                PhyTableOperation planSelectHashCheckWithLowerBoundDst,
+                                PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst,
                                 PhyTableOperation planIdleSelectSrc, PhyTableOperation planIdleSelectDst,
-                                long parallelism, int lockTimeOut) {
-        super(schemaName, srcLogicalTableName, srcLogicalTableName, sourceTargetGroup, srcPhyDbAndTables,
-            dstPhyDbAndTables,
-            srcColumns, srcColumns, planSelectHashCheckSrc, planSelectHashCheckDst, planIdleSelectSrc,
-            planIdleSelectDst, parallelism, lockTimeOut);
+                                PhyTableOperation planSelectSampleSrc, PhyTableOperation planSelectSampleDst) {
+        super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, null, srcPhyDbAndTables,
+            dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, parallelism, lockTimeOut, planSelectHashCheckSrc,
+            planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
+            planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
+            planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
     }
 
     public static FastChecker create(String schemaName, String tableName, Map<String, String> sourceTargetGroup,
                                      Map<String, Set<String>> srcPhyDbAndTables,
-                                     Map<String, Set<String>> dstPhyDbAndTables,
-                                     long parallelism, ExecutionContext ec) {
+                                     Map<String, Set<String>> dstPhyDbAndTables, long parallelism,
+                                     ExecutionContext ec) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta tableMeta = sm.getTable(tableName);
 
@@ -66,44 +74,36 @@ public class MoveTableFastChecker extends FastChecker {
             throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, "Incorrect SCALEOUT relationship.");
         }
 
-        final List<String> allColumns = tableMeta.getAllColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
+        final List<String> allColumns =
+            tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
+
+        // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
+        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMeta, ec);
 
         if (parallelism <= 0) {
-            parallelism = Math.max(PriorityWorkQueue.getInstance().getCorePoolSize() / 2, 1);
+            parallelism = Math.max(BackFillThreadPool.getInstance().getCorePoolSize() / 2, 1);
         }
 
         final int lockTimeOut = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_LOCK_TIMEOUT);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
-        return new MoveTableFastChecker(schemaName, tableName, sourceTargetGroup, srcPhyDbAndTables,
-            dstPhyDbAndTables, allColumns,
-            builder.buildSelectHashCheckForChecker(tableMeta, allColumns),
-            builder.buildSelectHashCheckForChecker(tableMeta, allColumns),
+        return new MoveTableFastChecker(schemaName, tableName, tableName, srcPhyDbAndTables, dstPhyDbAndTables,
+            allColumns, allColumns, pks, pks, parallelism, lockTimeOut,
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, true),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, true, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, true, true),
+
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, true),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, true, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, true, true),
+
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
-            parallelism, lockTimeOut);
-    }
 
-    @Override
-    public boolean check(ExecutionContext baseEc) {
-        boolean tsoCheckResult = tsoCheck(baseEc);
-        if (tsoCheckResult) {
-            return true;
-        } else {
-            SQLRecorderLogger.ddlLogger
-                .warn(MessageFormat.format("[{0}] FastChecker with TsoCheck failed, begin XaCheck",
-                    baseEc.getTraceId()));
-        }
-
-        /**
-         * When tsoCheck is failed, bypath to use old checker directly.
-         * because xaCheck of scaleout/gsi is easily to caused deadlock by using lock tables
-         */
-        //boolean xaCheckResult = xaCheckForHeterogeneousTable(baseEc);
-        return tsoCheckResult;
+            builder.buildSqlSelectForSample(tableMeta, pks, pks, false, false),
+            builder.buildSqlSelectForSample(tableMeta, pks, pks, false, false));
     }
 }

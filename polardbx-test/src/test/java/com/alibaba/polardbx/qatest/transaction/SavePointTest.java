@@ -42,13 +42,13 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 
 public class SavePointTest extends CrudBasedLockTestCase {
 
+    public SavePointTest(String baseOneTableName) {
+        this.baseOneTableName = baseOneTableName;
+    }
+
     @Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepareData() {
         return Arrays.asList(ExecuteTableName.allBaseTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));
-    }
-
-    public SavePointTest(String baseOneTableName) {
-        this.baseOneTableName = baseOneTableName;
     }
 
     @Before
@@ -114,11 +114,51 @@ public class SavePointTest extends CrudBasedLockTestCase {
             tddlConnection);
     }
 
+    private void testSavePoint2(ITransactionPolicy trxPolicy, Object pk) throws Exception {
+        tddlConnection.setAutoCommit(false);
+        mysqlConnection.setAutoCommit(false);
+
+        JdbcUtil.setTxPolicy(trxPolicy, tddlConnection);
+
+        Savepoint tddlSavePoint = tddlConnection.setSavepoint();
+        Savepoint mysqlSavePoint = mysqlConnection.setSavepoint();
+
+        executeOnMysqlAndTddl(mysqlConnection,
+            tddlConnection,
+            "UPDATE " + baseOneTableName + " SET integer_test = 2 WHERE pk = ?",
+            Arrays.asList(pk),
+            true);
+
+        selectContentSameAssert("SELECT integer_test FROM " + baseOneTableName + "  WHERE pk = ?",
+            Arrays.asList(pk),
+            mysqlConnection,
+            tddlConnection);
+
+        tddlConnection.rollback(tddlSavePoint);
+        mysqlConnection.rollback(mysqlSavePoint);
+
+        tddlConnection.releaseSavepoint(tddlSavePoint);
+        mysqlConnection.releaseSavepoint(mysqlSavePoint);
+
+        tddlConnection.commit();
+        mysqlConnection.commit();
+        tddlConnection.setAutoCommit(true);
+        mysqlConnection.setAutoCommit(true);
+
+        selectContentSameAssert("SELECT integer_test FROM " + baseOneTableName + "  WHERE pk = ?",
+            Arrays.asList(pk),
+            mysqlConnection,
+            tddlConnection);
+    }
+
     @Test
     public void testOnXA() throws Exception {
         if (!JdbcUtil.supportXA(tddlConnection)) {
             return;
         }
         testSavePoint(ITransactionPolicy.XA, 3);
+        testSavePoint(ITransactionPolicy.TSO, 3);
+        testSavePoint2(ITransactionPolicy.XA, 3);
+        testSavePoint2(ITransactionPolicy.TSO, 3);
     }
 }

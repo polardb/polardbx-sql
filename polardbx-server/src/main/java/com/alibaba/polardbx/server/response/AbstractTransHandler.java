@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -39,18 +39,18 @@ public abstract class AbstractTransHandler {
         this.c = c;
     }
 
-    public void execute() {
+    public boolean execute() {
         schema = c.getSchema();
 
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
-            return;
+            return false;
         }
 
         SchemaConfig schemaConfig = c.getSchemaConfig();
         if (schemaConfig == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + schema + "'");
-            return;
+            return false;
         }
 
         TDataSource ds = schemaConfig.getDataSource();
@@ -59,7 +59,7 @@ public abstract class AbstractTransHandler {
                 ds.init();
             } catch (Throwable e) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
+                return false;
             }
         }
 
@@ -67,15 +67,15 @@ public abstract class AbstractTransHandler {
         ITransactionManager tm = executorContext.getTransactionManager();
         if (!(tm instanceof TransactionManager)) {
             c.writeErrMessage(ErrorCode.ERR_TRANS, "Unsupported for '" + schema + "'");
-            return;
+            return false;
         }
 
         transactionManager = ((TransactionManager) tm);
         globalTxLogManager = transactionManager.getGlobalTxLogManager();
 
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
-        doExecute();
+        return doExecute();
     }
 
-    protected abstract void doExecute();
+    protected abstract boolean doExecute();
 }

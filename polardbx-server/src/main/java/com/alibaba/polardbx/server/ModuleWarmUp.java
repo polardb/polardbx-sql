@@ -59,7 +59,7 @@ public class ModuleWarmUp {
         Module.SPM.register(PlanManager.getInstance());
 
         if (!ConfigDataMode.isFastMock()) {
-            Module.SCHEDULE_JOB.register(ScheduledJobsManager.getINSTANCE());
+            Module.SCHEDULE_JOB.register(ScheduledJobsManager.getInstance());
         }
         Module.MODULE_LOG.register(ModuleLogInfo.getInstance());
     }

@@ -18,6 +18,7 @@ package org.apache.calcite.rex;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
@@ -42,13 +43,16 @@ import org.apache.calcite.rex.RexTableInputRef.RelTableRef;
 import org.apache.calcite.runtime.PredicateImpl;
 import org.apache.calcite.schema.Schemas;
 import org.apache.calcite.sql.*;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.fun.SqlCaseOperator;
 import org.apache.calcite.sql.fun.SqlCastFunction;
 import org.apache.calcite.sql.fun.SqlLikeOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.sql2rel.CorrelationReferenceFinder;
 import org.apache.calcite.util.ControlFlowException;
@@ -61,6 +65,7 @@ import org.apache.http.protocol.ExecutionContext;
 
 import javax.annotation.Nonnull;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Utility methods concerning row-expressions.
@@ -2557,6 +2562,16 @@ public class RexUtil {
       return null;
     }
 
+    @Override
+    public Void visitSubQuery(RexSubQuery subQuery){
+      if(subQuery.getRel()!=null){
+        accessFieldDeeperFinder.go(subQuery.getRel());
+        this.fieldAccessList.addAll(accessFieldDeeperFinder.accessFiledFinder.getFieldAccessList());
+      }
+      super.visitSubQuery(subQuery);
+      return null;
+    }
+
     public List<RexFieldAccess> getFieldAccessList() {
       return fieldAccessList;
     }
@@ -3376,6 +3391,111 @@ public class RexUtil {
       }
       return super.visitCall(call);
     }
+  }
+
+  /**
+   * Returns whether a given tree contains any un-pushable function
+   *
+   * @param node a RexNode tree
+   */
+  public static boolean containsUnPushableFunction(
+      RexNode node, boolean postPlanner) {
+    if (node == null) {
+      return false;
+    }
+    // test if the root of RexNode tree is IMPLICIT_CAST.
+    if (RexUtil.containsRootImplicitCast(node)) {
+      return true;
+    }
+
+    try {
+      RexVisitor<Void> visitor =
+          new RexVisitorImpl<Void>(true) {
+            public Void visitCall(RexCall call) {
+              if (!call.op.canPushDown()) {
+                throw new Util.FoundOne(call);
+              }
+              if (call instanceof RexOver) {
+                throw new Util.FoundOne(call);
+              }
+              super.visitCall(call);
+              return null;
+            }
+          };
+      node.accept(visitor);
+      return false;
+    } catch (Util.FoundOne e) {
+      Util.swallow(e, null);
+      return true;
+    }
+  }
+
+  /**
+   * Serialize the index node as a List of strings.
+   */
+  public static List<String> seriIndexHint(SqlNode indexNode) {
+    if (indexNode == null) {
+      return null;
+    }
+    List<String> rs = Lists.newArrayList();
+    if (indexNode instanceof SqlNodeList) {
+      for (SqlNode sqlNode : ((SqlNodeList) indexNode).getList()) {
+        if (sqlNode instanceof SqlIndexHint) {
+          List<String> indexNames = new ArrayList<>();
+          for (SqlNode s : ((SqlIndexHint) sqlNode).getIndexList().getList()) {
+            String indexName = s.toSqlString(MysqlSqlDialect.DEFAULT).toString().trim();
+            if (indexName.charAt(0) == '\'' &&
+                indexName.charAt(indexName.length() - 1) == '\''
+                && indexName.length() > 2) {
+              indexName = indexName.substring(1, indexName.length() - 1);
+            }
+            indexNames.add(indexName);
+          }
+
+          rs.add(((SqlIndexHint) sqlNode).getIndexKind().toUpperCase(Locale.ROOT) +
+              String.join(",", indexNames.toArray(new String[0])));
+        }
+      }
+    }
+    return rs;
+  }
+
+  /**
+   * Deserialize the strings into an index node.
+   */
+  public static SqlNode deSeriIndexHint(List<String> indexLines) {
+    if (indexLines == null) {
+      return null;
+    }
+    SqlNodeList indexNodes = new SqlNodeList(SqlParserPos.ZERO);
+    for (String line : indexLines) {
+      if (StringUtils.isEmpty(line)) {
+        continue;
+      }
+      line = line.toUpperCase(Locale.ROOT);
+      String indexKind;
+      String left;
+      if (line.startsWith("USE INDEX")) {
+        indexKind = "USE INDEX";
+      } else if (line.startsWith("IGNORE INDEX")) {
+        indexKind = "IGNORE INDEX";
+      } else if (line.startsWith("FORCE INDEX")) {
+        indexKind = "FORCE INDEX";
+      } else {
+        continue;
+      }
+      left = line.substring(indexKind.length());
+      SqlIndexHint sqlIndexHint =
+          new SqlIndexHint(SqlLiteral.createCharString(indexKind, SqlParserPos.ZERO),
+              null,
+              new SqlNodeList(
+                  Arrays.stream(left.split(",")).map(x -> SqlLiteral.createCharString(x, SqlParserPos.ZERO))
+                      .collect(Collectors.toList()),
+                  SqlParserPos.ZERO),
+              SqlParserPos.ZERO);
+      indexNodes.add(sqlIndexHint);
+    }
+    return indexNodes;
   }
 }
 

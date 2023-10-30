@@ -16,15 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
+import org.apache.calcite.plan.DeriveMode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.PhysicalNode;
+import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -35,11 +39,15 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexLiteral;
+import org.apache.calcite.util.Pair;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class SortWindow extends Window {
+import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.CPU_START_UP_COST;
+
+public class SortWindow extends Window implements PhysicalNode {
 
     public SortWindow(RelOptCluster cluster,
                       RelTraitSet traitSet,
@@ -132,10 +140,19 @@ public class SortWindow extends Window {
             return planner.getCostFactory().makeHugeCost();
         }
 
-        final double memory = MemoryEstimator.estimateRowSizeInHashTable(getRowType()) * mq.getRowCount(this);
-        final double hashAggWeight = CostModelWeight.INSTANCE.getHashAggWeight();
-
-        return planner.getCostFactory().makeCost(rowCount, rowCount * hashAggWeight, memory, 0, 0);
+        final double weight;
+        if (!groups.get(0).keys.isEmpty()) {
+            weight = CostModelWeight.INSTANCE.getSortWindowWeight();
+        } else {
+            // makes it prefer to HashWindow when there is only one group (aka. scalar aggregate)
+            weight = CostModelWeight.INSTANCE.getHashAggWeight() * 1.1;
+        }
+        final double useAggSize =
+            groups.get(0).aggCalls.stream().filter(x -> x.op.kind != SqlKind.__FIRST_VALUE
+                && x.op.getKind() != SqlKind.FIRST_VALUE).count();
+        // 1 for grouping
+        final double cpu = CPU_START_UP_COST + rowCount * weight * (1 + useAggSize);
+        return planner.getCostFactory().makeCost(rowCount, cpu, 0, 0, 0);
     }
 
     @Override
@@ -146,6 +163,63 @@ public class SortWindow extends Window {
             .item("rowType", rowType)
             .item("groups", groups);
         return relWriter;
+    }
+
+    @Override
+    public Pair<RelTraitSet, List<RelTraitSet>> passThroughTraits(
+        final RelTraitSet required) {
+        return sortWindowPassThroughTraits(required, this);
+    }
+
+    public static Pair<RelTraitSet, List<RelTraitSet>> sortWindowPassThroughTraits(final RelTraitSet required,
+                                                                                   SortWindow sortWindow) {
+        // same convention
+        if (required.getConvention() != sortWindow.getConvention()) {
+            return null;
+        }
+
+        if (required.getConvention() == MppConvention.INSTANCE) {
+            return null;
+        }
+
+        if (sortWindow.groups.size() != 1) {
+            return null;
+        }
+
+        Group group = sortWindow.groups.get(0);
+
+        // without partition by
+        if (group.keys.cardinality() > 0) {
+            return null;
+        }
+
+        if (group.orderKeys.satisfies(required.getCollation())) {
+            return Pair.of(
+                required, ImmutableList.of(sortWindow.getInput().getTraitSet().replace(
+                    required.getTrait(RelDistributionTraitDef.INSTANCE))));
+        }
+
+        return null;
+    }
+
+    @Override
+    public Pair<RelTraitSet, List<RelTraitSet>> deriveTraits(final RelTraitSet childTraits, final int childId) {
+        return sortWindowDeriveTraits(childTraits, childId, getTraitSet(), getInput());
+    }
+
+    public static Pair<RelTraitSet, List<RelTraitSet>> sortWindowDeriveTraits(final RelTraitSet childTraits,
+                                                                              final int childId,
+                                                                              final RelTraitSet joinTraits,
+                                                                              RelNode child) {
+        if (childTraits.getConvention() == MppConvention.INSTANCE) {
+
+        }
+        return null;
+    }
+
+    @Override
+    public DeriveMode getDeriveMode() {
+        return DeriveMode.BOTH;
     }
 
 }

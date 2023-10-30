@@ -27,6 +27,7 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class BinaryArithmeticRandomTest extends NumericTestBase {
 
     final String col1;

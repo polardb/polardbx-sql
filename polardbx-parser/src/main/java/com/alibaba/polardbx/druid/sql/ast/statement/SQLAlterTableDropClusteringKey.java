@@ -33,7 +33,7 @@ public class SQLAlterTableDropClusteringKey extends SQLObjectImpl implements SQL
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
-        if(visitor.visit(this)) {
+        if (visitor.visit(this)) {
             acceptChild(visitor, keyName);
         }
         visitor.endVisit(this);

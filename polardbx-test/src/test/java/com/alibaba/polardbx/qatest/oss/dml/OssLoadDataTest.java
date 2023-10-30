@@ -7,6 +7,7 @@ import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.FileWriter;
@@ -41,6 +42,7 @@ public class OssLoadDataTest extends BaseTestCase {
         this.polardbXConnection = getPolardbxConnection();
     }
 
+    @Ignore("Not compatible with cdc")
     @Test
     public void testLoadData() throws Exception {
         if (PropertiesUtil.usePrepare()) {

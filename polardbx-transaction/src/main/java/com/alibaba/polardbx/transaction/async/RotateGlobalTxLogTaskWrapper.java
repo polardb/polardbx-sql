@@ -32,6 +32,7 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.TimerTask;
 
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_PURGE_TRANS_PARAM;
@@ -43,17 +44,14 @@ public class RotateGlobalTxLogTaskWrapper extends BaseTimerTaskWrapper {
     private static final String DELAY = "DELAY";
     private static final String SCHEMA = "SCHEMA";
 
-    private final Map<String, Object> properties;
     private final String schemaName;
-    private final AsyncTaskQueue asyncTaskQueue;
     private final TransactionExecutor executor;
 
     public RotateGlobalTxLogTaskWrapper(Map<String, Object> properties, String schemaName,
                                         AsyncTaskQueue asyncTaskQueue,
                                         TransactionExecutor executor) {
-        this.properties = properties;
+        super(properties, asyncTaskQueue);
         this.schemaName = schemaName;
-        this.asyncTaskQueue = asyncTaskQueue;
         this.executor = executor;
         // Enable an active task when this timer task wrapper is created.
         resetTask();
@@ -96,6 +94,11 @@ public class RotateGlobalTxLogTaskWrapper extends BaseTimerTaskWrapper {
     }
 
     @Override
+    protected Set<String> getParamsDef() {
+        return MODIFIABLE_PURGE_TRANS_PARAM;
+    }
+
+    @Override
     public TimerTask createTask(Map<String, String> newParam) {
         if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return null;
@@ -111,7 +114,7 @@ public class RotateGlobalTxLogTaskWrapper extends BaseTimerTaskWrapper {
         try {
             parsed = AsyncTaskUtils.parseTimeInterval(purgeStartTime);
         } catch (Exception ex) {
-            TransactionLogger.info("Failed to parse purgeStartTime: " + purgeStartTime);
+            TransactionLogger.warn("Failed to parse purgeStartTime: " + purgeStartTime);
         }
 
         final Calendar startTime = Calendar.getInstance();
@@ -173,7 +176,8 @@ public class RotateGlobalTxLogTaskWrapper extends BaseTimerTaskWrapper {
         return asyncTaskQueue.scheduleAutoCleanTask(purgeInterval, Math.max(0, delay), getTask(task));
     }
 
-    private Map<String, String> getNewParams() {
+    @Override
+    protected Map<String, String> getNewParams() {
         final Map<String, String> newParam = new HashMap<>(8);
         ParamManager paramManager = new ParamManager(properties);
         newParam.put(ConnectionProperties.PURGE_TRANS_START_TIME,
@@ -185,7 +189,8 @@ public class RotateGlobalTxLogTaskWrapper extends BaseTimerTaskWrapper {
         return newParam;
     }
 
-    private static void validateParams(Map<String, String> newParam) {
+    @Override
+    protected void validateParams(Map<String, String> newParam) {
         for (Map.Entry<String, String> keyAndVal : newParam.entrySet()) {
             final String key = keyAndVal.getKey();
             final String val = keyAndVal.getValue();

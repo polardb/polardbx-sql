@@ -22,9 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
-import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
-import com.alibaba.polardbx.transaction.TransactionConnectionHolder;
 
 import java.util.Collection;
 
@@ -58,7 +56,7 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
         final long beforeTxid = IdGenerator.assembleId(beforeTimeMillis, 0, 0);
 
         for (ITransaction tran : transactions) {
-            if (!tran.isDistributed()) {
+            if (!tran.isDistributed() || tran.isAsyncCommit()) {
                 continue;
             }
             // Do deadlock detection only for transactions that take longer than 1s.
@@ -69,13 +67,13 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
             final String sql = tran.getExecutionContext().getOriginSql();
             final String truncatedSql = (sql == null) ? "" : sql.substring(0, Math.min(sql.length(), 4096));
 
-            ((TransactionConnectionHolder) tran.getConnectionHolder()).handleConnIds((group, connId) -> {
+            tran.getConnectionHolder().handleConnIds((group, connId) -> {
                 result.addRow(new Object[] {
                     tran.getId(),
                     group,
                     connId,
                     frontendConnId,
-                    tran.getStartTime(),
+                    tran.getStartTimeInMs(),
                     truncatedSql});
             });
         }

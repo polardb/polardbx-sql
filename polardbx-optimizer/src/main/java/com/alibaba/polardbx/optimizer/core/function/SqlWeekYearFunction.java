@@ -31,7 +31,7 @@ public class SqlWeekYearFunction extends SqlFunction {
         super(
             funcName,
             SqlKind.OTHER_FUNCTION,
-            ReturnTypes.INTEGER,
+            ReturnTypes.BIGINT_NULLABLE,
             null,
             OperandTypes
                 .or(OperandTypes.family(SqlTypeFamily.ANY), OperandTypes.family(SqlTypeFamily.ANY, SqlTypeFamily.ANY)),

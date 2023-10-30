@@ -38,7 +38,7 @@ import java.util.List;
 
 @Getter
 @TaskName(name = "ArchiveOSSTableDataWithPauseTask")
-public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask{
+public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask {
 
     @JSONCreator
     public ArchiveOSSTableDataWithPauseTask(String schemaName, String logicalTableName, String loadTableSchema,
@@ -55,6 +55,11 @@ public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask{
     }
 
     @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+        updateSupportedCommands(true, true, null);
+    }
+
+    @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
 
@@ -63,7 +68,8 @@ public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask{
             protected Integer invoke() {
                 // rollback unfinished files
                 List<FilesRecord> files = filesAccessor.queryUncommitted(getTaskId(), schemaName, logicalTableName);
-                List<ColumnMetasRecord> columnMetas = columnMetaAccessor.queryUncommitted(getTaskId(), schemaName, logicalTableName);
+                List<ColumnMetasRecord> columnMetas =
+                    columnMetaAccessor.queryUncommitted(getTaskId(), schemaName, logicalTableName);
                 deleteUncommitted(files, columnMetas);
                 filesAccessor.deleteUncommited(getTaskId(), schemaName, logicalTableName);
                 columnMetaAccessor.deleteUncommitted(getTaskId(), schemaName, logicalTableName);
@@ -84,4 +90,7 @@ public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask{
         fileStorageBackFillAccessor.deleteFileBackfillMeta(getTaskId());
     }
 
+    protected String remark() {
+        return String.format("|%s.%s.%s", loadTableSchema, loadTableName, physicalPartitionName);
+    }
 }

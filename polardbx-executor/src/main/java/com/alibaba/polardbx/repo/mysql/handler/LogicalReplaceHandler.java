@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupKey;
@@ -59,7 +62,6 @@ import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -86,12 +88,22 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
     @Override
     protected int doExecute(LogicalInsert insert, ExecutionContext executionContext,
                             LogicalInsert.HandlerParams handlerParams) {
+        // Need auto-savepoint only when auto-commit = 0.
+        executionContext.setNeedAutoSavepoint(!executionContext.isAutoCommit());
+
         final LogicalReplace replace = (LogicalReplace) insert;
         final String schemaName = replace.getSchemaName();
         final String tableName = replace.getLogicalTableName();
         final RelNode input = replace.getInput();
         final TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         final boolean isBroadcast = or.isBroadCast(tableName);
+
+        if (replace.isUkContainGeneratedColumn()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "REPLACE on table having VIRTUAL/STORED generated column in unique key");
+        }
+
+        final boolean checkForeignKey = executionContext.foreignKeyChecks();
 
         int affectRows = 0;
         if (input instanceof LogicalDynamicValues) {
@@ -146,6 +158,11 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             final List<DuplicateCheckResult> classifiedRows = new ArrayList<>(
                 bindInsertRows(replace, selectedRows, batchParams, convertedValues, executionContext,
                     usePartFieldChecker));
+
+            if (checkForeignKey) {
+                // Do need to check Pk for replace
+                beforeInsertCheck(replace, classifiedRows, false, true, executionContext);
+            }
 
             try {
                 if (gsiConcurrentWrite) {
@@ -374,32 +391,38 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             final Map<Integer, ParameterContext> newValue = pair.right;
 
             final Mapping skSourceMapping = rw.getIdentifierKeySourceMapping();
-            final Object[] sourceSkValue = Mappings.permute(oldValue, skSourceMapping).toArray();
+            final List<Object> sourceSkValue = Mappings.permute(oldValue, skSourceMapping);
 
             final List<RexNode> targetSkRex = Mappings.permute(rexRow, skSourceMapping);
-            final Object[] targetSkValue =
-                targetSkRex.stream().map(rex -> RexUtils.getValueFromRexNode(rex, executionContext, newValue))
-                    .toArray();
+            final List<Object> targetSkValue =
+                targetSkRex.stream().map(rex -> RexUtils.getValueFromRexNode(rex, executionContext, newValue)).collect(
+                    Collectors.toList());
             final List<ColumnMeta> skMetas = rw.getIdentifierKeyMetas();
 
             if (usePartFieldChecker) {
                 try {
-                    final NewGroupKey sourceSkGk = new NewGroupKey(Arrays.asList(sourceSkValue),
-                        skMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()), skMetas,
+                    final NewGroupKey sourceSkGk = new NewGroupKey(sourceSkValue,
+                        skMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()), skMetas, true,
+                        executionContext);
+                    final NewGroupKey targetSkGk = new NewGroupKey(targetSkValue,
+                        targetSkValue.stream().map(DataTypeUtil::getTypeOfObject).collect(Collectors.toList()), skMetas,
                         true, executionContext);
-                    final NewGroupKey targetSkGk = new NewGroupKey(Arrays.asList(targetSkValue),
-                        targetSkRex.stream().map(rx -> DataTypeUtil.calciteToDrdsType(rx.getType()))
-                            .collect(Collectors.toList()), skMetas, true, executionContext);
 
                     return sourceSkGk.equals(targetSkGk);
                 } catch (Throwable e) {
-                    // Maybe value can not be cast, just use DELETE + INSERT to be safe
-                    LoggerFactory.getLogger(LogicalReplaceHandler.class).warn("new sk checker failed, cause by " + e);
+                    if (!rw.printed &&
+                        executionContext.getParamManager().getBoolean(ConnectionParams.DML_PRINT_CHECKER_ERROR)) {
+                        // Maybe value can not be cast, just use DELETE + INSERT to be safe
+                        EventLogger.log(EventType.DML_ERROR,
+                            executionContext.getTraceId() + " new sk checker failed, cause by " + e);
+                        LoggerFactory.getLogger(LogicalReplaceHandler.class).warn(e);
+                        rw.printed = true;
+                    }
                 }
                 return false;
             } else {
-                final GroupKey sourceSkGk = new GroupKey(sourceSkValue, skMetas);
-                final GroupKey targetSkGk = new GroupKey(targetSkValue, skMetas);
+                final GroupKey sourceSkGk = new GroupKey(sourceSkValue.toArray(), skMetas);
+                final GroupKey targetSkGk = new GroupKey(targetSkValue.toArray(), skMetas);
 
                 // GroupKey(NULL).equals(GroupKey(NULL)) returns true
                 return sourceSkGk.equals(targetSkGk);
@@ -457,7 +480,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
             // Build row value for future duplicate check
             final DuplicateCheckRow newCheckRow = new DuplicateCheckRow();
-            newCheckRow.after = buildRowValue(rexRow, null, newRow);
+            newCheckRow.after = buildRowValue(rexRow, null, newRow, executionContext);
             newCheckRow.duplicated = duplicated;
             newCheckRow.doInsert = !duplicated;
             newCheckRow.insertParam = newRow;
@@ -693,6 +716,24 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         });
 
         return result;
+    }
+
+    protected void beforeInsertCheck(LogicalInsert logicalInsert, List<DuplicateCheckResult> classifiedRows,
+                                     boolean checkPk, boolean checkFk, ExecutionContext executionContext) {
+        LogicalDynamicValues input = RelUtils.getRelInput(logicalInsert);
+        final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
+        List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
+            Collectors.toList());
+        List<List<Object>> values = new ArrayList<>();
+
+        for (DuplicateCheckResult classifiedRow : classifiedRows) {
+            if (classifiedRow.insertParam.isEmpty()) {
+                continue;
+            }
+            values.add(buildRowValue(rexRow, null, classifiedRow.insertParam, executionContext));
+        }
+
+        beforeInsertCheck(logicalInsert, values, insertColumns, checkPk, checkFk, executionContext);
     }
 
     private static class DuplicateCheckRow {

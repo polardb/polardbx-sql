@@ -34,6 +34,7 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
     protected static final String COL_UTF8MB4_GENERAL_CI = "v_utf8mb4_general_ci";
     protected static final String COL_UTF8MB4_BIN = "v_utf8mb4_bin";
     protected static final String COL_UTF8MB4_UNICODE_CI = "v_utf8mb4_unicode_ci";
+    protected static final String COL_UTF8MB4_UNICODE_520_CI = "v_utf8mb4_unicode_520_ci";
     protected static final String COL_UTF8_GENERAL_CI = "v_utf8_general_ci";
     protected static final String COL_UTF8_BIN = "v_utf8_bin";
     protected static final String COL_UTF8_UNICODE_CI = "v_utf8_unicode_ci";
@@ -52,6 +53,9 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
     protected static final String COL_UTF16_UNICODE_CI = "v_utf16_unicode_ci";
     protected static final String COL_GBK_CHINESE_CI = "v_gbk_chinese_ci";
     protected static final String COL_GBK_BIN = "v_gbk_bin";
+    protected static final String COL_GB18030_CHINESE_CI = "v_gb18030_chinese_ci";
+    protected static final String COL_GB18030_BIN = "v_gb18030_bin";
+    protected static final String COL_GB18030_UNICODE_520_CI = "v_gb18030_unicode_520_ci";
 
     protected static final int STRING_SIZE = 1 << 10;
     protected static final int CHARACTER_SIZE = 5;
@@ -80,6 +84,7 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
         + "    v_utf8mb4 varchar(255) character set utf8mb4 not null default 'abc',\n"
         + "    v_utf8mb4_general_ci varchar(255) character set utf8mb4 collate utf8mb4_general_ci not null default 'abc',\n"
         + "    v_utf8mb4_unicode_ci varchar(255) character set utf8mb4 collate utf8mb4_unicode_ci not null default 'abc',\n"
+        + "    v_utf8mb4_unicode_520_ci varchar(255) character set utf8mb4 collate utf8mb4_unicode_520_ci not null default 'abc',\n"
         + "    v_utf8mb4_bin varchar(255) character set utf8mb4 collate utf8mb4_bin not null default 'abc',\n"
         + "    v_binary varchar(255) character set binary not null default 'abc',\n"
         + "    v_ascii_bin varchar(255) character set ascii collate ascii_bin not null default 'abc',\n"
@@ -108,6 +113,10 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
         + "    v_gbk varchar(255) character set gbk not null default 'abc',\n"
         + "    v_gbk_chinese_ci varchar(255) character set gbk collate gbk_chinese_ci not null default 'abc',\n"
         + "    v_gbk_bin varchar(255) character set gbk collate gbk_bin not null default 'abc',\n"
+        + "    v_gb18030 varchar(255) character set gb18030 not null default 'abc',\n"
+        + "    v_gb18030_chinese_ci varchar(255) character set gb18030 collate gb18030_chinese_ci not null default 'abc',\n"
+        + "    v_gb18030_bin varchar(255) character set gb18030 collate gb18030_bin not null default 'abc',\n"
+        + "    v_gb18030_unicode_520_ci varchar(255) character set gb18030 collate gb18030_unicode_520_ci not null default 'abc',\n"
         + "    v_big5 varchar(255) character set big5 not null default 'abc',\n"
         + "    v_big5_chinese_ci varchar(255) character set big5 collate big5_chinese_ci not null default 'abc',\n"
         + "    v_big5_bin varchar(255) character set big5 collate big5_bin not null default 'abc'\n"
@@ -124,7 +133,8 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
     protected static final String JOIN_SQL_FORMAT =
         "/*+TDDL:ENABLE_PUSH_JOIN=false*/select hex(a.%s), hex(b.%s) from %s a inner join %s b where a.%s = b.%s";
 
-    protected static final String INSTR_SQL_FORMAT = "select %s from %s order by %s, hex(%s)";
+    protected static final String INSTR_SQL_FORMAT =
+        "/*+TDDL:ENABLE_PUSH_PROJECT=false*/select %s from %s order by %s, hex(%s)";
 
     @Before
     public void preparMySQLTable() {
@@ -191,6 +201,22 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
             sb.append(", ");
             sb.append(literal);
             sb.append("),");
+        }
+        String instrs = sb.substring(0, sb.length() - 1);
+        insertStrings(bytesList, col);
+        String selectSql = String.format(INSTR_SQL_FORMAT, instrs, table, col, col);
+
+        selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);
+    }
+
+    protected void testInstrRaw(List<byte[]> bytesList, List<byte[]> subStrs, String col) {
+        StringBuilder sb = new StringBuilder();
+        for (byte[] bs : subStrs) {
+            sb.append("instr(");
+            sb.append(col);
+            sb.append(", '");
+            sb.append((new String(bs)).replace("\\", "\\\\").replace("'", "\\'"));
+            sb.append("'),");
         }
         String instrs = sb.substring(0, sb.length() - 1);
         insertStrings(bytesList, col);

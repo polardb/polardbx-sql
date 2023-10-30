@@ -31,6 +31,7 @@ import java.util.StringJoiner;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class DataXSpecialTest extends CrudBasedLockTestCase {
 
     private static final String SELECT_FROM = "SELECT pk, varchar_test, integer_test, char_test, blob_test, " +

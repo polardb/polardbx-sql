@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.gms.tablegroup;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
@@ -56,19 +55,22 @@ public class TableGroupUtils {
             tablePartitionAccessor.setConnection(conn);
 
             List<TableGroupRecord> tableGroupRecords = tableGroupAccessor.getAllTableGroups(dbName);
-            List<PartitionGroupRecord> allPartitionGroupRecords =
-                partitionGroupAccessor.getPartitionGroupsBySchema(dbName);
-            List<TablePartitionConfig> tablePartitionConfigs =
-                tablePartitionAccessor.getAllTablePartitionConfigs(dbName);
+            Map<Long, List<PartitionGroupRecord>> allPartitionGroupRecordsMap =
+                partitionGroupAccessor.getPartitionGroupsBySchema(dbName).stream()
+                    .collect(Collectors.groupingBy(x -> x.tg_id));
+
+            Map<Long, List<TablePartitionConfig>> tablePartitionConfigsMap =
+                tablePartitionAccessor.getAllTablePartitionConfigs(dbName).stream()
+                    .collect(Collectors.groupingBy(x -> x.getTableConfig().groupId));
 
             for (TableGroupRecord tableGroupRecord : tableGroupRecords) {
-                List<PartitionGroupRecord> partitionGroupRecords = allPartitionGroupRecords.stream()
-                    .filter(o -> o.tg_id.longValue() == tableGroupRecord.id.longValue()).collect(Collectors.toList());
-                List<TablePartitionConfig> tablePartitionConfigsForTableGroup = tablePartitionConfigs.stream()
-                    .filter(o -> o.getTableConfig().groupId.longValue() == tableGroupRecord.id.longValue()).collect(
-                        Collectors.toList());
+                List<PartitionGroupRecord> partitionGroupRecords = allPartitionGroupRecordsMap.get(tableGroupRecord.id);
+
+                List<TablePartitionConfig> tablePartitionConfigsForTableGroup =
+                    tablePartitionConfigsMap.get(tableGroupRecord.id);
+
                 List<TablePartRecordInfoContext> tablePartRecordInfoContexts = new ArrayList<>();
-                for (TablePartitionConfig config : tablePartitionConfigsForTableGroup) {
+                for (TablePartitionConfig config : GeneralUtil.emptyIfNull(tablePartitionConfigsForTableGroup)) {
                     TablePartitionRecord tablePartitionRecord = config.getTableConfig();
                     if (tablePartitionRecord.partStatus != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC) {
                         continue;
@@ -98,7 +100,9 @@ public class TableGroupUtils {
                     tablePartRecordInfoContexts.add(tablePartRecordInfoContext);
                 }
                 TableGroupConfig tableGroupConfig =
-                    new TableGroupConfig(tableGroupRecord, partitionGroupRecords, tablePartRecordInfoContexts,
+                    new TableGroupConfig(tableGroupRecord,
+                        partitionGroupRecords == null ? new ArrayList<>() : partitionGroupRecords,
+                        tablePartRecordInfoContexts,
                         tableGroupRecord.getLocality());
                 result.add(tableGroupConfig);
             }

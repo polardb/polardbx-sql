@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -59,9 +60,17 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     @Override
     public long getSnapshotSeq() {
         if (snapshotTimestamp < 0) {
-            snapshotTimestamp = nextTimestamp();
+            snapshotTimestamp = nextTimestamp(t -> stat.getTsoTime += t);
         }
         return snapshotTimestamp;
+    }
+
+    @Override
+    public void tryClose() throws SQLException {
+        //The super method will set the flag(close) true.
+        if (isClosed()) {
+            return;
+        }
     }
 
     @Override
@@ -72,13 +81,19 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     @Override
     public void updateSnapshotTimestamp() {
         if (!this.autoCommit && isolationLevel == Connection.TRANSACTION_READ_COMMITTED) {
-            snapshotTimestamp = nextTimestamp();
+            snapshotTimestamp = nextTimestamp(t -> stat.getTsoTime += t);
         }
     }
 
     @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        if (!begun) {
+            statisticSchema = schemaName;
+            recordTransaction();
+            begun = true;
+        }
+
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
             false, rw.equals(ITransaction.RW.WRITE), executionContext);
         IConnection conn = super.getRealConnection(schemaName, group, ds, masterSlave);
@@ -97,45 +112,6 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
         conn = sendLsn(conn, schemaName, group, masterSlave, this::getSnapshotSeq);
         sendSnapshotSeq(conn);
         return conn;
-    }
-
-    @Override
-    public void tryClose() throws SQLException {
-        if (isClosed()) {
-            return;
-        }
-
-        // TConnection 每次执行完语句会调用 tryClose
-        if (autoCommit) {
-            rollback();
-        }
-    }
-
-    @Override
-    public void tryClose(IConnection conn, String groupName) throws SQLException {
-        try {
-            if (conn.isWrapperFor(XConnection.class)) {
-                super.tryClose(conn, groupName);
-                return;
-            }
-        } catch (SQLException ignored) {
-            // Is jdbc connection
-        }
-
-        lock.lock();
-        try {
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("ROLLBACK");
-            } catch (Throwable e) {
-                logger.error("Cleanup readonly transaction branch failed on " + groupName, e);
-                discard(groupName, conn, e);
-                return;
-            }
-
-            this.getConnectionHolder().tryClose(conn, groupName);
-        } finally {
-            lock.unlock();
-        }
     }
 
     @Override
@@ -166,4 +142,10 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     public ITransactionPolicy.TransactionClass getTransactionClass() {
         return ITransactionPolicy.TransactionClass.TSO_READONLY;
     }
+
+    @Override
+    public TransactionType getType() {
+        return TransactionType.TSO_RO;
+    }
+
 }

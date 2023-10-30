@@ -75,8 +75,7 @@ t_order,CREATE TABLE `t_order` (
 	`d` int(11) NOT NULL,
 	`e` int(11) NOT NULL,
 	`f` int(11) NOT NULL,
-	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`),
-	LOCAL KEY `auto_shard_key_x_y_z_d_e` USING BTREE (`x`, `y`, `z`, `d`, `e`)
+	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SHOW FULL CREATE TABLE `t_order`;
 Table,Create Table
@@ -87,8 +86,7 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`d` int(11) NOT NULL,
 	`e` int(11) NOT NULL,
 	`f` int(11) NOT NULL,
-	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`),
-	LOCAL KEY `auto_shard_key_x_y_z_d_e` USING BTREE (`x`, `y`, `z`, `d`, `e`)
+	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`,`y`,`z`,`d`,`e`)
 PARTITIONS #@#

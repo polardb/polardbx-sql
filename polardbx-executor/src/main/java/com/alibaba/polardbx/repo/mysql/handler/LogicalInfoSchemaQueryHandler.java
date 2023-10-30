@@ -65,7 +65,6 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.metadata.InfoSchemaCommon;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.RelNode;
@@ -86,6 +85,7 @@ import org.apache.calcite.sql.fun.SqlCountAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -409,6 +409,9 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             }
         }
 
+        boolean enableLowerCase =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
+
         List<Object[]> result = new ArrayList<>();
         for (String table : tableNames) {
             if (like != null) {
@@ -428,9 +431,9 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
                 if (tablesAutoPartInfo.get(table) != null) {
                     autoPart = tablesAutoPartInfo.get(table) ? "YES" : "NO";
                 }
-                result.add(new Object[] {table, type, autoPart});
+                result.add(new Object[] {enableLowerCase ? StringUtils.lowerCase(table) : table, type, autoPart});
             } else {
-                result.add(new Object[] {table});
+                result.add(new Object[] {enableLowerCase ? StringUtils.lowerCase(table) : table});
             }
         }
 

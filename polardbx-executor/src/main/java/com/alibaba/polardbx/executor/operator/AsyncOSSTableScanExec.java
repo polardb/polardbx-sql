@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.operator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.archive.reader.SimpleOSSPhysicalTableReadResult;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
@@ -142,13 +143,14 @@ public class AsyncOSSTableScanExec extends AbstractOSSTableScanExec {
                     // Driver call the is_blocked.
                     return null;
                 }
-                return doConsumeBatch(batch);
+                return doConsumeBatch(batch,
+                    resultFromOSS.getOssColumnTransformer());
             }
         } finally {
             // restore the buffer to producer.
             if (resultFromOSS != null && resultFromOSS.shouldRecycle()) {
                 try {
-                    client.recycle(resultFromOSS.getBatch());
+                    client.recycle(resultFromOSS);
                 } catch (InterruptedException e) {
                     throw GeneralUtil.nestedException(e);
                 }
@@ -163,12 +165,13 @@ public class AsyncOSSTableScanExec extends AbstractOSSTableScanExec {
                     return resultFromOSS.getChunk();
                 }
                 // fetch the IO results.
-                return doConsumeBatch(resultFromOSS.getBatch());
+                return doConsumeBatch(resultFromOSS.getBatch(),
+                    resultFromOSS.getOssColumnTransformer());
             } finally {
                 // restore the buffer to producer.
                 if (resultFromOSS != null && resultFromOSS.shouldRecycle()) {
                     try {
-                        client.recycle(resultFromOSS.getBatch());
+                        client.recycle(resultFromOSS);
                     } catch (InterruptedException e) {
                         throw GeneralUtil.nestedException(e);
                     }
@@ -183,14 +186,15 @@ public class AsyncOSSTableScanExec extends AbstractOSSTableScanExec {
     }
 
     @Nullable
-    private Chunk doConsumeBatch(VectorizedRowBatch batch) {
+    private Chunk doConsumeBatch(VectorizedRowBatch batch,
+                                 OSSColumnTransformer ossColumnTransformer) {
         Chunk chunk;
         if (condition == null) {
             // for unconditional table scan
-            chunk = resultSetHandler.next(batch, inProjectDataTypeList, blockBuilders, context);
+            chunk = resultSetHandler.next(batch, ossColumnTransformer, inProjectDataTypeList, blockBuilders, context);
         } else {
             // for conditional table scan
-            chunk = resultSetHandler.next(batch, inProjectDataTypeList, blockBuilders, condition,
+            chunk = resultSetHandler.next(batch, ossColumnTransformer, inProjectDataTypeList, blockBuilders, condition,
                 preAllocatedChunk, filterBitmap, outProject, context);
         }
 

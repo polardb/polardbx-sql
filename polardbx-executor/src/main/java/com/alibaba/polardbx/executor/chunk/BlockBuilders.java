@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;

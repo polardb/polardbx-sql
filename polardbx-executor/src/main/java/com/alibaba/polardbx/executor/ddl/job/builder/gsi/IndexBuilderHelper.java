@@ -26,6 +26,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnique;
@@ -91,7 +92,7 @@ public class IndexBuilderHelper {
 
         // replace index name in origin SQL
         final String orgSql = alterTable.getSourceSql();
-        final List<SQLStatement> stmts = SQLUtils.parseStatements(orgSql, JdbcConstants.MYSQL);
+        final List<SQLStatement> stmts = SQLUtils.parseStatementsWithDefaultFeatures(orgSql, JdbcConstants.MYSQL);
         final SQLAlterTableStatement stmt = ((SQLAlterTableStatement) stmts.get(0));
         if (stmt.getItems().get(0) instanceof SQLAlterTableAddIndex) {
             SQLAlterTableAddIndex alter = (SQLAlterTableAddIndex) stmt.getItems().get(0);
@@ -100,7 +101,11 @@ public class IndexBuilderHelper {
             alter.getIndexDefinition().setCovering(Collections.emptyList());
             resetIndexPartition(alter.getIndexDefinition());
         } else if (stmt.getItems().get(0) instanceof SQLAlterTableDropIndex) {
-            ((SQLAlterTableDropIndex) stmt.getItems().get(0)).setIndexName(new SQLIdentifierExpr(localIndexNameString));
+            ((SQLAlterTableDropIndex) stmt.getItems().get(0)).setIndexName(
+                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(localIndexNameString)));
+        } else if (stmt.getItems().get(0) instanceof SQLAlterTableDropKey) {
+            ((SQLAlterTableDropKey) stmt.getItems().get(0)).setKeyName(
+                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(localIndexNameString)));
         } else if (stmt.getItems().get(0) instanceof SQLAlterTableAddConstraint &&
             ((SQLAlterTableAddConstraint) stmt.getItems().get(0)).getConstraint() instanceof SQLUnique) {
             final SQLIndexDefinition indexDefinition =
@@ -157,7 +162,7 @@ public class IndexBuilderHelper {
         SqlIdentifier localIndexIdentifier = new SqlIdentifier(localIndexName, SqlParserPos.ZERO);
 
         final String orgSql = sqlCreateIndex.getSourceSql();
-        final List<SQLStatement> stmts = SQLUtils.parseStatements(orgSql, JdbcConstants.MYSQL);
+        final List<SQLStatement> stmts = SQLUtils.parseStatementsWithDefaultFeatures(orgSql, JdbcConstants.MYSQL);
         final SQLCreateIndexStatement stmt = ((SQLCreateIndexStatement) stmts.get(0));
         stmt.getIndexDefinition().setName(new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(localIndexName)));
         resetIndexPartition(stmt.getIndexDefinition());

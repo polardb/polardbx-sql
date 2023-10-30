@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -31,9 +32,8 @@ public class SQLExplainAnalyzeStatement extends SQLStatementImpl {
     }
 
     public SQLExplainAnalyzeStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
-
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
@@ -58,5 +58,10 @@ public class SQLExplainAnalyzeStatement extends SQLStatementImpl {
 
     public void setSelect(SQLSelect select) {
         this.select = select;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

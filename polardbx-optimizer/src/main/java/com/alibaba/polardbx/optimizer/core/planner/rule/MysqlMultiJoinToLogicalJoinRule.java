@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -25,6 +24,7 @@ import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptTable;
@@ -631,7 +631,7 @@ public class MysqlMultiJoinToLogicalJoinRule extends LoptOptimizeJoinRule {
      * see mysql Optimize_table_order::find_best_ref
      */
     private Index findBestRef(LogicalJoin join) {
-        return IndexUtil.selectJoinIndex(join);
+        return IndexUtil.selectJoinIndex(join, false);
     }
 
     /**

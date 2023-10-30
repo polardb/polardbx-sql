@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.handler;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.optimizer.planmanager.Statement;
 import com.alibaba.polardbx.optimizer.planmanager.StatementMap;
@@ -49,8 +49,8 @@ public final class ExecuteHandler {
     /**
      * execute stmt1 using @a,@b;
      */
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
-                              QueryResultHandler handler) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
+                                 QueryResultHandler handler) {
         try {
             List<Pair<Integer, ParameterContext>> params = new ArrayList<>();
             ByteString fullSql = parse(stmt, c.getSmForQuery(), c.getUserDefVariables(), params);
@@ -59,10 +59,11 @@ public final class ExecuteHandler {
              * since here should be a pure select like SQL, otherwise it will
              * run into binary result logic which only for COM_STMT_EXECUTE.
              */
-            c.execute(fullSql, hasMore, false, params, null, handler);
+            return c.execute(fullSql, hasMore, false, params, null, handler);
         } catch (SQLException e) {
             logger.error(e);
-            c.writeErrMessage(e.getErrorCode(), e.getMessage());
+            c.writeErrMessage(e.getErrorCode(), null, e.getMessage());
+            return false;
         }
     }
 
@@ -77,7 +78,7 @@ public final class ExecuteHandler {
                 throw new SQLSyntaxErrorException(
                     "Unknown prepared statement handler (" + name + ") given to EXECUTE",
                     "",
-                    ErrorCode.ER_UNKNOWN_STMT_HANDLER);
+                    ErrorCode.ER_UNKNOWN_STMT_HANDLER.getCode());
             }
 
             ByteString fullSql = stmt_define.getRawSql();

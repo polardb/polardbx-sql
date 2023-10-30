@@ -29,6 +29,8 @@ public class OutFileParams implements Serializable {
     private boolean fieldEnclosedOptionally = false;
     private Object columnMeata = new Object();
 
+    private boolean statistics = false;
+
     public String getFileName() {
         return fileName;
     }
@@ -99,5 +101,19 @@ public class OutFileParams implements Serializable {
 
     public void setColumnMeata(Object columnMeata) {
         this.columnMeata = columnMeata;
+    }
+
+    public static boolean IsStatistics(OutFileParams params) {
+        if (params == null) {
+            return false;
+        }
+        return params.getStatistics();
+    }
+    public boolean getStatistics() {
+        return statistics;
+    }
+
+    public void setStatistics(boolean statistics) {
+        this.statistics = statistics;
     }
 }

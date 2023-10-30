@@ -96,9 +96,16 @@ public class ConnectionProperties {
 
     public static final String TRANSACTION_ISOLATION = "TRANSACTION_ISOLATION";
 
+    public static final String TX_ISOLATION = "TX_ISOLATION";
+
+    /**
+     * 并行模式是否等所有节点返回数据后再返回，默认false
+     */
     public static final String BLOCK_CONCURRENT = "BLOCK_CONCURRENT";
 
     public static final String GROUP_CONCURRENT_BLOCK = "GROUP_CONCURRENT_BLOCK";
+
+    public static final String OSS_FILE_CONCURRENT = "OSS_FILE_CONCURRENT";
 
     /**
      * 是否强制串行执行，默认false
@@ -157,9 +164,39 @@ public class ConnectionProperties {
     public static final String DML_RELOCATE_SKIP_UNCHANGED_ROW = "DML_RELOCATE_SKIP_UNCHANGED_ROW";
 
     /**
+     * DML 执行时是否检查主键冲突
+     */
+    public static final String PRIMARY_KEY_CHECK = "PRIMARY_KEY_CHECK";
+
+    /**
+     * 是否开启 Foreign Key
+     */
+    public static final String ENABLE_FOREIGN_KEY = "ENABLE_FOREIGN_KEY";
+
+    /**
+     * 是否开启 Foreign Constraint Check
+     */
+    public static final String FOREIGN_KEY_CHECKS = "FOREIGN_KEY_CHECKS";
+
+    /**
+     * CN 是否开启 Foreign Constraint Check, 优先级最高
+     * 0 -> 关闭
+     * 1 -> 开启
+     * 2 -> 未设置
+     */
+    public static final String CN_FOREIGN_KEY_CHECKS = "CN_FOREIGN_KEY_CHECKS";
+
+    /**
+     * 是否开启 UPDATE/DELETE 语句的 Foreign Constraint Check
+     */
+    public static final String FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE = "FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE";
+
+    /**
      * 在 RelocateWriter 中是否通过 PartitionField 判断拆分键是否变化
      */
     public static final String DML_USE_NEW_SK_CHECKER = "DML_USE_NEW_SK_CHECKER";
+
+    public static final String DML_PRINT_CHECKER_ERROR = "DML_PRINT_CHECKER_ERROR";
 
     /**
      * 在 INSERT IGNORE、REPLACE、UPSERT 的时候使用 PartitionField 判断重复值
@@ -175,6 +212,28 @@ public class ConnectionProperties {
      * 在 REPLACE、UPSERT 的时候是否跳过含有 JSON 的相同行比较（因为 CN 不支持 JSON 比较）
      */
     public static final String DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK";
+
+    public static final String DML_SELECT_SAME_ROW_ONLY_COMPARE_PK_UK_SK = "DML_SELECT_SAME_ROW_ONLY_COMPARE_PK_UK_SK";
+
+    /**
+     * INSERT 中的 VALUES 出现列名时是否替换为插入值而不是默认值，以兼容 MySQL 行为；会对 INSERT 的 INPUT 按 VALUES 顺序排序
+     */
+    public static final String DML_REF_PRIOR_COL_IN_VALUE = "DML_REF_PRIOR_COL_IN_VALUE";
+
+    /**
+     * 在逻辑DDL中校验建表语句时，主动在物理连接上等待的时间，仅用于测试
+     */
+    public static final String GET_PHY_TABLE_INFO_DELAY = "GET_PHY_TABLE_INFO_DELAY";
+
+    /**
+     * 在逻辑DDL中发起物理DDL操作时，主动延迟的时间，仅用于测试
+     */
+    public static final String EMIT_PHY_TABLE_DDL_DELAY = "EMIT_PHY_TABLE_DDL_DELAY";
+
+    /**
+     * 在建表语句中跳过CDC
+     */
+    public static final String CREATE_TABLE_SKIP_CDC = "CREATE_TABLE_SKIP_CDC";
 
     /**
      * 是否强制使用 Online Modify Column，即使列类型没有改变，或者不是支持的类型
@@ -192,19 +251,54 @@ public class ConnectionProperties {
     public static final String OMC_BACK_FILL_USE_RETURNING = "OMC_BACK_FILL_USE_RETURNING";
 
     /**
-     * Online Modify Column 回填后是否进行检查
+     * Online Modify Column / Add Generated Column 回填后是否进行检查
      */
-    public static final String OMC_CHECK_AFTER_BACK_FILL = "OMC_CHECK_AFTER_BACK_FILL";
+    public static final String COL_CHECK_AFTER_BACK_FILL = "COL_CHECK_AFTER_BACK_FILL";
 
     /**
-     * Online Modify Column 检查是否使用 Simple Checker（只进行 NULL 值判断）
+     * Online Modify Column / Add Generated Column 检查是否使用 Simple Checker（只进行 NULL 值判断）
      */
-    public static final String OMC_USE_SIMPLE_CHECKER = "OMC_USE_SIMPLE_CHECKER";
+    public static final String COL_USE_SIMPLE_CHECKER = "COL_USE_SIMPLE_CHECKER";
 
     /**
-     * Online Modify Column 是否跳过回填阶段（只用来 debug）
+     * Online Modify Column / Add Generated Column 是否跳过回填阶段（只用来 debug）
      */
-    public static final String OMC_SKIP_BACK_FILL = "OMC_SKIP_BACK_FILL";
+    public static final String COL_SKIP_BACK_FILL = "COL_SKIP_BACK_FILL";
+
+    /**
+     * Add Generated Column 是否强制 CN 计算表达式
+     */
+    public static final String GEN_COL_FORCE_CN_EVAL = "COL_FORCE_CN_EVAL";
+
+    /**
+     * 是否允许在含有 Generated Column 的表上使用 OMC
+     */
+    public static final String ENABLE_OMC_WITH_GEN_COL = "ENABLE_OMC_WITH_GEN_COL";
+
+    /**
+     * 是否将条件中的表达式替换为 Generated Column
+     */
+    public static final String GEN_COL_SUBSTITUTION = "GEN_COL_SUBSTITUTION";
+
+    /**
+     * 是否在进行 Generated Column 表达式替换的时候进行类型判断
+     */
+    public static final String GEN_COL_SUBSTITUTION_CHECK_TYPE = "GEN_COL_SUBSTITUTION_CHECK_TYPE";
+
+    /**
+     * 是否允许在 DN Generated Column 上创建 Unique Key
+     */
+    public static final String ENABLE_UNIQUE_KEY_ON_GEN_COL = "ENABLE_UNIQUE_KEY_ON_GEN_COL";
+
+    /**
+     * 是否允许使用表达式索引的语法创建索引（创建生成列 + 创建索引）
+     */
+    public static final String ENABLE_CREATE_EXPRESSION_INDEX = "ENABLE_CREATE_EXPRESSION_INDEX";
+
+    /**
+     * Online Modify Column Checker 并行策略
+     */
+    public static final String OMC_CHECKER_CONCURRENT_POLICY = "OMC_CHECKER_CONCURRENT_POLICY";
 
     /**
      * 是否开启DDL
@@ -228,7 +322,17 @@ public class ConnectionProperties {
     public static final String BROADCAST_DML = "BROADCAST_DML";
 
     /**
-     * Cache size for New Sequence
+     * Enable/Disable New Sequence cache on CN
+     */
+    public static final String ENABLE_NEW_SEQ_CACHE_ON_CN = "ENABLE_NEW_SEQ_CACHE_ON_CN";
+
+    /**
+     * Cache size for New Sequence on CN. Only valid when ENABLE_NEW_SEQ_CACHE_ON_CN is true.
+     */
+    public static final String NEW_SEQ_CACHE_SIZE_ON_CN = "NEW_SEQ_CACHE_SIZE_ON_CN";
+
+    /**
+     * Cache size for New Sequence on DN
      */
     public static final String NEW_SEQ_CACHE_SIZE = "NEW_SEQ_CACHE_SIZE";
 
@@ -292,6 +396,9 @@ public class ConnectionProperties {
      */
     public static final String MERGE_DDL_TIMEOUT = "MERGE_DDL_TIMEOUT";
 
+    /**
+     * merge ddl是否采用全并行模式,设置为false,默认为库间并行
+     */
     public static final String MERGE_DDL_CONCURRENT = "MERGE_DDL_CONCURRENT";
 
     public static final String SLOW_SQL_TIME = "SLOW_SQL_TIME";
@@ -340,6 +447,9 @@ public class ConnectionProperties {
 
     public static final String AUTO_ADD_APP_MODE = "AUTO_ADD_APP_MODE";
 
+    /**
+     * 是否需要将在Calcite上执行异常的SQL在老Server的逻辑上进行重试，默认是打开，在随机SQL测试时要关闭
+     */
     public static final String RETRY_ERROR_SQL_ON_OLD_SERVER = "RETRY_ERROR_SQL_ON_OLD_SERVER";
 
     public static final String COLLECT_SQL_ERROR_INFO = "COLLECT_SQL_ERROR_INFO";
@@ -403,6 +513,11 @@ public class ConnectionProperties {
     public static final String BINLOG_ROWS_QUERY_LOG_EVENTS = "BINLOG_ROWS_QUERY_LOG_EVENTS";
 
     /**
+     * max show length of group concat, only work for cn
+     */
+    public static final String CN_GROUP_CONCAT_MAX_LEN = "CN_GROUP_CONCAT_MAX_LEN";
+
+    /**
      * 2 policies for batch insert: NONE, SPLIT.
      */
     public static final String BATCH_INSERT_POLICY = "BATCH_INSERT_POLICY";
@@ -429,6 +544,8 @@ public class ConnectionProperties {
      * Insert select执行策略为MPP执行
      */
     public static final String INSERT_SELECT_MPP = "INSERT_SELECT_MPP";
+
+    public static final String INSERT_SELECT_MPP_BY_PARALLEL = "INSERT_SELECT_MPP_BY_PARALLEL";
 
     /**
      * Insert select self_table; insert 和 select 操作同一个表时,非事务下可能会导致数据 > 2倍，默认自身表时，先select 再insert
@@ -465,9 +582,23 @@ public class ConnectionProperties {
 
     public static final String ENABLE_UDF = "ENABLE_UDF";
 
+    public static final String ENABLE_JAVA_UDF = "ENABLE_JAVA_UDF";
+
+    public static final String CHECK_INVALID_JAVA_UDF = "CHECK_INVALID_JAVA_UDF";
+
+    public static final String MAX_JAVA_UDF_NUM = "MAX_JAVA_UDF_NUM";
+
+    public static final String FORCE_DROP_JAVA_UDF = "FORCE_DROP_JAVA_UDF";
+
     public static final String PL_INTERNAL_CACHE_SIZE = "PL_INTERNAL_CACHE_SIZE";
 
     public static final String MAX_PL_DEPTH = "MAX_PL_DEPTH";
+
+    public static final String ORIGIN_CONTENT_IN_ROUTINES = "ORIGIN_CONTENT_IN_ROUTINES";
+
+    public static final String FORCE_DROP_PROCEDURE = "FORCE_DROP_PROCEDURE";
+
+    public static final String FORCE_DROP_SQL_UDF = "FORCE_DROP_SQL_UDF";
 
     /**
      * recyclebin table retain hours
@@ -489,6 +620,8 @@ public class ConnectionProperties {
         "BACKGROUND_STATISTIC_COLLECTION_START_TIME";
 
     public static final String BACKGROUND_STATISTIC_COLLECTION_END_TIME = "BACKGROUND_STATISTIC_COLLECTION_END_TIME";
+
+    public static final String STATISTIC_CORRECTIONS = "STATISTIC_CORRECTIONS";
 
     /**
      * background ttl expire end time default 05:00
@@ -533,6 +666,14 @@ public class ConnectionProperties {
 
     public static final String ENABLE_BKA_JOIN = "ENABLE_BKA_JOIN";
 
+    /**
+     * enable remove join condition default true
+     */
+    public static final String ENABLE_REMOVE_JOIN_CONDITION = "ENABLE_REMOVE_JOIN_CONDITION";
+
+    /**
+     * enable dynamic pruning in bka join default false
+     */
     public static final String ENABLE_BKA_PRUNING = "ENABLE_BKA_PRUNING";
 
     /**
@@ -601,8 +742,27 @@ public class ConnectionProperties {
 
     public static final String PARTIAL_AGG_BUCKET_THRESHOLD = "PARTIAL_AGG_BUCKET_THRESHOLD";
 
+    public static final String AGG_MAX_HASH_TABLE_FACTOR = "AGG_MAX_HASH_TABLE_FACTOR";
+
+    public static final String AGG_MIN_HASH_TABLE_FACTOR = "AGG_MIN_HASH_TABLE_FACTOR";
+
+    public static final String ENABLE_HASH_WINDOW = "ENABLE_HASH_WINDOW";
+
+    public static final String ENABLE_SORT_WINDOW = "ENABLE_SORT_WINDOW";
+
+    /**
+     * enable push join default true
+     */
     public static final String ENABLE_PUSH_JOIN = "ENABLE_PUSH_JOIN";
 
+    /**
+     * ignore un pushable function when join
+     */
+    public static final String IGNORE_UN_PUSHABLE_FUNC_IN_JOIN = "IGNORE_UN_PUSHABLE_FUNC_IN_JOIN";
+
+    /**
+     * enable push project default true
+     */
     public static final String ENABLE_PUSH_PROJECT = "ENABLE_PUSH_PROJECT";
 
     public static final String ENABLE_CBO_PUSH_JOIN = "ENABLE_CBO_PUSH_JOIN";
@@ -635,6 +795,8 @@ public class ConnectionProperties {
     public static final String ENABLE_EXPAND_DISTINCTAGG = "ENABLE_EXPAND_DISTINCTAGG";
 
     public static final String ENABLE_SORT_JOIN_TRANSPOSE = "ENABLE_SORT_JOIN_TRANSPOSE";
+
+    public static final String ENABLE_SORT_OUTERJOIN_TRANSPOSE = "ENABLE_SORT_OUTERJOIN_TRANSPOSE";
 
     public static final String CBO_JOIN_TABLELOOKUP_TRANSPOSE_LIMIT = "CBO_JOIN_TABLELOOKUP_TRANSPOSE_LIMIT";
 
@@ -798,8 +960,41 @@ public class ConnectionProperties {
 
     public static final String FASTCHECKER_RETRY_TIMES = "FASTCHECKER_RETRY_TIMES";
 
+    /**
+     * when fastchecker failed to calculate hash value because of timeout,
+     * we will decrease the batch size and retry
+     */
+    public static final String FASTCHECKER_BATCH_TIMEOUT_RETRY_TIMES = "FASTCHECKER_BATCH_TIMEOUT_RETRY_TIMES";
+
+    /**
+     * when fastchecker use xa check, it must acquire table lock on phyTables.
+     * this argument will limit the acquire_lock_timeout.
+     */
     public static final String FASTCHECKER_LOCK_TIMEOUT = "FASTCHECKER_LOCK_TIMEOUT";
 
+    /**
+     * if a physical table's row count exceed FASTCHECKER_BATCH_SIZE, we will start to check by batch
+     */
+    public static final String FASTCHECKER_BATCH_SIZE = "FASTCHECKER_BATCH_SIZE";
+
+    /**
+     * fastchecker max batch file size (bytes)
+     */
+    public static final String FASTCHECKER_BATCH_FILE_SIZE = "FASTCHECKER_BATCH_FILE_SIZE";
+
+    /**
+     * when fastchecker check table by batch, we limit the max sample percentage
+     */
+    public static final String FASTCHECKER_MAX_SAMPLE_PERCENTAGE = "FASTCHECKER_MAX_SAMPLE_PERCENTAGE";
+
+    /**
+     * when fastchecker check table by batch, we limit the max sample size
+     */
+    public static final String FASTCHECKER_MAX_SAMPLE_SIZE = "FASTCHECKER_MAX_SAMPLE_SIZE";
+
+    /**
+     * parallelism limit for GsiFastChecker
+     */
     public static final String GSI_FASTCHECKER_PARALLELISM = "GSI_FASTCHECKER_PARALLELISM";
 
     public static final String SCALEOUT_DML_PUSHDOWN_OPTIMIZATION = "SCALEOUT_DML_PUSHDOWN_OPTIMIZATION";
@@ -836,6 +1031,8 @@ public class ConnectionProperties {
 
     public static final String ALLOW_ALTER_GSI_INDIRECTLY = "ALLOW_ALTER_GSI_INDIRECTLY";
 
+    public static final String ALLOW_ALTER_MODIFY_SK = "ALLOW_ALTER_MODIFY_SK";
+
     /**
      * allow drop part unique constrain(drop some not all columns in composite unique constrain) in primary table or UGSI.
      */
@@ -865,6 +1062,14 @@ public class ConnectionProperties {
 
     public static final String GENERAL_DYNAMIC_SPEED_LIMITATION = "GENERAL_DYNAMIC_SPEED_LIMITATION";
 
+    /**
+     * batch size for check oss data procedure
+     */
+    public static final String CHECK_OSS_BATCH_SIZE = "CHECK_OSS_BATCH_SIZE";
+
+    /**
+     * batch size for backfill procedure
+     */
     public static final String GSI_BACKFILL_BATCH_SIZE = "GSI_BACKFILL_BATCH_SIZE";
 
     public static final String GSI_BACKFILL_SPEED_LIMITATION = "GSI_BACKFILL_SPEED_LIMITATION";
@@ -887,8 +1092,61 @@ public class ConnectionProperties {
 
     public static final String GSI_CONCURRENT_WRITE_OPTIMIZE = "GSI_CONCURRENT_WRITE_OPTIMIZE";
 
+    /**
+     * batch size for create database as
+     */
+    public static final String CREATE_DATABASE_AS_BATCH_SIZE = "CREATE_DATABASE_AS_BATCH_SIZE";
+
+    /**
+     * speed limit for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_BACKFILL_SPEED_LIMITATION =
+        "CREATE_DATABASE_AS_BACKFILL_SPEED_LIMITATION";
+
+    /**
+     * min speed for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_BACKFILL_SPEED_MIN = "CREATE_DATABASE_AS_BACKFILL_SPEED_MIN";
+
+    /**
+     * backfill parallelism for CDAS
+     */
+    public static final String CREATE_DATABASE_AS_BACKFILL_PARALLELISM = "CREATE_DATABASE_AS_BACKFILL_PARALLELISM";
+
+    /**
+     * DDL Tasks parallelism for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_TASKS_PARALLELISM = "CREATE_DATABASE_AS_TASKS_PARALLELISM";
+    /**
+     * whether use fastchecker for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_USE_FASTCHECKER = "CREATE_DATABASE_AS_USE_FASTCHECKER";
+    /**
+     * fastchecker parallelism for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_FASTCHECKER_PARALLELISM =
+        "CREATE_DATABASE_AS_FASTCHECKER_PARALLELISM";
+    /**
+     * fastchecker retry times for CTAS
+     */
+    public static final String CREATE_DATABASE_AS_FASTCHECKER_RETRY_TIMES =
+        "CREATE_DATABASE_AS_FASTCHECKER_RETRY_TIMES";
+
+    public static final String CREATE_DATABASE_MAX_PARTITION_FOR_DEBUG = "CREATE_DATABASE_MAX_PARTITION_FOR_DEBUG";
+    /**
+     * Write primary and gsi concurrently for load data
+     */
     public static final String LOAD_DATA_IGNORE_IS_SIMPLE_INSERT = "LOAD_DATA_IGNORE_IS_SIMPLE_INSERT";
 
+    public static final String ENABLE_LOAD_DATA_TRACE = "ENABLE_LOAD_DATA_TRACE";
+
+    public static final String LOAD_DATA_AUTO_FILL_AUTO_INCREMENT_COLUMN = "LOAD_DATA_AUTO_FILL_AUTO_INCREMENT_COLUMN";
+
+    public static final String LOAD_DATA_PURE_INSERT_MODE = "LOAD_DATA_PURE_INSERT_MODE";
+
+    /**
+     * handle empty char for load data
+     */
     public static final String LOAD_DATA_HANDLE_EMPTY_CHAR = "LOAD_DATA_HANDLE_EMPTY_CHAR";
 
     public static final String GSI_CONCURRENT_WRITE = "GSI_CONCURRENT_WRITE";
@@ -897,6 +1155,8 @@ public class ConnectionProperties {
      * the read/write parallelism of one phy group
      */
     public static final String GROUP_PARALLELISM = "GROUP_PARALLELISM";
+
+    public static final String GSI_STATISTICS_COLLECTION = "GSI_STATISTICS_COLLECTION";
 
     /**
      * the switch of the read/write parallelism of one phy group
@@ -909,10 +1169,24 @@ public class ConnectionProperties {
     public static final String ENABLE_LOG_GROUP_CONN_KEY = "ENABLE_LOG_GROUP_CONN_KEY";
 
     /**
+     * allow use group parallelism for select-query on autocommit=true trans when shareReadView is closed
+     */
+    public static final String ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW =
+        "ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW";
+
+    /**
      * for table lookup replicate all filter from index table to primary table
      */
     public static final String REPLICATE_FILTER_TO_PRIMARY = "REPLICATE_FILTER_TO_PRIMARY";
 
+    /**
+     * Reschedule failed DDL job caused by exception after certain minutes
+     */
+    public static final String PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = "PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES";
+
+    /**
+     * enable MDL
+     */
     public static final String ENABLE_MDL = "ENABLE_MDL";
 
     public static final String ALWAYS_REBUILD_PLAN = "ALWAYS_REBUILD_PLAN";
@@ -938,6 +1212,8 @@ public class ConnectionProperties {
      * Number of uploaders to run oss load data
      */
     public static final String OSS_LOAD_DATA_UPLOADERS = "OSS_LOAD_DATA_UPLOADERS";
+
+    public static final String OSS_EXPORT_MAX_ROWS_PER_FILE = "OSS_EXPORT_MAX_ROWS_PER_FILE";
 
     /**
      * Number of shards to prefetch (only take effect under parallel query)
@@ -969,6 +1245,14 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_EXPRESSION_VECTORIZATION = "ENABLE_EXPRESSION_VECTORIZATION";
 
+    /**
+     * Allow constant fold when binding the vectorized expression.
+     */
+    public static final String ENABLE_EXPRESSION_CONSTANT_FOLD = "ENABLE_EXPRESSION_CONSTANT_FOLD";
+
+    /**
+     * SPM
+     */
     public static final String PLAN_EXTERNALIZE_TEST = "PLAN_EXTERNALIZE_TEST";
 
     public static final String ENABLE_SPM = "ENABLE_SPM";
@@ -1050,6 +1334,12 @@ public class ConnectionProperties {
 
     public static final String ENABLE_OPERATE_SUBJOB = "ENABLE_OPERATE_SUBJOB";
 
+    public static final String SKIP_VALIDATE_STORAGE_INST_IDLE = "SKIP_VALIDATE_STORAGE_INST_IDLE";
+
+    public static final String CANCEL_SUBJOB = "CANCEL_SUBJOB";
+
+    public static final String EXPLAIN_DDL_PHYSICAL_OPERATION = "EXPLAIN_DDL_PHYSICAL_OPERATION";
+    public static final String ENABLE_CONTINUE_RUNNING_SUBJOB = "ENABLE_CONTINUE_RUNNING_SUBJOB";
     /**
      * Check if the "INSTANT ADD COLUMN" feature is supported.
      */
@@ -1085,9 +1375,16 @@ public class ConnectionProperties {
     public static final String MAX_TABLE_PARTITIONS_PER_DB = "MAX_TABLE_PARTITIONS_PER_DB";
 
     public static final String LOGICAL_DB_TIME_ZONE = "LOGICAL_DB_TIME_ZONE";
-
     public static final String SHARD_ROUTER_TIME_ZONE = "SHARD_ROUTER_TIME_ZONE";
 
+    /**
+     * The default collation of database if creating database without specifying any collation
+     */
+    public static final String COLLATION_SERVER = "COLLATION_SERVER";
+
+    /**
+     * Allow sharding with constant expression
+     */
     public static final String ENABLE_SHARD_CONST_EXPR = "ENABLE_SHARD_CONST_EXPR";
 
     public static final String FORBID_APPLY_CACHE = "FORBID_APPLY_CACHE";
@@ -1160,6 +1457,10 @@ public class ConnectionProperties {
     public static final String SEGMENTED_COUNT = "SEGMENTED_COUNT";
 
     public static final String PUSH_POLICY = "PUSH_POLICY";
+
+    public static final String SUPPORT_PUSH_AMONG_DIFFERENT_DB = "SUPPORT_PUSH_AMONG_DIFFERENT_DB";
+
+    public static final String SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN = "SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN";
 
     public static final String MPP_QUERY_MAX_RUN_TIME = "MPP_QUERY_MAX_RUN_TIME";
 
@@ -1269,6 +1570,11 @@ public class ConnectionProperties {
         return super.clone();
     }
 
+    public static final String ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO = "ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO";
+
+    /**
+     * Allow multi update/delete cross db
+     */
     public static final String ENABLE_COMPLEX_DML_CROSS_DB = "ENABLE_COMPLEX_DML_CROSS_DB";
 
     public static final String COMPLEX_DML_WITH_TRX = "COMPLEX_DML_WITH_TRX";
@@ -1279,6 +1585,11 @@ public class ConnectionProperties {
 
     public static final String ENABLE_MERGE_INDEX = "ENABLE_MERGE_INDEX";
 
+    public static final String ENABLE_OSS_INDEX_SELECTION = "ENABLE_OSS_INDEX_SELECTION";
+
+    /**
+     * Enable index selection
+     */
     public static final String SWITCH_GROUP_ONLY = "SWITCH_GROUP_ONLY";
 
     public static final String PLAN = "PLAN";
@@ -1402,6 +1713,16 @@ public class ConnectionProperties {
     public static final String XPROTO_GALAXY_PREPARE = "XPROTO_GALAXY_PREPARE";
 
     /**
+     * X-Protocol / XRPC flow control pipe max size(in KB, 1024 means 1MB).
+     */
+    public static final String XPROTO_FLOW_CONTROL_SIZE_KB = "XPROTO_FLOW_CONTROL_SIZE_KB";
+
+    /**
+     * X-Protocol / XRPC TCP aging time in seconds.
+     */
+    public static final String XPROTO_TCP_AGING = "XPROTO_TCP_AGING";
+
+    /**
      * The storage inst list of all single groups when creating new database
      */
     public static final String SINGLE_GROUP_STORAGE_INST_LIST = "SINGLE_GROUP_STORAGE_INST_LIST";
@@ -1433,6 +1754,8 @@ public class ConnectionProperties {
 
     public static final String WORKLOAD_IO_THRESHOLD = "WORKLOAD_IO_THRESHOLD";
 
+    public static final String WORKLOAD_OSS_NET_THRESHOLD = "WORKLOAD_OSS_NET_THRESHOLD";
+
     public static final String WORKLOAD_TYPE = "WORKLOAD_TYPE";
 
     public static final String EXECUTOR_MODE = "EXECUTOR_MODE";
@@ -1452,6 +1775,8 @@ public class ConnectionProperties {
     public static final String ENABLE_HTAP = "ENABLE_HTAP";
 
     public static final String IN_SUB_QUERY_THRESHOLD = "IN_SUB_QUERY_THRESHOLD";
+
+    public static final String ENABLE_OR_OPT = "ENABLE_OR_OPT";
 
     public static final String ENABLE_IN_SUB_QUERY_FOR_DML = "ENABLE_IN_SUB_QUERY_FOR_DML";
 
@@ -1544,6 +1869,16 @@ public class ConnectionProperties {
 
     public static final String TOPN_MIN_NUM = "TOPN_MIN_NUM";
 
+    public static final String SELECT_INTO_OUTFILE_STATISTICS_DUMP = "SELECT_INTO_OUTFILE_STATISTICS_DUMP";
+
+    /**
+     * Whether ignore histogram of string column
+     */
+    public static final String STATISTICS_DUMP_IGNORE_STRING = "STATISTICS_DUMP_IGNORE_STRING";
+
+    /**
+     * 是否开启 SELECT INTO OUTFILE 默认关闭
+     */
     public static final String ENABLE_SELECT_INTO_OUTFILE = "ENABLE_SELECT_INTO_OUTFILE";
 
     public static final String SHOW_HASH_PARTITIONS_BY_RANGE = "SHOW_HASH_PARTITIONS_BY_RANGE";
@@ -1554,6 +1889,19 @@ public class ConnectionProperties {
 
     public static final String MAX_PARTITION_COLUMN_COUNT = "MAX_PARTITION_COLUMN_COUNT";
 
+    /**
+     * Label if auto use range-key subpart for index of auto-part table, default is true
+     */
+    public static final String ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX = "ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX";
+
+    /**
+     * Label if auto use range/list columns partitions for "part by range/list", default is true
+     */
+    public static final String ENABLE_AUTO_USE_COLUMNS_PARTITION = "ENABLE_AUTO_USE_COLUMNS_PARTITION";
+
+    /**
+     * Balancer parameters
+     */
     public static final String ENABLE_BALANCER = "ENABLE_BALANCER";
     public static final String BALANCER_MAX_PARTITION_SIZE = "BALANCER_MAX_PARTITION_SIZE";
     public static final String BALANCER_WINDOW = "BALANCER_WINDOW";
@@ -1562,6 +1910,16 @@ public class ConnectionProperties {
      * switch for partition management
      */
     public static final String ENABLE_PARTITION_MANAGEMENT = "ENABLE_PARTITION_MANAGEMENT";
+
+    /**
+     * Allow move the single table with locality='balance_single_table=on' during scale-out/scale-in
+     */
+    public static final String ALLOW_MOVING_BALANCED_SINGLE_TABLE = "ALLOW_MOVING_BALANCED_SINGLE_TABLE";
+
+    /**
+     * The default value of default_single when create auto-db without specify default_single option
+     */
+    public static final String DATABASE_DEFAULT_SINGLE = "DATABASE_DEFAULT_SINGLE";
 
     /**
      * switch for partition pruning, only use for qatest and debug
@@ -1590,6 +1948,18 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_LOG_PART_PRUNING = "ENABLE_LOG_PART_PRUNING";
 
+    public static final String ENABLE_OPTIMIZER_ALERT = "ENABLE_OPTIMIZER_ALERT";
+
+    public static final String ENABLE_OPTIMIZER_ALERT_LOG = "ENABLE_OPTIMIZER_ALERT_LOG";
+
+    public static final String OPTIMIZER_ALERT_LOG_INTERVAL = "OPTIMIZER_ALERT_LOG_INTERVAL";
+
+    public static final String ALERT_BKA_BASE = "ALERT_BKA_BASE";
+
+    public static final String ALERT_TP_BASE = "ALERT_TP_BASE";
+
+    public static final String ENABLE_ALERT_TEST = "ENABLE_ALERT_TEST";
+
     public static final String ENABLE_BRANCH_AND_BOUND_OPTIMIZATION = "ENABLE_BRANCH_AND_BOUND_OPTIMIZATION";
 
     public static final String ENABLE_BROADCAST_JOIN = "ENABLE_BROADCAST_JOIN";
@@ -1608,6 +1978,13 @@ public class ConnectionProperties {
 
     public static final String ENABLE_HLL = "ENABLE_HLL";
 
+    public static final String STRICT_ENUM_CONVERT = "STRICT_ENUM_CONVERT";
+
+    public static final String STRICT_YEAR_CONVERT = "STRICT_YEAR_CONVERT";
+
+    /**
+     * feedback minor tolerance value
+     */
     public static final String MINOR_TOLERANCE_VALUE = "MINOR_TOLERANCE_VALUE";
 
     /**
@@ -1643,6 +2020,10 @@ public class ConnectionProperties {
 
     public static final String STATISTIC_NDV_SKETCH_SAMPLE_RATE = "STATISTIC_NDV_SKETCH_SAMPLE_RATE";
 
+    public static final String ENABLE_CHECK_STATISTICS_EXPIRE = "ENABLE_CHECK_STATISTICS_EXPIRE";
+
+    public static final String INDEX_ADVISOR_CARDINALITY_BASE = "INDEX_ADVISOR_CARDINALITY_BASE";
+
     public static final String AUTO_COLLECT_NDV_SKETCH = "AUTO_COLLECT_NDV_SKETCH";
 
     public static final String CDC_STARTUP_MODE = "CDC_STARTUP_MODE";
@@ -1658,8 +2039,20 @@ public class ConnectionProperties {
     public static final String ENABLE_SET_GLOBAL = "ENABLE_SET_GLOBAL";
 
     public static final String ENABLE_PREEMPTIVE_MDL = "ENABLE_PREEMPTIVE_MDL";
+
+    public static final String SHOW_STORAGE_POOL = "SHOW_STORAGE_POOL";
+
+    public static final String SHOW_FULL_LOCALITY = "SHOW_FULL_LOCALITY";
     public static final String PREEMPTIVE_MDL_INITWAIT = "PREEMPTIVE_MDL_INITWAIT";
     public static final String PREEMPTIVE_MDL_INTERVAL = "PREEMPTIVE_MDL_INTERVAL";
+
+    public static final String RENAME_PREEMPTIVE_MDL_INITWAIT = "RENAME_PREEMPTIVE_MDL_INITWAIT";
+    public static final String RENAME_PREEMPTIVE_MDL_INTERVAL = "RENAME_PREEMPTIVE_MDL_INTERVAL";
+
+    public static final String TG_PREEMPTIVE_MDL_INITWAIT = "TG_PREEMPTIVE_MDL_INITWAIT";
+    public static final String TG_PREEMPTIVE_MDL_INTERVAL = "TG_PREEMPTIVE_MDL_INTERVAL";
+
+    public static final String FORCE_READ_OUTSIDE_TX = "FORCE_READ_OUTSIDE_TX";
 
     public static final String SCHEDULER_SCAN_INTERVAL_SECONDS = "SCHEDULER_SCAN_INTERVAL_SECONDS";
     public static final String SCHEDULER_CLEAN_UP_INTERVAL_HOURS = "SCHEDULER_CLEAN_UP_INTERVAL_HOURS";
@@ -1709,6 +2102,8 @@ public class ConnectionProperties {
 
     public static final String ENABLE_PLAN_TYPE_DIGEST = "ENABLE_PLAN_TYPE_DIGEST";
 
+    public static final String ENABLE_PLAN_TYPE_DIGEST_STRICT_MODE = "ENABLE_PLAN_TYPE_DIGEST_STRICT_MODE";
+
     /**
      * flag that if auto warming logical db
      */
@@ -1719,72 +2114,90 @@ public class ConnectionProperties {
      */
     public static final String LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE = "LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE";
 
-    public static final String OSS_FILE_CONCURRENT = "OSS_FILE_CONCURRENT";
-
-    /**
-     * batch size for check oss data procedure
-     */
-    public static final String CHECK_OSS_BATCH_SIZE = "CHECK_OSS_BATCH_SIZE";
-
-    public static final String ENABLE_OSS_INDEX_SELECTION = "ENABLE_OSS_INDEX_SELECTION";
-
-    public static final String WORKLOAD_OSS_NET_THRESHOLD = "WORKLOAD_OSS_NET_THRESHOLD";
-
     public static final String FLASHBACK_RENAME = "FLASHBACK_RENAME";
+
     public static final String PURGE_FILE_STORAGE_TABLE = "PURGE_FILE_STORAGE_TABLE";
     /* ================ For OSS Table ORC File ================ */
+
     public static final String OSS_BACKFILL_PARALLELISM = "OSS_BACKFILL_PARALLELISM";
+
     public static final String OSS_ORC_INDEX_STRIDE = "OSS_ORC_INDEX_STRIDE";
+
     public static final String OSS_BLOOM_FILTER_FPP = "OSS_BLOOM_FILTER_FPP";
+
     public static final String OSS_MAX_ROWS_PER_FILE = "OSS_MAX_ROWS_PER_FILE";
 
-    public static final String OSS_EXPORT_MAX_ROWS_PER_FILE = "OSS_EXPORT_MAX_ROWS_PER_FILE";
-
     public static final String OSS_REMOVE_TMP_FILES = "OSS_REMOVE_TMP_FILES";
+
     public static final String OSS_ORC_COMPRESSION = "OSS_ORC_COMPRESSION";
+
     /* ================ For OSS Table File System ================ */
+
     public static final String OSS_FS_MAX_READ_RATE = "OSS_FS_MAX_READ_RATE";
 
     public static final String OSS_FS_MAX_WRITE_RATE = "OSS_FS_MAX_WRITE_RATE";
+
     public static final String OSS_FS_VALIDATION_ENABLE = "OSS_FS_VALIDATION_ENABLE";
+
     public static final String OSS_FS_CACHE_TTL = "OSS_FS_CACHE_TTL";
+
     public static final String OSS_FS_MAX_CACHED_ENTRIES = "OSS_FS_MAX_CACHED_ENTRIES";
+
     public static final String OSS_FS_HOT_CACHE_TTL = "OSS_FS_HOT_CACHE_TTL";
+
     public static final String OSS_FS_MAX_HOT_CACHED_ENTRIES = "OSS_FS_MAX_HOT_CACHED_ENTRIES";
+
     public static final String OSS_ORC_MAX_MERGE_DISTANCE = "OSS_ORC_MAX_MERGE_DISTANCE";
+
     public static final String FILE_LIST = "FILE_LIST";
+
     public static final String FILE_PATTERN = "FILE_PATTERN";
 
     public static final String ENABLE_EXPIRE_FILE_STORAGE_PAUSE = "ENABLE_EXPIRE_FILE_STORAGE_PAUSE";
 
+    public static final String ENABLE_CHECK_DDL_FILE_STORAGE = "ENABLE_CHECK_DDL_FILE_STORAGE";
+
+    public static final String ENABLE_CHECK_DDL_BINDING_FILE_STORAGE = "ENABLE_CHECK_DDL_BINDING_FILE_STORAGE";
+
     public static final String ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE = "ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE";
 
+    public static final String FILE_STORAGE_TASK_PARALLELISM = "FILE_STORAGE_TASK_PARALLELISM";
     public static final String ENABLE_FILE_STORE_CHECK_TABLE = "ENABLE_FILE_STORE_CHECK_TABLE";
+
     public static final String ENABLE_OSS_BUFFER_POOL = "ENABLE_OSS_BUFFER_POOL";
+
     public static final String ENABLE_OSS_DELAY_MATERIALIZATION = "ENABLE_OSS_DELAY_MATERIALIZATION";
+
     public static final String ENABLE_OSS_ZERO_COPY = "ENABLE_OSS_ZERO_COPY";
+
     public static final String ENABLE_OSS_COMPATIBLE = "ENABLE_OSS_COMPATIBLE";
+
     public static final String ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE =
         "ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE";
+
     public static final String ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN =
         "ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN";
+
     public static final String ENABLE_REUSE_VECTOR = "ENABLE_REUSE_VECTOR";
+
     public static final String ENABLE_DECIMAL_FAST_VEC = "ENABLE_DECIMAL_FAST_VEC";
+
     public static final String ENABLE_UNIQUE_HASH_KEY = "ENABLE_UNIQUE_HASH_KEY";
+
     public static final String BLOCK_BUILDER_CAPACITY = "BLOCK_BUILDER_CAPACITY";
+
     public static final String ENABLE_HASH_TABLE_BLOOM_FILTER = "ENABLE_HASH_TABLE_BLOOM_FILTER";
+
     public static final String ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE =
         "ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE";
+
     public static final String OSS_FILE_ORDER = "OSS_FILE_ORDER";
 
-    public static final String ALLOW_REPLACE_ARCHIVE_TABLE = "ALLOW_REPLACE_ARCHIVE_TABLE";
-    public static final String ALLOW_CREATE_TABLE_LIKE_FILE_STORE = "ALLOW_CREATE_TABLE_LIKE_FILE_STORE";
-
-    public static final String PURGE_OSS_FILE_CRON_EXPR = "PURGE_OSS_FILE_CRON_EXPR";
-    public static final String PURGE_OSS_FILE_BEFORE_DAY = "PURGE_OSS_FILE_BEFORE_DAY";
-    public static final String FILE_STORAGE_FILES_META_QUERY_PARALLELISM = "FILE_STORAGE_FILES_META_QUERY_PARALLELISM";
-
     public static final String MAX_SESSION_PREPARED_STMT_COUNT = "MAX_SESSION_PREPARED_STMT_COUNT";
+
+    public static final String ALLOW_REPLACE_ARCHIVE_TABLE = "ALLOW_REPLACE_ARCHIVE_TABLE";
+
+    public static final String ALLOW_CREATE_TABLE_LIKE_FILE_STORE = "ALLOW_CREATE_TABLE_LIKE_FILE_STORE";
 
     /**
      * is enable collect partitions heatmap, dynamic, default:true
@@ -1833,6 +2246,16 @@ public class ConnectionProperties {
 
     public static final String IN_PRUNE_MAX_TIME = "IN_PRUNE_MAX_TIME";
 
+    /**
+     * the max num of pruning info cache by logical view
+     */
+    public static final String MAX_IN_PRUNE_CACHE_SIZE = "MAX_IN_PRUNE_CACHE_SIZE";
+
+    /**
+     * the max table num of cache pruning info for logical view
+     */
+    public static final String MAX_IN_PRUNE_CACHE_TABLE_SIZE = "MAX_IN_PRUNE_CACHE_TABLE_SIZE";
+
     public static final String REBALANCE_TASK_PARALISM = "REBALANCE_TASK_PARALISM";
 
     /**
@@ -1878,17 +2301,64 @@ public class ConnectionProperties {
 
     public static final String SKIP_MOVE_DATABASE_VALIDATOR = "SKIP_MOVE_DATABASE_VALIDATOR";
 
+    public static final String ENABLE_MPP_FILE_STORE_BACKFILL = "ENABLE_MPP_FILE_STORE_BACKFILL";
+
     public static final String PARTITION_NAME = "PARTITION_NAME";
 
     public static final String FORBID_REMOTE_DDL_TASK = "FORBID_REMOTE_DDL_TASK";
+
+    public static final String ENABLE_STANDBY_BACKFILL = "ENABLE_STANDBY_BACKFILL";
 
     public static final String PHYSICAL_DDL_IGNORED_ERROR_CODE = "PHYSICAL_DDL_IGNORED_ERROR_CODE";
 
     public static final String DDL_PAUSE_DURING_EXCEPTION = "DDL_PAUSE_DURING_EXCEPTION";
 
+    public static final String CHANGE_SET_REPLAY_TIMES = "CHANGE_SET_REPLAY_TIMES";
+
+    public static final String CHANGE_SET_APPLY_BATCH = "CHANGE_SET_APPLY_BATCH";
+
+    public static final String CHANGE_SET_MEMORY_LIMIT = "CHANGE_SET_MEMORY_LIMIT";
+
+    public static final String ENABLE_CHANGESET = "ENABLE_CHANGESET";
+
+    public static final String CN_ENABLE_CHANGESET = "CN_ENABLE_CHANGESET";
+
+    public static final String CHANGE_SET_APPLY_SPEED_LIMITATION = "CHANGE_SET_APPLY_SPEED_LIMITATION";
+
+    public static final String CHANGE_SET_APPLY_SPEED_MIN = "CHANGE_SET_APPLY_SPEED_MIN";
+
+    public static final String CHANGE_SET_APPLY_PARALLELISM = "CHANGE_SET_APPLY_PARALLELISM";
+
+    public static final String CHANGE_SET_APPLY_PHY_PARALLELISM = "CHANGE_SET_APPLY_PHY_PARALLELISM";
+
+    public static final String CHANGE_SET_APPLY_OPTIMIZATION = "CHANGE_SET_APPLY_OPTIMIZATION";
+
+    /**
+     * for change set debug
+     */
+    public static final String SKIP_CHANGE_SET_CHECKER = "SKIP_CHANGE_SET_CHECKER";
+
+    public static final String CHANGE_SET_CHECK_TWICE = "CHANGE_SET_CHECK_TWICE";
+
+    public static final String SKIP_CHANGE_SET = "SKIP_CHANGE_SET";
+
+    public static final String CHANGE_SET_DEBUG_MODE = "CHANGE_SET_DEBUG_MODE";
+
+    public static final String SKIP_CHANGE_SET_APPLY = "SKIP_CHANGE_SET_APPLY";
+
+    public static final String SKIP_CHANGE_SET_FETCH = "SKIP_CHANGE_SET_FETCH";
+
+    public static final String PURGE_OSS_FILE_CRON_EXPR = "PURGE_OSS_FILE_CRON_EXPR";
+
+    public static final String PURGE_OSS_FILE_BEFORE_DAY = "PURGE_OSS_FILE_BEFORE_DAY";
+
     public static final String BACKUP_OSS_PERIOD = "BACKUP_OSS_PERIOD";
 
+    public static final String FILE_STORAGE_FILES_META_QUERY_PARALLELISM = "FILE_STORAGE_FILES_META_QUERY_PARALLELISM";
+
     public static final String ENBALE_BIND_PARAM_TYPE = "ENBALE_BIND_PARAM_TYPE";
+
+    public static final String ENBALE_BIND_COLLATE = "ENBALE_BIND_COLLATE";
 
     public static final String SKIP_TABLEGROUP_VALIDATOR = "SKIP_TABLEGROUP_VALIDATOR";
 
@@ -1897,10 +2367,7 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_AUTO_SAVEPOINT = "ENABLE_AUTO_SAVEPOINT";
 
-    /**
-     * Whether enable cursor-fetch mode.
-     */
-    public static final String ENABLE_CURSOR_FETCH = "ENABLE_CURSOR_FETCH";
+    public static final String CURSOR_FETCH_CONN_MEMORY_LIMIT = "CURSOR_FETCH_CONN_MEMORY_LIMIT";
 
     public static final String FORCE_RESHARD = "FORCE_RESHARD";
 
@@ -1915,18 +2382,22 @@ public class ConnectionProperties {
     public static final String ENABLE_TRIGGER_DIRECT_INFORMATION_SCHEMA_QUERY =
         "ENABLE_TRIGGER_DIRECT_INFORMATION_SCHEMA_QUERY";
 
+    public static final String ENABLE_LOWER_CASE_TABLE_NAMES = "ENABLE_LOWER_CASE_TABLE_NAMES";
+
     /**
      * second when ddl plan scheduler wait for polling ddl plan record.
      */
     public static final String DDL_PLAN_SCHEDULER_DELAY = "DDL_PLAN_SCHEDULER_DELAY";
 
+    public static final String USE_PARAMETER_DELEGATE = "USE_PARAMETER_DELEGATE";
+
     public static final String ENABLE_NODE_HINT_REPLACE = "ENABLE_NODE_HINT_REPLACE";
+
+    public static final String USE_JDK_DEFAULT_SER = "USE_JDK_DEFAULT_SER";
 
     public static final String OPTIMIZE_TABLE_PARALLELISM = "OPTIMIZE_TABLE_PARALLELISM";
 
     public static final String OPTIMIZE_TABLE_USE_DAL = "OPTIMIZE_TABLE_USE_DAL";
-
-    public static final String ENABLE_AUTO_SPLIT_PARTITION = "ENABLE_AUTO_SPLIT_PARTITION";
 
     /**
      * module conf
@@ -1960,9 +2431,9 @@ public class ConnectionProperties {
 
     public static final String PASSWORD_CHECK_PATTERN = "PASSWORD_CHECK_PATTERN";
 
-    public static final String USE_PARAMETER_DELEGATE = "USE_PARAMETER_DELEGATE";
+    public static final String DEPRECATE_EOF = "DEPRECATE_EOF";
 
-    public static final String USE_JDK_DEFAULT_SER = "USE_JDK_DEFAULT_SER";
+    public static final String ENABLE_AUTO_SPLIT_PARTITION = "ENABLE_AUTO_SPLIT_PARTITION";
 
     public static final String ENABLE_FORCE_PRIMARY_FOR_TSO = "ENABLE_FORCE_PRIMARY_FOR_TSO";
 
@@ -1975,13 +2446,84 @@ public class ConnectionProperties {
      */
     public static final String ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX = "ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX";
 
+    public static final String PREFETCH_EXECUTE_POLICY = "PREFETCH_EXECUTE_POLICY";
+
+    public static final String MAX_RECURSIVE_TIME = "MAX_RECURSIVE_COUNT";
+    public static final String MAX_RECURSIVE_CTE_MEM_BYTES = "MAX_RECURSIVE_CTE_MEM_BYTES";
+
     public static final String ENABLE_REPLICA = "ENABLE_REPLICA";
 
     public static final String GROUPING_LSN_THREAD_NUM = "GROUPING_LSN_THREAD_NUM";
 
     public static final String GROUPING_LSN_TIMEOUT = "GROUPING_LSN_TIMEOUT";
 
+    public static final String ENABLE_ASYNC_COMMIT = "ENABLE_ASYNC_COMMIT";
+
+    public static final String ENABLE_TRANSACTION_RECOVER_TASK = "ENABLE_TRANSACTION_RECOVER_TASK";
+
+    public static final String ASYNC_COMMIT_TASK_LIMIT = "ASYNC_COMMIT_TASK_LIMIT";
+
+    public static final String ASYNC_COMMIT_PUSH_MAX_SEQ_ONLY_LEADER = "ASYNC_COMMIT_PUSH_MAX_SEQ_ONLY_LEADER";
+
+    public static final String ASYNC_COMMIT_OMIT_PREPARE_TS = "ASYNC_COMMIT_OMIT_PREPARE_TS";
+
     public static final String ENABLE_SINGLE_SHARD_WRITE = "ENABLE_SINGLE_SHARD_WRITE";
 
     public static final String ENABLE_FOLLOWER_READ = "ENABLE_FOLLOWER_READ";
+
+    public static final String CREATE_TABLE_WITH_CHARSET_COLLATE = "CREATE_TABLE_WITH_CHARSET_COLLATE";
+
+    public static final String ENABLE_SIMPLIFY_SUBQUERY_SQL = "ENABLE_SIMPLIFY_SUBQUERY_SQL";
+    public static final String ENABLE_SIMPLIFY_SHARDING_SQL = "ENABLE_SIMPLIFY_SHARDING_SQL";
+
+    public static final String MAX_PHYSICAL_SLOW_SQL_PARAMS_TO_PRINT = "MAX_PHYSICAL_SLOW_SQL_PARAMS_TO_PRINT";
+
+    public static final String SERVER_ID = "SERVER_ID";
+
+    public static final String ENABLE_REMOTE_CONSUME_LOG = "ENABLE_REMOTE_CONSUME_LOG";
+
+    public static final String REMOTE_CONSUME_LOG_BATCH_SIZE = "REMOTE_CONSUME_LOG_BATCH_SIZE";
+
+    public static final String ENABLE_TRANSACTION_STATISTICS = "ENABLE_TRANSACTION_STATISTICS";
+
+    public static final String SLOW_TRANS_THRESHOLD = "SLOW_TRANS_THRESHOLD";
+
+    public static final String TRANSACTION_STATISTICS_TASK_INTERVAL = "TRANSACTION_STATISTICS_TASK_INTERVAL";
+
+    public static final String IDLE_TRANSACTION_TIMEOUT = "IDLE_TRANSACTION_TIMEOUT";
+
+    public static final String IDLE_WRITE_TRANSACTION_TIMEOUT = "IDLE_WRITE_TRANSACTION_TIMEOUT";
+
+    public static final String IDLE_READONLY_TRANSACTION_TIMEOUT = "IDLE_READONLY_TRANSACTION_TIMEOUT";
+
+    public static final String MAX_CACHED_SLOW_TRANS_STATS = "MAX_CACHED_SLOW_TRANS_STATS";
+
+    public static final String ENABLE_TRX_IDLE_TIMEOUT_TASK = "ENABLE_TRX_IDLE_TIMEOUT_TASK";
+
+    public static final String TRX_IDLE_TIMEOUT_TASK_INTERVAL = "TRX_IDLE_TIMEOUT_TASK_INTERVAL";
+
+    /**
+     * -1 mean the learner only allow read, this is the default value;
+     */
+    public static final String LEARNER_LEVEL = "LEARNER_LEVEL";
+
+    public static final String PLAN_CACHE_SIZE = "PLAN_CACHE_SIZE";
+
+    public static final String ENABLE_X_PROTO_OPT_FOR_AUTO_SP = "ENABLE_X_PROTO_OPT_FOR_AUTO_SP";
+
+    public static final String SIM_CDC_FAILED = "SIM_CDC_FAILED";
+
+    public static final String SKIP_DDL_RESPONSE = "SKIP_DDL_RESPONSE";
+
+    public static final String ENABLE_ROLLBACK_TO_READY = "ENABLE_ROLLBACK_TO_READY";
+
+    public static final String TRX_LOG_CLEAN_PARALLELISM = "TRX_LOG_CLEAN_PARALLELISM";
+
+    public static final String CHECK_RESPONSE_IN_MEM = "CHECK_RESPONSE_IN_MEM";
+
+    public static final String ASYNC_PAUSE = "ASYNC_PAUSE";
+
+    public static final String PHYSICAL_DDL_TASK_RETRY = "PHYSICAL_DDL_TASK_RETRY";
+
+    public static final String ENABLE_2PC_OPT = "ENABLE_2PC_OPT";
 }

@@ -9,16 +9,16 @@ create database if not exists drds_db2 partition_mode='sharding';
 create database if not exists auto_db2 partition_mode='partitioning';
 show create database drds_db;
 Database,Create Database
-drds_db,CREATE DATABASE `drds_db` /* MODE = 'drds' */
+drds_db,CREATE DATABASE `drds_db` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
 show create database drds_db2;
 Database,Create Database
-drds_db2,CREATE DATABASE `drds_db2` /* MODE = 'drds' */
+drds_db2,CREATE DATABASE `drds_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
 show create database auto_db;
 Database,Create Database
-auto_db,CREATE DATABASE `auto_db` /* MODE = 'auto' */
+auto_db,CREATE DATABASE `auto_db` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
 show create database auto_db2;
 Database,Create Database
-auto_db2,CREATE DATABASE `auto_db2` /* MODE = 'auto' */
+auto_db2,CREATE DATABASE `auto_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
 drop database if exists drds_db;
 drop database if exists drds_db2;
 drop database if exists auto_db;

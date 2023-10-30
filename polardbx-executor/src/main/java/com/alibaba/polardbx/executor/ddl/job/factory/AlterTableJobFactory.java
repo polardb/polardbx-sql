@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterColumnDefaultTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableHideMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableInsertColumnsMetaTask;
@@ -27,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableRewrittenDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
@@ -37,25 +41,31 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class AlterTableJobFactory extends DdlJobFactory {
 
-    private final PhysicalPlanData physicalPlanData;
-    private final String schemaName;
-    private final String logicalTableName;
-    private final AlterTablePreparedData prepareData;
-    private final LogicalAlterTable logicalAlterTable;
+    protected final PhysicalPlanData physicalPlanData;
+    protected final String schemaName;
+    protected final String logicalTableName;
+    protected final AlterTablePreparedData prepareData;
+    protected final LogicalAlterTable logicalAlterTable;
 
     /**
      * Whether altering a gsi table.
@@ -71,9 +81,9 @@ public class AlterTableJobFactory extends DdlJobFactory {
     /**
      * Whether generate validate table task
      */
-    private boolean validateExistence = true;
+    protected boolean validateExistence = true;
 
-    private ExecutionContext executionContext;
+    protected ExecutionContext executionContext;
 
     public AlterTableJobFactory(PhysicalPlanData physicalPlanData,
                                 AlterTablePreparedData preparedData,
@@ -149,14 +159,31 @@ public class AlterTableJobFactory extends DdlJobFactory {
             beginAlterColumnDefaultSyncTask.setExceptionAction(DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
         }
 
+        boolean isForeignKeysDdl =
+            !prepareData.getAddedForeignKeys().isEmpty() || !prepareData.getDroppedForeignKeys().isEmpty();
+        boolean isForeignKeyCdcMark = isForeignKeysDdl && !executionContext.getDdlContext().isFkRepartition();
+
         DdlTask phyDdlTask = new AlterTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
         if (this.repartition) {
             ((AlterTablePhyDdlTask) phyDdlTask).setSourceSql(logicalAlterTable.getNativeSql());
         }
 
         physicalPlanData.setAlterTablePreparedData(prepareData);
-        DdlTask cdcDdlMarkTask = this.alterGsiTable || this.prepareData.isOnlineModifyColumnIndexTask() ? null :
-            new CdcDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcDdlMarkTask;
+        if (this.prepareData.isOnlineModifyColumnIndexTask() || CBOUtil.isOss(schemaName,
+            logicalTableName)) {
+            cdcDdlMarkTask = null;
+        } else if (this.logicalAlterTable.isRewrittenAlterSql()) {
+            // Use rewritten sql to mark cdc instead of sql in ddl context
+            cdcDdlMarkTask = new CdcAlterTableRewrittenDdlMarkTask(schemaName, physicalPlanData,
+                logicalAlterTable.getBytesSql().toString(), isForeignKeyCdcMark);
+        } else {
+            if (ignoreMarkCdcDDL()) {
+                cdcDdlMarkTask = null;
+            } else {
+                cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, isForeignKeyCdcMark);
+            }
+        }
 
         DdlTask updateMetaTask = null;
         if (!this.repartition) {
@@ -172,7 +199,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 prepareData.getUpdatedColumns(),
                 prepareData.getChangedColumns(),
                 prepareData.isTimestampColumnDefault(),
-                prepareData.getBinaryColumnDefaultValues(),
+                prepareData.getSpecialDefaultValues(),
+                prepareData.getSpecialDefaultValueFlags(),
                 prepareData.getDroppedIndexes(),
                 prepareData.getAddedIndexes(),
                 prepareData.getAddedIndexesWithoutNames(),
@@ -184,8 +212,7 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 prepareData.getTableComment(),
                 prepareData.getTableRowFormat(),
                 physicalPlanData.getSequence(),
-                prepareData.isOnlineModifyColumnIndexTask()
-            );
+                prepareData.isOnlineModifyColumnIndexTask());
         } else {
             // only add columns
             updateMetaTask = new AlterTableInsertColumnsMetaTask(
@@ -236,6 +263,18 @@ public class AlterTableJobFactory extends DdlJobFactory {
         }
 
         taskList.addAll(alterGsiMetaTasks);
+
+        if (isForeignKeysDdl) {
+            DdlTask updateForeignKeysTask =
+                new AlterForeignKeyTask(schemaName, logicalTableName, physicalPlanData.getDefaultDbIndex(),
+                    physicalPlanData.getDefaultPhyTableName(), prepareData.getAddedForeignKeys(),
+                    prepareData.getDroppedForeignKeys());
+            taskList.add(updateForeignKeysTask);
+        }
+
+        // sync foreign key table meta
+        syncFkTables(taskList);
+
         taskList.add(tableSyncTaskAfterShowing);
 
         executableDdlJob.addSequentialTasks(taskList);
@@ -265,5 +304,88 @@ public class AlterTableJobFactory extends DdlJobFactory {
 
     public void validateExistence(boolean validateExistence) {
         this.validateExistence = validateExistence;
+    }
+
+    private boolean ignoreMarkCdcDDL() {
+
+        TableMeta tableMeta = null;
+        SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
+        if (schemaManager != null) {
+            tableMeta = schemaManager.getTable(logicalTableName);
+        }
+
+        boolean isAutoPartition = tableMeta != null && tableMeta.isAutoPartition();
+        boolean isGSI = tableMeta != null && tableMeta.isGsi();
+        if (!isAutoPartition && !isGSI) {
+            return false;
+        }
+
+        AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
+        boolean renameIndex = false;
+        if (alterTablePreparedData != null) {
+            List<Pair<String, String>> renameIndexesList = alterTablePreparedData.getRenamedIndexes();
+            if (CollectionUtils.isNotEmpty(renameIndexesList)) {
+                renameIndex = true;
+            }
+        }
+
+        return this.alterGsiTable || renameIndex;
+    }
+
+    public void syncFkTables(List<DdlTask> taskList) {
+        if (!prepareData.getAddedForeignKeys().isEmpty()) {
+            ForeignKeyData data = prepareData.getAddedForeignKeys().get(0);
+            taskList.add(new TableSyncTask(data.refSchema, data.refTableName));
+        }
+        if (!prepareData.getDroppedForeignKeys().isEmpty()) {
+            TableMeta tableMeta =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            for (ForeignKeyData data : tableMeta.getForeignKeys().values()) {
+                if (data.constraint.equals(prepareData.getDroppedForeignKeys().get(0))) {
+                    taskList.add(new TableSyncTask(data.refSchema, data.refTableName));
+                }
+            }
+        }
+        if (!prepareData.getChangedColumns().isEmpty()) {
+            Map<String, String> columnNameMap = new HashMap<>();
+            for (Pair<String, String> pair : prepareData.getChangedColumns()) {
+                columnNameMap.put(pair.getValue(), pair.getKey());
+            }
+            TableMeta tableMeta =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            Map<String, ForeignKeyData> referencedForeignKeys = tableMeta.getReferencedForeignKeys();
+            for (Map.Entry<String, ForeignKeyData> e : referencedForeignKeys.entrySet()) {
+                boolean sync = false;
+                for (int i = 0; i < e.getValue().columns.size(); ++i) {
+                    String oldColumn = e.getValue().refColumns.get(i);
+                    if (columnNameMap.containsKey(oldColumn)) {
+                        sync = true;
+                        break;
+                    }
+                }
+                if (sync) {
+                    String referencedSchemaName = e.getValue().schema;
+                    String referredTableName = e.getValue().tableName;
+                    taskList.add(new TableSyncTask(referencedSchemaName, referredTableName));
+                }
+            }
+
+            Map<String, ForeignKeyData> foreignKeys = tableMeta.getForeignKeys();
+            if (!foreignKeys.isEmpty()) {
+                for (Map.Entry<String, ForeignKeyData> e : foreignKeys.entrySet()) {
+                    boolean sync = false;
+                    for (int i = 0; i < e.getValue().columns.size(); ++i) {
+                        String oldColumn = e.getValue().columns.get(i);
+                        if (columnNameMap.containsKey(oldColumn)) {
+                            sync = true;
+                            break;
+                        }
+                    }
+                    if (sync) {
+                        taskList.add(new TableSyncTask(e.getValue().refSchema, e.getValue().refTableName));
+                    }
+                }
+            }
+        }
     }
 }

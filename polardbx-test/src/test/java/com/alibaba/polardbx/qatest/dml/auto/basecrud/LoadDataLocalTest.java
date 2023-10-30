@@ -475,7 +475,7 @@ public class LoadDataLocalTest extends BaseTestCase {
             String create_table_sql = prefixOfCreateTable + suffixOfCreateTable;
             executeOnMysqlOrTddl(mysqlConnection, prefixOfCreateTable, null);
             executeOnMysqlOrTddl(tddlConnection, create_table_sql, null);
-            String sql = "/*+ load_data_auto_fill_auto_increment_column=true */ load data local infile " + "'" + path
+            String sql = "load data local infile " + "'" + path
                 + "localdata.txt' " + "into table " + baseOneTableName
                 + " fields terminated by ',' " + "lines terminated by '\\r\\n' (col3_int, col2_int)";
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);

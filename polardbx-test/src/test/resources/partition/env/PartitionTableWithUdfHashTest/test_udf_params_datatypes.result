@@ -1,0 +1,156 @@
+## DISABLE_FAST_SQL_PARSER
+  ## oks
+create table h_myf1bintbint2bint(
+  c1 bigint not null,
+  c2 bigint not null
+)
+partition by hash(myf1bintbint2bint(c1, 10))
+partitions 2;
+insert into h_myf1bintbint2bint values (1,1),(2,2),(3,3),(4,4);
+select c1, part_route('', 'h_myf1bintbint2bint', c1) as route_rs from h_myf1bintbint2bint where c1=1;
+c1,route_rs
+1,p1
+explain select * from h_myf1bintbint2bint where c1=1;
+Logical ExecutionPlan
+LogicalView(tables="h_myf1bintbint2bint[p1]", sql="SELECT `c1`, `c2` FROM `h_myf1bintbint2bint` AS `h_myf1bintbint2bint` WHERE (`c1` = ?)")
+select * from h_myf1bintbint2bint where c1=2;
+c1,c2
+2,2
+select * from h_myf1bintbint2bint where c1=3;
+c1,c2
+3,3
+select * from h_myf1bintbint2bint where c1=4;
+c1,c2
+4,4
+## error_msg: $# unsupported params #$
+create table h_myf1bintbint2bint_2(c1 varchar(32) not null)
+partition by hash(myf1bintbint2bint(c1, 10))
+partitions 2;
+unsupported params
+## error_msg: $# multi columns used #$
+create table h_myf1bintbint2bint_3(
+  c1 bigint not null,
+  c2 bigint not null
+)
+partition by hash(myf1bintbint2bint(c1, c2))
+partitions 2;
+multi columns used
+## error_msg: $# multi columns with using partition #$
+create table h_myf1bintbint2bint_4(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by hash(myf1bintbint2bint(c1,1),myf1bintbint2bint(c2,1))
+partitions 2;
+multi columns with using partition
+# ok
+create table r_myf1bintbint2bint(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by range(myf1bintbint2bint(c1,1))
+(
+  partition p1 values less than(10),
+  partition p2 values less than(maxvalue)
+);
+## error_msg: $# multi columns used #$
+create table r_myf1bintbint2bint_2(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by range(myf1bintbint2bint(c1,c2))
+(
+partition p1 values less than(10),
+partition p2 values less than(maxvalue)
+);
+multi columns used
+# ok
+create table l_myf1bintbint2bint(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by list(myf1bintbint2bint(c1,1))
+(
+partition p1 values in (10),
+partition p2 values in (default)
+);
+## error_msg: $# multi columns used #$
+create table l_myf1bintbint2bint_2(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by list(myf1bintbint2bint(c1,c2))
+(
+partition p1 values in(10),
+partition p2 values in(default)
+);
+multi columns used
+## ok
+create table uh_myf1bintbint2bint(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(myf1bintbint2bint(c1,1))
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+);
+insert into uh_myf1bintbint2bint values (1,1),(2,2),(3,3),(4,4);
+select c1, part_route('', 'uh_myf1bintbint2bint', c1) as route_rs, part_hash('', 'uh_myf1bintbint2bint', c1) as hash_rs from uh_myf1bintbint2bint where c1=1;
+c1,route_rs,hash_rs
+1,p2,(2)
+select c1, part_route('', 'uh_myf1bintbint2bint', c1) as route_rs, part_hash('', 'uh_myf1bintbint2bint', c1) as hash_rs from uh_myf1bintbint2bint where c1=2;
+c1,route_rs,hash_rs
+2,p3,(3)
+select c1, part_route('', 'uh_myf1bintbint2bint', c1) as route_rs, part_hash('', 'uh_myf1bintbint2bint', c1) as hash_rs from uh_myf1bintbint2bint where c1=3;
+c1,route_rs,hash_rs
+3,p4,(4)
+select c1, part_route('', 'uh_myf1bintbint2bint', c1) as route_rs, part_hash('', 'uh_myf1bintbint2bint', c1) as hash_rs from uh_myf1bintbint2bint where c1=4;
+c1,route_rs,hash_rs
+4,p5,(5)
+## ok
+create table uh_myf1varvar2bint(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(myf1varvar2bint(c1,'1'))
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+);
+insert into uh_myf1varvar2bint values ('1','1'),('2','2'),('3','3'),('4','4');
+select c1, part_route('', 'uh_myf1varvar2bint', c1) as route_rs, part_hash('', 'uh_myf1varvar2bint', c1) as hash_rs from uh_myf1varvar2bint where c1=1;
+c1,route_rs,hash_rs
+1,p2,(2)
+select c1, part_route('', 'uh_myf1varvar2bint', c1) as route_rs, part_hash('', 'uh_myf1varvar2bint', c1) as hash_rs from uh_myf1varvar2bint where c1=2;
+c1,route_rs,hash_rs
+2,p3,(3)
+select c1, part_route('', 'uh_myf1varvar2bint', c1) as route_rs, part_hash('', 'uh_myf1varvar2bint', c1) as hash_rs from uh_myf1varvar2bint where c1=3;
+c1,route_rs,hash_rs
+3,p4,(4)
+select c1, part_route('', 'uh_myf1varvar2bint', c1) as route_rs, part_hash('', 'uh_myf1varvar2bint', c1) as hash_rs from uh_myf1varvar2bint where c1=4;
+c1,route_rs,hash_rs
+4,p5,(5)
+## error_msg: $# unsupported params #$
+create table uh2_myf1varvar2bint(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(myf1varvar2bint(c1, 1))
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+);
+unsupported params

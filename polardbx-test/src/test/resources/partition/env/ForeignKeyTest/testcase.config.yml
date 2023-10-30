@@ -1,0 +1,8 @@
+foreign_key
+#foreign_key_1
+add_foreign_key
+foreign_key_rename
+foreign_key_truncate
+foreign_key_generated
+foreign_key_cascade_update
+foreign_key_cascade_delete

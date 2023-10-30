@@ -1,4 +1,4 @@
-## test hash/one col/int
+## DISABLE_FAST_SQL_PARSER
 
 ## create tbl hash with timestamp
 drop table if exists tbl_hsh_ts;
@@ -91,12 +91,12 @@ insert into tbl_rng_ts2 values ('1998-12-31 15:00:00'), ('1998-12-31 17:00:00');
 set time_zone="+00:00";
 ## both '1998-12-31 15:00:00' and '1998-12-31 17:00:00' should be route to p0
 select * from tbl_rng_ts2 where a='1998-12-31 15:00:00' or a='1998-12-31 17:00:00';
-explain select * from tbl_rng_ts2 where a='1998-12-31 15:00:00' or a='1998-12-31 17:00:00';
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/select * from tbl_rng_ts2 where a='1998-12-31 15:00:00' or a='1998-12-31 17:00:00';
 
 set time_zone="+08:00";
 ## both '1998-12-31 23:00:00' and '1999-01-01 01:00:00' should be route to p0
 select * from tbl_rng_ts2 where a ='1998-12-31 23:00:00' or a='1999-01-01 01:00:00';
-explain select * from tbl_rng_ts2 where a ='1998-12-31 23:00:00' or a='1999-01-01 01:00:00';
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/select * from tbl_rng_ts2 where a ='1998-12-31 23:00:00' or a='1999-01-01 01:00:00';
 
 
 

@@ -37,6 +37,26 @@ public class AlterTableGroupSetPartitionsLocalityPreparedData extends DdlPrepare
 
     private String rebalanceSql;
 
+    public String getNewTgSql() {
+        return newTgSql;
+    }
+
+    public void setNewTgSql(String newTgSql) {
+        this.newTgSql = newTgSql;
+    }
+
+    private String newTgSql;
+
+    public String getSetTgSql() {
+        return SetTgSql;
+    }
+
+    public void setSetTgSql(String setTgSql) {
+        SetTgSql = setTgSql;
+    }
+
+    private String SetTgSql;
+
     public String getTableGroupName() {
         return tableGroupName;
     }
@@ -51,14 +71,6 @@ public class AlterTableGroupSetPartitionsLocalityPreparedData extends DdlPrepare
 
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
-    }
-
-    public List<String> getDrainNodeList() {
-        return this.drainNodeList;
-    }
-
-    public void setDrainNodeList(List<String> drainNodeList) {
-        this.drainNodeList = drainNodeList;
     }
 
     public Boolean getWithRebalance() {

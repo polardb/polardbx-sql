@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -88,5 +89,10 @@ public class SQLLoopStatement extends SQLStatementImpl {
         }
 
         return x;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

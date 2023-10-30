@@ -20,6 +20,12 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -115,5 +121,10 @@ public class SQLDescribeStatement extends SQLStatementImpl implements SQLReplace
         }
 
         return false;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

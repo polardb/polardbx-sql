@@ -54,6 +54,7 @@ public class LogicalShowFilesHandler extends HandlerCommon {
 
     private static final int PART_NAME_INDEX = 3;
     private static final int FILE_NAME_INDEX = 4;
+
     private static final Comparator<Object[]> ROW_COMPARATOR = (l, r) -> {
         Comparable lPartName = (Comparable) l[PART_NAME_INDEX];
         Comparable rPartName = (Comparable) r[PART_NAME_INDEX];
@@ -71,10 +72,12 @@ public class LogicalShowFilesHandler extends HandlerCommon {
         final LogicalShow show = (LogicalShow) logicalPlan;
         final SqlShowFiles showFiles = (SqlShowFiles) show.getNativeSqlNode();
         final SqlNode sqlTableName = showFiles.getTableName();
+
         String tableName = RelUtils.lastStringValue(sqlTableName);
         final OptimizerContext context = OptimizerContext.getContext(show.getSchemaName());
         //test the table existence
         TableMeta tableMeta = context.getLatestSchemaManager().getTable(tableName);
+
         if (tableMeta == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_NOT_EXIST,
                 MessageFormat.format("table {0} does not exists", tableName));
@@ -85,10 +88,10 @@ public class LogicalShowFilesHandler extends HandlerCommon {
         } else if (tableMeta.getPartitionInfo() == null) {
             throw GeneralUtil.nestedException("Only support show files operation in partition mode.");
         }
-        return handlePartitionedTable(tableMeta);
+        return handlePartitionedTable(tableMeta, executionContext);
     }
 
-    private Cursor handlePartitionedTable(TableMeta tableMeta) {
+    private Cursor handlePartitionedTable(TableMeta tableMeta, ExecutionContext executionContext) {
         ArrayResultCursor result = new ArrayResultCursor("FILES");
         result.addColumn("ID", DataTypes.IntegerType);
         result.addColumn("GROUP_NAME", DataTypes.StringType);
@@ -99,26 +102,34 @@ public class LogicalShowFilesHandler extends HandlerCommon {
         result.addColumn("ROW_COUNT", DataTypes.LongType);
         result.addColumn("CREATE_TIME", DataTypes.StringType);
         result.addColumn("COMMIT_TSO_TIME", DataTypes.StringType);
+
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
         Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
+
         result.initMeta();
         int index = 0;
         Map<String, List<PhysicalPartitionInfo>> physicalPartitionInfos =
             partitionInfo.getPhysicalPartitionTopology(new ArrayList<>());
+
         List<Object[]> rows = new ArrayList<>();
+
         for (Map.Entry<String, List<PhysicalPartitionInfo>> phyPartItem : physicalPartitionInfos.entrySet()) {
             String grpGroupKey = phyPartItem.getKey();
             List<PhysicalPartitionInfo> phyPartList = phyPartItem.getValue();
             for (int i = 0; i < phyPartList.size(); i++) {
+
                 String partName = phyPartList.get(i).getPartName();
                 String phyTable = phyPartList.get(i).getPhyTable();
                 List<FileMeta> fileMetaList = flatFileMetas.get(phyTable);
+
                 for (FileMeta fileMeta : fileMetaList) {
                     OSSOrcFileMeta ossOrcFileMeta = (OSSOrcFileMeta) fileMeta;
+
                     String fileName = ossOrcFileMeta.getFileName();
                     long fileSize = ossOrcFileMeta.getFileSize();
                     long rowCount = ossOrcFileMeta.getTableRows();
                     String createTime = ossOrcFileMeta.getCreateTime();
+
                     if (ossOrcFileMeta.getRemoveTs() == null) {
                         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         rows.add(
@@ -138,8 +149,10 @@ public class LogicalShowFilesHandler extends HandlerCommon {
                 }
             }
         }
+
         // sort
         Collections.sort(rows, ROW_COMPARATOR);
+
         rows.forEach(row -> result.addRow(row));
         return result;
     }

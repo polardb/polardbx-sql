@@ -37,6 +37,7 @@ public enum MemoryType {
     STORED_FUNCTION("stored_function"),
     STORED_PROCEDURE("stored_procedure"),
     PROCEDURE_CURSOR("procedure_cursor"),
+    CURSOR_FETCH("cursor_fetch"),
     OTHER("other");
 
     private String extensionName;

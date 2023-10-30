@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -51,7 +51,8 @@ public final class ShowWarnings {
     private static final int FIELD_COUNT = 3;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
+
     private static final String cmd = "Show Warnings";
 
     static {
@@ -67,44 +68,43 @@ public final class ShowWarnings {
 
         fields[i] = PacketUtil.getField("Message", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c, boolean hasMore) {
+    public static boolean execute(ServerConnection c, boolean hasMore) {
         String db = c.getSchema();
         if (db == null) {
             c.writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
-            return;
+            return false;
         }
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + db + "'");
-            return;
+            return false;
         }
 
         TConnection conn = c.getTddlConnection();
         if (conn == null || conn.getExecutionContext() == null) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
         Map<String, Object> extraDatas = conn.getExecutionContext().getExtraDatas();
         if (extraDatas == null) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
         List<ErrorMessage> messagesFailed =
-            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.LastFailedMessage, Lists.newLinkedList());
+            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.FAILED_MESSAGE, Lists.newLinkedList());
+        List<ErrorMessage> messagesLastFailed =
+            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.LAST_FAILED_MESSAGE, Lists.newLinkedList());
         List<ErrorMessage> messagesWarning =
             (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.WARNING_MESSAGE, Lists.newLinkedList());
 
+        messagesFailed.addAll(messagesLastFailed);
         messagesFailed.addAll(messagesWarning);
 
         if (messagesFailed.size() == 0) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
         ByteBufferHolder buffer = c.allocate();
@@ -119,21 +119,24 @@ public final class ShowWarnings {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
-
         for (ErrorMessage msg : messagesFailed) {
             RowDataPacket row = getRow(msg, c.getCharset());
-            row.packetId = ++packetId;
+            row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -141,6 +144,7 @@ public final class ShowWarnings {
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 
     private static RowDataPacket getRow(ErrorMessage msg, String charset) {

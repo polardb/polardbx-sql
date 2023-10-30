@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableSetGroupAddSubTaskMetaTask;
@@ -39,7 +40,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
@@ -48,18 +51,20 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -131,6 +136,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
 
         JoinGroupValidateTask joinGroupValidateTask =
             new JoinGroupValidateTask(schemaName, ImmutableList.of(targetTableGroupName), tableName, false);
+
         if (flag[1]) {
             return new TransientDdlJob();
         } else if (flag[0]) {
@@ -140,8 +146,10 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                     false,
                     false,
                     preparedData.getOriginalJoinGroup());
+
             CleanupEmptyTableGroupTask cleanupEmptyTableGroupTask =
                 new CleanupEmptyTableGroupTask(schemaName, curTableGroupConfig.getTableGroupRecord().getTg_name());
+
             ReloadTableMetaAfterChangeTableGroupTask reloadTargetTableGroup =
                 new ReloadTableMetaAfterChangeTableGroupTask(schemaName, preparedData.getTableGroupName());
 
@@ -271,6 +279,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "unexpect error");
         }
+
         StringBuilder sb = new StringBuilder();
         int i = 0;
         for (Map.Entry<String, String> entry : preparedData.getPartitionNamesMap().entrySet()) {
@@ -285,10 +294,8 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
             sb.append("`");
             i++;
         }
-        SubJobTask subJobAlignPartitionName =
-            new SubJobTask(schemaName,
-                String.format("alter table %s rename partition %s", preparedData.getTableName(), sb.toString()),
-                null);
+        SubJobTask subJobAlignPartitionName = new SubJobTask(schemaName,
+            String.format("alter table %s rename partition %s", preparedData.getTableName(), sb), null);
         SubJobTask subJobSetTableGroup = new SubJobTask(schemaName, preparedData.getSourceSql(), null);
         subJobAlignPartitionName.setParentAcquireResource(true);
         subJobSetTableGroup.setParentAcquireResource(true);
@@ -384,7 +391,21 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
 
         executableDdlJob.combineTasks(subTask);
         executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
-        executableDdlJob.addTaskRelationship(executableDdlJob.getTail(), bringUpAlterTableGroupTasks.get(0));
+
+        SqlKind sqlKind = ddl.kind();
+        DdlContext dc = executionContext.getDdlContext();
+
+        Map<String, Set<String>> newTopology = newPartitionInfo.getTopology();
+
+        CdcTableGroupDdlMarkTask cdcTableGroupDdlMarkTask =
+            new CdcTableGroupDdlMarkTask(preparedData.getTableGroupName(), schemaName, tableName, sqlKind, newTopology,
+                dc.getDdlStmt());
+
+        executableDdlJob.addTask(cdcTableGroupDdlMarkTask);
+        executableDdlJob.addTaskRelationship(taskList.get(taskList.size() - 1), cdcTableGroupDdlMarkTask);
+        executableDdlJob.addTaskRelationship(cdcTableGroupDdlMarkTask,
+            bringUpAlterTableGroupTasks.get(0));
+
         DdlTask dropUselessTableTask = ComplexTaskFactory
             .CreateDropUselessPhyTableTask(schemaName, tableName, sourceTableTopology, executionContext);
         executableDdlJob.addTask(dropUselessTableTask);
@@ -400,10 +421,19 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
 
-        SqlNode sqlAlterTableSetTableGroup = ddl.getSqlNode();
-
         return AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForSetTableGroup(curPartitionInfo, sqlAlterTableSetTableGroup, executionContext);
+            .getNewPartitionInfo(
+                null,
+                curPartitionInfo,
+                false,
+                ddl.getSqlNode(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                executionContext);
     }
 
     private void changeMetaInfoCheck(boolean[] flag) {
@@ -412,16 +442,25 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
         String targetTableGroup = preparedData.getTableGroupName();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
         PartitionInfo sourcePartitionInfo = schemaManager.getTable(logicTableName).getPartitionInfo();
+
         if (StringUtils.isEmpty(targetTableGroup)) {
+//            LocalityDesc localityDesc = LocalityDesc.parse(sourcePartitionInfo.getLocality());
+////            if(localityDesc.getBalanceSingleTable()){
+////                flag[0] = true;
+////                flag[1] = false;
+////            }else {
             flag[0] = true;
             flag[1] = false;
+//            }
             return;
         }
+
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig targetTableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(targetTableGroup);
         TableGroupConfig sourceTableGroupInfo =
             tableGroupInfoManager.getTableGroupConfigById(sourcePartitionInfo.getTableGroupId());
+
         if (sourceTableGroupInfo.getTableGroupRecord().tg_name.equalsIgnoreCase(targetTableGroup)) {
             // do nothing;
             flag[0] = false;
@@ -430,8 +469,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
             flag[0] = true;
             flag[1] = false;
         } else {
-            TablePartRecordInfoContext tablePartRecordInfoContext =
-                targetTableGroupConfig.getAllTables().get(0);
+            TablePartRecordInfoContext tablePartRecordInfoContext = targetTableGroupConfig.getAllTables().get(0);
             String tableInTbGrp = tablePartRecordInfoContext.getLogTbRec().tableName;
             PartitionInfo targetPartitionInfo = schemaManager.getTable(tableInTbGrp).getPartitionInfo();
 
@@ -440,9 +478,10 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                 (strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.RANGE_COLUMNS);
             boolean match = false;
             if (isVectorStrategy) {
-                List<String> actualPartCols = PartitionInfoUtil.getActualPartitionColumns(sourcePartitionInfo);
                 if (PartitionInfoUtil
-                    .partitionEquals(sourcePartitionInfo, targetPartitionInfo, actualPartCols.size())) {
+                    .actualPartColsEquals(sourcePartitionInfo, targetPartitionInfo,
+                        PartitionInfoUtil.fetchAllLevelMaxActualPartColsFromPartInfos(sourcePartitionInfo,
+                            targetPartitionInfo))) {
                     match = true;
                 }
             } else if (sourcePartitionInfo.equals(targetPartitionInfo)) {
@@ -454,11 +493,12 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                     "the partition policy of tablegroup:" + targetTableGroup + " is not match to table: "
                         + logicTableName);
             }
-            for (PartitionSpec partitionSpec : sourcePartitionInfo.getPartitionBy().getPartitions()) {
-                PartitionGroupRecord partitionGroupRecord = targetTableGroupConfig.getPartitionGroupRecords().stream()
-                    .filter(o -> o.getPartition_name().equalsIgnoreCase(partitionSpec.getName())).findFirst()
-                    .orElse(null);
-                assert partitionGroupRecord != null;
+
+            for (PartitionGroupRecord partitionGroupRecord : targetTableGroupConfig.getPartitionGroupRecords()) {
+                PartitionSpec partitionSpec =
+                    AlterTableGroupUtils.findPartitionSpec(sourcePartitionInfo, partitionGroupRecord);
+
+                assert partitionSpec != null;
 
                 if (!partitionSpec.getLocation().getGroupKey()
                     .equalsIgnoreCase(GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.getPhy_db()))) {
@@ -467,6 +507,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                     return;
                 }
             }
+
             flag[0] = true;
             flag[1] = false;
         }

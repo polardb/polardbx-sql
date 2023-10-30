@@ -35,7 +35,7 @@ public class ShowFileStorage {
     private static final int FIELD_COUNT = 10;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -71,11 +71,9 @@ public class ShowFileStorage {
 
         fields[i] = PacketUtil.getField("MAX_WRITE_RATE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -88,12 +86,15 @@ public class ShowFileStorage {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
-
         List<byte[][]> resultList = FileStoreStatistics.generateFileStoragePacket();
         if (resultList != null) {
             for (byte[][] results : resultList) {
@@ -101,17 +102,18 @@ public class ShowFileStorage {
                 for (byte[] result : results) {
                     row.add(result);
                 }
-                row.packetId = ++packetId;
+                row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);
             }
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 }

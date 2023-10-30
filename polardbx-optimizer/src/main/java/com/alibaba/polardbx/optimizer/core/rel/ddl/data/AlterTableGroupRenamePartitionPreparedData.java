@@ -27,6 +27,7 @@ public class AlterTableGroupRenamePartitionPreparedData extends AlterTableGroupB
     }
 
     private List<Pair<String, String>> changePartitionsPair;
+    private boolean subPartitionRename;
 
     public List<Pair<String, String>> getChangePartitionsPair() {
         return changePartitionsPair;
@@ -35,6 +36,14 @@ public class AlterTableGroupRenamePartitionPreparedData extends AlterTableGroupB
     public void setChangePartitionsPair(
         List<Pair<String, String>> changePartitionsPair) {
         this.changePartitionsPair = changePartitionsPair;
+    }
+
+    public boolean isSubPartitionRename() {
+        return subPartitionRename;
+    }
+
+    public void setSubPartitionRename(boolean subPartitionRename) {
+        this.subPartitionRename = subPartitionRename;
     }
 
     public List<String> getRelatedPartitions() {

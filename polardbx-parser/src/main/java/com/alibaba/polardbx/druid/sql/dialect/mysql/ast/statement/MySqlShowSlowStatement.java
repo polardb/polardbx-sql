@@ -22,11 +22,11 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowSlowStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
-    private boolean    physical = false;
+    private boolean physical = false;
     private SQLOrderBy orderBy;
-    private SQLExpr    where;
-    private SQLLimit   limit;
-    private boolean    full = false;
+    private SQLExpr where;
+    private SQLLimit limit;
+    private boolean full = false;
 
     public SQLLimit getLimit() {
         return limit;

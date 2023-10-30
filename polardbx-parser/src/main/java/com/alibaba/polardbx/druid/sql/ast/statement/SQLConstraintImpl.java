@@ -27,7 +27,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import java.util.List;
 
 public abstract class SQLConstraintImpl extends SQLObjectImpl implements SQLConstraint, SQLDbTypedObject {
-    protected DbType  dbType;
+    protected DbType dbType;
     private SQLName name;
     protected Boolean enable;
     protected Boolean validate;
@@ -36,7 +36,7 @@ public abstract class SQLConstraintImpl extends SQLObjectImpl implements SQLCons
 
     public List<SQLCommentHint> hints;
 
-    public SQLConstraintImpl(){
+    public SQLConstraintImpl() {
 
     }
 
@@ -57,7 +57,6 @@ public abstract class SQLConstraintImpl extends SQLObjectImpl implements SQLCons
     public void setHints(List<SQLCommentHint> hints) {
         this.hints = hints;
     }
-
 
     public SQLName getName() {
         return name;

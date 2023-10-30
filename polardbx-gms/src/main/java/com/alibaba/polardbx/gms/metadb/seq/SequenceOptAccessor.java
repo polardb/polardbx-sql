@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.metadb.seq;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -34,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.CYCLE;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NOCYCLE;
 
 public class SequenceOptAccessor extends AbstractAccessor {
 
@@ -186,6 +187,11 @@ public class SequenceOptAccessor extends AbstractAccessor {
         }
     }
 
+    public boolean checkIfExists(String schemaName, String name) {
+        SequenceOptRecord record = query(schemaName, name);
+        return record != null;
+    }
+
     public int updateStatus(SequenceOptRecord record) {
         return update(UPDATE_SEQ_OPT_TABLE_STATUS, SEQ_OPT_TABLE, record.schemaName, record.name, record.status);
     }
@@ -204,12 +210,15 @@ public class SequenceOptAccessor extends AbstractAccessor {
 
     protected String buildUpdateSql(SequenceOptRecord record) {
         StringBuilder sql = new StringBuilder();
+
         sql.append(UPDATE_SEQ_OPT_TABLE).append("`start_with` = ");
+
         if (record.startWith > 0) {
             sql.append(record.startWith).append(", `value` = ").append(record.startWith);
         } else {
             sql.append("`start_with`");
         }
+
         if (record.incrementBy > 0) {
             // We should first change current value to capture the new increment
             // if start with is not specified,
@@ -219,21 +228,45 @@ public class SequenceOptAccessor extends AbstractAccessor {
             // then update increment itself.
             sql.append(", `increment_by` = ").append(record.incrementBy);
         }
+
         if (record.maxValue > 0) {
             sql.append(", `max_value` = ").append(record.maxValue);
         }
+
         // We have to carefully handle cycle and cache flags.
+        sql.append(buildCycle(record));
+
+        sql.append(WHERE_SCHEMA_SEQ);
+
+        return sql.toString();
+    }
+
+    protected String buildCycle(SequenceOptRecord record) {
+        StringBuilder sql = new StringBuilder();
+
+        int newCycle = record.cycle;
+
+        buildCycle(newCycle, record.cycleReset, sql);
+
+        sql.append(")  & ").append(CYCLE);
+
+        return sql.toString();
+    }
+
+    protected void buildCycle(int newCycle, boolean cycleReset, StringBuilder sql) {
         sql.append(", `cycle` = (`cycle`");
-        if (record.cycle == SequenceAttribute.CYCLE) {
-            sql.append(" | ").append(record.cycle);
-        } else if (record.cycle == SequenceAttribute.NOCYCLE) {
-            sql.append(" & ").append(record.cycle);
+
+        if (cycleReset) {
+            if (newCycle == CYCLE) {
+                sql.append(" | ").append(CYCLE);
+            } else if (newCycle == NOCYCLE) {
+                sql.append(" & ").append(NOCYCLE);
+            } else {
+                sql.append(" | `cycle`");
+            }
         } else {
             sql.append(" | `cycle`");
         }
-        sql.append(")  & ").append(SequenceAttribute.CYCLE);
-        sql.append(WHERE_SCHEMA_SEQ);
-        return sql.toString();
     }
 
 }

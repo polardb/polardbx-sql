@@ -31,6 +31,7 @@ import java.util.List;
 
 import static com.google.common.truth.Truth.assertWithMessage;
 
+
 public class GroupingSetsTest extends ReadBaseTestCase {
 
     String tableNameSet;

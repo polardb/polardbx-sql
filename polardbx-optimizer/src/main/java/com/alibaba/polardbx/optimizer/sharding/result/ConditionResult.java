@@ -23,6 +23,7 @@ import org.apache.calcite.rex.RexNode;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author chenmo.cm
@@ -30,6 +31,14 @@ import java.util.Map;
 public interface ConditionResult {
 
     ConditionResult simplify();
+
+    /**
+     * Wrap all RexCall of scalar function (e.g. rand()) with RexCallParam,
+     * so that we can replace RexCallParam with literal value in following step
+     *
+     * @return ResultBean with all scalar function replaced by RexCallParam
+     */
+    ConditionResult convertScalarFunction2RexCallParam(AtomicInteger maxParamIndex, ExecutionContext executionContext);
 
     List<RexNode> toRexNodes();
 

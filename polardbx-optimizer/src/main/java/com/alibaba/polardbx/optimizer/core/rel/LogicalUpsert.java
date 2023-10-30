@@ -65,11 +65,9 @@ public class LogicalUpsert extends LogicalInsertIgnore {
 
     private final int rowNumberColumnIndex;
 
-    // If all sharding columns in update list referencing same column in after value
-    // e.g. insert into t1(a,b,c) values (1,2,3) on duplicate key update a=values(a),b=values(b),c=values(c)
-    private final boolean allUpdatedSkRefValue;
-
     private final boolean hasJsonColumn;
+    // If input is in value column order instead of column value order
+    private final boolean inputInValueColumnOrder;
 
     public LogicalUpsert(LogicalInsert insert,
                          InsertWriter primaryInsertWriter,
@@ -84,8 +82,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          boolean modifyPartitionKey,
                          boolean modifyUniqueKey,
                          boolean withBeforeValueRef,
-                         boolean allUpdatedSkRefValue,
-                         boolean hasJsonColumn) {
+                         boolean hasJsonColumn,
+                         boolean inputInValueColumnOrder) {
         super(insert, selectListForDuplicateCheck);
         this.beforeUpdateMapping = beforeUpdateMapping;
         this.rowNumberColumnIndex = rowNumberColumnIndex;
@@ -99,8 +97,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.gsiUpsertWriters = gsiUpsertWriters;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiInsertWriters = gsiInsertWriters;
-        this.allUpdatedSkRefValue = allUpdatedSkRefValue;
         this.hasJsonColumn = hasJsonColumn;
+        this.inputInValueColumnOrder = inputInValueColumnOrder;
     }
 
     public LogicalUpsert(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -110,9 +108,9 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          InsertWriter primaryInsertWriter, List<InsertWriter> gsiInsertWriters,
                          List<Integer> autoIncParamIndex, List<List<String>> ukColumnNamesList,
                          List<List<Integer>> beforeUkMapping, List<List<Integer>> afterUkMapping,
-                         List<Integer> selectInsertRowMapping, List<String> pkColumnNames,
-                         List<Integer> beforePkMapping, List<Integer> afterPkMapping, Set<String> allUkSet,
-                         Map<String, Map<String, Set<String>>> tableUkMap,
+                         List<Integer> afterUgsiUkMapping, List<Integer> selectInsertRowMapping,
+                         List<String> pkColumnNames, List<Integer> beforePkMapping, List<Integer> afterPkMapping,
+                         Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
                          Map<String, List<List<String>>> ukGroupByTable, Map<String, List<String>> localIndexPhyName,
                          List<ColumnMeta> rowColumnMetas, List<ColumnMeta> tableColumnMetas,
                          List<String> selectListForDuplicateCheck, UpsertWriter primaryUpsertWriter,
@@ -123,17 +121,23 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          boolean sourceTablesIsReadyToPublish, LogicalDynamicValues logicalDynamicValues,
                          List<RexNode> unOptimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                          List<InsertWriter> gsiInsertIgnoreWriters, DistinctWriter primaryDeleteWriter,
-                         List<DistinctWriter> gsiDeleteWriters, boolean allUpdatedSkRefValue,
-                         boolean usePartFieldChecker,
-                         Map<String, ColumnMeta> columnMetaMap, boolean hasJsonColumn) {
+                         List<DistinctWriter> gsiDeleteWriters,
+                         boolean inputInValueColumnOrder, boolean usePartFieldChecker, boolean hasJsonColumn,
+                         Map<String, ColumnMeta> columnMetaMap, boolean ukContainGeneratedColumn,
+                         List<ColumnMeta> evalRowColMetas, List<RexNode> genColRexNodes,
+                         List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
+                         List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
+                         boolean pushablePrimaryKeyCheck, boolean isPushableForeignConstraintCheck) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
-            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
+            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
             selectInsertRowMapping, pkColumnNames, beforePkMapping, afterPkMapping, allUkSet, tableUkMap,
             ukGroupByTable, localIndexPhyName, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck,
             targetTableIsWritable, targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
             unOptimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriters, primaryDeleteWriter,
-            gsiDeleteWriters, usePartFieldChecker, columnMetaMap);
+            gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
+            genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, isPushableForeignConstraintCheck);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.primaryUpsertWriter = primaryUpsertWriter;
@@ -143,8 +147,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.modifyPartitionKey = modifyPartitionKey;
         this.modifyUniqueKey = modifyUniqueKey;
         this.withBeforeValueRef = withBeforeValueRef;
-        this.allUpdatedSkRefValue = allUpdatedSkRefValue;
         this.hasJsonColumn = hasJsonColumn;
+        this.inputInValueColumnOrder = inputInValueColumnOrder;
     }
 
     @Override
@@ -169,6 +173,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getUkColumnNamesList(),
             getBeforeUkMapping(),
             getAfterUkMapping(),
+            getAfterUgsiUkIndex(),
             getSelectInsertColumnMapping(),
             getPkColumnNames(),
             getBeforePkMapping(),
@@ -198,10 +203,19 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getGsiInsertIgnoreWriters(),
             getPrimaryDeleteWriter(),
             getGsiDeleteWriters(),
-            isAllUpdatedSkRefValue(),
+            isInputInValueColumnOrder(),
             isUsePartFieldChecker(),
+            isHasJsonColumn(),
             getColumnMetaMap(),
-            isHasJsonColumn());
+            isUkContainGeneratedColumn(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck());
         return newLogicalUpsert;
     }
 
@@ -241,8 +255,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         return withBeforeValueRef;
     }
 
-    public boolean isAllUpdatedSkRefValue() {
-        return allUpdatedSkRefValue;
+    public boolean isInputInValueColumnOrder() {
+        return inputInValueColumnOrder;
     }
 
     @Override
@@ -255,7 +269,10 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             insert.getInsertRowType(), insert.getKeywords(), upsert.getDuplicateKeyUpdateList(),
             insert.getBatchSize(), insert.getAppendedColumnIndex(), insert.getHints(), insert.getTableInfo(), null,
             new ArrayList<>(), insert.getAutoIncParamIndex(), insert.getUnOptimizedLogicalDynamicValues(),
-            insert.getUnOptimizedDuplicateKeyUpdateList());
+            insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
+            insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
+            insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
+            insert.isPushableForeignConstraintCheck());
 
         final InsertWriter upsertWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return upsertWriter.getInput(executionContext);

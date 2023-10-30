@@ -43,7 +43,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -58,7 +57,7 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
                                                  Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                                  Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                  Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                                 Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                                 Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                                  ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -75,7 +74,6 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
         AlterTableGroupAddPartitionPreparedData alterTableGroupAddPartitionPreparedData =
             (AlterTableGroupAddPartitionPreparedData) preparedData;
         String schemaName = alterTableGroupAddPartitionPreparedData.getSchemaName();
-        String tableName = alterTableGroupAddPartitionPreparedData.getTableName();
         String tableGroupName = alterTableGroupAddPartitionPreparedData.getTableGroupName();
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
@@ -90,14 +88,14 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
 
         List<String> targetDbList = new ArrayList<>();
-        int targetDbCnt = alterTableGroupAddPartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
         List<String> newPartitions = new ArrayList<>();
         List<String> localities = new ArrayList<>();
-        for (int i = 0; i < alterTableGroupAddPartitionPreparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(alterTableGroupAddPartitionPreparedData.getTargetGroupDetailInfoExRecords()
-                .get(i % targetDbCnt).phyDbName);
-            newPartitions.add(alterTableGroupAddPartitionPreparedData.getNewPartitionNames().get(i));
-            localities.add("");
+        for (int i = 0; i < preparedData.getNewPartitionNames().size(); i++) {
+            targetDbList.add(preparedData.getInvisiblePartitionGroups().get(i)
+                .getPhy_db());
+            newPartitions.add(preparedData.getNewPartitionNames().get(i));
+            localities.add(preparedData.getInvisiblePartitionGroups().get(i)
+                .getLocality());
         }
         DdlTask addMetaTask =
             new AlterTableGroupAddMetaTask(schemaName, tableGroupName, tableGroupConfig.getTableGroupRecord().getId(),
@@ -144,7 +142,7 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
             alterTableGroupAddPartitionBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableGroupAddPartitionBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableGroupAddPartitionBuilder.getOrderedTargetTablesLocations();
         return new AlterTableGroupAddPartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
@@ -158,12 +156,21 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
         boolean emptyTaskAdded = false;
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             boolean skipBackfill = GeneralUtil.isEmpty(sourceTablesTopology.get(entry.getKey()));
-            AlterTableGroupSubTaskJobFactory subTaskJobFactory =
-                new AlterTableGroupSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
-                    newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
-                    targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
-                    orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, skipBackfill, taskType,
+
+            AlterTableGroupAddPartitionSubTaskJobFactory subTaskJobFactory =
+                new AlterTableGroupAddPartitionSubTaskJobFactory(ddl,
+                    (AlterTableGroupAddPartitionPreparedData) preparedData,
+                    tablesPrepareData.get(entry.getKey()),
+                    newPartitionsPhysicalPlansMap.get(entry.getKey()),
+                    tablesTopologyMap.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()),
+                    sourceTablesTopology.get(entry.getKey()),
+                    orderedTargetTablesLocations.get(entry.getKey()),
+                    targetPartitionName,
+                    skipBackfill,
+                    taskType,
                     executionContext);
+
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());

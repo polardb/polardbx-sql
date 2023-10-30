@@ -23,13 +23,14 @@ import java.util.List;
 
 public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKeyConstraint {
     private SQLExprTableSource referencedTable;
-    private List<SQLName>      referencingColumns = new ArrayList<SQLName>();
-    private List<SQLName>      referencedColumns  = new ArrayList<SQLName>();
-    private boolean            onDeleteCascade    = false;
-    private boolean            onDeleteSetNull    = false;
-    private boolean            disableNovalidate  = false;
+    private SQLName referencedSchemaName;
+    private List<SQLName> referencingColumns = new ArrayList<SQLName>();
+    private List<SQLName> referencedColumns = new ArrayList<SQLName>();
+    private boolean onDeleteCascade = false;
+    private boolean onDeleteSetNull = false;
+    private boolean disableNovalidate = false;
 
-    public SQLForeignKeyImpl(){
+    public SQLForeignKeyImpl() {
 
     }
 
@@ -65,6 +66,15 @@ public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKe
             x.setParent(this);
         }
         this.referencedTable = x;
+    }
+
+    @Override
+    public SQLName getReferencedSchemaName() {
+        return referencedSchemaName;
+    }
+
+    public void setReferencedSchemaName(SQLName schemaName) {
+        this.referencedSchemaName = schemaName;
     }
 
     @Override
@@ -104,7 +114,7 @@ public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKe
             acceptChild(visitor, this.getReferencingColumns());
             acceptChild(visitor, this.getReferencedColumns());
         }
-        visitor.endVisit(this);        
+        visitor.endVisit(this);
     }
 
     public void cloneTo(SQLForeignKeyImpl x) {
@@ -139,7 +149,7 @@ public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKe
         public final String name;
         public final String name_lcase;
 
-        Match(String name){
+        Match(String name) {
             this.name = name;
             this.name_lcase = name.toLowerCase();
         }
@@ -152,7 +162,7 @@ public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKe
         public final String name;
         public final String name_lcase;
 
-        On(String name){
+        On(String name) {
             this.name = name;
             this.name_lcase = name.toLowerCase();
         }
@@ -160,18 +170,50 @@ public class SQLForeignKeyImpl extends SQLConstraintImpl implements SQLForeignKe
 
     public static enum Option {
 
-        RESTRICT("RESTRICT"), CASCADE("CASCADE"), SET_NULL("SET NULL"), NO_ACTION("NO ACTION"), SET_DEFAULT("SET DEFAULT");
+        RESTRICT("RESTRICT"), CASCADE("CASCADE"), SET_NULL("SET NULL"), NO_ACTION("NO ACTION"),
+        SET_DEFAULT("SET DEFAULT");
 
         public final String name;
         public final String name_lcase;
 
-        Option(String name){
+        Option(String name) {
             this.name = name;
             this.name_lcase = name.toLowerCase();
         }
 
         public String getText() {
             return name;
+        }
+
+        public static Option fromString(String text) {
+            for (Option v : Option.values()) {
+                if (v.name.equalsIgnoreCase(text)) {
+                    return v;
+                }
+            }
+            return null;
+        }
+
+    }
+
+    public static enum PushDown {
+
+        PUSH_DOWN("PHYSICAL"), LOGIC("LOGICAL");
+
+        public final String name;
+        public final String name_lcase;
+
+        PushDown(String name) {
+            this.name = name;
+            this.name_lcase = name.toLowerCase();
+        }
+
+        public String getText() {
+            return name;
+        }
+
+        public static PushDown fromBoolean(boolean pushDown) {
+            return pushDown ? PushDown.PUSH_DOWN : PushDown.LOGIC;
         }
 
     }

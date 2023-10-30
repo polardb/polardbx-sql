@@ -16,15 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Data;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -39,7 +41,8 @@ public class CreateTablePreparedData extends DdlPreparedData {
     private boolean sharding;
 
     private boolean timestampColumnDefault;
-    private Map<String, String> binaryColumnDefaultValues;
+    private Map<String, String> specialDefaultValues;
+    private Map<String, Long> specialDefaultValueFlags;
 
     private SqlNode dbPartitionBy;
     private SqlNode dbPartitions;
@@ -54,9 +57,17 @@ public class CreateTablePreparedData extends DdlPreparedData {
 
     private String tableDefinition;
 
+    /**
+     * Foreign key
+     */
+    private List<String> referencedTables;
+    private List<ForeignKeyData> addedForeignKeys;
+
     private TableRule tableRule;
     private PartitionInfo partitionInfo;
     private LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
+
+    private String selectSql;
 
     /**
      * Create table with locality
@@ -65,6 +76,7 @@ public class CreateTablePreparedData extends DdlPreparedData {
 
     private String loadTableSchema;
     private String loadTableName;
+
     private String archiveTableName;
 
     /**

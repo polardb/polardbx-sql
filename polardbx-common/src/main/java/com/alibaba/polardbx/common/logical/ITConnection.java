@@ -47,7 +47,7 @@ public interface ITConnection extends AutoCloseable {
 
     ITransactionPolicy getTrxPolicy();
 
-    void setTrxPolicy(ITransactionPolicy trxPolicy);
+    void setTrxPolicy(ITransactionPolicy trxPolicy, boolean check);
 
     BatchInsertPolicy getBatchInsertPolicy(Map<String, Object> extraCmds);
 
@@ -77,5 +77,9 @@ public interface ITConnection extends AutoCloseable {
     }
 
     boolean isMppConnection();
+
+    default Map<String, Object> getConnectionVariables() {
+        return null;
+    }
 
 }

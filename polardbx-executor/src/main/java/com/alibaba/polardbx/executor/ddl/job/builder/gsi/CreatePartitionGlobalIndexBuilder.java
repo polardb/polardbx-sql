@@ -38,8 +38,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAddIndex;
@@ -114,10 +116,11 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
                                                        PartitionInfo indexPartitionInfo) {
         assert primaryPartitionInfo.equals(indexPartitionInfo);
         assert indexPartitionInfo.isGsi();
-        for (int i = 0; i < primaryPartitionInfo.getPartitionBy().getPartitions().size(); i++) {
-            PartitionLocation primaryLocation =
-                primaryPartitionInfo.getPartitionBy().getPartitions().get(i).getLocation();
-            PartitionLocation indexLocation = indexPartitionInfo.getPartitionBy().getPartitions().get(i).getLocation();
+        List<PartitionSpec> primaryPhyPartitions = primaryPartitionInfo.getPartitionBy().getPhysicalPartitions();
+        List<PartitionSpec> indexPhyPartitions = indexPartitionInfo.getPartitionBy().getPhysicalPartitions();
+        for (int i = 0; i < primaryPhyPartitions.size(); i++) {
+            PartitionLocation primaryLocation = primaryPhyPartitions.get(i).getLocation();
+            PartitionLocation indexLocation = indexPhyPartitions.get(i).getLocation();
             indexLocation.setGroupKey(primaryLocation.getGroupKey());
         }
     }
@@ -182,7 +185,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * copy table structure from main table
          */
         final MySqlCreateTableStatement astCreateIndexTable = (MySqlCreateTableStatement) SQLUtils
-            .parseStatements(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0).clone();
+            .parseStatementsWithDefaultFeatures(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0)
+            .clone();
 
         final Set<String> indexAndPkColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexAndPkColumnSet.addAll(indexColumnMap.keySet());
@@ -209,12 +213,15 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         assert primaryPartitionInfo != null;
         final Set<String> shardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         shardingColumns.addAll(primaryPartitionInfo.getPartitionColumns());
+        final Set<String> indexShardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexShardingColumns.addAll(indexPartitionInfo.getPartitionColumns());
 
         return createIndexTable(sqlAlterTable,
             indexColumnMap,
             coveringMap,
             astCreateIndexTable,
             shardingColumns,
+            indexShardingColumns,
             relDdl,
             gsiPreparedData.getSchemaName(),
             gsiPreparedData.getPrimaryTableName(),
@@ -243,7 +250,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * copy table structure from main table
          */
         final MySqlCreateTableStatement indexTableStmt =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(sqlCreateIndex.getPrimaryTableDefinition(),
+            (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(
+                    sqlCreateIndex.getPrimaryTableDefinition(),
                     JdbcConstants.MYSQL)
                 .get(0)
                 .clone();
@@ -275,6 +283,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         assert primaryPartitionInfo != null;
         final Set<String> shardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         shardingColumns.addAll(primaryPartitionInfo.getPartitionColumns());
+        final Set<String> indexShardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexShardingColumns.addAll(indexPartitionInfo.getPartitionColumns());
         final boolean isClusteredIndex = sqlCreateIndex.createClusteredIndex();
 
         if (isClusteredIndex) {
@@ -283,6 +293,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
                 indexTableStmt,
                 unique,
                 sqlCreateIndex.getOptions(),
+                indexShardingColumns,
                 relDdl,
                 null,
                 gsiPreparedData.getSchemaName(),
@@ -297,6 +308,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
                 unique,
                 sqlCreateIndex.getOptions(),
                 shardingColumns,
+                indexShardingColumns,
                 relDdl,
                 null,
                 gsiPreparedData.getSchemaName(),
@@ -342,16 +354,55 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
     @Override
     protected void addLocalIndex(Map<String, SqlIndexColumnName> indexColumnMap,
                                  MySqlCreateTableStatement indexTableStmt,
-                                 boolean unique,
+                                 boolean unique, boolean isGsi,
                                  List<SqlIndexOption> options) {
-        final List<String> indexShardKey = gsiPreparedData.getShardColumnsNotReorder();
-        if (indexShardKey != null && indexShardKey.size() > 0) {
-            if (indexShardKey.size() == 1) {
-                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
+
+//        final List<String> indexShardKey = gsiPreparedData.getShardColumnsNotReorder();
+//        if (indexShardKey != null && indexShardKey.size() > 0) {
+//            if (isRepartition()) {
+//                // like create table, look SqlCreateTable
+//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, options, false, indexShardKey);
+//            } else {
+//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, indexShardKey);
+//            }
+//        }
+
+        List<List<String>> allLevelPartKeys = gsiPreparedData.getAllLevelPartColumns();
+        boolean useSubPartBy = false;
+        boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
+        List<String> partKeyList = allLevelPartKeys.get(0);
+        List<String> subPartKeyList = null;
+        if (allLevelPartKeys.size() > 1 && allLevelPartKeys.get(1).size() > 0) {
+            useSubPartBy = true;
+            subPartKeyList = allLevelPartKeys.get(1);
+            subPartKeyContainAllPartKeyAsPrefixCols =
+                SqlCreateTable.checkIfContainPrefixPartCols(subPartKeyList, partKeyList);
+        }
+        if (!(useSubPartBy & subPartKeyContainAllPartKeyAsPrefixCols)) {
+
+//            if (partKeyList.size() == 1) {
+//                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, partKeyList);
+//            } else {
+//                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, new ArrayList<>());
+//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, partKeyList);
+//            }
+
+            if (isRepartition()) {
+                // like create table, look SqlCreateTable
+                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, options, false, partKeyList,
+                    false, "");
             } else {
-                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, indexShardKey);
+                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, partKeyList,
+                    false, "");
             }
         }
+
+        if (useSubPartBy) {
+            SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, ImmutableList.<SqlIndexOption>of(),
+                false, subPartKeyList, false, "");
+        }
+
+//        SqlCreateTable.addLocalIndexForAutoTbl(indexColumnMap, indexTableStmt, unique, isGsi, options, gsiPreparedData.getAllLevelPartColumns(), isRepartition());
     }
 
     /**

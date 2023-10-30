@@ -31,28 +31,55 @@ import java.util.List;
 
 /**
  * @author chenmo.cm
- * @date 2018/6/19 下午4:38
  */
 public class SqlCreateDatabase extends SqlDdl {
 
-    private static final SqlSpecialOperator  OPERATOR = new SqlCreateDatabaseOperator();
+    private static final SqlSpecialOperator OPERATOR = new SqlCreateDatabaseOperator();
 
-    final boolean                            ifNotExists;
-    final SqlIdentifier                      dbName;
-    final String                             charSet;
-    final String                             collate;
-    final String                             locality;
-    final String                             partitionMode;
+    final boolean ifNotExists;
+    final SqlIdentifier dbName;
+    final String charSet;
+    final String collate;
+    final Boolean encryption;
+    final String locality;
+    final String partitionMode;
+    final Boolean defaultSingle; // ON/OFF 0/1 true/false
 
-    public SqlCreateDatabase(SqlParserPos pos, boolean ifNotExists, SqlIdentifier dbName, String charSet, String collate,
-                             String locality, String partitionMode) {
+    final SqlIdentifier sourceDatabaseName;
+    final boolean like;
+    final boolean as;
+
+    final List<SqlIdentifier> includeTables;
+    final List<SqlIdentifier> excludeTables;
+
+    //for create database like/as lock=true/false
+    final boolean withLock;
+    final boolean dryRun;
+    final boolean createTables;
+
+    public SqlCreateDatabase(SqlParserPos pos, boolean ifNotExists, SqlIdentifier dbName, String charSet,
+                             String collate, Boolean encryption,
+                             String locality, String partitionMode, Boolean defaultSingle, SqlIdentifier sourceDatabaseName,
+                             boolean like, boolean as, List<SqlIdentifier> includeTables,
+                             List<SqlIdentifier> excludeTables,
+                             boolean withLock, boolean dryRun, boolean createTables) {
         super(OPERATOR, pos);
         this.ifNotExists = ifNotExists;
         this.dbName = dbName;
         this.charSet = trim(charSet);
         this.collate = trim((collate));
+        this.encryption = encryption;
         this.locality = locality;
         this.partitionMode = partitionMode;
+        this.defaultSingle = defaultSingle;
+        this.sourceDatabaseName = sourceDatabaseName;
+        this.like = like;
+        this.as = as;
+        this.includeTables = includeTables;
+        this.excludeTables = excludeTables;
+        this.withLock = withLock;
+        this.dryRun = dryRun;
+        this.createTables = createTables;
     }
 
     private String trim(String str) {
@@ -73,7 +100,7 @@ public class SqlCreateDatabase extends SqlDdl {
         return str;
     }
 
-        @Override
+    @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         writer.keyword("CREATE DATABASE");
 
@@ -91,9 +118,62 @@ public class SqlCreateDatabase extends SqlDdl {
             writer.literal(collate);
         }
 
+        if (defaultSingle != null) {
+            if (defaultSingle) {
+                writer.keyword("DEFAULT_SINGLE = 'on'");
+            } else {
+                writer.keyword("DEFAULT_SINGLE = 'off'");
+            }
+        }
+
         if (TStringUtil.isNotBlank(locality)) {
             writer.keyword("LOCALITY = ");
             writer.identifier(locality);
+        }
+
+        if (as == true || like == true) {
+            if (as) {
+                writer.keyword("AS");
+            } else {
+                writer.keyword("LIKE");
+            }
+            dbName.unparse(writer, leftPrec, rightPrec);
+
+            if (this.withLock) {
+                writer.keyword("LOCK = TRUE");
+            } else {
+                writer.keyword("LOCK = FALSE");
+            }
+
+            if (this.dryRun) {
+                writer.keyword("DRY_RUN = TRUE");
+            } else {
+                writer.keyword("DRY_RUN = FALSE");
+            }
+
+            if (this.createTables) {
+                writer.keyword("CREATE_TABLES = TRUE");
+            } else {
+                writer.keyword("CREATE_TABLES = FALSE");
+            }
+
+            if (!includeTables.isEmpty() || !excludeTables.isEmpty()) {
+                if (!includeTables.isEmpty()) {
+                    writer.keyword("INCLUDE");
+                    for (int i = 0; i < includeTables.size() - 1; i++) {
+                        includeTables.get(i).unparse(writer, leftPrec, rightPrec);
+                        writer.print(",");
+                    }
+                    includeTables.get(includeTables.size() - 1).unparse(writer, leftPrec, rightPrec);
+                } else {
+                    writer.keyword("EXCLUDE");
+                    for (int i = 0; i < excludeTables.size() - 1; i++) {
+                        excludeTables.get(i).unparse(writer, leftPrec, rightPrec);
+                        writer.print(",");
+                    }
+                    excludeTables.get(excludeTables.size() - 1).unparse(writer, leftPrec, rightPrec);
+                }
+            }
         }
     }
 
@@ -111,6 +191,14 @@ public class SqlCreateDatabase extends SqlDdl {
 
     public String getCollate() {
         return collate;
+    }
+
+    public Boolean isEncryption() {
+        return encryption;
+    }
+
+    public Boolean isDefaultSingle() {
+        return defaultSingle;
     }
 
     public String getLocality() {
@@ -131,9 +219,41 @@ public class SqlCreateDatabase extends SqlDdl {
         return partitionMode;
     }
 
+    public SqlIdentifier getSourceDatabaseName() {
+        return sourceDatabaseName;
+    }
+
+    public boolean getLike() {
+        return like;
+    }
+
+    public boolean getAs() {
+        return as;
+    }
+
+    public List<SqlIdentifier> getIncludeTables() {
+        return includeTables;
+    }
+
+    public List<SqlIdentifier> getExcludeTables() {
+        return excludeTables;
+    }
+
+    public boolean getWithLock() {
+        return this.withLock;
+    }
+
+    public boolean isDryRun() {
+        return dryRun;
+    }
+
+    public boolean isCreateTables() {
+        return createTables;
+    }
+
     public static class SqlCreateDatabaseOperator extends SqlSpecialOperator {
 
-        public SqlCreateDatabaseOperator(){
+        public SqlCreateDatabaseOperator() {
             super("CREATE_DATABASE", SqlKind.CREATE_DATABASE);
         }
 
@@ -142,9 +262,10 @@ public class SqlCreateDatabase extends SqlDdl {
             final RelDataTypeFactory typeFactory = validator.getTypeFactory();
             final RelDataType columnType = typeFactory.createSqlType(SqlTypeName.CHAR);
 
-            return typeFactory.createStructType(ImmutableList.of((RelDataTypeField) new RelDataTypeFieldImpl("CREATE_DATABASE_RESULT",
-                0,
-                columnType)));
+            return typeFactory.createStructType(
+                ImmutableList.of((RelDataTypeField) new RelDataTypeFieldImpl("CREATE_DATABASE_RESULT",
+                    0,
+                    columnType)));
         }
     }
 }

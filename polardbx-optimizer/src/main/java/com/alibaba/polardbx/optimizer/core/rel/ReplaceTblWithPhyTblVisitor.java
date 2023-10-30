@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -35,6 +36,9 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.lang.StringUtils;
+
+import java.util.Arrays;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.Arrays;
@@ -193,7 +197,6 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
 
         return new SqlIdentifier(tableRule.getTbNamePattern(), SqlParserPos.ZERO);
     }
-
     /**
      * partition hint decode for sharding table
      * groupname_00xx
@@ -230,6 +233,10 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
             return true;
         }
         return false;
+    }
+
+    public boolean shouldSkipSingleGroup() {
+        return withPartitionTbl;
     }
 
     public String getUniqGroupName() {

@@ -16,9 +16,15 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import static org.apache.calcite.sql.SqlKind.FLASHBACK_TABLE;
-import static org.apache.calcite.sql.SqlKind.PURGE;
-
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.executor.common.RecycleBin;
+import com.alibaba.polardbx.executor.common.RecycleBinManager;
+import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.handler.HandlerCommon;
+import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalRecyclebin;
 import org.apache.calcite.sql.SqlFlashbackTable;
@@ -26,15 +32,8 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPurge;
 import org.apache.calcite.util.Util;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.executor.common.RecycleBin;
-import com.alibaba.polardbx.executor.common.RecycleBinManager;
-import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
-import com.alibaba.polardbx.executor.handler.HandlerCommon;
-import com.alibaba.polardbx.executor.spi.IRepository;
+import static org.apache.calcite.sql.SqlKind.FLASHBACK_TABLE;
+import static org.apache.calcite.sql.SqlKind.PURGE;
 
 /**
  * @author desai
@@ -52,8 +51,9 @@ public class LogicalRecyclebinHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't find recycle bin");
         }
 
-        LogicalRecyclebin dummy = (LogicalRecyclebin) logicalPlan;
-        SqlNode node = dummy.getNode();
+        LogicalRecyclebin logicalRecyclebin = (LogicalRecyclebin) logicalPlan;
+        SqlNode node = logicalRecyclebin.getNode();
+
         if (node.getKind() == FLASHBACK_TABLE) {
             SqlFlashbackTable flashback = (SqlFlashbackTable) node;
             String name = Util.last(flashback.getName().names);
@@ -63,12 +63,15 @@ public class LogicalRecyclebinHandler extends HandlerCommon {
 
         if (node.getKind() == PURGE) {
             SqlPurge purge = (SqlPurge) node;
+
             if (purge.getName() != null) {
-                bin.purgeTable(Util.last(purge.getName().names), true);
+                bin.purgeTable(Util.last(purge.getName().names), true, repo, executionContext);
             } else {
-                bin.purge(false);
+                bin.purge(false, repo, executionContext);
             }
         }
+
         return new AffectRowCursor(new int[] {0});
     }
+
 }

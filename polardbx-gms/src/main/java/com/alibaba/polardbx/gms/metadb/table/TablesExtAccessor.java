@@ -84,6 +84,10 @@ public class TablesExtAccessor extends AbstractAccessor {
         UPDATE_TABLES_EXT + "`table_name` = ?, `new_table_name` = '', tb_name_pattern = ?, `version` = `version` + 1"
             + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_TABLES_EXT_RENAME_2 =
+        UPDATE_TABLES_EXT + "`table_name` = ?, `new_table_name` = '', `version` = `version` + 1"
+            + WHERE_SCHEMA_TABLE;
+
     private static final String UPDATE_TABLES_EXT_PROPS =
         UPDATE_TABLES_EXT
             + "`full_table_scan` = ?, `broadcast` = ?, `ext_partitions` = ?, `flag` = ?, `version` = `version` + 1"
@@ -195,6 +199,21 @@ public class TablesExtAccessor extends AbstractAccessor {
             LOGGER.error(
                 "Failed to update " + TABLES_EXT_TABLE + " with new table name " + newTableName + " and pattern "
                     + newTbNamePattern + " for table " + wrap(tableName), e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "rename", TABLES_EXT_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int rename(String tableSchema, String tableName, String newTableName) {
+        try {
+            Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildStringParameters(new String[] {newTableName, tableSchema, tableName});
+            DdlMetaLogUtil.logSql(UPDATE_TABLES_EXT_RENAME_2, params);
+            return MetaDbUtil.update(UPDATE_TABLES_EXT_RENAME_2, params, connection);
+        } catch (SQLException e) {
+            LOGGER.error(
+                "Failed to update " + TABLES_EXT_TABLE + " with new table name " + newTableName
+                    + " for table " + wrap(tableName), e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "rename", TABLES_EXT_TABLE,
                 e.getMessage());
         }

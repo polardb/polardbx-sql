@@ -18,7 +18,6 @@ package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,15 +30,11 @@ public class SqlAlterTableGroupMovePartition extends SqlAlterTableMovePartition 
 
     private SqlAlterTableGroup parent;
 
-    public SqlAlterTableGroupMovePartition(SqlParserPos pos, Map<SqlNode, List<SqlNode>> instPartitions, Map<String, Set<String>> targetPartitions) {
-        super(pos, instPartitions, targetPartitions);
+    public SqlAlterTableGroupMovePartition(SqlParserPos pos,
+                                           Map<String, Set<String>> targetPartitions,
+                                           boolean subPartitionsMoved,
+                                           Map<String, String> localities) {
+        super(pos, targetPartitions, subPartitionsMoved, localities);
     }
 
-    public SqlAlterTableGroup getParent() {
-        return parent;
-    }
-
-    public void setParent(SqlAlterTableGroup parent) {
-        this.parent = parent;
-    }
 }

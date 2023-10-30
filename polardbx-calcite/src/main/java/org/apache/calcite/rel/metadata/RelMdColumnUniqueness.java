@@ -355,11 +355,8 @@ public class RelMdColumnUniqueness
 
   public Boolean areColumnsUnique(DynamicValues rel, RelMetadataQuery mq,
                                   ImmutableBitSet columns, boolean ignoreNulls) {
-    if (rel.tuples.size() < 2) {
-      return true;
-    } else {
-      return false;
-    }
+    // dynamic values may contain raw string, so we just return false for simplicity
+    return false;
   }
 
   public Boolean areColumnsUnique(Converter rel, RelMetadataQuery mq,

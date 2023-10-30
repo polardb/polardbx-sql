@@ -115,7 +115,8 @@ public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
             } finally {
                 MetaDbUtil.endTransaction(metaDbConn, null);
             }
-            TableMetaChanger.afterNewTableMeta(showTableMetaTask.getSchemaName(), showTableMetaTask.getLogicalTableName());
+            TableMetaChanger.afterNewTableMeta(showTableMetaTask.getSchemaName(),
+                showTableMetaTask.getLogicalTableName());
         } catch (Throwable t) {
             throw new TddlNestableRuntimeException(t);
         }

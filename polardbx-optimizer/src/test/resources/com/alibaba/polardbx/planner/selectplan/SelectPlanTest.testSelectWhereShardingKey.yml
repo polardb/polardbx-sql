@@ -10,5 +10,4 @@
 
   plan: |
     mergesort(sort="", offset=0, fetch=2001)
-      logicalview(tables="optest_0000.tf_f_user_service_[00-10]", shardcount=11, sql="select `partition_id`, `user_id`, `service_id`, `main_tag`, `start_date`, `end_date`, `service_item_id`, `package_id`, `product_id`, `update_time`, `eparchy_code`, `province_code`, `prior_order_time` from `tf_f_user_service` as `tf_f_user_service` where (((((`province_code` = '30') and (`product_id` in(90657326))) and (`user_id` in(3015020529145996))) and (`end_date` > now())) and (`partition_id` = right(cast(3015020529145996 as char), 4))) limit 2001")
-
+      logicalview(tables="optest_0000.tf_f_user_service_[00-10]", shardcount=11, sql="select `partition_id`, `user_id`, `service_id`, `main_tag`, `start_date`, `end_date`, `service_item_id`, `package_id`, `product_id`, `update_time`, `eparchy_code`, `province_code`, `prior_order_time` from `tf_f_user_service` as `tf_f_user_service` where ((`province_code` = '30') and (`product_id` in(90657326)) and (`user_id` in(3015020529145996)) and (`end_date` > now()) and (`partition_id` = right(cast(3015020529145996 as char), 4))) limit 2001")

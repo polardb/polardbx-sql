@@ -1,0 +1,14 @@
+drop table if exists `t_1`;
+
+CREATE TABLE `t_1` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+index `idx@123` (order_id, seller_id)
+);
+
+show create table t_1;
+
+alter table t_1 drop index `idx@123`;
+
+show create table t_1;

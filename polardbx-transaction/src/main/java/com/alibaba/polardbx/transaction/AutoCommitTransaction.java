@@ -23,6 +23,8 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -30,10 +32,16 @@ import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.stats.TransactionStatistics;
+import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.sql.SQLException;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
@@ -55,6 +63,11 @@ public class AutoCommitTransaction extends BaseTransaction {
         ch = new AutoCommitConnectionHolder();
         this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
+    }
+
+    @Override
+    public TransactionType getType() {
+        return TransactionType.AUTO_COMMIT;
     }
 
     /**
@@ -85,7 +98,6 @@ public class AutoCommitTransaction extends BaseTransaction {
             }
 
             if (!begun) {
-                beginTransaction();
                 begun = true;
             }
 
@@ -118,20 +130,27 @@ public class AutoCommitTransaction extends BaseTransaction {
 
     @Override
     public void commit() {
+        long commitStartTime = System.nanoTime();
         if (logger.isDebugEnabled()) {
             logger.debug("commit");
         }
         // do nothing
 
+        stat.setIfUnknown(TransactionStatistics.Status.COMMIT);
+        stat.commitTime = System.nanoTime() - commitStartTime;
         close();
     }
 
     @Override
     public void rollback() {
-
+        long commitStartTime = System.nanoTime();
         if (logger.isDebugEnabled()) {
             logger.debug("rollback");
         }
+        stat.setIfUnknown(TransactionStatistics.Status.ROLLBACK);
+        stat.commitTime = System.nanoTime() - commitStartTime;
+        Optional.ofNullable(OptimizerContext.getTransStat(statisticSchema))
+            .ifPresent(s -> s.countRollback.incrementAndGet());
     }
 
     @Override

@@ -33,6 +33,9 @@ public class LiteralVectorizedExpression extends AbstractVectorizedExpression im
     private final Object value;
     private final Object convertedValue;
 
+    // for constant fold
+    private VectorizedExpression folded;
+
     public LiteralVectorizedExpression(DataType<?> dataType, Object value, int outputIndex) {
         super(dataType, outputIndex, new VectorizedExpression[0]);
         this.value = value;
@@ -82,5 +85,13 @@ public class LiteralVectorizedExpression extends AbstractVectorizedExpression im
     @Override
     public Object get() {
         return convertedValue;
+    }
+
+    public VectorizedExpression getFolded() {
+        return folded;
+    }
+
+    public void setFolded(VectorizedExpression folded) {
+        this.folded = folded;
     }
 }

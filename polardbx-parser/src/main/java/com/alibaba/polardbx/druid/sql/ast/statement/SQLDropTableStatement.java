@@ -29,44 +29,44 @@ public class SQLDropTableStatement extends SQLStatementImpl implements SQLDropSt
     private List<SQLCommentHint> hints;
 
     protected List<SQLExprTableSource> tableSources = new ArrayList<SQLExprTableSource>();
-    protected boolean                  purge;
-    protected boolean                  cascade      = false;
-    protected boolean                  restrict     = false;
-    protected boolean                  ifExists     = false;
-    private boolean                    temporary    = false;
-    private boolean                    external     = false;
-    private boolean                    isDropPartition;
-    private SQLExpr                    where;
+    protected boolean purge;
+    protected boolean cascade = false;
+    protected boolean restrict = false;
+    protected boolean ifExists = false;
+    private boolean temporary = false;
+    private boolean external = false;
+    private boolean isDropPartition;
+    private SQLExpr where;
 
-    public SQLDropTableStatement(){
+    public SQLDropTableStatement() {
 
     }
-    
-    public SQLDropTableStatement(DbType dbType){
-        super (dbType);
+
+    public SQLDropTableStatement(DbType dbType) {
+        super(dbType);
     }
 
-    public SQLDropTableStatement(SQLName name, DbType dbType){
+    public SQLDropTableStatement(SQLName name, DbType dbType) {
         this(new SQLExprTableSource(name), dbType);
     }
-    
-    public SQLDropTableStatement(SQLName name){
-        this (name, null);
-    }
-    
-    public SQLDropTableStatement(SQLExprTableSource tableSource){
-        this (tableSource, null);
+
+    public SQLDropTableStatement(SQLName name) {
+        this(name, null);
     }
 
-    public SQLDropTableStatement(SQLExprTableSource tableSource, DbType dbType){
-        this (dbType);
+    public SQLDropTableStatement(SQLExprTableSource tableSource) {
+        this(tableSource, null);
+    }
+
+    public SQLDropTableStatement(SQLExprTableSource tableSource, DbType dbType) {
+        this(dbType);
         this.tableSources.add(tableSource);
     }
 
     public List<SQLExprTableSource> getTableSources() {
         return tableSources;
     }
-    
+
     public void addPartition(SQLExprTableSource tableSource) {
         if (tableSource != null) {
             tableSource.setParent(this);

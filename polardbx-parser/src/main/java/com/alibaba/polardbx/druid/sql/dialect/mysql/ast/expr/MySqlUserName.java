@@ -95,7 +95,9 @@ public class MySqlUserName extends MySqlExprImpl implements SQLName, Cloneable {
 
         if (identifiedBy != null) {
             buf.append(" identifiedBy by ");
+            buf.append('\'');
             buf.append(identifiedBy);
+            buf.append('\'');
         }
 
         return buf.toString();

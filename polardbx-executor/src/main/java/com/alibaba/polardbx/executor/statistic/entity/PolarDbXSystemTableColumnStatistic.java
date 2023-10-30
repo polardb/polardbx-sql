@@ -22,12 +22,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.collect.Lists;
 import org.apache.commons.codec.binary.Base64;
 

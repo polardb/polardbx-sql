@@ -24,7 +24,7 @@ import java.util.List;
 /**
  * @author chenghui.lch
  */
-@RunWith(value = Parameterized.class)
+
 public class PartitionTableSelectPartitionTest extends PartitionAutoLoadSqlTestBase {
 
     public PartitionTableSelectPartitionTest(AutoLoadSqlTestCaseParams parameter) {

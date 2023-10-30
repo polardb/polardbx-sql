@@ -90,46 +90,42 @@ public class CreateFileStorageTask extends BaseGmsTask {
             record1.internalVpcEndpoint = items.get(FileStorageInfoKey.ENDPOINT);
             record1.accessKeyId = items.get(FileStorageInfoKey.ACCESS_KEY_ID);
             record1.accessKeySecret = PasswdUtil.encrypt(items.get(FileStorageInfoKey.ACCESS_KEY_SECRET));
-
-            if (fileStorageInfoAccessor.query(Engine.of(engineName)).size() != 0) {
-                throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_EXISTS,
-                    String.format("FileStorage %s already exists", engineName));
-            }
-
-            // check the endpoint is right
-            int wait = 10;
-            List<String> unexpectedErrors = new ArrayList<>();
-            ExecutorService executor = Executors.newFixedThreadPool(1);
-            Future future = null;
-            try (FileSystem master = FileSystemManager.buildFileSystem(record1)) {
-                future = executor.submit(() -> {
-                    try {
-                        master.exists(FileSystemUtils.buildPath(master, "1.orc"));
-                    } catch (Exception e) {
-                        unexpectedErrors.add(e.getMessage());
-                    }
-                });
-                future.get(wait, TimeUnit.SECONDS);
-            } catch (TimeoutException ex) {
-                // check the endpoint is right
-                throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT,
-                    "Bad Endpoint value! Failed to connect to oss in " + wait + " seconds!");
-            } catch (IOException | InterruptedException | ExecutionException e) {
-                unexpectedErrors.add(e.getMessage());
-            } finally {
-                if (future != null) {
-                    future.cancel(true);
-                }
-                if (!unexpectedErrors.isEmpty()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT, unexpectedErrors.get(0));
-                }
-            }
         }
 
         if (fileStorageInfoAccessor.query(Engine.of(engineName)).size() != 0) {
             throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_EXISTS,
                 String.format("FileStorage %s already exists", engineName));
         }
+
+        // check the endpoint is right
+        int wait = 10;
+        List<String> unexpectedErrors = new ArrayList<>();
+        ExecutorService executor = Executors.newFixedThreadPool(1);
+        Future future = null;
+        try (FileSystem master = FileSystemManager.buildFileSystem(record1)) {
+            future = executor.submit(() -> {
+                try {
+                    master.exists(FileSystemUtils.buildPath(master, "1.orc"));
+                } catch (Exception e) {
+                    unexpectedErrors.add(e.getMessage());
+                }
+            });
+            future.get(wait, TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+            // check the endpoint is right
+            throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT,
+                "Bad Endpoint value! Failed to connect to oss in " + wait + " seconds!");
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            unexpectedErrors.add(e.getMessage());
+        } finally {
+            if (future != null) {
+                future.cancel(true);
+            }
+            if (!unexpectedErrors.isEmpty()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT, unexpectedErrors.get(0));
+            }
+        }
+
         fileStorageInfoAccessor.insertIgnore(ImmutableList.of(record1));
 
         ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();

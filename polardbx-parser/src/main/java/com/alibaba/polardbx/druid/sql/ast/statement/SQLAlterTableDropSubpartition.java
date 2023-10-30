@@ -27,7 +27,7 @@ public class SQLAlterTableDropSubpartition extends SQLObjectImpl implements SQLA
     private List<SQLIntegerExpr> partitionIds = new ArrayList<SQLIntegerExpr>();
     private List<SQLIntegerExpr> subpartitionIds = new ArrayList<SQLIntegerExpr>();
 
-    public SQLAlterTableDropSubpartition(){
+    public SQLAlterTableDropSubpartition() {
 
     }
 

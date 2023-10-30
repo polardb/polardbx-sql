@@ -17,7 +17,13 @@
 package com.alibaba.polardbx.common.eventlogger;
 
 public enum EventType {
-
+    /**
+     * Rebalance数据分布信息
+     */
+    REBALANCE_INFO(EventLevel.INFO),
+    /**
+     * DDL发生错误，通常由bug引起
+     */
     DDL_WARN(EventLevel.WARN),
 
     DDL_PAUSED(EventLevel.INFO),
@@ -38,6 +44,8 @@ public enum EventType {
      * event for creating db with mode=auto
      */
     CREATE_AUTO_MODE_DB(EventLevel.WARN),
+
+    CREATE_DATABASE_LIKE_AS(EventLevel.INFO),
     ONLINE(EventLevel.INFO),
     OFFLINE(EventLevel.INFO),
 
@@ -52,7 +60,21 @@ public enum EventType {
 
     XRPC_NEW_VALID_CLIENT(EventLevel.INFO),
     XRPC_AUTH_TIMEOUT(EventLevel.WARN),
-    XRPC_KILL_CLIENT(EventLevel.WARN);
+    XRPC_KILL_CLIENT(EventLevel.WARN),
+
+    DML_ERROR(EventLevel.WARN),
+
+    /*
+     * Usage statistics for TTL and cold-data table
+     */
+    CREATE_TTL_TABLE(EventLevel.INFO),
+    CREATE_OSS_TABLE(EventLevel.INFO),
+    TTL_EXPIRED(EventLevel.INFO),
+    TTL_ARCHIVE(EventLevel.INFO),
+    INIT_OSS(EventLevel.INFO),
+    CLOSE_OSS(EventLevel.INFO),
+
+    OPTIMIZER_ALERT(EventLevel.INFO);
 
     private final EventLevel level;
 

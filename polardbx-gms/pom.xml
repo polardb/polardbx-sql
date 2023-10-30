@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>

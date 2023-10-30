@@ -31,3 +31,10 @@ select TABLE_GROUP_NAME,LOCALITY,PRIMARY_ZONE,IS_MANUAL_CREATE,PART_INFO from in
 drop table if exists txxyz;
 create table txxxyz(a int,b int, global index g1(b) partition by hash(b) partition 2, global index g2(a) partition by hash(a) partitions 2)partition by hash(a) partitions 2;
 select length(tables)-length(replace(tables,',',''))+1 from information_schema.full_table_group where tables like '%txxxyz%';
+create tablegroup t_mytg1;
+create tablegroup t_mytg2;
+create table t_t1(a int, b int , global index g1(b) tablegroup=t_mytg2 partition by key(b) partitions 3) partition by key(a) partitions 3 tablegroup=t_mytg1;
+show create table t_t1;
+drop table t_t1;
+drop tablegroup t_mytg1;
+drop tablegroup t_mytg2;

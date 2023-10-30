@@ -133,10 +133,11 @@ public class DrdsRelMdCoveringIndex implements MetadataHandler<CoveringIndex> {
             return null;
         }
 
+        List<Integer> groupList = rel.getGroupSet().asList();
         List<Set<RelColumnOrigin>> result = new ArrayList<>();
         for (int iOutputColumn = 0; iOutputColumn < rel.getRowType().getFieldCount(); iOutputColumn++) {
             if (iOutputColumn < rel.getGroupCount()) {
-                final Set<RelColumnOrigin> relColumnOrigins = origins.get(iOutputColumn);
+                final Set<RelColumnOrigin> relColumnOrigins = origins.get(groupList.get(iOutputColumn));
                 if (relColumnOrigins.stream().anyMatch(colOrigin -> colOrigin.getOriginTable().equals(table))) {
                     // Referencing column in primary table
                     return null;

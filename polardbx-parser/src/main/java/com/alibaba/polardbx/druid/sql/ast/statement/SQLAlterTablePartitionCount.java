@@ -23,7 +23,7 @@ public class SQLAlterTablePartitionCount extends SQLObjectImpl implements SQLAlt
 
     private SQLIntegerExpr count;
 
-    public SQLAlterTablePartitionCount(){
+    public SQLAlterTablePartitionCount() {
 
     }
 

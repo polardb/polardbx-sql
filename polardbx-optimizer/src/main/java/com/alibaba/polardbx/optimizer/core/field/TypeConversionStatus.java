@@ -19,6 +19,13 @@ package com.alibaba.polardbx.optimizer.core.field;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_BAD_NUM;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZERO;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OK;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OOM;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OVERFLOW;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_TRUNCATED;
+
 /**
  * Status when storing a value in a field or converting from one
  * datatype to another. The values should be listed in order of
@@ -115,6 +122,26 @@ public enum TypeConversionStatus {
         }
 
         return TypeConversionStatus.TYPE_OK;
+    }
+
+    public static TypeConversionStatus decimalErrToTypeConvStatus(int decError) {
+        if (decError == E_DEC_OOM) {
+            return TYPE_ERR_OOM;
+        }
+        if (decError == E_DEC_DIV_ZERO || decError == E_DEC_BAD_NUM) {
+            return TYPE_ERR_BAD_VALUE;
+        }
+        if (decError == E_DEC_TRUNCATED) {
+            return TYPE_NOTE_TRUNCATED;
+        }
+        if (decError == E_DEC_OVERFLOW) {
+            return TYPE_WARN_OUT_OF_RANGE;
+        }
+        if (decError == E_DEC_OK) {
+            return TYPE_OK;
+        }
+        // impossible
+        return TYPE_ERR_BAD_VALUE;
     }
 
     public static boolean checkForSelect(TypeConversionStatus status) {

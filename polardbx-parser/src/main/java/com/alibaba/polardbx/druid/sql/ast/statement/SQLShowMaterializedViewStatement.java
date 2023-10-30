@@ -35,7 +35,7 @@ public class SQLShowMaterializedViewStatement extends SQLStatementImpl implement
     }
 
     public SQLShowMaterializedViewStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

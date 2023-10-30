@@ -79,6 +79,7 @@ public class MoveTableLoader extends com.alibaba.polardbx.executor.backfill.Load
         final SqlNodeList targetColumnList = new SqlNodeList(
             indexTableMeta.getAllColumns()
                 .stream()
+                .filter(columnMeta -> !columnMeta.isGeneratedColumn())
                 .map(columnMeta -> new SqlIdentifier(columnMeta.getName(), SqlParserPos.ZERO))
                 .collect(Collectors.toList()),
             SqlParserPos.ZERO);

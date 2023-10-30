@@ -132,4 +132,19 @@
             ) charset=utf8
         ]]></Create>
     </SystemTable>
+    <SystemTable name="java_functions">
+        <Create><![CDATA[
+            create table if not exists `java_functions` (
+              `function_name` varchar(64) not null,
+              `class_name` varchar(64) not null,
+              `code` text not null,
+              `code_language` varchar(10) not null default 'java',
+              `input_types` varchar(512) not null,
+              `return_type` varchar(32) not null,
+              `is_no_state` tinyint(1) not null default 0,
+              `create_time` timestamp not null default current_timestamp,
+              primary key(`function_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

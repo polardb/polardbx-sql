@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.rel.rel2sql;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -113,6 +114,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import static org.apache.calcite.sql.SqlKind.IN;
+import static org.apache.calcite.sql.SqlKind.LIKE;
 import static org.apache.calcite.sql.SqlKind.ROW;
 import static org.apache.calcite.sql.type.SqlTypeName.BINARY;
 import static org.apache.calcite.sql.type.SqlTypeName.CHAR;
@@ -247,7 +249,8 @@ public abstract class SqlImplementor {
       op = ((RexCall) node).getOperator();
       if (operands.size() == 2
           && operands.get(0) instanceof RexInputRef
-          && operands.get(1) instanceof RexInputRef) {
+          && operands.get(1) instanceof RexInputRef
+          && !LIKE.equals(node.getKind())) {
         final RexInputRef op0 = (RexInputRef) operands.get(0);
         final RexInputRef op1 = (RexInputRef) operands.get(1);
 
@@ -766,13 +769,22 @@ public abstract class SqlImplementor {
     }
 
     private SqlNode createLeftCall(SqlOperator op, List<SqlNode> nodeList) {
-      if (nodeList.size() == 2) {
+      if (!DynamicConfig.getInstance().useOrOpt()) {
+        if (nodeList.size() == 2) {
+          return op.createCall(new SqlNodeList(nodeList, POS));
+        }
+
+        final List<SqlNode> butLast = Util.skipLast(nodeList);
+        final SqlNode last = nodeList.get(nodeList.size() - 1);
+        final SqlNode call = createLeftCall(op, butLast);
+        return op.createCall(new SqlNodeList(ImmutableList.of(call, last), POS));
+      }
+
+      if (nodeList.size() <= 2) {
         return op.createCall(new SqlNodeList(nodeList, POS));
       }
-      final List<SqlNode> butLast = Util.skipLast(nodeList);
-      final SqlNode last = nodeList.get(nodeList.size() - 1);
-      final SqlNode call = createLeftCall(op, butLast);
-      return op.createCall(new SqlNodeList(ImmutableList.of(call, last), POS));
+
+      return Util.SqlOperatorListToTree(op, nodeList, POS);
     }
 
     private List<SqlNode> toSql(RexProgram program, List<RexNode> operandList) {

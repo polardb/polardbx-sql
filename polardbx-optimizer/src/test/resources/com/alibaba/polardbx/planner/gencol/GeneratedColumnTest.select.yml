@@ -1,0 +1,406 @@
+# empty
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1`
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select 1
+    
+  plan: |
+    project(1="?0")
+      values(table="dual")
+
+# where
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+    
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where (a+1)+(a+1)=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` + `b`) = ?)")
+    
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where b+(a+1)=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` + `b`) = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where a+2=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=FALSE*/ select * from `gc_test_tbl_1` where a+1=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_2` where a+1=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/ select * from `gc_test_tbl_2` where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_2", sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2` where (`b` = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` as t1 where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` as t1, `gc_test_tbl_1` as t2 where t1.a+1=t2.a+1
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b`, `gc_test_tbl_10`.`a` as `a0`, `gc_test_tbl_10`.`b` as `b0` from `gc_test_tbl_1` as `gc_test_tbl_1` inner join `gc_test_tbl_1` as `gc_test_tbl_10` on (`gc_test_tbl_1`.`b` = `gc_test_tbl_10`.`b`)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from (select * from gc_test_tbl_2 where a+1=10) as gc_test_tbl_1 where a+1=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2` where (((`a` + ?) = ?) and ((`a` + ?) = ?))")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from (select * from gc_test_tbl_1 where a+1=10) as gc_test_tbl_2 where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` = ?) and ((`a` + ?) = ?))")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` as gc_test_tbl_2, `gc_test_tbl_2` as gc_test_tbl_1 where gc_test_tbl_1.a+1=gc_test_tbl_2.a+1
+
+  plan: |
+    nljoin(condition="b = a + ?0", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from (select * from `gc_test_tbl_1` where gc_test_tbl_1.a+1=10) as gc_test_tbl_1 where gc_test_tbl_1.a+1=10;
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` = ?) and ((`a` + ?) = ?))")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where gc_test_tbl_1.a+1=(select count(*) from gc_test_tbl_1 where gc_test_tbl_1.a+1=10)
+
+  plan: |
+    project(a="a", b="b")
+      filter(condition="b = case(is null($2), 0, $2)")
+        nljoin(condition="true", type="left")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+          logicalview(tables="optest_0002.gc_test_tbl_1", sql="select count(*) as `count(*)` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1`as t1, `gc_test_tbl_1` as t2 where (t1.a+1)+(t2.a+1)=10
+
+  plan: |
+    nljoin(condition="?2 = b + b", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where gc_test_tbl_1.a+1=(select count(*) from gc_test_tbl_2 where gc_test_tbl_1.a+1=10)
+
+  plan: |
+    project(a="a", b="b")
+      filter(condition="b = count(*)")
+        correlateapply(cor=$cor0, leftconditions=[], opkind=null, type=left)
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+          hashagg(count(*)="count()")
+            filter(condition="$cor0.a + ?1 = ?2")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a` from `gc_test_tbl_2` as `gc_test_tbl_2`")
+    cache node:
+    
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a` from `gc_test_tbl_2` as `gc_test_tbl_2`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ with t1 as (select * from gc_test_tbl_1 where a+1=10) select * from t1 where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` = ?) and ((`a` + ?) = ?))")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ with gc_test_tbl_1 as (select * from gc_test_tbl_2 where a+1=10) select * from gc_test_tbl_1 where a+1=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2` where (((`a` + ?) = ?) and ((`a` + ?) = ?))")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ with recursive cte(n) as (select count(*) from gc_test_tbl_1 where a+1=10 union all select n+1 from cte where n < 10) select * from cte
+
+  plan: |
+    recursivecte(cte_name="cte", offset=null, fetch=null)
+      logicalview(tables="optest_0002.gc_test_tbl_1", sql="select count(*) as `count(*)` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+      project(n + 1="n + ?2")
+        filter(condition="n < ?3")
+          recursivecteanchor(cte_target="cte")
+
+
+# order by
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_1 order by gc_test_tbl_1.a+1
+
+  plan: |
+    mergesort(sort="b asc")
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` order by `b`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select b as a from gc_test_tbl_1 order by gc_test_tbl_1.a+1
+
+  plan: |
+    mergesort(sort="a asc")
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `b` as `a` from `gc_test_tbl_1` as `gc_test_tbl_1` order by `b`")
+
+
+# select list
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select a+1 from gc_test_tbl_1
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `b` as `a + 1` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+    
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select t1.a+1 from gc_test_tbl_1 as t1
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `b` as `t1.a + 1` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+    
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select gc_test_tbl_1.a+1,gc_test_tbl_2.a+1 from gc_test_tbl_1 as gc_test_tbl_2,gc_test_tbl_2 as gc_test_tbl_1
+
+  plan: |
+    nljoin(condition="true", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_2", shardcount=4, sql="select (`a` + ?) as `+` from `gc_test_tbl_2` as `gc_test_tbl_2`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `b` from `gc_test_tbl_1` as `gc_test_tbl_1`")
+    
+    
+# nested
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_3 where a+1=10 and c+1=10 and a+1+1=10
+
+  plan: |
+    phytableoperation(tables="optest_0002.[gc_test_tbl_3]", sql="select `gc_test_tbl_3`.`a`, `gc_test_tbl_3`.`b`, `gc_test_tbl_3`.`c` from ? as `gc_test_tbl_3` where ((`gc_test_tbl_3`.`c` = ?) and (`gc_test_tbl_3`.`b` = ?) and (`gc_test_tbl_3`.`b` = ?))", params="10,1,10,1,1,10,1")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select a+1+1 from gc_test_tbl_3
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_3", shardcount=4, sql="select `b` as `a + 1 + 1` from `gc_test_tbl_3` as `gc_test_tbl_3`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_3 order by gc_test_tbl_3.a+1+1
+
+  plan: |
+    mergesort(sort="b asc")
+      logicalview(tables="[0000-0003].gc_test_tbl_3", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_3` as `gc_test_tbl_3` order by `b`")
+    
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_4 as t4 where (a+b+1)*2=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_4", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_4` as `gc_test_tbl_4` where (`c` = ?)")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_4 as t4 order by (t4.a+t4.b+1)*2
+
+  plan: |
+    mergesort(sort="c asc")
+      logicalview(tables="[0000-0003].gc_test_tbl_4", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_4` as `gc_test_tbl_4` order by `c`")
+
+
+- sql: |
+    /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select (a+b+1)*2 from gc_test_tbl_4 as t4
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_4", shardcount=4, sql="select `c` as `(a + b + 1) * 2` from `gc_test_tbl_4` as `gc_test_tbl_4`")
+    
+
+# param type
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_1 where a+1=10
+
+  plan: |
+    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_1 where a+'1'=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_1 where a+0x1=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_1 where a+1.0=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_1", shardcount=4, sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`a` + ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_5 where concat(b,'123')='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_5", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_5` as `gc_test_tbl_5` where (`c` = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_5 where concat(b,123)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_5", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_5` as `gc_test_tbl_5` where (concat(`b`, ?) = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_5 where concat(b,0x313233)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_5", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_5` as `gc_test_tbl_5` where (concat(`b`, ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_5 where concat(b,123.0)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_5", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_5` as `gc_test_tbl_5` where (concat(`b`, ?) = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_6 where b+3.0=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_6", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_6` as `gc_test_tbl_6` where (`c` = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_6 where b+'3'=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_6", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_6` as `gc_test_tbl_6` where ((`b` + ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_6 where b+3.00=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_6", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_6` as `gc_test_tbl_6` where ((`b` + ?) = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_6 where b+3=10
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_6", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_6` as `gc_test_tbl_6` where ((`b` + ?) = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_7 where concat(b,0x313233)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_7", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_7` as `gc_test_tbl_7` where (`c` = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_7 where concat(b,'123')='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_7", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_7` as `gc_test_tbl_7` where (concat(`b`, ?) = ?)")
+
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_7 where concat(b,123)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_7", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_7` as `gc_test_tbl_7` where (concat(`b`, ?) = ?)")
+    
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_7 where concat(b,123.0)='123123'
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].gc_test_tbl_7", shardcount=4, sql="select `a`, `b`, `c` from `gc_test_tbl_7` as `gc_test_tbl_7` where (concat(`b`, ?) = ?)")

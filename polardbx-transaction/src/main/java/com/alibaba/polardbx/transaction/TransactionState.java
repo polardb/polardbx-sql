@@ -17,5 +17,5 @@
 package com.alibaba.polardbx.transaction;
 
 public enum TransactionState {
-    SUCCEED, ABORTED
+    SUCCEED, ABORTED, PREPARE, ATTACHED
 }

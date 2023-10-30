@@ -15,6 +15,7 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlUnlockTablesStatement extends MySqlStatementImpl {
@@ -22,5 +23,10 @@ public class MySqlUnlockTablesStatement extends MySqlStatementImpl {
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

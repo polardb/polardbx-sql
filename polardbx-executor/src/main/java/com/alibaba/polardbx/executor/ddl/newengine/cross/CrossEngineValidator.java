@@ -54,18 +54,20 @@ public class CrossEngineValidator {
                                                                 ExecutionContext executionContext) {
         if (physicalPlan != null && physicalPlan instanceof PhyDdlTableOperation) {
             switch (((PhyDdlTableOperation) physicalPlan).getKind()) {
-            case ALTER_TABLE:
-                return new AlterTablePhyObjectRecorder(physicalPlan, executionContext);
+            case CREATE_TABLE:
+                return new CreatePhyObjectRecorder(physicalPlan, executionContext);
             case DROP_TABLE:
-            case DROP_INDEX:
                 return new DropPhyObjectRecorder(physicalPlan, executionContext);
             case RENAME_TABLE:
                 return new RenameTablePhyObjectRecorder(physicalPlan, executionContext);
+            case CREATE_INDEX:
+            case DROP_INDEX:
+            case ALTER_TABLE:
             default:
-                return new GenericPhyObjectRecorder(physicalPlan, executionContext);
+                return new AlterTablePhyObjectRecorder(physicalPlan, executionContext);
             }
         } else {
-            return new GenericPhyObjectRecorder(physicalPlan, executionContext);
+            return new AlterTablePhyObjectRecorder(physicalPlan, executionContext);
         }
     }
 

@@ -228,7 +228,7 @@ tbl,CREATE TABLE `tbl` (
 	PRIMARY KEY (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
-(PARTITION p2 VALUES IN (98,99,10,101) ENGINE = InnoDB,
+(PARTITION p2 VALUES IN (10,98,99,101) ENGINE = InnoDB,
  PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
  PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
 tablegroup = `tbl_tg1`
@@ -244,12 +244,10 @@ tbl,CREATE TABLE `tbl` (
 	PRIMARY KEY (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
-(PARTITION p2 VALUES IN (98,99,10,101) ENGINE = InnoDB,
+(PARTITION p2 VALUES IN (10,98,99,101) ENGINE = InnoDB,
  PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
  PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
 tablegroup = `tbl_tg1`
-
-
 DROP TABLE IF EXISTS tbl;
 CREATE TABLE IF NOT EXISTS tbl (
 	a int,
@@ -284,10 +282,18 @@ tbl,CREATE TABLE `tbl` (
 	`a` int(11) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
-	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
 	UNIQUE LOCAL KEY `tbl_index_6` (`a`),
 	LOCAL KEY `tbl_index_5` (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
@@ -305,10 +311,18 @@ tbl,CREATE TABLE `tbl` (
 	`a` int(11) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
-	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
-	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
+	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 8,
 	UNIQUE LOCAL KEY `tbl_index_6` (`a`),
 	LOCAL KEY `tbl_index_5` (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

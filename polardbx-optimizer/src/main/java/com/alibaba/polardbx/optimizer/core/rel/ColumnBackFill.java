@@ -18,14 +18,12 @@ package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.calcite.sql.SqlCall;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Used to backfill data from one column to another column
@@ -34,23 +32,26 @@ public class ColumnBackFill extends AbstractRelNode {
 
     private String schemaName;
     private String tableName;
-    private String sourceColumn;
-    private String targetColumn;
+    private List<SqlCall> sourceNodes;
+    private List<String> targetColumns;
+    private boolean forceCnEval;
 
-    public static ColumnBackFill createColumnBackfill(String schemaName, String tableName, String sourceColumn,
-                                                      String targetColumn, ExecutionContext ec) {
+    public static ColumnBackFill createColumnBackfill(String schemaName, String tableName, List<SqlCall> sourceNodes,
+                                                      List<String> targetColumns, boolean forceCnEval,
+                                                      ExecutionContext ec) {
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, ec).createRelOptCluster(null);
         RelTraitSet traitSet = RelTraitSet.createEmpty();
-        return new ColumnBackFill(cluster, traitSet, schemaName, tableName, sourceColumn, targetColumn);
+        return new ColumnBackFill(cluster, traitSet, schemaName, tableName, sourceNodes, targetColumns, forceCnEval);
     }
 
     public ColumnBackFill(RelOptCluster cluster, RelTraitSet traitSet, String schemaName, String tableName,
-                       String sourceColumn, String targetColumn) {
+                          List<SqlCall> sourceNodes, List<String> targetColumns, boolean forceCnEval) {
         super(cluster, traitSet);
         this.schemaName = schemaName;
         this.tableName = tableName;
-        this.sourceColumn = sourceColumn;
-        this.targetColumn = targetColumn;
+        this.sourceNodes = sourceNodes;
+        this.targetColumns = targetColumns;
+        this.forceCnEval = forceCnEval;
     }
 
     @Override
@@ -70,19 +71,27 @@ public class ColumnBackFill extends AbstractRelNode {
         this.tableName = tableName;
     }
 
-    public String getSourceColumn() {
-        return sourceColumn;
+    public List<SqlCall> getSourceNodes() {
+        return sourceNodes;
     }
 
-    public void setSourceColumn(String sourceColumn) {
-        this.sourceColumn = sourceColumn;
+    public void setSourceNodes(List<SqlCall> sourceNodes) {
+        this.sourceNodes = sourceNodes;
     }
 
-    public String getTargetColumn() {
-        return targetColumn;
+    public List<String> getTargetColumns() {
+        return targetColumns;
     }
 
-    public void setTargetColumn(String targetColumn) {
-        this.targetColumn = targetColumn;
+    public void setTargetColumns(List<String> targetColumns) {
+        this.targetColumns = targetColumns;
+    }
+
+    public boolean isForceCnEval() {
+        return forceCnEval;
+    }
+
+    public void setForceCnEval(boolean forceCnEval) {
+        this.forceCnEval = forceCnEval;
     }
 }

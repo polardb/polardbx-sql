@@ -23,7 +23,7 @@ public class SQLAlterTableCompression extends SQLObjectImpl implements SQLAlterT
 
     private SQLCharExpr name;
 
-    public SQLAlterTableCompression(){
+    public SQLAlterTableCompression() {
 
     }
 

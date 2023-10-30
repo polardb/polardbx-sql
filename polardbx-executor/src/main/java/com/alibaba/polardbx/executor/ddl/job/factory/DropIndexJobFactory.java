@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.model.privilege.DbInfo;
 import com.alibaba.polardbx.common.CommonUtils;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropLocalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -32,14 +31,15 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlNode;
 
-import javax.swing.text.StyledEditorKit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -84,13 +84,16 @@ public class DropIndexJobFactory extends DdlJobFactory {
         String indexName = physicalPlanData.getIndexName();
 
         boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-        TableGroupConfig tableGroupConfig = isNewPart?physicalPlanData.getTableGroupConfig():null;
+        TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
         DdlTask validateTask = new DropIndexValidateTask(schemaName, logicalTableName, indexName, tableGroupConfig);
         DdlTask hideMetaTask = new DropIndexHideMetaTask(schemaName, logicalTableName, indexName);
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
         DdlTask phyDdlTask = new DropIndexPhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcMarkDdlTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcMarkDdlTask =
+            CBOUtil.isOss(schemaName, logicalTableName) || CBOUtil.isGsi(schemaName, logicalTableName) ? null :
+                new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
         DdlTask removeMetaTask = new DropIndexRemoveMetaTask(schemaName, logicalTableName, indexName);
+        TableSyncTask removeMetaSyncTask = new TableSyncTask(schemaName, logicalTableName);
 
         return Lists.newArrayList(
             validateTask,
@@ -98,8 +101,9 @@ public class DropIndexJobFactory extends DdlJobFactory {
             tableSyncTask,
             phyDdlTask,
             cdcMarkDdlTask,
-            removeMetaTask
-        );
+            removeMetaTask,
+            removeMetaSyncTask
+        ).stream().filter(Objects::nonNull).collect(Collectors.toList());
     }
 
     @Override

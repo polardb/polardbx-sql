@@ -18,9 +18,6 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionOnAllDnTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionRegisterMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionSyncTask;
@@ -30,7 +27,6 @@ import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
-import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlCreateFunction;
 
@@ -48,7 +44,7 @@ public class CreateFunctionJobFactory extends AbstractFunctionJobFactory {
     @Override
     protected void validate() {
         String udfName = createFunction.getSqlCreateFunction().getFunctionName();
-        if (StoredFunctionManager.getInstance().search(udfName) != null) {
+        if (StoredFunctionManager.getInstance().containsFunction(udfName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_UDF_ALREADY_EXISTS,
                 String.format("function: %s already exist", udfName));
         }

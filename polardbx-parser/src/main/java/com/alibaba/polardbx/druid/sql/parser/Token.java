@@ -42,6 +42,17 @@ public enum Token {
     SET("SET"),
     GET("GET"),
 
+    ADD("ADD"),
+    //DROP("DROP"),
+    MODIFY("MODIFY"),
+    SPLIT("SPLIT"),
+    //MERGE("MERGE"),
+    //EXTRACT("EXTRACT"),
+    MOVE("MOVE"),
+    REORGANIZE("REORGANIZE"),
+    //TRUNCATE("TRUNCATE"),
+    RENAME("RENAME"),
+
     LOCALITY("LOCALITY"),
 
     NULL("NULL"),
@@ -59,7 +70,7 @@ public enum Token {
     SESSION("SESSION"),
     PROCEDURE("PROCEDURE"),
     FUNCTION("FUNCTION"),
-
+    JAVA("JAVA"),
     PRIMARY("PRIMARY"),
     KEY("KEY"),
     DEFAULT("DEFAULT"),
@@ -232,6 +243,8 @@ public enum Token {
     IMMEDIATE("IMMEDIATE"),
     DEFERRED("DEFERRED"),
     STORAGE("STORAGE"),
+    TENANT("TENANT"),
+    POOL("POOL"),
     MINEXTENTS("MINEXTENTS"),
     MAXEXTENTS("MAXEXTENTS"),
     MAXSIZE("MAXSIZE"),

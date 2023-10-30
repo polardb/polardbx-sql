@@ -1,0 +1,424 @@
+CREATE TABLE `s1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, 1)) PARTITIONS 16;
+SHOW CREATE TABLE s1;
+Table,Create Table
+s1,CREATE TABLE `s1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,1))
+PARTITIONS 16
+INSERT INTO s1
+VALUES ('abc');
+EXPLAIN SELECT id
+FROM s1
+WHERE id = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="s1[p5]", sql="SELECT `id` FROM `s1` AS `s1` WHERE (`id` = ?)")
+EXPLAIN SELECT id
+FROM s1
+WHERE id > 'abc';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="s1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id` FROM `s1` AS `s1` WHERE (`id` > ?)")
+CREATE TABLE `s3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, 3)) PARTITIONS 16;
+INSERT INTO s1
+VALUES ('12abc'),
+	('34abc');
+EXPLAIN SELECT id
+FROM s3
+WHERE id IN ('12abc');
+Logical ExecutionPlan
+PhyTableOperation(tables="s3[p5]", sql="SELECT `s3`.`id` AS `id` FROM ? AS `s3` WHERE (`s3`.`id` IN (?))", params="Raw('12abc')")
+EXPLAIN SELECT id
+FROM s3
+WHERE id IN ('34abc');
+Logical ExecutionPlan
+PhyTableOperation(tables="s3[p5]", sql="SELECT `s3`.`id` AS `id` FROM ? AS `s3` WHERE (`s3`.`id` IN (?))", params="Raw('34abc')")
+EXPLAIN SELECT id
+FROM s3
+WHERE id > '12abc';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="s3[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id` FROM `s3` AS `s3` WHERE (`id` > ?)")
+EXPLAIN SELECT id
+FROM s3
+WHERE id <= '34abc';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="s3[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id` FROM `s3` AS `s3` WHERE (`id` <= ?)")
+SELECT id
+FROM s3
+WHERE id = '12abc';
+id
+SELECT id
+FROM s3
+WHERE id = '34abc';
+id
+CREATE TABLE `s5` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, 5)) PARTITIONS 16;
+SHOW CREATE TABLE s5;
+Table,Create Table
+s5,CREATE TABLE `s5` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,5))
+PARTITIONS 16
+INSERT INTO s5
+VALUES ('Quadratically');
+SELECT id
+FROM s5
+WHERE id = 'Quadratically';
+id
+Quadratically
+SELECT id
+FROM s5
+WHERE id > 'Quadratically';
+id
+SELECT part_route('', 's5', 'Quadratically') AS rs;
+rs
+p4
+SELECT part_route('', 's1', 'ratically') AS s1_rs;
+s1_rs
+p4
+CREATE TABLE `sf4` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id` FROM 4)) PARTITIONS 16;
+SHOW CREATE TABLE sf4;
+Table,Create Table
+sf4,CREATE TABLE `sf4` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,4))
+PARTITIONS 16
+INSERT INTO sf4
+VALUES ('foobarbar');
+SELECT id
+FROM sf4
+WHERE id = 'foobarbar';
+id
+foobarbar
+SELECT id
+FROM sf4
+WHERE id > 'foobarbar';
+id
+SELECT part_route('', 'sf4', 'foobarbar') AS rs;
+rs
+p4
+SELECT part_route('', 's1', 'barbar') AS s1_rs;
+s1_rs
+p4
+CREATE TABLE `s56` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, 5, 6)) PARTITIONS 16;
+SHOW CREATE TABLE s56;
+Table,Create Table
+s56,CREATE TABLE `s56` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,5,6))
+PARTITIONS 16
+INSERT INTO s56
+VALUES ('Quadratically');
+SELECT id
+FROM s56
+WHERE id = 'Quadratically';
+id
+Quadratically
+SELECT id
+FROM s56
+WHERE id > 'Quadratically';
+id
+SELECT part_route('', 's56', 'Quadratically') AS rs;
+rs
+p11
+SELECT part_route('', 's1', 'ratica') AS s1_rs;
+s1_rs
+p11
+CREATE TABLE `s_m3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, -3)) PARTITIONS 16;
+SHOW CREATE TABLE s_m3;
+Table,Create Table
+s_m3,CREATE TABLE `s_m3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,-3))
+PARTITIONS 16
+INSERT INTO s_m3
+VALUES ('Sakila');
+SELECT id
+FROM s_m3
+WHERE id = 'Sakila';
+id
+Sakila
+SELECT id
+FROM s_m3
+WHERE id > 'Sakila';
+id
+SELECT part_route('', 's_m3', 'Sakila') AS rs;
+rs
+p13
+SELECT part_route('', 's1', 'ila') AS s1_rs;
+s1_rs
+p13
+CREATE TABLE `s_m5_3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id`, -5, 3)) PARTITIONS 16;
+SHOW CREATE TABLE s_m5_3;
+Table,Create Table
+s_m5_3,CREATE TABLE `s_m5_3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,-5,3))
+PARTITIONS 16
+INSERT INTO s_m5_3
+VALUES ('Sakila');
+SELECT id
+FROM s_m5_3
+WHERE id = 'Sakila';
+id
+Sakila
+SELECT id
+FROM s_m5_3
+WHERE id > 'Sakila';
+id
+SELECT part_route('', 's_m5_3', 'Sakila') AS rs;
+rs
+p16
+SELECT part_route('', 's1', 'aki') AS s1_rs;
+s1_rs
+p16
+CREATE TABLE `s_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTR(`id` FROM -4 FOR 2)) PARTITIONS 16;
+SHOW CREATE TABLE s_fm4_f2;
+Table,Create Table
+s_fm4_f2,CREATE TABLE `s_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,-4,2))
+PARTITIONS 16
+INSERT INTO s_fm4_f2
+VALUES ('Sakila');
+SELECT id
+FROM s_fm4_f2
+WHERE id = 'Sakila';
+id
+Sakila
+SELECT id
+FROM s_fm4_f2
+WHERE id > 'Sakila';
+id
+SELECT part_route('', 's_fm4_f2', 'Sakila') AS rs;
+rs
+p11
+SELECT part_route('', 's1', 'ki') AS s1_rs;
+s1_rs
+p11
+CREATE TABLE `r_f1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE (SUBSTR(`id`, 1)) (
+	PARTITION p1 VALUES LESS THAN ('zzz'),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+SHOW CREATE TABLE r_f1;
+Table,Create Table
+r_f1,CREATE TABLE `r_f1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTR(`id`,1))
+(PARTITION p1 VALUES LESS THAN ('zzz') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+INSERT INTO r_f1
+VALUES ('Sakila');
+SELECT id
+FROM r_f1
+WHERE id = 'Sakila';
+id
+Sakila
+SELECT id
+FROM r_f1
+WHERE id > 'Sakila';
+id
+CREATE TABLE `r_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE (SUBSTR(`id` FROM -4 FOR 2)) (
+	PARTITION p1 VALUES LESS THAN ('zzz'),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+SHOW CREATE TABLE r_fm4_f2;
+Table,Create Table
+r_fm4_f2,CREATE TABLE `r_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTR(`id`,-4,2))
+(PARTITION p1 VALUES LESS THAN ('zzz') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+INSERT INTO r_fm4_f2
+VALUES ('Sakila');
+SELECT id
+FROM r_fm4_f2
+WHERE id = 'Sakila';
+id
+Sakila
+SELECT id
+FROM r_fm4_f2
+WHERE id > 'Sakila';
+id
+SELECT part_route('', 'r_fm4_f2', 'Sakila') AS rs;
+rs
+p1
+SELECT part_route('', 'r_f1', 'ki') AS s1_rs;
+s1_rs
+p1
+CREATE TABLE `l_f1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST (SUBSTR(`id`, 1)) (
+	PARTITION p1 VALUES IN ('abc', 'efg'),
+	PARTITION p2 VALUES IN ('123', '456')
+);
+SHOW CREATE TABLE l_f1;
+Table,Create Table
+l_f1,CREATE TABLE `l_f1` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTR(`id`,1))
+(PARTITION p2 VALUES IN ('123','456') ENGINE = InnoDB,
+ PARTITION p1 VALUES IN ('abc','efg') ENGINE = InnoDB)
+INSERT INTO l_f1
+VALUES ('abc'),
+	('123');
+SELECT id
+FROM l_f1
+WHERE id = 'abc';
+id
+abc
+SELECT id
+FROM l_f1
+WHERE id > 'abc';
+id
+CREATE TABLE `l_f3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST (SUBSTR(`id`, 3)) (
+	PARTITION p1 VALUES IN ('abc', 'efg'),
+	PARTITION p2 VALUES IN ('123', '456')
+);
+SHOW CREATE TABLE l_f3;
+Table,Create Table
+l_f3,CREATE TABLE `l_f3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTR(`id`,3))
+(PARTITION p2 VALUES IN ('123','456') ENGINE = InnoDB,
+ PARTITION p1 VALUES IN ('abc','efg') ENGINE = InnoDB)
+INSERT INTO l_f3
+VALUES ('12abc'),
+	('ab123');
+SELECT id
+FROM l_f3
+WHERE id = '12abc';
+id
+12abc
+SELECT id
+FROM l_f3
+WHERE id > '12abc';
+id
+ab123
+SELECT part_route('', 'l_f3', '12abc') AS rs;
+rs
+p1
+SELECT part_route('', 'l_f1', 'abc') AS s1_rs;
+s1_rs
+p1
+SELECT part_route('', 'l_f3', 'ab123') AS rs;
+rs
+p2
+SELECT part_route('', 'l_f1', '123') AS s1_rs;
+s1_rs
+p2
+CREATE TABLE `str3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH (SUBSTRING(`id`, 3)) PARTITIONS 16;
+SHOW CREATE TABLE str3;
+Table,Create Table
+str3,CREATE TABLE `str3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTRING(`id`,3))
+PARTITIONS 16
+CREATE TABLE `rstr_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE (SUBSTRING(`id` FROM -4 FOR 2)) (
+	PARTITION p1 VALUES LESS THAN ('zzz'),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+SHOW CREATE TABLE rstr_fm4_f2;
+Table,Create Table
+rstr_fm4_f2,CREATE TABLE `rstr_fm4_f2` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTRING(`id`,-4,2))
+(PARTITION p1 VALUES LESS THAN ('zzz') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+CREATE TABLE `lstr_f3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST (SUBSTRING(`id`, 3)) (
+	PARTITION p1 VALUES IN ('abc', 'efg'),
+	PARTITION p2 VALUES IN ('123', '456')
+);
+SHOW CREATE TABLE lstr_f3;
+Table,Create Table
+lstr_f3,CREATE TABLE `lstr_f3` (
+	`id` varchar(64) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTRING(`id`,3))
+(PARTITION p2 VALUES IN ('123','456') ENGINE = InnoDB,
+ PARTITION p1 VALUES IN ('abc','efg') ENGINE = InnoDB)

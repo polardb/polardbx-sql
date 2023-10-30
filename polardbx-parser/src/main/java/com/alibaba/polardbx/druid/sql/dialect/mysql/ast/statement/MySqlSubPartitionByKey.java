@@ -15,18 +15,15 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionBy;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObject;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class MySqlSubPartitionByKey extends SQLSubPartitionBy implements MySqlObject {
     private int algorithm = 2;
-    private List<SQLName> columns = new ArrayList<SQLName>();
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
@@ -36,7 +33,7 @@ public class MySqlSubPartitionByKey extends SQLSubPartitionBy implements MySqlOb
             throw new IllegalArgumentException("not support visitor type : " + visitor.getClass().getName());
         }
     }
-    
+
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -44,10 +41,6 @@ public class MySqlSubPartitionByKey extends SQLSubPartitionBy implements MySqlOb
             acceptChild(visitor, subPartitionsCount);
         }
         visitor.endVisit(this);
-    }
-
-    public List<SQLName> getColumns() {
-        return columns;
     }
 
     public void addColumn(SQLName column) {
@@ -59,8 +52,8 @@ public class MySqlSubPartitionByKey extends SQLSubPartitionBy implements MySqlOb
 
     public void cloneTo(MySqlSubPartitionByKey x) {
         super.cloneTo(x);
-        for (SQLName column : columns) {
-            SQLName c2 = column.clone();
+        for (SQLExpr column : columns) {
+            SQLExpr c2 = column.clone();
             c2.setParent(x);
             x.columns.add(c2);
         }
@@ -82,8 +75,8 @@ public class MySqlSubPartitionByKey extends SQLSubPartitionBy implements MySqlOb
     }
 
     public boolean isPartitionByColumn(long columnNameHashCode64) {
-        for (SQLName column : columns) {
-            if (column.nameHashCode64() == columnNameHashCode64) {
+        for (SQLExpr column : columns) {
+            if (column.hashCode() == columnNameHashCode64) {
                 return true;
             }
         }

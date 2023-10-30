@@ -490,6 +490,7 @@ public class RelToSqlConverter extends SqlImplementor
                     input.asSelect(),
                     null,
                     asSelect.getOrderList(),
+                    asSelect.getOffset(),
                     asSelect.getFetch(),
                     SqlDmlKeyword.convertFromStringToSqlNode(modify.getKeywords()),
                     modify.getHints(),
@@ -545,6 +546,7 @@ public class RelToSqlConverter extends SqlImplementor
                 null,
                 new SqlNodeList(targetTableNodes, SqlParserPos.ZERO),
                 asSelect.getOrderList(),
+                asSelect.getOffset(),
                 asSelect.getFetch(),
                 SqlDmlKeyword.convertFromStringToSqlNode(modify.getKeywords()),
                 modify.getHints()).initTableInfo(modify.getTableInfo());

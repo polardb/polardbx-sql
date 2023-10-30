@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class OSSOrcFileManager implements FileManager {
+
     public OSSOrcFileManager() {
     }
 
@@ -43,12 +44,14 @@ public class OSSOrcFileManager implements FileManager {
         try (Connection connection = MetaDbUtil.getConnection()) {
             FilesAccessor filesAccessor = new FilesAccessor();
             filesAccessor.setConnection(connection);
+
             // query meta db && filter table files.
             List<FilesRecord> filesRecords = filesAccessor
                 .query(physicalSchema, physicalTable, logicalTableName)
                 .stream()
                 .filter(filesRecord -> OSSFileType.of(filesRecord.fileType) == OSSFileType.TABLE_FILE)
                 .collect(Collectors.toList());
+
             filesRecords.forEach(
                 filesRecord -> {
                     FileMeta fileMeta = FileMeta.parseFrom(filesRecord);
@@ -64,7 +67,9 @@ public class OSSOrcFileManager implements FileManager {
     @Override
     public Map<String, Map<String, List<FileMeta>>> getFiles(TableMeta tableMeta) {
         Map<String, Set<String>> topology = tableMeta.getPartitionInfo().getTopology(true);
+
         Map<String, Map<String, List<FileMeta>>> fileMetaMap = new HashMap<>();
+
         for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
             String groupKey = entry.getKey();
             Map<String, List<FileMeta>> phySchemaMap = new HashMap<>();
@@ -72,13 +77,16 @@ public class OSSOrcFileManager implements FileManager {
             for (String physicalTable : physicalTableNameSet) {
                 List<FileMeta> phyTableList = new ArrayList<>();
                 List<FileMeta> phyTableFileMetas = getFiles(groupKey, physicalTable, tableMeta.getTableName());
+
                 // fill with column metas
                 phyTableFileMetas.forEach(fileMeta -> fileMeta.initColumnMetas(tableMeta));
+
                 phyTableList.addAll(phyTableFileMetas);
                 phySchemaMap.put(physicalTable, phyTableList);
             }
             fileMetaMap.put(groupKey, phySchemaMap);
         }
+
         return fileMetaMap;
     }
 }

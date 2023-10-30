@@ -16,22 +16,9 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
-import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
-import com.alibaba.polardbx.executor.mpp.Session;
-import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
-import com.alibaba.polardbx.statistics.ExplainStatisticsHandler;
-import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.optimizer.rule.Partitioner;
-import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.alibaba.polardbx.rpc.client.XSession;
-import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -49,6 +36,8 @@ import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.planner.PlanUtils;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
+import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
+import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -66,8 +55,14 @@ import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelXPlanOptimizer;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.TableId;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -85,6 +80,7 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
@@ -95,21 +91,28 @@ import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.rpc.client.XSession;
+import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
+import com.alibaba.polardbx.statistics.ExplainStatisticsHandler;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
@@ -119,6 +122,7 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
@@ -134,9 +138,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainExecute;
@@ -198,74 +204,91 @@ public class ExplainExecutorUtil {
                 plannerContext.getExtraCmds().put(ConnectionProperties.EXPLAIN_LOGICALVIEW, oldExplainLogicalView);
             }
         } else if (isExplainAdvisor(explain)) {
-
-            List<AdviceResult> adviceResultList = new ArrayList<>();
-            IndexAdvisor indexAdvisor = new IndexAdvisor(executionPlan, executionContext);
-
-            String adviseTypeString = executionContext.getParamManager().getString(ConnectionParams.ADVISE_TYPE);
-            if (adviseTypeString != null) {
-                IndexAdvisor.AdviseType adviseType = null;
-                if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.LOCAL_INDEX.toString())) {
-                    adviseType = IndexAdvisor.AdviseType.LOCAL_INDEX;
-                } else if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.GLOBAL_INDEX.toString())) {
-                    adviseType = IndexAdvisor.AdviseType.GLOBAL_INDEX;
-                } else if (adviseTypeString
-                    .equalsIgnoreCase(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX.toString())) {
-                    adviseType = IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX;
-                } else if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.BROADCAST.toString())) {
-                    adviseType = IndexAdvisor.AdviseType.BROADCAST;
-                } else if (adviseTypeString.equalsIgnoreCase("ALL")) {
-                    AdviceResult localIndexAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.LOCAL_INDEX);
-                    AdviceResult gsiAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_INDEX);
-                    AdviceResult coveringGsiAdviceResult =
-                        indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
-                    AdviceResult broadcastAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.BROADCAST);
-
-                    adviceResultList.add(localIndexAdviceResult);
-                    adviceResultList.add(gsiAdviceResult);
-                    adviceResultList.add(coveringGsiAdviceResult);
-                    adviceResultList.add(broadcastAdviceResult);
-
-                    return ExplainExecutorUtil.handleExplainAdvisor(adviceResultList, executionContext);
-                }
-                if (adviseType != null) {
-                    AdviceResult adviceResult = indexAdvisor.advise(adviseType);
-                    adviceResultList.add(adviceResult);
-                    return ExplainExecutorUtil.handleExplainAdvisor(adviceResultList, executionContext);
-                }
-            }
-
-            AdviceResult bestResult = null;
-            IndexAdvisor.AdviseType[] types = {IndexAdvisor.AdviseType.LOCAL_INDEX,
-                IndexAdvisor.AdviseType.GLOBAL_INDEX, IndexAdvisor.AdviseType.BROADCAST};
-            for (IndexAdvisor.AdviseType type : types) {
-                AdviceResult adviceResult = indexAdvisor.advise(type);
-                if (adviceResult.getAfterPlan() != null) {
-                    if (bestResult == null || adviceResult.getConfiguration().getAfterCost()
-                        .isLt(bestResult.getConfiguration().getAfterCost())) {
-                        bestResult = adviceResult;
-                    }
-                }
-            }
-            if (bestResult != null) {
-                adviceResultList.add(bestResult);
-            } else {
-                AdviceResult coveringGsiAdviceResult =
-                    indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
-                adviceResultList.add(coveringGsiAdviceResult);
-            }
-            return ExplainExecutorUtil.handleExplainAdvisor(adviceResultList, executionContext);
+            return ExplainExecutorUtil.handleExplainAdvisor(executionContext, executionPlan);
         } else if (isExplainStatistics(explain)) {
             return ExplainStatisticsHandler.handleExplainStatistics(executionContext, executionPlan);
         } else if (isExplainVec(explain)) {
             return ExplainExecutorUtil.handleExplainVec(executionContext, executionPlan, explain.explainMode);
+        } else if (executionPlan.getPlan() instanceof BaseDdlOperation) {
+            return handleDdl(executionContext, executionPlan);
         } else {
+            Object plan = (Object) executionPlan;
             return ExplainExecutorUtil.handleExplain(executionContext, executionPlan, explain.explainMode);
         }
     }
 
-    private static ResultCursor handleExplainAdvisor(List<AdviceResult> adviceResultList,
-                                                     ExecutionContext executionContext) {
+    private static ResultCursor handleExplainAdvisor(ExecutionContext executionContext, ExecutionPlan executionPlan) {
+        List<AdviceResult> adviceResultList = new ArrayList<>();
+        IndexAdvisor indexAdvisor = new IndexAdvisor(executionPlan, executionContext);
+
+        // check statistics
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CHECK_STATISTICS_EXPIRE)) {
+            AdviceResult checkStatistics = indexAdvisor.checkStatistics();
+            if (checkStatistics != null) {
+                return ExplainExecutorUtil.handleExplainAdvisorResult(ImmutableList.of(checkStatistics));
+            }
+        }
+
+        // if advise type defined
+        String adviseTypeString = executionContext.getParamManager().getString(ConnectionParams.ADVISE_TYPE);
+        if (adviseTypeString != null) {
+            IndexAdvisor.AdviseType adviseType = null;
+            if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.LOCAL_INDEX.toString())) {
+                adviseType = IndexAdvisor.AdviseType.LOCAL_INDEX;
+            } else if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.GLOBAL_INDEX.toString())) {
+                adviseType = IndexAdvisor.AdviseType.GLOBAL_INDEX;
+            } else if (adviseTypeString
+                .equalsIgnoreCase(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX.toString())) {
+                adviseType = IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX;
+            } else if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.BROADCAST.toString())) {
+                adviseType = IndexAdvisor.AdviseType.BROADCAST;
+            } else if (adviseTypeString.equalsIgnoreCase("ALL")) {
+                AdviceResult localIndexAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.LOCAL_INDEX);
+                AdviceResult gsiAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_INDEX);
+                AdviceResult coveringGsiAdviceResult =
+                    indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
+                AdviceResult broadcastAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.BROADCAST);
+
+                adviceResultList.add(localIndexAdviceResult);
+                adviceResultList.add(gsiAdviceResult);
+                adviceResultList.add(coveringGsiAdviceResult);
+                adviceResultList.add(broadcastAdviceResult);
+
+                return ExplainExecutorUtil.handleExplainAdvisorResult(adviceResultList);
+            }
+            if (adviseType != null) {
+                AdviceResult adviceResult = indexAdvisor.advise(adviseType);
+                adviceResultList.add(adviceResult);
+                return ExplainExecutorUtil.handleExplainAdvisorResult(adviceResultList);
+            }
+        }
+
+        // normal path
+        AdviceResult bestResult = null;
+        IndexAdvisor.AdviseType[] types = {
+            IndexAdvisor.AdviseType.LOCAL_INDEX,
+            IndexAdvisor.AdviseType.GLOBAL_INDEX, IndexAdvisor.AdviseType.BROADCAST};
+        for (IndexAdvisor.AdviseType type : types) {
+            AdviceResult adviceResult = indexAdvisor.advise(type);
+            if (adviceResult.getAfterPlan() != null) {
+                if (bestResult == null || adviceResult.getConfiguration().getAfterCost()
+                    .isLt(bestResult.getConfiguration().getAfterCost())) {
+                    bestResult = adviceResult;
+                }
+            }
+        }
+        if (bestResult != null) {
+            adviceResultList.add(bestResult);
+        } else {
+            AdviceResult coveringGsiAdviceResult =
+                indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
+            adviceResultList.add(coveringGsiAdviceResult);
+
+        }
+        return ExplainExecutorUtil.handleExplainAdvisorResult(adviceResultList);
+    }
+
+    private static ResultCursor handleExplainAdvisorResult(List<AdviceResult> adviceResultList) {
         ArrayResultCursor result = new ArrayResultCursor("AdviceResult");
 
         result.addColumn("IMPROVE_VALUE", DataTypes.StringType);
@@ -318,18 +341,18 @@ public class ExplainExecutorUtil {
                     round(afterCost.getIo(), 1),
                     round(afterCost.getNet(), 1),
                     configuration.broadcastSql() +
-                        (configuration.getCandidateIndexSet().size()> 0?
-                    String.join(";",
-                        configuration.getCandidateIndexSet().stream()
-                            .map(candidateIndex -> candidateIndex.getSql()).collect(Collectors.toList())) + ";" : ""),
+                        (configuration.getCandidateIndexSet().size() > 0 ?
+                            String.join(";",
+                                configuration.getCandidateIndexSet().stream()
+                                    .map(candidateIndex -> candidateIndex.getSql()).collect(Collectors.toList()))
+                                + ";" : ""),
                     adviceResult.getAfterPlanForDisplay(),
                     adviceResult.getInfo()
                 });
                 hasRow = true;
             }
         }
-
-        if (!hasRow) {
+        if (!hasRow && !CollectionUtils.isEmpty(adviceResultList)) {
             DrdsRelOptCostImpl beforeCost = (DrdsRelOptCostImpl) adviceResultList.get(0).getBeforeCost();
             result.addRow(new Object[] {
                 null,
@@ -337,11 +360,11 @@ public class ExplainExecutorUtil {
                 null,
                 null,
                 null,
-                round(beforeCost.getValue(), 1),
-                round(beforeCost.getCpu(), 1),
-                round(beforeCost.getMemory(), 1),
-                round(beforeCost.getIo(), 1),
-                round(beforeCost.getNet(), 1),
+                beforeCost == null ? 1 : round(beforeCost.getValue(), 1),
+                beforeCost == null ? 1 : round(beforeCost.getCpu(), 1),
+                beforeCost == null ? 1 : round(beforeCost.getMemory(), 1),
+                beforeCost == null ? 1 : round(beforeCost.getIo(), 1),
+                beforeCost == null ? 1 : round(beforeCost.getNet(), 1),
                 null,
                 null,
                 null,
@@ -387,6 +410,19 @@ public class ExplainExecutorUtil {
 
         handleSubquerySimpleExplain(executionContext, executionPlan.getPlan(), result, max, current);
         return result;
+    }
+
+    private static ResultCursor handleDdl(ExecutionContext executionContext, ExecutionPlan executionPlan) {
+        ExecutionContext copyExecutionContext = executionContext.copy();
+//        copyExecutionContext.setExplain(null);
+        ExecutionPlan copyExectionPlan = executionPlan.copy(executionPlan.getPlan());
+        if (copyExectionPlan.getAst() instanceof SqlAlterTable) {
+            String sourceSql = ((SqlAlterTable) copyExectionPlan.getAst()).getSourceSql();
+            copyExecutionContext.setOriginSql(sourceSql);
+//            copyExecutionContext.setOriginSql(((AlterTable)copyExectionPlan.getPlan()).getAst().
+        }
+        copyExectionPlan.setExplain(false);
+        return PlanExecutor.execute(copyExectionPlan, copyExecutionContext);
     }
 
     private static ResultCursor handleExplainWithStage(ExecutionContext executionContext, ExecutionPlan executionPlan) {
@@ -444,6 +480,15 @@ public class ExplainExecutorUtil {
         final Map<String, Map<String, Comparative>> allFullComps = new HashMap<>();
         final List<Pair<String, String>> logicalTables = new ArrayList<>();
 
+        if (plan instanceof DirectMultiDBTableOperation) {
+            List<TableId> tableIds = ((DirectMultiDBTableOperation) plan).getLogicalTables();
+            List<TableId> physicalTableNames = ((DirectMultiDBTableOperation) plan).getPhysicalTableNames();
+            for (int i = 0; i < tableIds.size(); i++) {
+                result.addRow(new Object[] {
+                    tableIds.get(i).getTableName(), physicalTableNames.get(i).getTableName(), 1, "false", ""});
+            }
+            return result;
+        }
         if (plan instanceof DirectTableOperation) {
             ((DirectTableOperation) plan).getLogicalTableNames()
                 .forEach(t -> logicalTables.add(Pair.of(schemaName, t)));
@@ -835,6 +880,9 @@ public class ExplainExecutorUtil {
         for (String row : StringUtils.split(output, "\r\n")) {
             result.addRow(new Object[] {row});
         }
+
+        handleForeignKeySubPlans(executionPlan, executionContext, outputFormat, parameters, evalFunc, result);
+
         result.addRow(new Object[] {"HitCache:" + executionPlan.isHitCache()});
         result.addRow(new Object[] {"Source:" + executionContext.getPlanSource()});
         if (mode.isCost()) {
@@ -844,6 +892,19 @@ public class ExplainExecutorUtil {
         }
         BaselineInfo baselineInfo = PlannerContext.getPlannerContext(executionPlan.getPlan()).getBaselineInfo();
         PlanInfo planInfo = PlannerContext.getPlannerContext(executionPlan.getPlan()).getPlanInfo();
+        if (baselineInfo != null) {
+            result.addRow(new Object[] {"BaselineInfo Id: " + baselineInfo.getId()});
+            if (baselineInfo.isRebuildAtLoad()) {
+                result.addRow(new Object[] {"baseline is rebuildAtLoad :" + baselineInfo.isRebuildAtLoad()});
+                result.addRow(new Object[] {"baseline use post planner :" + baselineInfo.isUsePostPlanner()});
+                result.addRow(new Object[] {"baseline hint :" + baselineInfo.getHint()});
+            } else {
+                if (planInfo != null) {
+                    result.addRow(new Object[] {"PlanInfo Id: " + planInfo.getId()});
+                }
+            }
+        }
+
         if (mode.isBaseLine() && baselineInfo != null && planInfo != null) {
             result.addRow(new Object[] {"BaselineInfo Id: " + baselineInfo.getId()});
             result.addRow(new Object[] {"BaselineInfo TablesHashCode: " + planInfo.getTablesHashCode()});
@@ -877,7 +938,9 @@ public class ExplainExecutorUtil {
                 && executionPlan.getAst().getKind() != SqlKind.CREATE_DATABASE
                 && executionPlan.getAst().getKind() != SqlKind.DROP_DATABASE
                 && executionPlan.getAst().getKind() != SqlKind.CREATE_VIEW
-                && executionPlan.getAst().getKind() != SqlKind.DROP_VIEW) {
+                && executionPlan.getAst().getKind() != SqlKind.DROP_VIEW
+                && executionPlan.getAst().getKind() != SqlKind.DROP_MATERIALIZED_VIEW
+                && executionPlan.getAst().getKind() != SqlKind.CREATE_MATERIALIZED_VIEW) {
                 return handleExplainDdl(executionContext, executionPlan);
             }
         }
@@ -912,6 +975,13 @@ public class ExplainExecutorUtil {
             sqlTid = cacheKey.getTemplateId();
         }
         result.addRow(new Object[] {"TemplateId: " + sqlTid});
+
+        // show statistic trace
+        if (PlannerContext.getPlannerContext(executionPlan.getPlan()).isNeedStatisticTrace()) {
+            result.addRow(
+                new Object[] {PlannerContext.getPlannerContext(executionPlan.getPlan()).formatStatisticTrace()});
+            PlannerContext.getPlannerContext(executionPlan.getPlan()).clearStatisticTraceInfo();
+        }
         return result;
     }
 
@@ -1157,5 +1227,45 @@ public class ExplainExecutorUtil {
         row.setCursorMeta(cursorMeta);
         result.initMeta();
         rc.setCursorMeta(cursorMeta);
+    }
+
+    private static void handleForeignKeySubPlans(ExecutionPlan executionPlan, ExecutionContext executionContext,
+                                                 PropUtil.ExplainOutputFormat outputFormat,
+                                                 Map<Integer, ParameterContext> parameters,
+                                                 Function<RexNode, Object> evalFunc, ArrayResultCursor result) {
+        // Foreign Key Cascade Plan
+        Map<Integer, List<Pair<String, String>>> fkOutputs = new TreeMap<>();
+        if (executionPlan.getPlan() instanceof LogicalRelocate || executionPlan.getPlan() instanceof LogicalModify) {
+            TableModify modify = (TableModify) executionPlan.getPlan();
+            if (!modify.getFkPlans().isEmpty()) {
+                modify.getFkPlans().forEach((schema, secondLayerMap) ->
+                    secondLayerMap.forEach((table, thirdLayerMap) ->
+                        thirdLayerMap.forEach((constraint, value) -> {
+                                String fkOutput;
+                                if (outputFormat == PropUtil.ExplainOutputFormat.JSON) {
+                                    fkOutput = RelUtils.toJsonString(value.right, parameters, evalFunc, executionContext);
+                                } else {
+                                    fkOutput = RelUtils.toString(value.right, parameters, evalFunc, executionContext);
+                                }
+                                List<Pair<String, String>> fk =
+                                    fkOutputs.computeIfAbsent(value.left, x -> new ArrayList<>());
+                                fk.add(new Pair<>(schema + "." + table + "." + constraint, fkOutput));
+                            }
+                        )
+                    )
+                );
+            }
+        }
+        for (Map.Entry<Integer, List<Pair<String, String>>> entry : fkOutputs.entrySet()) {
+            int depth = entry.getKey();
+            String chevrons = IntStream.range(0, depth).mapToObj(i -> ">>").collect(Collectors.joining());
+            String spaces = IntStream.range(0, depth).mapToObj(i -> "  ").collect(Collectors.joining());
+            for (Pair<String, String> fkOutput : entry.getValue()) {
+                result.addRow(new Object[] {chevrons + " Foreign Key: " + fkOutput.left});
+                for (String row : StringUtils.split(fkOutput.right, "\r\n")) {
+                    result.addRow(new Object[] {spaces + row});
+                }
+            }
+        }
     }
 }

@@ -17,24 +17,17 @@
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
-import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import org.apache.calcite.rel.core.DDL;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,42 +41,38 @@ public class AlterTableGroupDropPartitionItemBuilder extends AlterTableGroupItem
 
     @Override
     public Map<String, Set<String>> getSourcePhyTables() {
-        if (GeneralUtil.isEmpty(sourcePhyTables) && GeneralUtil
-            .isNotEmpty(preparedData.getInvisiblePartitionGroups())) {
+        if (GeneralUtil.isEmpty(sourcePhyTables) && GeneralUtil.isNotEmpty(
+            preparedData.getInvisiblePartitionGroups())) {
+
             PartitionInfo partitionInfo =
                 OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
                     .getPartitionInfo(preparedData.getTableName());
-            for (PartitionGroupRecord neighbourPartition : preparedData.getInvisiblePartitionGroups()) {
-                for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                    if (partitionSpec.getName().equalsIgnoreCase(neighbourPartition.getPartition_name())) {
-                        PartitionLocation location = partitionSpec.getLocation();
-                        sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                            .add(location.getPhyTableName());
-                        break;
+
+            PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
+            PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+
+            for (PartitionGroupRecord neighborPartition : preparedData.getInvisiblePartitionGroups()) {
+                for (PartitionSpec partSpec : partByDef.getPartitions()) {
+                    if (subPartByDef != null) {
+                        for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                            if (subPartSpec.getName().equalsIgnoreCase(neighborPartition.getPartition_name())) {
+                                PartitionLocation location = subPartSpec.getLocation();
+                                sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                    .add(location.getPhyTableName());
+                                break;
+                            }
+                        }
+                    } else {
+                        if (partSpec.getName().equalsIgnoreCase(neighborPartition.getPartition_name())) {
+                            PartitionLocation location = partSpec.getLocation();
+                            sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                .add(location.getPhyTableName());
+                            break;
+                        }
                     }
                 }
             }
         }
         return sourcePhyTables;
-    }
-
-    @Override
-    protected void buildNewTableTopology(String schemaName, String tableName) {
-        tableTopology = new HashMap<>();
-        List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getGroupDetailInfoExRecords();
-        int i = 0;
-        for (String newPhyTableName : preparedData.getNewPhyTables()) {
-            GroupDetailInfoExRecord groupDetailInfoExRecord = groupDetailInfoExRecords.get(i++);
-            List<String> phyTables = new ArrayList<>();
-            phyTables.add(newPhyTableName);
-            tableTopology.computeIfAbsent(groupDetailInfoExRecord.getGroupName(), o -> new ArrayList<>())
-                .add(phyTables);
-            targetPhyTables.computeIfAbsent(groupDetailInfoExRecord.getGroupName(), o -> new HashSet<>())
-                .add(newPhyTableName);
-            orderedTargetTableLocations.add(new Pair<>(newPhyTableName, groupDetailInfoExRecord.getGroupName()));
-            if (i >= groupDetailInfoExRecords.size()) {
-                i = 0;
-            }
-        }
     }
 }

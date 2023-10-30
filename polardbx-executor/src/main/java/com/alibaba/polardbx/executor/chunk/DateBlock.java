@@ -46,8 +46,7 @@ public class DateBlock extends AbstractCommonBlock {
 
     private int[] selection;
 
-    public DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data,
-                     DataType<? extends Date> dataType,
+    public DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data, DataType<? extends Date> dataType,
                      TimeZone timezone, int[] selection) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = Preconditions.checkNotNull(data);

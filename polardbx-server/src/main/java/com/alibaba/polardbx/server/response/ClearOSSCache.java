@@ -23,12 +23,13 @@ import com.alibaba.polardbx.server.ServerConnection;
 
 public final class ClearOSSCache {
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
 
         CommonMetaChanger.clearOSSFileSystemCache();
         CommonMetaChanger.invalidateBufferPool();
 
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 }

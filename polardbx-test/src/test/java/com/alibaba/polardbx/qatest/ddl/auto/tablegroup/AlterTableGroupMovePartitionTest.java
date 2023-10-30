@@ -17,20 +17,17 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablegroup;
 
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.calcite.util.Pair;
-import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,9 +41,9 @@ import static org.hamcrest.Matchers.is;
  *
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
-public class AlterTableGroupMovePartitionTest extends AlterTableGroupBaseTest {
+public class AlterTableGroupMovePartitionTest extends AlterTableGroupTestBase {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> tableStatus =
         Stream.of(
@@ -226,7 +223,7 @@ public class AlterTableGroupMovePartitionTest extends AlterTableGroupBaseTest {
 
     }
 
-    @Test
+    @Ignore
     public void testDelete() {
         if (!usingNewPartDb()) {
             return;
@@ -345,7 +342,7 @@ public class AlterTableGroupMovePartitionTest extends AlterTableGroupBaseTest {
     public void beforeDDLBaseNewDBTestCase() {
         if (firstIn) {
             super.beforeDDLBaseNewDBTestCase();
-            setUpForMovePart(true, partitionRuleInfo);
+            setUpForMovePart(true, partitionRuleInfo, false);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

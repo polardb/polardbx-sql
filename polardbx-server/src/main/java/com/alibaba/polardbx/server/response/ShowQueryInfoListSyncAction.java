@@ -57,7 +57,7 @@ public class ShowQueryInfoListSyncAction implements ISyncAction {
         QueryManager queryManager = ServiceProvider.getInstance().getServer().getQueryManager();
         for (QueryInfo queryInfo : queryManager.getAllQueryInfo()) {
             Set<String> hosts = new LinkedHashSet<>();
-            hosts.add(ServiceProvider.getInstance().getServer().getLocalNode().getHostPort());
+            hosts.add(ServiceProvider.getInstance().getServer().getLocalNode().getHostMppPort());
             if (queryInfo != null && queryInfo.getOutputStage().isPresent()) {
                 addAllHosts(queryInfo.getOutputStage(), hosts);
             }

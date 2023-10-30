@@ -16,12 +16,6 @@
  */
 package org.apache.calcite.sql.validate;
 
-import static org.apache.calcite.util.Static.RESOURCE;
-
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
@@ -31,7 +25,14 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.util.SqlShuttle;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+
+import static org.apache.calcite.util.Static.RESOURCE;
 
 /**
  * Visitor which replaces to firstValue if any component of the expression is not a
@@ -80,13 +81,13 @@ class FirstValueAggReplacer extends SqlScopedShuttle {
 
   boolean isGroupExpr(SqlNode expr) {
     for (SqlNode groupExpr : groupExprs) {
-      if (groupExpr.equalsDeep(expr, Litmus.IGNORE)) {
+      if (groupExpr.equalsDeep(expr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return true;
       }
     }
 
     for (SqlNode extraExpr : extraExprs) {
-      if (extraExpr.equalsDeep(expr, Litmus.IGNORE)) {
+      if (extraExpr.equalsDeep(expr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return true;
       }
     }
@@ -134,7 +135,7 @@ class FirstValueAggReplacer extends SqlScopedShuttle {
             }
 
             if (validator.expand(sqlNode, scope)
-                .equalsDeep(call, Litmus.IGNORE)) {
+                .equalsDeep(call, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
               return call;
             }
           }

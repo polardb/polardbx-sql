@@ -29,11 +29,14 @@ public abstract class AbstractDateIterator implements PartitionFieldIterator {
     protected static final MySQLInterval DAY_INTERVAL_VALUE = new MySQLInterval();
     protected static final MySQLInterval SECOND_INTERVAL_VALUE = new MySQLInterval();
 
+    protected static final MySQLInterval WEEK_INTERVAL_VALUE = new MySQLInterval();
+
     static {
         YEAR_INTERVAL_VALUE.setYear(1L);
         MONTH_INTERVAL_VALUE.setMonth(1L);
         DAY_INTERVAL_VALUE.setDay(1L);
         SECOND_INTERVAL_VALUE.setSecond(1L);
+        WEEK_INTERVAL_VALUE.setDay(7L);
     }
 
     protected boolean lowerBoundIncluded;

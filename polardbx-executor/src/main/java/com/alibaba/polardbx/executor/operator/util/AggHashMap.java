@@ -23,7 +23,7 @@ import java.util.List;
 
 public interface AggHashMap extends GroupHashMap {
 
-    void putChunk(Chunk keyChunk, Chunk inputChunk);
+    int[] putChunk(Chunk keyChunk, Chunk inputChunk);
 
     List<Chunk> getGroupChunkList();
 

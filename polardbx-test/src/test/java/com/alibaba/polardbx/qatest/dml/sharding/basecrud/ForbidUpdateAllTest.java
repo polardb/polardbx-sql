@@ -41,6 +41,7 @@ import static org.hamcrest.CoreMatchers.is;
  * @author arnkore 2017-03-31 19:09
  */
 
+
 public class ForbidUpdateAllTest extends CrudBasedLockTestCase {
     @Rule
     public final ExpectedException thrown = ExpectedException.none();

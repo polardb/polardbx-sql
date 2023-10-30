@@ -33,7 +33,7 @@ import java.util.stream.Stream;
 /**
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
 public class ScaleOutMixTest extends ScaleOutBaseTest {
 

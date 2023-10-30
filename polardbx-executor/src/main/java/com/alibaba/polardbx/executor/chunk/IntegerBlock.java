@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -147,6 +149,11 @@ public class IntegerBlock extends AbstractBlock {
 
     public static IntegerBlock wrap(int[] values) {
         return new IntegerBlock(0, values.length, null, values);
+    }
+
+    @VisibleForTesting
+    public static IntegerBlock wrapWithNull(int[] values, boolean[] nulls) {
+        return new IntegerBlock(0, values.length, nulls, values);
     }
 
     @Override

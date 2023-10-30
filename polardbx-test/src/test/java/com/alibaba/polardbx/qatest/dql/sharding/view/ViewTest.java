@@ -115,6 +115,23 @@ public class ViewTest extends ReadBaseTestCase {
     }
 
     @Test
+    public void multiViewWithBackquote() {
+        String sql = "create or replace view v(`c1`) as select a.pk from " + group1[1] + " a join " + group2[2]
+            + " b on a.pk = b.pk";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+        sql = "select `c1` from v";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "select c1 from v";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "select * from v";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "drop view if exists v";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+    }
+
+    @Test
     public void multiTableView() {
         String sql = "create or replace view v(c1) as select a.pk from " + group1[1] + " a join " + group2[2]
             + " b on a.pk = b.pk";

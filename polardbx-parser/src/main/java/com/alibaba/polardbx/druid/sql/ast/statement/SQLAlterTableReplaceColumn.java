@@ -25,8 +25,7 @@ import java.util.List;
 public class SQLAlterTableReplaceColumn extends SQLObjectImpl implements SQLAlterTableItem {
 
     private final List<SQLColumnDefinition> columns = new ArrayList<SQLColumnDefinition>();
-    
-    
+
     // for mysql
     private SQLName firstColumn;
     private SQLName afterColumn;
@@ -44,7 +43,7 @@ public class SQLAlterTableReplaceColumn extends SQLObjectImpl implements SQLAlte
     public List<SQLColumnDefinition> getColumns() {
         return columns;
     }
-    
+
     public void addColumn(SQLColumnDefinition column) {
         if (column != null) {
             column.setParent(this);

@@ -35,8 +35,7 @@ import java.util.List;
 /**
  * @author chenmo.cm
  */
-@RunWith(Parameterized.class)
-@Ignore("REMOVE DDL NOT SUPPORTED")
+
 public class ShowWithGsiCaseSensitiveTest extends DDLBaseNewDBTestCase {
 
     private static final String HINT = "/*+TDDL:cmd_extra(STORAGE_CHECK_ON_GSI=false)*/ ";
@@ -95,7 +94,7 @@ public class ShowWithGsiCaseSensitiveTest extends DDLBaseNewDBTestCase {
     @Before
     public void before() {
 
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "REMOVE DDL ALL PENDING");
+        //JdbcUtil.executeUpdateSuccess(tddlConnection, "REMOVE DDL ALL PENDING");
         dropTableWithGsi(createTablePrimary, ImmutableList.of(createTableIndex));
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, HINT + createTable);

@@ -1,0 +1,44 @@
+## DISABLE_FAST_SQL_PARSER
+
+## error_msg: $# not allowed #$
+create table if not exists lc_decimal_2402 (c1 decimal(24,2) default null )
+partition by list (c1) (
+partition p0 values in ('123.12'),
+partition p1 values in ('124.12'),
+partition pd values in (default)
+);
+
+
+## error_msg: $# not allowed #$
+create table if not exists lc_decimal_2402 (c1 decimal(24,2) default null )
+partition by range (c1) (
+partition p0 values less than  ('123.12'),
+partition p1 values less than ('124.12'),
+partition pd values less than (default)
+);
+
+## error_msg: $# not allowed #$
+create table if not exists k_rc_decimal_2400_2402 (
+  c1 decimal(24,0) default null,
+  c2 decimal(24,2) default null
+)
+partition by hash (c1) partitions 4
+subpartition by range (c2) (
+subpartition p0 values less than  ('123.12'),
+subpartition p1 values less than ('124.12'),
+subpartition pd values less than (default)
+);
+
+
+## error_msg: $# not allowed #$
+create table if not exists k_lc_decimal_2400_2402 (
+c1 decimal(24,0) default null,
+c2 decimal(24,2) default null
+)
+partition by hash (c1) partitions 4
+subpartition by list (c2) (
+subpartition p0 values in  ('123.12'),
+subpartition p1 values in ('124.12'),
+subpartition pd values in (default)
+);
+

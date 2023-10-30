@@ -51,10 +51,18 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* idx1_$ */ `idx1` (`order_id`) PARTITION BY KEY (`order_id`, `x`) PARTITIONS #@#,
-	CLUSTERED INDEX /* idx2_$ */ `idx2` (`order_id`) PARTITION BY KEY (`order_id`, `x`) PARTITIONS #@#,
-	GLOBAL INDEX /* idx4_$ */ `idx4` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	CLUSTERED INDEX /* idx5_$ */ `idx5` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
+	GLOBAL INDEX /* idx1_$ */ `idx1` (`order_id`)
+		PARTITION BY KEY(`order_id`,`x`)
+		PARTITIONS #@#,
+	CLUSTERED INDEX /* idx2_$ */ `idx2` (`order_id`)
+		PARTITION BY KEY(`order_id`,`x`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx4_$ */ `idx4` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	CLUSTERED INDEX /* idx5_$ */ `idx5` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
 	LOCAL KEY `idx0` (`order_id`),
 	LOCAL KEY `_local_idx1` (`order_id`),
 	LOCAL KEY `_local_idx2` (`order_id`),
@@ -98,10 +106,18 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* idx1_$ */ `idx1` (`order_id`) PARTITION BY KEY (`order_id`, `x`) PARTITIONS #@#,
-	CLUSTERED INDEX /* idx2_$ */ `idx2` (`order_id`) PARTITION BY KEY (`order_id`, `x`) PARTITIONS #@#,
-	GLOBAL INDEX /* idx4_$ */ `idx4` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	CLUSTERED INDEX /* idx5_$ */ `idx5` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
+	GLOBAL INDEX /* idx1_$ */ `idx1` (`order_id`)
+		PARTITION BY KEY(`order_id`,`x`)
+		PARTITIONS #@#,
+	CLUSTERED INDEX /* idx2_$ */ `idx2` (`order_id`)
+		PARTITION BY KEY(`order_id`,`x`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx4_$ */ `idx4` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	CLUSTERED INDEX /* idx5_$ */ `idx5` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
 	LOCAL KEY `_local_idx1` (`order_id`),
 	LOCAL KEY `_local_idx2` (`order_id`),
 	LOCAL KEY `_local_idx4` (`seller_id`),

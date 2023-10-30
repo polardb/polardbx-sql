@@ -39,6 +39,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
  * @since 5.1.0
  */
 
+
 public class SetSqlModeTest extends CrudBasedLockTestCase {
 
     @Parameters(name = "{index}:table0={0},table1={1}")

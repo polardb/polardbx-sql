@@ -69,7 +69,7 @@ public interface LookupJoin {
             Join join = logicalIndexScan.getJoin();
             if (join != null) {
                 // This TableLookup is lookup side of lookup join such as (BKA, Materialized Semi Join)
-                Index index = IndexUtil.selectJoinIndex(join);
+                Index index = IndexUtil.selectJoinIndex(join, true);
                 RelNode mysqlRelNode = logicalIndexScan.getMysqlNode();
                 RelOptCost scanCost = mq.getCumulativeCost(mysqlRelNode);
 

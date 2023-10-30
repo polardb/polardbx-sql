@@ -93,9 +93,13 @@
               `paused_policy` varchar(64) not null,
               `rollback_paused_policy` varchar(64) not null,
               key (`job_id`),
-              key (`schema_name`, `job_id`)
+              key (`schema_name`, `job_id`),
+              key (`gmt_created`)
             ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+           alter table ddl_engine_archive add index (`gmt_created`);
+        ]]></Change>
     </SystemTable>
     <SystemTable name="ddl_engine_task_archive">
         <Create><![CDATA[

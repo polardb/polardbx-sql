@@ -16,27 +16,7 @@
 
 package com.alibaba.polardbx.parser;
 
-import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.druid.sql.parser.ParserException;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
-import junit.framework.TestCase;
-import org.junit.Assert;
-
-import java.util.Arrays;
-import java.util.List;
-
-public class TruncateParserTest extends TestCase {
-    private static final List<SQLParserFeature> DEFAULT_FEATURES = Arrays.asList(
-        SQLParserFeature.TDDLHint,
-        SQLParserFeature.EnableCurrentUserExpr,
-        SQLParserFeature.DRDSAsyncDDL,
-        SQLParserFeature.DrdsMisc,
-        SQLParserFeature.DRDSBaseline,
-        SQLParserFeature.DrdsGSI,
-        SQLParserFeature.DrdsMisc,
-        SQLParserFeature.DrdsCCL
-    );
+public class TruncateParserTest extends AbstractParserTest {
 
     public void testTruncateInsert() {
         String sql = "truncate table test.t1 insert into test.t1 values (1, 1);";
@@ -51,16 +31,5 @@ public class TruncateParserTest extends TestCase {
     public void testTruncateInsertWithHint2() {
         String sql = "/*+TDDL: FORBID_EXECUTE_DML_ALL=TRUE*/ truncate table test.t1 insert into test.t1 values (1, 1);";
         parseSqlShouldFail(sql);
-    }
-
-    private void parseSqlShouldFail(String sql) {
-        MySqlStatementParser parser =
-            new MySqlStatementParser(ByteString.from(sql), DEFAULT_FEATURES.toArray(new SQLParserFeature[0]));
-        try {
-            parser.parseStatementList().get(0);
-        } catch (ParserException e) {
-            return;
-        }
-        Assert.fail(String.format("parse sql: %s should fail, but not!", sql));
     }
 }

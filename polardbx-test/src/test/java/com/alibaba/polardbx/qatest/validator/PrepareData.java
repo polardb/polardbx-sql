@@ -77,7 +77,7 @@ public class PrepareData {
             List<Object> param = columnDataGenerator.getAllColumnValue(columns, pkColumnName, i);
             params.add(param);
         }
-        executeMutilValueOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params);
+        executeMutilValueOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params, true);
     }
 
     /**

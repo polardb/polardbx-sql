@@ -29,6 +29,7 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +49,18 @@ public class VirtualView extends AbstractRelNode {
     private Map<Integer, List<Object>> index = new HashMap<>();
 
     private Map<Integer, Object> like = new HashMap<>();
+
+    public static class ColumnDef {
+        public final String name;
+        public final int index;
+        public final SqlTypeName type;
+
+        public ColumnDef(String name, int index, SqlTypeName type) {
+            this.name = name;
+            this.index = index;
+            this.type = type;
+        }
+    }
 
     protected VirtualView(RelOptCluster cluster, RelTraitSet traitSet, VirtualViewType virtualViewType) {
         super(cluster, traitSet);
@@ -129,6 +142,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTriggers(cluster, traitSet);
         case ROUTINES:
             return new InformationSchemaRoutines(cluster, traitSet);
+        case CHECK_ROUTINES:
+            return new InformationSchemaCheckRoutines(cluster, traitSet);
+        case JAVA_FUNCTIONS:
+            return new InformationSchemaJavaFunctions(cluster, traitSet);
         case COLUMN_PRIVILEGES:
             return new InformationSchemaColumnPrivileges(cluster, traitSet);
         case FILES:
@@ -139,12 +156,18 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaGlobalVariables(cluster, traitSet);
         case KEY_COLUMN_USAGE:
             return new InformationSchemaKeyColumnUsage(cluster, traitSet);
+        case OPTIMIZER_ALERT:
+            return new InformationSchemaOptimizerAlert(cluster, traitSet);
         case OPTIMIZER_TRACE:
             return new InformationSchemaOptimizerTrace(cluster, traitSet);
+        case TRACE:
+            return new InformationSchemaTrace(cluster, traitSet);
         case PARAMETERS:
             return new InformationSchemaParameters(cluster, traitSet);
         case PARTITIONS:
             return new InformationSchemaPartitions(cluster, traitSet);
+        case PARTITIONS_META:
+            return new InformationSchemaPartitionsMeta(cluster, traitSet);
         case LOCAL_PARTITIONS:
             return new InformationSchemaLocalPartitions(cluster, traitSet);
         case LOCAL_PARTITIONS_SCHEDULE:
@@ -246,6 +269,8 @@ public class VirtualView extends AbstractRelNode {
 
         case STORAGE:
             return new InformationSchemaStorage(cluster, traitSet);
+        case STORAGE_STATUS:
+            return new InformationSchemaStorageStatus(cluster, traitSet);
         case STORAGE_REPLICAS:
             return new InformationSchemaStorageReplicas(cluster, traitSet);
         case FULL_STORAGE:
@@ -260,6 +285,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTableDetail(cluster, traitSet);
         case LOCALITY_INFO:
             return new InformationSchemaLocalityInfo(cluster, traitSet);
+        case STORAGE_POOL_INFO:
+            return new InformationSchemaStoragePoolInfo(cluster, traitSet);
         case MOVE_DATABASE:
             return new InformationSchemaMoveDatabase(cluster, traitSet);
         case PHYSICAL_PROCESSLIST:
@@ -292,6 +319,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaDdlPlan(cluster, traitSet);
         case REBALANCE_BACKFILL:
             return new InformationSchemaRebalanceBackFill(cluster, traitSet);
+        case CREATE_DATABASE_AS_BACKFILL:
+            return new InformationSchemaCreateDatabaseAsBackfill(cluster, traitSet);
+        case CREATE_DATABASE:
+            return new InformationSchemaCreateDatabase(cluster, traitSet);
         case STATEMENTS_SUMMARY:
             return new InformationSchemaStatementSummary(cluster, traitSet);
         case STATEMENTS_SUMMARY_HISTORY:
@@ -312,6 +343,18 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaFunctionCacheCapacity(cluster, traitSet);
         case PUSHED_FUNCTION:
             return new InformationSchemaPushedFunction(cluster, traitSet);
+        case TABLE_ACCESS:
+            return new InformationSchemaTableAccess(cluster, traitSet);
+        case TABLE_JOIN_CLOSURE:
+            return new InformationSchemaTableJoinClosure(cluster, traitSet);
+        case POLARDBX_TRX:
+            return new InformationSchemaPolardbxTrx(cluster, traitSet);
+        case STORAGE_PROPERTIES:
+            return new InformationSchemaStorageProperties(cluster, traitSet);
+        case PREPARED_TRX_BRANCH:
+            return new InformationSchemaPreparedTrxBranch(cluster, traitSet);
+        case REPLICA_STAT:
+            return new InformationSchemaReplicaStat(cluster, traitSet);
         default:
             throw new AssertionError();
         }

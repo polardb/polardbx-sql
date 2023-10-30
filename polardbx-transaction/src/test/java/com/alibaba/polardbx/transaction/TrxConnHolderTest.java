@@ -97,6 +97,7 @@ public class TrxConnHolderTest {
         this.groupParallelism = groupParallelism;
         this.trx = getMockTrx(shareReadView, groupParallelism);
         this.tGroupDataSource = getMockTGroupDatasource();
+        this.tGroupDataSource.mock = true;
 
 //        Field heldWriteConnField = TransactionConnectionHolder.class.getDeclaredField("groupHeldWriteConn");
 //        heldWriteConnField.setAccessible(true);
@@ -163,7 +164,8 @@ public class TrxConnHolderTest {
 
         XATransaction trx = PowerMockito.spy(new XATransaction(executionContext, trxManager));
         PowerMockito.doNothing().when(trx).begin(anyString(), anyString(), any());
-        PowerMockito.doNothing().when(trx, "beginRwTransaction", Mockito.any(String.class));
+        PowerMockito.doNothing().when(trx, "recordRwTransaction");
+        PowerMockito.doNothing().when(trx, "recordTransaction");
         PowerMockito.doNothing().when(trx).cleanupAllConnections();
 
         // TransactionConnectionHolder 初始化引用了 this
@@ -318,7 +320,7 @@ public class TrxConnHolderTest {
         verifyHeldWriteConnParticipated(groups[0]);
 
         // 关闭事务后 持有链接应当被释放
-        trx.close();
+        trx.rollback();
         checkHoldConnsCleared();
         Assert.assertTrue(writeConn0.isClosed());
         Assert.assertTrue(writeConn1.isClosed());
@@ -350,7 +352,7 @@ public class TrxConnHolderTest {
         }
         Assert.assertTrue(StringUtils.join(errorMsgs, "\n"), errorMsgs.isEmpty());
         // 关闭事务后 持有链接应当被释放
-        trx.close();
+        trx.rollback();
         checkHoldConnsCleared();
     }
 

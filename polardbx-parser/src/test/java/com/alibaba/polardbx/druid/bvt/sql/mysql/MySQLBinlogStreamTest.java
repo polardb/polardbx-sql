@@ -7,6 +7,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ *
+ */
 public class MySQLBinlogStreamTest extends MysqlTest {
     @Test
     public void test_0() {

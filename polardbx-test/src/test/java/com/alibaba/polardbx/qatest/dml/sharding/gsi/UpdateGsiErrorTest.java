@@ -40,6 +40,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAss
  * @author minggong
  */
 
+
 @Ignore
 public class UpdateGsiErrorTest extends GsiDMLTest {
 

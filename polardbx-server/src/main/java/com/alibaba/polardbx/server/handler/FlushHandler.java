@@ -22,7 +22,7 @@ import com.alibaba.polardbx.server.parser.ServerParseFlush;
 import com.alibaba.polardbx.server.response.FlushTable;
 
 public final class FlushHandler {
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
-        FlushTable.response(stmt, c, offset, hasMore);
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+        return FlushTable.response(stmt, c, offset, hasMore);
     }
 }

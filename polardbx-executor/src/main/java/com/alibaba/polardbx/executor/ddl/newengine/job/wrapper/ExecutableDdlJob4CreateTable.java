@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -36,5 +37,4 @@ public class ExecutableDdlJob4CreateTable extends ExecutableDdlJob {
     private CdcDdlMarkTask cdcDdlMarkTask;
     private CreateTableShowTableMetaTask createTableShowTableMetaTask;
     private TableSyncTask tableSyncTask;
-
 }

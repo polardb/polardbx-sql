@@ -58,6 +58,7 @@ public class SliceBlockEncoding implements BlockEncoding {
         sliceOutput.writeBytes(collationBytes);
 
         sliceOutput.writeBoolean(sliceBlock.isCompatible());
+
         int positionCount = block.getPositionCount();
         sliceOutput.appendInt(positionCount);
 
@@ -92,6 +93,7 @@ public class SliceBlockEncoding implements BlockEncoding {
         dataType = new SliceType(charsetName, collationName);
 
         boolean isCompatible = sliceInput.readBoolean();
+
         int positionCount = sliceInput.readInt();
         boolean[] valueIsNull = decodeNullBits(sliceInput, positionCount);
         boolean existNonNull = sliceInput.readBoolean();

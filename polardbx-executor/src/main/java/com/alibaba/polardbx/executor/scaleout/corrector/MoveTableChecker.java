@@ -93,7 +93,7 @@ public class MoveTableChecker extends Checker {
             .map(ColumnMeta::getName)
             .collect(Collectors.toList());
 
-        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName);
+        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 

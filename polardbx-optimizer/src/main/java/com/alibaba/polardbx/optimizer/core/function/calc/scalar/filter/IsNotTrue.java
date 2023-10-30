@@ -36,11 +36,6 @@ public class IsNotTrue extends AbstractCollationScalarFunction {
     public Object compute(Object[] args, ExecutionContext ec) {
         Object arg = args[0];
         if (FunctionUtils.isNull(arg)) {
-            // There is a difference on the behavior of isNotTrue between
-            if (ec.isInFilter()) {
-                // being in select list and filter.
-                return null;
-            }
             return 1L;
         }
 

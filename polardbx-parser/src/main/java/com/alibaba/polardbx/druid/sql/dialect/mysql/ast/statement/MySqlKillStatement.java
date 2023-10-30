@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -26,11 +27,11 @@ import java.util.List;
 
 public class MySqlKillStatement extends SQLStatementImpl {
 
-    private Type          type;
+    private Type type;
     private List<SQLExpr> threadIds = new ArrayList<SQLExpr>();
 
     public static enum Type {
-                             CONNECTION, QUERY
+        CONNECTION, QUERY
     }
 
     public Type getType() {
@@ -52,7 +53,7 @@ public class MySqlKillStatement extends SQLStatementImpl {
         }
         this.threadIds.set(0, threadId);
     }
-    
+
     public List<SQLExpr> getThreadIds() {
         return threadIds;
     }
@@ -67,5 +68,10 @@ public class MySqlKillStatement extends SQLStatementImpl {
     @Override
     public List<SQLObject> getChildren() {
         return Collections.<SQLObject>emptyList();
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

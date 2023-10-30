@@ -16,11 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterFileStoragePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropFileStoragePreparedData;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
-import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 
 public class LogicalDropFileStorage extends BaseDdlOperation {
@@ -28,6 +25,16 @@ public class LogicalDropFileStorage extends BaseDdlOperation {
 
     public LogicalDropFileStorage(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public void preparedData() {

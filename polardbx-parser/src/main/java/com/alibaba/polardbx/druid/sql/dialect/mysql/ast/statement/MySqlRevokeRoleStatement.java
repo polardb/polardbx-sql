@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -58,5 +59,10 @@ public class MySqlRevokeRoleStatement extends MySqlStatementImpl {
         }
 
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

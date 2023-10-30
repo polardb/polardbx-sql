@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.scaleout.backfill;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -59,9 +58,11 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
                                    Map<String, Set<String>> sourcePhyTables,
                                    ExecutionContext ec) {
 
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName);
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName, true);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+
+        SqlSelect.LockMode lockMode = SqlSelect.LockMode.SHARED_LOCK;
 
         return new MoveTableExtractor(schemaName,
             sourceTableName,
@@ -72,13 +73,13 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
             parallelism,
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(), false, true,
-                SqlSelect.LockMode.SHARED_LOCK),
+                lockMode),
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(), true, false,
-                SqlSelect.LockMode.SHARED_LOCK),
+                lockMode),
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(), true, true,
-                SqlSelect.LockMode.SHARED_LOCK),
+                lockMode),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
             builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
                 false, false),

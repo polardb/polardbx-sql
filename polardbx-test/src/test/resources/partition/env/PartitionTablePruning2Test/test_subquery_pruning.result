@@ -322,7 +322,7 @@ a
 explain select a,b from sb_pruning_test1 where  a in (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) and b in (select t3.b from sb_pruning_test3 t3 order by t3.b limit 8,1) and a between 97 and 200 order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
-  LogicalView(tables="sb_pruning_test1[p1,p2,p3]", shardCount=3, sql="SELECT `a`, `b` FROM `sb_pruning_test1` AS `sb_pruning_test1` WHERE (((`a` IN(?)) AND (`b` IN(?))) AND (`a` BETWEEN ? AND ?)) ORDER BY `a`")
+  LogicalView(tables="sb_pruning_test1[p1,p2,p3]", shardCount=3, sql="SELECT `a`, `b` FROM `sb_pruning_test1` AS `sb_pruning_test1` WHERE ((`a` IN(?)) AND (`b` IN(?)) AND (`a` BETWEEN ? AND ?)) ORDER BY `a`")
 HitCache:false
 Source:PLAN_CACHE
 >> individual scalar subquery

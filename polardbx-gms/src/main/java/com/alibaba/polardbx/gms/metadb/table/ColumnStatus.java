@@ -16,6 +16,13 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.google.common.collect.Lists;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * Represents status of column schema change
  */
@@ -55,5 +62,32 @@ public enum ColumnStatus {
         default:
             return null;
         }
+    }
+
+    /**
+     * Schema change for add a column
+     */
+    public static List<Pair<ColumnStatus, ColumnStatus>> schemaChangeForAddColumn() {
+        return enumerateStatusChange(addColumnStatusList());
+    }
+
+    /**
+     * Schema change for drop a column
+     */
+    public static List<Pair<ColumnStatus, ColumnStatus>> schemaChangeForDropColumn() {
+        return enumerateStatusChange(Lists.reverse(addColumnStatusList()));
+    }
+
+    private static List<ColumnStatus> addColumnStatusList() {
+        return Arrays.asList(ABSENT, WRITE_ONLY, WRITE_REORG, PUBLIC);
+    }
+
+    private static List<Pair<ColumnStatus, ColumnStatus>> enumerateStatusChange(List<ColumnStatus> statuses) {
+        assert statuses.size() > 1;
+        List<Pair<ColumnStatus, ColumnStatus>> result = new ArrayList<>();
+        for (int i = 1; i < statuses.size(); i++) {
+            result.add(Pair.of(statuses.get(i - 1), statuses.get(i)));
+        }
+        return result;
     }
 }

@@ -13,3 +13,4 @@ test_part_pruning_on_list_col
 test_part_pruning_notequal
 test_part_timezone
 test_part_charset
+test_part_pruning_in

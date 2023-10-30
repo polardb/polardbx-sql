@@ -198,6 +198,11 @@ public class SequenceAccessor extends AbstractAccessor {
         }
     }
 
+    public boolean checkIfExists(String schemaName, String name) {
+        SequenceRecord record = query(schemaName, name);
+        return record != null;
+    }
+
     public int updateStatus(SequenceRecord record) {
         return update(UPDATE_SEQ_TABLE_STATUS, SEQ_TABLE, record.schemaName, record.name, record.status);
     }

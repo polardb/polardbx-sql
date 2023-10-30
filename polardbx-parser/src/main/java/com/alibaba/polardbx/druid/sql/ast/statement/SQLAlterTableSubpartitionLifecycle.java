@@ -27,7 +27,7 @@ public class SQLAlterTableSubpartitionLifecycle extends SQLObjectImpl implements
     private List<SQLIntegerExpr> partitionIds = new ArrayList<SQLIntegerExpr>();
     private List<SQLIntegerExpr> subpartitionLifeCycle = new ArrayList<SQLIntegerExpr>();
 
-    public SQLAlterTableSubpartitionLifecycle(){
+    public SQLAlterTableSubpartitionLifecycle() {
 
     }
 

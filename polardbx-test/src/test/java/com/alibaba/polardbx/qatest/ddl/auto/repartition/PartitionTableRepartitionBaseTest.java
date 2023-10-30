@@ -27,6 +27,7 @@ import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
@@ -72,10 +73,10 @@ public abstract class PartitionTableRepartitionBaseTest extends RepartitionBaseT
             + " PARTITION p3 VALUES LESS THAN (MAXVALUE, MAXVALUE) ENGINE = InnoDB)";
 
     static final String PARTITIONING_LIST_TEMPLATE =
-        "\n(PARTITION p0 VALUES IN (1990,1991,1992) ENGINE = InnoDB,\n"
-            + " PARTITION p1 VALUES IN (1800,1801,1802) ENGINE = InnoDB,\n"
-            + " PARTITION p2 VALUES IN (2010,2012) ENGINE = InnoDB,\n"
-            + " PARTITION p3 VALUES IN (2020,1900) ENGINE = InnoDB)";
+        "(PARTITION p0 VALUES IN (1800,1801,1802) ENGINE = InnoDB,\n"
+            + " PARTITION p1 VALUES IN (1900,2020) ENGINE = InnoDB,\n"
+            + " PARTITION p2 VALUES IN (1990,1991,1992) ENGINE = InnoDB,\n"
+            + " PARTITION p3 VALUES IN (2010,2012) ENGINE = InnoDB)";
 
     static final String PARTITIONING_LIST_COLUMN_TEMPLATE =
         "\n(PARTITION p0 VALUES IN ((1, 'ab'),(3, 'bc'),(5, 'cd'),(7, 'ef') ) ENGINE = InnoDB,\n"
@@ -230,7 +231,7 @@ public abstract class PartitionTableRepartitionBaseTest extends RepartitionBaseT
         SqlNode partitionBy = ddl.getSqlPartition();
 
         if (partitionBy != null) {
-            partitionBy.equalsDeep(newAst.getSqlPartition(), Litmus.THROW);
+            partitionBy.equalsDeep(newAst.getSqlPartition(), Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
     }
 

@@ -27,13 +27,13 @@ public class SQLDropTableSpaceStatement extends SQLStatementImpl implements SQLD
     private SQLName name;
     private boolean ifExists;
     private SQLExpr engine;
-    
+
     public SQLDropTableSpaceStatement() {
-        
+
     }
-    
+
     public SQLDropTableSpaceStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

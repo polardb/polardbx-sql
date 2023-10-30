@@ -22,7 +22,6 @@ public class MySqlShowMasterStatusStatement extends MySqlStatementImpl implement
 
     private SQLExpr with;
 
-    @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, with);

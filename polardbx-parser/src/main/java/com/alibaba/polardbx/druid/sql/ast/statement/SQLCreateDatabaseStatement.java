@@ -32,24 +32,41 @@ import java.util.List;
 import java.util.Map;
 
 public class SQLCreateDatabaseStatement extends SQLStatementImpl implements SQLCreateStatement {
-    protected SQLName                         name;
-    protected String                          characterSet;
-    protected String                          collate;
-    protected List<SQLCommentHint>            hints;
-    protected boolean                         ifNotExists = false;
-    protected SQLExpr                         comment;
-    protected SQLExpr                         location; // hive
-    protected final List<SQLAssignItem>       dbProperties = new ArrayList<SQLAssignItem>();
-    protected Map<String, SQLExpr>            options = new HashMap<String, SQLExpr>(); // for ads
-    protected String                          user;
+    protected SQLName name;
+    protected String characterSet;
+    protected String collate;
+    protected Boolean encryption;
+    protected List<SQLCommentHint> hints;
+    protected boolean ifNotExists = false;
+    protected SQLExpr comment;
+    protected SQLExpr location; // hive
+    protected final List<SQLAssignItem> dbProperties = new ArrayList<SQLAssignItem>();
+    protected Map<String, SQLExpr> options = new HashMap<String, SQLExpr>(); // for ads
+    protected String user;
 
-    protected SQLExpr                         password; // drds
+    protected SQLExpr password; // drds
     protected final List<SQLAssignItem> storedOn = new ArrayList<SQLAssignItem>(); // drds
     protected final List<List<SQLAssignItem>> storedBy = new ArrayList<List<SQLAssignItem>>(); // drds stored by
-    protected SQLExpr                         storedAs;  // drds
-    protected SQLExpr                         storedIn;  // drds
-    protected SQLExpr                         locality;
-    protected SQLExpr                         partitionMode;
+    protected SQLExpr storedAs;  // drds
+    protected SQLExpr storedIn;  // drds
+    protected SQLExpr locality;
+    protected SQLExpr partitionMode;
+    protected SQLExpr defaultSingle;
+
+    /**
+     * for: create database ... as
+     * create database ... like
+     */
+    protected boolean as = false;
+    protected boolean like = false;
+    protected SQLName sourceDatabase;
+
+    protected final List<SQLName> includeTables = new ArrayList<>();
+    protected final List<SQLName> excludeTables = new ArrayList<>();
+
+    protected boolean withLock = true;
+    protected boolean dryRun = false;
+    protected boolean createTables = true;
 
     //adb
     protected boolean physical;
@@ -57,8 +74,8 @@ public class SQLCreateDatabaseStatement extends SQLStatementImpl implements SQLC
     public SQLCreateDatabaseStatement() {
     }
 
-    public SQLCreateDatabaseStatement(DbType dbType){
-        super (dbType);
+    public SQLCreateDatabaseStatement(DbType dbType) {
+        super(dbType);
     }
 
     @Override
@@ -100,6 +117,14 @@ public class SQLCreateDatabaseStatement extends SQLStatementImpl implements SQLC
 
     public void setCollate(String collate) {
         this.collate = collate;
+    }
+
+    public Boolean isEncryption() {
+        return encryption;
+    }
+
+    public void setEncryption(Boolean encryption) {
+        this.encryption = encryption;
     }
 
     public List<SQLCommentHint> getHints() {
@@ -254,7 +279,8 @@ public class SQLCreateDatabaseStatement extends SQLStatementImpl implements SQLC
         }
 
         if (name instanceof SQLIdentifierExpr) {
-            SQLPropertyExpr propertyExpr = new SQLPropertyExpr(new SQLIdentifierExpr(server), ((SQLIdentifierExpr) name).getName());
+            SQLPropertyExpr propertyExpr =
+                new SQLPropertyExpr(new SQLIdentifierExpr(server), ((SQLIdentifierExpr) name).getName());
             propertyExpr.setParent(this);
             name = propertyExpr;
             return true;
@@ -292,4 +318,68 @@ public class SQLCreateDatabaseStatement extends SQLStatementImpl implements SQLC
     }
 
     //    public static class StoredAs
+
+    public void setAs(boolean as) {
+        this.as = as;
+    }
+
+    public boolean getAs() {
+        return this.as;
+    }
+
+    public void setLike(boolean like) {
+        this.like = like;
+    }
+
+    public boolean getLike() {
+        return this.like;
+    }
+
+    public SQLName getSourceDatabase() {
+        return sourceDatabase;
+    }
+
+    public void setSourceDatabase(SQLName sourceDatabase) {
+        this.sourceDatabase = sourceDatabase;
+    }
+
+    public List<SQLName> getIncludeTables() {
+        return includeTables;
+    }
+
+    public List<SQLName> getExcludeTables() {
+        return excludeTables;
+    }
+
+    public boolean isWithLock() {
+        return withLock;
+    }
+
+    public void setWithLock(boolean withLock) {
+        this.withLock = withLock;
+    }
+
+    public boolean isDryRun() {
+        return dryRun;
+    }
+
+    public void setDryRun(boolean dryRun) {
+        this.dryRun = dryRun;
+    }
+
+    public boolean isCreateTables() {
+        return createTables;
+    }
+
+    public void setCreateTables(boolean createTables) {
+        this.createTables = createTables;
+    }
+
+    public SQLExpr getDefaultSingle() {
+        return defaultSingle;
+    }
+
+    public void setDefaultSingle(SQLExpr defaultSingle) {
+        this.defaultSingle = defaultSingle;
+    }
 }

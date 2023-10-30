@@ -16,14 +16,15 @@
 
 package com.alibaba.polardbx.executor.statistic.ndv;
 
-import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTrace;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.google.common.collect.Lists;
@@ -37,6 +38,7 @@ import java.util.Set;
 
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.buildSketchKey;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.HLL_SKETCH;
+import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.NULL;
 
 /**
  * ndv sketch service for one schema
@@ -128,18 +130,34 @@ public class NDVSketch implements NDVSketchService {
         stringNDVShardSketchMap.remove(sketchKey);
     }
 
-    public StatisticResult getCardinality(String schema, String tableName, String columnNames) {
+    public StatisticResult getCardinality(String schema, String tableName, String columnNames, boolean isNeedTrace) {
         NDVShardSketch ndvSketch = stringNDVShardSketchMap.get(buildSketchKey(schema, tableName, columnNames));
         if (ndvSketch == null) {
-            return StatisticResult.EMPTY;
+            StatisticTrace statisticTrace = isNeedTrace ?
+                com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildTrace(
+                    schema + "," + tableName,
+                    Thread.currentThread().getStackTrace()[1].getMethodName(), 0L, NULL,
+                    -1L, "") : null;
+            return StatisticResult.build().setValue(-1L, statisticTrace);
         }
         long cardinality = ndvSketch.getCardinality();
 
         // -1 meaning invalid
         if (cardinality == -1) {
-            return StatisticResult.EMPTY;
+            StatisticTrace statisticTrace = isNeedTrace ?
+                com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildTrace(
+                    schema + "," + tableName,
+                    Thread.currentThread().getStackTrace()[1].getMethodName(), 0L, NULL,
+                    -1L, "") : null;
+            return StatisticResult.build().setValue(-1L, statisticTrace);
         } else {
-            return StatisticResult.build(HLL_SKETCH).setValue(cardinality);
+            StatisticTrace statisticTrace = isNeedTrace ?
+                com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildTrace(
+                    schema + "," + tableName + "," + columnNames,
+                    Thread.currentThread().getStackTrace()[1].getMethodName(), cardinality,
+                    HLL_SKETCH, ndvSketch.lastModifyTime(), "") :
+                null;
+            return StatisticResult.build(HLL_SKETCH).setValue(cardinality, statisticTrace);
         }
 
     }
@@ -170,6 +188,16 @@ public class NDVSketch implements NDVSketchService {
     @Override
     public boolean sampleColumns(String schema, String logicalTableName) {
         return StatisticUtils.sampleColumns(schema, logicalTableName);
+    }
+
+    @Override
+    public long modifyTime(String schema, String tableName, String columnNames) {
+        String ndvKey = buildSketchKey(schema, tableName, columnNames);
+        NDVShardSketch ndvShardSketch = stringNDVShardSketchMap.get(ndvKey);
+        if (ndvShardSketch == null) {
+            return -1;
+        }
+        return ndvShardSketch.lastModifyTime();
     }
 
     @Override

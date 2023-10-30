@@ -21,11 +21,11 @@ public class SQLCommentHint extends SQLObjectImpl implements SQLHint {
 
     private String text;
 
-    public SQLCommentHint(){
+    public SQLCommentHint() {
 
     }
 
-    public SQLCommentHint(String text){
+    public SQLCommentHint(String text) {
         this.text = text;
     }
 

@@ -31,31 +31,35 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * @author chenzilin
+ * @date 2021/11/15 16:58
+ */
 public class OrcTableScanRule extends RelOptRule {
 
     public static final OrcTableScanRule PROJECT_FILTER_TABLESCAN = new OrcTableScanRule(
-        operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none()))),
-        "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", true, true, false);
+            operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none()))),
+            "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", true, true, false);
 
     public static final OrcTableScanRule PROJECT_FILTER_PROJECT_TABLESCAN = new OrcTableScanRule(
-        operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())))),
-        "OrcTableScanRule:PROJECT_FILTER_PROJECT_TABLESCAN", true, true, true);
+            operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())))),
+            "OrcTableScanRule:PROJECT_FILTER_PROJECT_TABLESCAN", true, true, true);
 
     public static final OrcTableScanRule FILTER_PROJECT_TABLESCAN = new OrcTableScanRule(
-        operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none()))),
-        "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", false, true, true);
+            operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none()))),
+            "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", false, true, true);
 
     public static final OrcTableScanRule PROJECT_TABLESCAN = new OrcTableScanRule(
-        operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())),
-        "OrcTableScanRule:PROJECT_TABLESCAN", false, false, true);
+            operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())),
+            "OrcTableScanRule:PROJECT_TABLESCAN", false, false, true);
 
     public static final OrcTableScanRule FILTER_TABLESCAN = new OrcTableScanRule(
-        operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none())),
-        "OrcTableScanRule:FILTER_TABLESCAN", false, true, false);
+            operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none())),
+            "OrcTableScanRule:FILTER_TABLESCAN", false, true, false);
 
     public static final OrcTableScanRule TABLESCAN = new OrcTableScanRule(
-        operand(LogicalTableScan.class, RelOptRule.none()),
-        "OrcTableScanRule:TABLESCAN", false, false, false);
+            operand(LogicalTableScan.class, RelOptRule.none()),
+            "OrcTableScanRule:TABLESCAN", false, false, false);
 
     private boolean withInProject;
 
@@ -78,19 +82,19 @@ public class OrcTableScanRule extends RelOptRule {
             LogicalProject logicalProject = call.rel(1);
             LogicalTableScan logicalTableScan = call.rel(2);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
+                    logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (!withInProject && withFilter && !withOutProject) {
             LogicalFilter logicalFilter = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
+                    logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (withInProject && !withFilter && !withOutProject) {
             LogicalProject logicalProject = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
+                    logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (!withInProject && !withFilter && !withOutProject) {
             LogicalTableScan logicalTableScan = call.rel(0);
@@ -101,7 +105,7 @@ public class OrcTableScanRule extends RelOptRule {
             LogicalFilter logicalFilter = call.rel(1);
             LogicalTableScan logicalTableScan = call.rel(2);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), getColumnRefProjects(logicalProject.getProjects()), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
+                    logicalTableScan.getTable(), getColumnRefProjects(logicalProject.getProjects()), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (withInProject && withFilter && withOutProject) {
             LogicalProject outProject = call.rel(0);
@@ -109,7 +113,7 @@ public class OrcTableScanRule extends RelOptRule {
             LogicalProject inProject = call.rel(2);
             LogicalTableScan logicalTableScan = call.rel(3);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), getColumnRefProjects(outProject.getProjects()), logicalFilter.getChildExps(), getColumnRefProjects(inProject.getProjects()), logicalTableScan.getHints(),
+                    logicalTableScan.getTable(), getColumnRefProjects(outProject.getProjects()), logicalFilter.getChildExps(), getColumnRefProjects(inProject.getProjects()), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else {
             throw new AssertionError("impossible case");

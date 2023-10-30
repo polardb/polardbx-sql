@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.ParserException;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
@@ -228,7 +228,7 @@ public class LocalPartitionCreateDropTest extends LocalPartitionBaseTest {
             + "PIVOTDATE NOW()\n"
             + ";", primaryTableName, gsi1TableName);
         JdbcUtil.executeSuccess(tddlConnection, createTableSql);
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 7);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 8);
 
         String dropTableSql = String.format("DROP TABLE %s", primaryTableName);
         JdbcUtil.executeSuccess(tddlConnection, dropTableSql);
@@ -510,6 +510,7 @@ public class LocalPartitionCreateDropTest extends LocalPartitionBaseTest {
                 + "\tPARTITION p20210901 VALUES LESS THAN ('2021-09-01') COMMENT '',\n"
                 + "\tPARTITION p20211001 VALUES LESS THAN ('2021-10-01') COMMENT '',\n"
                 + "\tPARTITION p20211101 VALUES LESS THAN ('2021-11-01') COMMENT '',\n"
+                + "\tPARTITION p20211201 VALUES LESS THAN ('2021-12-01') COMMENT '',\n"
                 + "\tPARTITION pmax VALUES LESS THAN MAXVALUE COMMENT ''\n"
                 + ")");
     }

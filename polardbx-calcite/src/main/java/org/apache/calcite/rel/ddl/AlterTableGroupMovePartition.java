@@ -20,7 +20,6 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -35,34 +34,59 @@ import java.util.Set;
  *
  * @author luoyanxin
  */
-public class AlterTableGroupMovePartition extends DDL {
-    final String tableGroupName;
+public class AlterTableGroupMovePartition extends AlterTableGroupDdl {
+    Map<String, Set<String>> targetPartitions;
+    boolean subPartitionsMoved;
 
     protected AlterTableGroupMovePartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                            RelDataType rowType,
-                                           String tableGroupName) {
+                                           String tableGroupName,
+                                           Map<String, Set<String>> targetPartitions,
+                                           boolean subPartitionsMoved) {
         super(cluster, traits, ddl, rowType);
         this.tableGroupName = tableGroupName;
         this.sqlNode = ddl;
         this.setTableName(new SqlIdentifier(tableGroupName, SqlParserPos.ZERO));
+        this.targetPartitions = targetPartitions;
+        this.subPartitionsMoved = subPartitionsMoved;
     }
 
     public static AlterTableGroupMovePartition create(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                                       RelDataType rowType,
-                                                      String tableGroupName) {
+                                                      String tableGroupName,
+                                                      Map<String, Set<String>> targetPartitions,
+                                                      boolean subPartitionsMoved) {
 
-        return new AlterTableGroupMovePartition(cluster, traits, ddl, rowType, tableGroupName);
+        return new AlterTableGroupMovePartition(cluster, traits, ddl, rowType, tableGroupName, targetPartitions,
+            subPartitionsMoved);
     }
 
     @Override
     public AlterTableGroupMovePartition copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new AlterTableGroupMovePartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName);
+        return new AlterTableGroupMovePartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName,
+            targetPartitions, subPartitionsMoved);
     }
 
+    @Override
     public String getTableGroupName() {
         return tableGroupName;
     }
 
+    public Map<String, Set<String>> getTargetPartitions() {
+        return targetPartitions;
+    }
+
+    public void setTargetPartitions(Map<String, Set<String>> targetPartitions) {
+        this.targetPartitions = targetPartitions;
+    }
+
+    public boolean isSubPartitionsMoved() {
+        return subPartitionsMoved;
+    }
+
+    public void setSubPartitionsMoved(boolean subPartitionsMoved) {
+        this.subPartitionsMoved = subPartitionsMoved;
+    }
 }

@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
-import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -28,9 +28,11 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.calcite.util.Pair;
@@ -70,6 +72,10 @@ public class GlobalIndexMeta {
     }
 
     public static List<TableMeta> getIndex(RelOptTable primary, EnumSet<IndexStatus> status, ExecutionContext ec) {
+        if (null != CBOUtil.getDrdsViewTable(primary)) {
+            // No index for view
+            return ImmutableList.of();
+        }
         final Pair<String, String> schemaTable = RelUtils.getQualifiedTableName(primary);
 
         return getIndex(schemaTable.right, schemaTable.left, status, ec);
@@ -167,6 +173,10 @@ public class GlobalIndexMeta {
         return getGsiStatus(ec, indexTableMeta).isPublished();
     }
 
+    public static boolean isBackFillStatus(ExecutionContext ec, TableMeta indexTableMeta) {
+        return getGsiStatus(ec, indexTableMeta).isBackfillStatus();
+    }
+
     public static boolean isPublishedPrimaryAndIndex(String primaryTable, String indexTable, String schema,
                                                      ExecutionContext ec) {
         final TableMeta table = ec.getSchemaManager(schema).getTable(primaryTable);
@@ -189,7 +199,6 @@ public class GlobalIndexMeta {
      * Including primary key
      *
      * @param primary Primary table meta
-     * @param includingPrimary
      * @param gsiFilter Filter conditions for gsi
      * @return Index column names
      */
@@ -312,6 +321,26 @@ public class GlobalIndexMeta {
             .stream()
             .map(String::toUpperCase)
             .collect(Collectors.toList());
+    }
+
+    /**
+     * @return primary-keys and corresponding column position
+     */
+    public static Pair<List<String>, List<Integer>> getPrimaryKeysNotOrdered(TableMeta baseTableMeta) {
+        if (!baseTableMeta.isHasPrimaryKey()) {
+            return Pair.of(Collections.emptyList(), Collections.emptyList());
+        }
+        List<String> primaryKeys =
+            baseTableMeta.getPrimaryIndex().getKeyColumns().stream()
+                .map(columnMeta -> columnMeta.getName().toUpperCase())
+                .collect(Collectors.toList());
+
+        List<Integer> appearedKeysId = new ArrayList<>();
+        for (int i = 0; i < primaryKeys.size(); ++i) {
+            appearedKeysId.add(i);
+        }
+
+        return Pair.of(primaryKeys, appearedKeysId);
     }
 
     public static List<String> getPrimaryAndShardingKeys(TableMeta baseTableMeta, List<TableMeta> indexTableMetas,

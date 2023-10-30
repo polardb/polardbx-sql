@@ -28,6 +28,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
+
 public class CollationTypeTest extends CrudBasedLockTestCase {
 
     @Parameters(name = "{index}:table={0}")

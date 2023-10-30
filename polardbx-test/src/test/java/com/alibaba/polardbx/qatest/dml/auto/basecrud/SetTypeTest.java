@@ -43,7 +43,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @author chenhui
  * @since 5.1.7
  */
-@RunWith(Parameterized.class)
+
 public class SetTypeTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

@@ -1,26 +1,27 @@
 storageList: [$dn1, $dn2]
 # modify partition, add partition, drop partition, split partition, split partition by hot value
-dbName: "test_db1"
+dbName: "test_locality_second_simple"
 testCases:
   - prepareDDls:
-      - "drop database if exists test_db1"
-      - "create database test_db1 mode = auto locality = 'dn=$dn1,$dn2'"
-      - "use test_db1;"
+      - "use polardbx"
+      - "drop database if exists test_locality_second_simple"
+      - "create database test_locality_second_simple mode = auto"
+      - "use test_locality_second_simple;"
       - "
       create table t0(x int  AUTO_INCREMENT primary key, y int) partition by key(x, y) partitions 4 locality = 'dn=$dn1';
       "
       - "
-      create table l0(x int  AUTO_INCREMENT primary key, y int) partition by LIST COLUMNS(y) (partition p1 values in ((0), (1), (2), (3)) locality = 'dn=polardbx-storage-1-master',  partition p2 values in ((4), (5),
-                                     (6), (7)) locality ='dn=polardbx-storage-0-master', partition p3 values in ((10), (20), (30), (40)) locality = 'dn=polardbx-storage-1-master');
+      create table l0(x int  AUTO_INCREMENT primary key, y int) partition by LIST COLUMNS(y) (partition p1 values in ((0), (1), (2), (3)) locality = 'dn=$dn2',  partition p2 values in ((4), (5),
+                                        (6), (7)) locality ='dn=$dn1', partition p3 values in ((10), (20), (30), (40)) locality = 'dn=$dn2');
       "
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t0 table $dn1
         - l0 table ""
-        - test_db1 database $dn1,$dn2
+        - test_locality_second_simple database ""
       tableGroupMatchCheck:
         - t0 $tg1 $dn1
         - l0 $tg2 ""
@@ -43,12 +44,12 @@ testCases:
       - " alter tablegroup $tg2 add partition (partition p10 values in ((100), (1000))); "
     cleanupDDls:
       - "use polardbx;"
-      - "drop database if exists test_db1;"
+      - "use polardbx;"
     checkActions:
       localityValueCheck:
         - t0 table $dn1
         - l0 table ""
-        - test_db1 database $dn1,$dn2
+        - test_locality_second_simple database ""
       tableGroupMatchCheck:
         - t0 $tg1 $dn1
         - l0 $tg2 ""
@@ -58,9 +59,9 @@ testCases:
         - $tg1.p1 ""
         - $tg1.p2 ""
         - $tg1.p5 ""
-        - $tg1.hot_p1 ""
-        - $tg1.hot_p2 ""
-        - $tg1.hot_p3 ""
+        - $tg1.hotp1 ""
+        - $tg1.hotp2 ""
+        - $tg1.hotp3 ""
         - $tg2.p1 $dn2
         - $tg2.p2 $dn1
         - $tg2.p4 $dn2
@@ -69,4 +70,5 @@ testCases:
       topologyCheck:
 cleanupDDls:
   - "use polardbx;"
-  - "drop database if exists test_db1;"
+  - "use polardbx;"
+  - "drop database if exists test_locality_second_simple;"

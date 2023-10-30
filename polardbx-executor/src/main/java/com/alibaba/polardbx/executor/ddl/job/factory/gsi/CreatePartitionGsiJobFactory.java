@@ -37,9 +37,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -51,7 +51,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -91,9 +90,13 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             globalIndexPreparedData.getIndexTablePreparedData() != null
                 && globalIndexPreparedData.getIndexTablePreparedData().isTimestampColumnDefault(),
             globalIndexPreparedData.getIndexTablePreparedData() != null ?
-                globalIndexPreparedData.getIndexTablePreparedData().getBinaryColumnDefaultValues() :
+                globalIndexPreparedData.getIndexTablePreparedData().getSpecialDefaultValues() :
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
+            globalIndexPreparedData.getIndexTablePreparedData() != null ?
+                globalIndexPreparedData.getIndexTablePreparedData().getSpecialDefaultValueFlags() :
                 new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
             physicalPlanData,
+            globalIndexPreparedData.getAddedForeignKeys(),
             executionContext
         );
         this.indexAlignWithPrimaryTableGroup = globalIndexPreparedData.isIndexAlignWithPrimaryTableGroup();
@@ -154,13 +157,20 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
 
             List<DdlTask> bringUpGsi = null;
             if (needOnlineSchemaChange) {
+                TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+                boolean repartition = globalIndexPreparedData.isRepartition();
                 bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
                     schemaName,
                     primaryTableName,
                     indexTableName,
                     stayAtDeleteOnly,
                     stayAtWriteOnly,
-                    stayAtBackFill
+                    stayAtBackFill,
+                    virtualColumnMap,
+                    physicalPlanData,
+                    tableMeta,
+                    repartition,
+                    executionContext.getOriginSql()
                 );
             } else {
                 bringUpGsi = GsiTaskFactory.createGlobalIndexTasks(
@@ -185,8 +195,10 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     physicalPlanData.isPartitioned(),
                     physicalPlanData.isIfNotExists(),
                     physicalPlanData.getKind(),
+                    addedForeignKeys,
                     hasTimestampColumnDefault,
-                    binaryColumnDefaultValues
+                    specialDefaultValues,
+                    specialDefaultValueFlags
                 );
             CreateTableShowTableMetaTask showTableMetaTask =
                 new CreateTableShowTableMetaTask(schemaName, indexTableName);
@@ -202,7 +214,9 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     indexComment,
                     indexType,
                     IndexStatus.CREATING,
-                    clusteredIndex
+                    clusteredIndex,
+                    globalIndexPreparedData.isVisible() ? IndexVisibility.VISIBLE : IndexVisibility.INVISIBLE,
+                    needOnlineSchemaChange
                 );
             addIndexMetaTask = (GsiInsertIndexMetaTask) addIndexMetaTask.onExceptionTryRecoveryThenRollback();
 
@@ -358,7 +372,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
 
         boolean autoPartition = globalIndexPreparedData.getIndexTablePreparedData().isAutoPartition();
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData(autoPartition);
-
+        ec.getDdlContext().setIgnoreCdcGsiMark(true);
         CreateGsiJobFactory gsiJobFactory = new CreatePartitionGsiJobFactory(
             globalIndexPreparedData,
             physicalPlanData,

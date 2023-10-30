@@ -27,7 +27,7 @@ public class SQLAlterTableArchivePartition extends SQLObjectImpl implements SQLA
     public List<SQLAssignItem> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLAssignItem partition) {
         if (partition != null) {
             partition.setParent(this);

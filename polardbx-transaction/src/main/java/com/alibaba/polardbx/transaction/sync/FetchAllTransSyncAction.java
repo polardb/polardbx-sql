@@ -16,15 +16,12 @@
 
 package com.alibaba.polardbx.transaction.sync;
 
-import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
-import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.TransactionManager;
-import com.alibaba.polardbx.transaction.TransactionConnectionHolder;
 
 import java.util.Collection;
 
@@ -75,42 +72,14 @@ public class FetchAllTransSyncAction implements ISyncAction {
                 sqlSubString = null;
             }
 
-            if (tran.isDistributed()) {
-                ((TransactionConnectionHolder) tran.getConnectionHolder()).handleConnIds((group, connId) -> {
-                    if (fetchSql) {
-                        result.addRow(new Object[] {
-                            tran.getId(), group, connId, frontendConnId, tran.getStartTime(),
-                            sqlSubString});
-                    } else {
-                        result.addRow(new Object[] {tran.getId(), group, connId, frontendConnId, tran.getStartTime()});
-                    }
-                });
-            } else {
-                for (IConnection connection : tran.getConnectionHolder().getAllConnection()) {
-                    IConnection realConneciton = connection.getRealConnection();
-                    if (realConneciton instanceof TGroupDirectConnection) {
-                        String group = ((TGroupDirectConnection) realConneciton).getGroupDataSource().getDbGroupKey();
-                        Long id = null;
-                        try {
-                            id = realConneciton.getId();
-                        } catch (Throwable t) {
-                            // When we get id from XConnection, an exception may be thrown
-                            // if the connection is closed, and we move to the next transaction.
-                            break;
-                        }
-
-                        if (fetchSql) {
-                            result.addRow(new Object[] {
-                                tran.getId(), group, id, frontendConnId, tran.getStartTime(),
-                                sqlSubString});
-                        } else {
-                            result.addRow(new Object[] {
-                                tran.getId(), group, id, frontendConnId, tran.getStartTime()});
-                        }
-
-                    }
+            tran.getConnectionHolder().handleConnIds((group, connId) -> {
+                if (fetchSql) {
+                    result.addRow(new Object[] {
+                        tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs(), sqlSubString});
+                } else {
+                    result.addRow(new Object[] {tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs()});
                 }
-            }
+            });
         }
 
         return result;

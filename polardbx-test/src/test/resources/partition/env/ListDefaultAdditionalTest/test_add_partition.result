@@ -1,0 +1,603 @@
+## DISABLE_FAST_SQL_PARSER
+# test alter tablegroup
+# list, algorithm=default
+create tablegroup tg1;
+create table tb1(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg1";
+insert into tb1 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg1 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb1 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb1 partition(p1) order by a;
+a
+1
+2
+select a from tb1 partition(p2) order by a;
+a
+3
+4
+select a from tb1 partition(p3) order by a;
+a
+5
+6
+select a from tb1 partition(pd) order by a;
+a
+7
+8
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg1`
+# list, algorithm=instant
+create tablegroup tg2;
+create table tb2(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg2";
+insert into tb2 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg2 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb2 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb2 partition(p1) order by a;
+a
+1
+2
+select a from tb2 partition(p2) order by a;
+a
+3
+4
+select a from tb2 partition(p3) order by a;
+a
+select a from tb2 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb2;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg2`
+# list columns, algorithm=default
+create tablegroup tg3;
+create table tb3(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+) tablegroup="tg3";
+insert into tb3 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg3 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=default;
+select a from tb3 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb3 partition(p1) order by a;
+a
+1
+2
+select a from tb3 partition(p2) order by a;
+a
+3
+4
+select a from tb3 partition(p3) order by a;
+a
+5
+6
+select a from tb3 partition(pd) order by a;
+a
+7
+8
+show create table tb3;
+Table,Create Table
+tb3,CREATE TABLE `tb3` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg3`
+# list columns, algorithm=instant
+create tablegroup tg4;
+create table tb4(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+) tablegroup="tg4";
+insert into tb4 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg4 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=instant;
+select a from tb4 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb4 partition(p1) order by a;
+a
+1
+2
+select a from tb4 partition(p2) order by a;
+a
+3
+4
+select a from tb4 partition(p3) order by a;
+a
+select a from tb4 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb4;
+Table,Create Table
+tb4,CREATE TABLE `tb4` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg4`
+# list columns(single), algorithm=default
+create tablegroup tg5;
+create table tb5(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg5";
+insert into tb5 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg5 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb5 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb5 partition(p1) order by a;
+a
+1
+2
+select a from tb5 partition(p2) order by a;
+a
+3
+4
+select a from tb5 partition(p3) order by a;
+a
+5
+6
+select a from tb5 partition(pd) order by a;
+a
+7
+8
+show create table tb5;
+Table,Create Table
+tb5,CREATE TABLE `tb5` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg5`
+# list columns(single), algorithm=instant
+create tablegroup tg6;
+create table tb6(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg6";
+insert into tb6 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter tablegroup tg6 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb6 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb6 partition(p1) order by a;
+a
+1
+2
+select a from tb6 partition(p2) order by a;
+a
+3
+4
+select a from tb6 partition(p3) order by a;
+a
+select a from tb6 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb6;
+Table,Create Table
+tb6,CREATE TABLE `tb6` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg6`
+# test alter table
+# list, algorithm=default
+create table tb7(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb7 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb7 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb7 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb7 partition(p1) order by a;
+a
+1
+2
+select a from tb7 partition(p2) order by a;
+a
+3
+4
+select a from tb7 partition(p3) order by a;
+a
+5
+6
+select a from tb7 partition(pd) order by a;
+a
+7
+8
+show create table tb7;
+Table,Create Table
+tb7,CREATE TABLE `tb7` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list, algorithm=instant
+create table tb8(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb8 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb8 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb8 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb8 partition(p1) order by a;
+a
+1
+2
+select a from tb8 partition(p2) order by a;
+a
+3
+4
+select a from tb8 partition(p3) order by a;
+a
+select a from tb8 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb8;
+Table,Create Table
+tb8,CREATE TABLE `tb8` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns, algorithm=default
+create table tb9(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+);
+insert into tb9 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb9 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=default;
+select a from tb9 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb9 partition(p1) order by a;
+a
+1
+2
+select a from tb9 partition(p2) order by a;
+a
+3
+4
+select a from tb9 partition(p3) order by a;
+a
+5
+6
+select a from tb9 partition(pd) order by a;
+a
+7
+8
+show create table tb9;
+Table,Create Table
+tb9,CREATE TABLE `tb9` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns, algorithm=instant
+create table tb10(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+);
+insert into tb10 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb10 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=instant;
+select a from tb10 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb10 partition(p1) order by a;
+a
+1
+2
+select a from tb10 partition(p2) order by a;
+a
+3
+4
+select a from tb10 partition(p3) order by a;
+a
+select a from tb10 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb10;
+Table,Create Table
+tb10,CREATE TABLE `tb10` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns(single), algorithm=default
+create table tb11(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb11 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb11 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb11 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb11 partition(p1) order by a;
+a
+1
+2
+select a from tb11 partition(p2) order by a;
+a
+3
+4
+select a from tb11 partition(p3) order by a;
+a
+5
+6
+select a from tb11 partition(pd) order by a;
+a
+7
+8
+show create table tb11;
+Table,Create Table
+tb11,CREATE TABLE `tb11` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns(single), algorithm=instant
+create table tb12(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb12 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+alter table tb12 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb12 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+select a from tb12 partition(p1) order by a;
+a
+1
+2
+select a from tb12 partition(p2) order by a;
+a
+3
+4
+select a from tb12 partition(p3) order by a;
+a
+select a from tb12 partition(pd) order by a;
+a
+5
+6
+7
+8
+show create table tb12;
+Table,Create Table
+tb12,CREATE TABLE `tb12` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (3,4) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (5,6) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)

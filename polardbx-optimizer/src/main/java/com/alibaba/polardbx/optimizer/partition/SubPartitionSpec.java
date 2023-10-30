@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 
 /**
  * The definition of one (sub)partition

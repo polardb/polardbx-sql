@@ -23,7 +23,7 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.rpc.compatible.XResultSet;
 import com.alibaba.polardbx.rpc.result.XResult;

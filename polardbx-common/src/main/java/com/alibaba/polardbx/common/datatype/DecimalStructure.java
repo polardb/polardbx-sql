@@ -40,10 +40,15 @@ public class DecimalStructure extends DecimalTypeBase implements Serializable {
     }
 
     public void toZero() {
-        setBuffValAt(0, 0);
         setIntegers(1);
         setFractions(getDerivedFractions());
         setNeg(false);
+
+        int pos = 0;
+        int end = roundUp(getIntegers()) + roundUp(getFractions());
+        while (pos < end) {
+            setBuffValAt(pos++, 0);
+        }
     }
 
     public boolean isZero() {
@@ -174,7 +179,7 @@ public class DecimalStructure extends DecimalTypeBase implements Serializable {
     public void setFractions(int fractions) {
         setFractions(fractions, false);
     }
-    
+
     public void setFractions(int fractions, boolean alsoSetDerivedFractions) {
         decimalMemorySegment.setByteUnchecked(FRACTIONS_OFFSET, fractions);
         if (alsoSetDerivedFractions) {

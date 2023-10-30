@@ -57,7 +57,7 @@ public class SqlRandFunction extends SqlFunction {
 
   // Plans referencing context variables should never be cached
   public boolean isDynamicFunction() {
-    return false;
+    return true;
   }
 }
 

@@ -33,6 +33,7 @@ import com.alibaba.polardbx.executor.operator.HashAggExec;
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.executor.calc.Aggregator;
@@ -85,6 +86,7 @@ public class SimpleOSSPhysicalTableReadResult {
     }
 
     public Chunk next(VectorizedRowBatch batch,
+                      OSSColumnTransformer ossColumnTransformer,
                       List<DataType<?>> inProjectDataTypeList,
                       BlockBuilder[] blockBuilders,
                       VectorizedExpression condition,
@@ -98,21 +100,25 @@ public class SimpleOSSPhysicalTableReadResult {
 
         int inProjectCount = inProjectDataTypeList.size();
 
+        // todo: fix missing column and datatype convert here(shengyu)
+
         // make block for pre-filter
         for (int i = 0; i < inProjectCount; i++) {
             if (filterBitmap[i] == 1) {
                 DataType dataType = inProjectDataTypeList.get(i);
                 BlockBuilder blockBuilder = BlockBuilders.create(dataType, context);
 
-                ColumnVector columnVector = batch.cols[i];
-                this.columnProviders.get(i).transform(
-                    columnVector,
+                blocksForCompute[i] = (RandomAccessBlock) transformDataType(
                     blockBuilder,
+                    inProjectDataTypeList.get(i),
+                    batch.cols,
+                    i,
+                    null,
                     0,
                     resultRows,
-                    sessionProperties
+                    context,
+                    ossColumnTransformer
                 );
-                blocksForCompute[i] = (RandomAccessBlock) blockBuilder.build();
             }
         }
 
@@ -131,16 +137,18 @@ public class SimpleOSSPhysicalTableReadResult {
         if (!withAgg()) {
             Block[] blocks = new Block[blockBuilders.length];
             for (int i = 0; i < blockCount; i++) {
-                BlockBuilder blockBuilder = blockBuilders[i];
-                ColumnVector columnVector = batch.cols[outProject[i]];
-                this.columnProviders.get(outProject[i]).transform(
-                    columnVector,
-                    blockBuilder,
+                int colId = outProject[i];
+                blocks[i] = transformDataType(
+                    blockBuilders[i],
+                    inProjectDataTypeList.get(colId),
+                    batch.cols,
+                    colId,
                     selection,
                     selSize,
-                    sessionProperties
+                    0,
+                    context,
+                    ossColumnTransformer
                 );
-                blocks[i] = blockBuilders[i].build();
             }
             return new Chunk(blocks);
         }
@@ -148,23 +156,27 @@ public class SimpleOSSPhysicalTableReadResult {
         // deal with agg with filter
         Block[] blocks = new Block[outProject.length];
         for (int i = 0; i < outProject.length; i++) {
-            DataType dataType = inProjectDataTypeList.get(outProject[i]);
+            int colId = outProject[i];
+            DataType dataType = inProjectDataTypeList.get(colId);
             BlockBuilder blockBuilder = BlockBuilders.create(dataType, context);
 
-            ColumnVector columnVector = batch.cols[outProject[i]];
-            this.columnProviders.get(outProject[i]).transform(
-                columnVector,
+            blocks[i] = transformDataType(
                 blockBuilder,
+                dataType,
+                batch.cols,
+                colId,
                 selection,
                 selSize,
-                sessionProperties
+                0,
+                context,
+                ossColumnTransformer
             );
-            blocks[i] = blockBuilder.build();
         }
         return aggExec(new Chunk(blocks), inProjectDataTypeList, outProject, context);
     }
 
     public Chunk next(VectorizedRowBatch batch,
+                      OSSColumnTransformer ossColumnTransformer,
                       List<DataType<?>> inProjectDataTypeList,
                       BlockBuilder[] blockBuilders,
                       ExecutionContext context) {
@@ -175,29 +187,102 @@ public class SimpleOSSPhysicalTableReadResult {
             DataType dataType = inProjectDataTypeList.get(i);
             BlockBuilder blockBuilder = BlockBuilders.create(dataType, context);
 
-            ColumnVector columnVector = batch.cols[i];
-            int endIndex = resultRows;
-            this.columnProviders.get(i).transform(
-                columnVector,
+            blocks[i] = transformDataType(
                 blockBuilder,
+                inProjectDataTypeList.get(i),
+                batch.cols,
+                i,
+                null,
                 0,
-                endIndex,
-                sessionProperties
+                resultRows,
+                context,
+                ossColumnTransformer
             );
-            blocks[i] = blockBuilder.build();
         }
 
         if (withAgg()) {
             return aggExec(new Chunk(blocks), inProjectDataTypeList, null, context);
         }
         return new Chunk(blocks);
+    }
 
+    /**
+     * @param targetBlockBuilder target blockBuilder
+     * @param targetDataType target datatype
+     * @param columnVectors all column vector read from orc
+     * @param colId the column id of target column
+     * @param selection selection array of columnVector, null if without filter
+     * @param selSize length of selection array
+     * @param resultRows length of columnVectors, useful when selection is null
+     * @param context ExecutionContext
+     * @param ossColumnTransformer datatype transformer
+     * @return a block with targetDataType
+     */
+    Block transformDataType(BlockBuilder targetBlockBuilder,
+                            DataType<?> targetDataType,
+                            ColumnVector[] columnVectors,
+                            int colId,
+                            int[] selection,
+                            int selSize,
+                            int resultRows,
+                            ExecutionContext context,
+                            OSSColumnTransformer ossColumnTransformer) {
+        ColumnMeta sourceColumnMeta = ossColumnTransformer.getSourceColumnMeta(colId);
+        ColumnMeta targetColumnMeta = ossColumnTransformer.getTargetColumnMeta(colId);
+
+        TypeComparison ossColumnCompare = ossColumnTransformer.getCompareResult(colId);
+
+        // target column is missing
+        if (ossColumnCompare == TypeComparison.MISSING_EQUAL) {
+            int rowCount = (selection == null) ? resultRows : selSize;
+            return OSSColumnTransformer.fillDefaultValue(
+                targetDataType,
+                ossColumnTransformer.getInitColumnMeta(colId),
+                ossColumnTransformer.getTimeStamp(colId),
+                rowCount,
+                context);
+        }
+        if (ossColumnCompare == TypeComparison.MISSING_NO_EQUAL) {
+            int rowCount = (selection == null) ? resultRows : selSize;
+            return OSSColumnTransformer.fillDefaultValueAndTransform(
+                targetColumnMeta,
+                ossColumnTransformer.getInitColumnMeta(colId),
+                rowCount,
+                context);
+        }
+        Integer colIdInOrc = ossColumnTransformer.getLocInOrc(colId);
+
+        ColumnVector columnVector = columnVectors[colIdInOrc];
+        // same data type
+        if (ossColumnCompare == TypeComparison.IS_EQUAL_YES) {
+            this.columnProviders.get(colId).transform(
+                columnVector,
+                targetBlockBuilder,
+                selection,
+                selSize,
+                0,
+                resultRows,
+                sessionProperties
+            );
+            return targetBlockBuilder.build();
+        }
+
+        // data type transform
+        return OSSColumnTransformer.transformDataType(
+            targetColumnMeta,
+            sourceColumnMeta,
+            columnVector,
+            selection,
+            selSize,
+            resultRows,
+            sessionProperties,
+            context);
     }
 
     @NotNull
     protected Pair<Integer, int[]> preFilter(VectorizedExpression condition, MutableChunk preAllocatedChunk,
-                                           int[] filterBitmap, ExecutionContext context, int resultRows,
-                                           RandomAccessBlock[] blocksForCompute, int inProjectCount) {
+                                             int[] filterBitmap, ExecutionContext context, int resultRows,
+                                             RandomAccessBlock[] blocksForCompute, int inProjectCount) {
         for (int i = 0; i < inProjectCount; i++) {
             if (filterBitmap[i] == 1) {
                 preAllocatedChunk.setSlotAt(blocksForCompute[i], i);
@@ -241,14 +326,14 @@ public class SimpleOSSPhysicalTableReadResult {
     }
 
     protected Chunk aggExec(Chunk chunk, List<DataType<?>> inProjectDataTypeList, int[] outProject,
-                          ExecutionContext context) {
+                            ExecutionContext context) {
         List<DataType> columns = outProject == null ?
             IntStream.range(0, inProjectDataTypeList.size()).mapToObj(i -> inProjectDataTypeList.get(i)).collect(
                 Collectors.toList())
             :
             IntStream.range(0, outProject.length).mapToObj(i -> inProjectDataTypeList.get(outProject[i])).collect(
                 Collectors.toList());
-        int[] groups = HashAggExecutorFactory.convertFrom(groupSet);
+        int[] groups = AggregateUtils.convertBitSet(groupSet);
         MemoryAllocatorCtx memoryAllocator = context.getMemoryPool().getMemoryAllocatorCtx();
         List<Aggregator> aggregators =
             AggregateUtils.convertAggregators(columns, CalciteUtils.getTypes(dataType), aggCalls, context, memoryAllocator);

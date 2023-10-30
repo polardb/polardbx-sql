@@ -44,4 +44,9 @@ public class RexCallParam extends RexDynamicParam {
     public void setSequenceCall(RexSequenceParam sequenceCall) {
         this.sequenceCall = sequenceCall;
     }
+
+    @Override
+    public boolean literal() {
+        return false;
+    }
 }

@@ -72,7 +72,6 @@ public class TsoHeartbeatTask implements Runnable {
         if (!hasLeadership) {
             return;
         }
-
         long timestamp = tso.nextTimestamp();
 
         List<Future> futures = new ArrayList<>();

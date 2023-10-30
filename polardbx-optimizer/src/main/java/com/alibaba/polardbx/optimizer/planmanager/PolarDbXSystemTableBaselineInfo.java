@@ -74,14 +74,11 @@ public class PolarDbXSystemTableBaselineInfo {
             "PLAN_INFO.ACCEPTED, PLAN_INFO.FIXED, PLAN_INFO.TRACE_ID, PLAN_INFO.ORIGIN, PLAN_INFO.EXTEND_FIELD AS PLAN_EXTEND, UNIX_TIMESTAMP(PLAN_INFO"
             + ".GMT_MODIFIED), UNIX_TIMESTAMP(PLAN_INFO.GMT_CREATED) FROM "
             +
-            "`" + TABLE_NAME + "` AS BASELINE_INFO INNER JOIN `" + PolarDbXSystemTablePlanInfo.TABLE_NAME
+            "`" + TABLE_NAME + "` AS BASELINE_INFO LEFT JOIN `" + PolarDbXSystemTablePlanInfo.TABLE_NAME
             + "` AS PLAN_INFO " +
             "ON BASELINE_INFO.SCHEMA_NAME = PLAN_INFO.SCHEMA_NAME AND BASELINE_INFO.ID = PLAN_INFO.BASELINE_ID " +
-            "WHERE UNIX_TIMESTAMP(BASELINE_INFO"
-            + ".GMT_MODIFIED) > ? AND "
-            + "UNIX_TIMESTAMP"
-            + "(PLAN_INFO"
-            + ".GMT_MODIFIED) > ?";
+            "WHERE UNIX_TIMESTAMP(BASELINE_INFO.GMT_MODIFIED) > ? AND "
+            + "(PLAN_INFO.GMT_MODIFIED IS NULL OR UNIX_TIMESTAMP(PLAN_INFO.GMT_MODIFIED) > ?)";
 
     private static final String LOAD_DATA_SQL_WITH_ID = LOAD_DATA_SQL + " AND BASELINE_INFO.ID = ?";
 
@@ -172,7 +169,6 @@ public class PolarDbXSystemTableBaselineInfo {
                     int chooseCount = rs.getInt("PLAN_INFO.CHOOSE_COUNT");
                     double cost = rs.getDouble("PLAN_INFO.COST");
                     double estimateExecutionTime = rs.getDouble("PLAN_INFO.ESTIMATE_EXECUTION_TIME");
-                    boolean accepted = rs.getBoolean("PLAN_INFO.ACCEPTED");
                     boolean fixed = rs.getBoolean("PLAN_INFO.FIXED");
                     String traceId = rs.getString("PLAN_INFO.TRACE_ID");
                     long createTime = rs.getLong("UNIX_TIMESTAMP(PLAN_INFO.GMT_CREATED)");
@@ -180,8 +176,9 @@ public class PolarDbXSystemTableBaselineInfo {
                     String planExtendField = rs.getString("PLAN_EXTEND");
                     String extendField = rs.getString("BASELINE_INFO.EXTEND_FIELD");
 
+                    // planString might be null if baseline is rebuildAtLoad
                     if (parameterSql.length() > maxSqlLength
-                        || planString.length() > maxPlanLength) {
+                        || (planString != null && planString.length() > maxPlanLength)) {
                         continue;
                     }
 
@@ -193,28 +190,30 @@ public class PolarDbXSystemTableBaselineInfo {
 
                     if (baselineMap.get(schema).containsKey(parameterSql)) {
                         baselineInfo = baselineMap.get(schema).get(parameterSql);
+                        if (baselineInfo.isRebuildAtLoad()) {
+                            continue;
+                        }
                     } else {
+                        if (count > maxBaselineSize) {
+                            continue;
+                        }
                         // sql -> baseline
                         baselineInfo = new BaselineInfo(parameterSql, tableSet);
                         baselineMap.get(schema).put(baselineInfo.getParameterSql(), baselineInfo);
                     }
-
                     assert baselineInfo.getId() == baselineId;
-                    if (count > maxBaselineSize) {
+
+                    baselineInfo.setExtend(extendField);
+                    if (baselineInfo.isRebuildAtLoad()) {
                         continue;
                     }
 
-                    baselineInfo.setExtend(extendField);
                     PlanInfo planInfo =
                         new PlanInfo(baselineId, planString, createTime, lastExecuteTime, chooseCount, cost,
-                            estimateExecutionTime, accepted, fixed, traceId, origin, planExtendField, tablesHashCode);
+                            estimateExecutionTime, true, fixed, traceId, origin, planExtendField, tablesHashCode);
 
                     assert planInfo.getId() == planId;
-                    if (planInfo.isAccepted()) {
-                        baselineInfo.addAcceptedPlan(planInfo);
-                    } else {
-                        baselineInfo.addUnacceptedPlan(planInfo);
-                    }
+                    baselineInfo.addAcceptedPlan(planInfo);
 
                     count++;
                 } catch (Exception e) {
@@ -248,50 +247,6 @@ public class PolarDbXSystemTableBaselineInfo {
             logger.error("delete baselineInfo " + TABLE_NAME + " error", e);
         } finally {
             JdbcUtils.close(ps);
-            JdbcUtils.close(conn);
-        }
-    }
-
-    public static void updatePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo updatePlanInfo,
-                                  int originPlanId) {
-        if (cannotWrite()) {
-            return;
-        }
-
-        deletePlan(schemaName, baselineInfo.getId(), originPlanId);
-
-        Connection conn = null;
-        PreparedStatement pps = null;
-        try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
-            pps = conn.prepareStatement(PolarDbXSystemTablePlanInfo.REPLACE_SQL);
-            if (updatePlanInfo != null) {
-                pps.setString(1, schemaName.toLowerCase());
-                pps.setInt(2, updatePlanInfo.getId());
-                pps.setInt(3, updatePlanInfo.getBaselineId());
-                if (updatePlanInfo.getLastExecuteTime() != null) {
-                    pps.setTimestamp(4, new Timestamp(updatePlanInfo.getLastExecuteTime() * 1000));
-                } else {
-                    pps.setTimestamp(4, null);
-                }
-                pps.setString(5, updatePlanInfo.getPlanJsonString());
-                pps.setInt(6, updatePlanInfo.getChooseCount());
-                pps.setDouble(7, updatePlanInfo.getCost());
-                pps.setDouble(8, updatePlanInfo.getEstimateExecutionTime());
-                pps.setBoolean(9, updatePlanInfo.isAccepted());
-                pps.setBoolean(10, updatePlanInfo.isFixed());
-                pps.setString(11, updatePlanInfo.getTraceId());
-                pps.setString(12, updatePlanInfo.getOrigin());
-                pps.setInt(13, updatePlanInfo.getTablesHashCode());
-                pps.setString(14, updatePlanInfo.encodeExtend());
-                pps.execute();
-            } else {
-                logger.warn("Don't exist the planInfo ");
-            }
-        } catch (SQLException e) {
-            logger.error("Replace planInfo failed for " + updatePlanInfo, e);
-        } finally {
-            JdbcUtils.close(pps);
             JdbcUtils.close(conn);
         }
     }
@@ -449,7 +404,7 @@ public class PolarDbXSystemTableBaselineInfo {
                 pps.setInt(6, planInfo.getChooseCount());
                 pps.setDouble(7, planInfo.getCost());
                 pps.setDouble(8, planInfo.getEstimateExecutionTime());
-                pps.setBoolean(9, planInfo.isAccepted());
+                pps.setBoolean(9, true);
                 pps.setBoolean(10, planInfo.isFixed());
                 pps.setString(11, planInfo.getTraceId());
                 pps.setString(12, planInfo.getOrigin());
@@ -458,7 +413,8 @@ public class PolarDbXSystemTableBaselineInfo {
                 pps.addBatch();
                 acceptedPlanCount++;
             }
-            if (acceptedPlanCount == 0) {
+            // rebuild at load baseline does not cache plan
+            if (acceptedPlanCount == 0 && !baselineInfo.isRebuildAtLoad()) {
                 logger.error("baselineInfo without accepted plan baselineInfoId = " + baselineInfo.getId());
                 conn.rollback();
                 return SystemTableBaselineInfo.PersistResult.ERROR;
@@ -474,7 +430,6 @@ public class PolarDbXSystemTableBaselineInfo {
                     "plan create:" + PlanInfo.serializeToJson(baselineInfo.getAcceptedPlans()
                         .get(plansInfoIds[i]))));
 
-            // TODO should we persist unAccepted ExecutionPlan ?
             pps.close();
             conn.commit();
             logger.debug("persist baselineInfoId = " + baselineInfo.getId());

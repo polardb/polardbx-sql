@@ -23,6 +23,13 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLObjectWithDataType;
+import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 

@@ -31,14 +31,14 @@ import java.util.List;
 
 public class SQLAlterViewStatement extends SQLStatementImpl implements SQLCreateStatement {
 
-    private boolean     force       = false;
+    private boolean force = false;
     // protected SQLName   name;
     protected SQLSelect subQuery;
-    protected boolean   ifNotExists = false;
+    protected boolean ifNotExists = false;
 
-    protected String    algorithm;
-    protected SQLName   definer;
-    protected String    sqlSecurity;
+    protected String algorithm;
+    protected SQLName definer;
+    protected String sqlSecurity;
 
     protected SQLExprTableSource tableSource;
 
@@ -51,11 +51,11 @@ public class SQLAlterViewStatement extends SQLStatementImpl implements SQLCreate
 
     private SQLLiteralExpr comment;
 
-    public SQLAlterViewStatement(){
+    public SQLAlterViewStatement() {
 
     }
 
-    public SQLAlterViewStatement(DbType dbType){
+    public SQLAlterViewStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -159,7 +159,7 @@ public class SQLAlterViewStatement extends SQLStatementImpl implements SQLCreate
     public List<SQLTableElement> getColumns() {
         return columns;
     }
-    
+
     public void addColumn(SQLTableElement column) {
         if (column != null) {
             column.setParent(this);

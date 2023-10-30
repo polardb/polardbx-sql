@@ -19,8 +19,8 @@ package com.alibaba.polardbx.druid.sql.ast;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLAnnIndex extends SQLObjectImpl {
-    private int      indexType;
-    private int      rtIndexType;
+    private int indexType;
+    private int rtIndexType;
     private Distance distance;
 
     public SQLAnnIndex clone() {
@@ -99,7 +99,7 @@ public class SQLAnnIndex extends SQLObjectImpl {
 
         public final int mask;
 
-        IndexType(int ordinal){
+        IndexType(int ordinal) {
             mask = (1 << ordinal);
         }
 
@@ -114,8 +114,7 @@ public class SQLAnnIndex extends SQLObjectImpl {
                 if (item.trim().equalsIgnoreCase("Flat")) {
                     v |= Flat.mask;
                 } else if (item.trim().equalsIgnoreCase("FastIndex")
-                        || item.trim().equalsIgnoreCase("FAST_INDEX"))
-                {
+                    || item.trim().equalsIgnoreCase("FAST_INDEX")) {
                     v |= FastIndex.mask;
                 }
             }

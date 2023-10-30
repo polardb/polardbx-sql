@@ -33,6 +33,8 @@ import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -42,6 +44,7 @@ import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
@@ -68,12 +71,18 @@ public class LogicalModifyViewHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
 
         LogicalModifyView logicalModifyView = (LogicalModifyView) logicalPlan;
+        TableModify logicalTableModify = logicalModifyView.getTableModify();
+        if (logicalTableModify instanceof LogicalModify) {
+            checkUpdateDeleteLimitLimitation(((LogicalModify) logicalTableModify).getOriginalSqlNode(),
+                executionContext);
+        }
+
         String schemaName = logicalModifyView.getSchemaName();
         if (StringUtils.isEmpty(schemaName)) {
             schemaName = executionContext.getSchemaName();
         }
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
-        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName,executionContext);
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
 
         List<RexDynamicParam> scalarList = logicalModifyView.getScalarList();
         SubqueryUtils.buildScalarSubqueryValue(scalarList, executionContext);// handle scalar subquery
@@ -119,6 +128,11 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         // Dynamic functions will be calculated in buildSqlTemplate()
         SqlNode sqlTemplate = logicalModifyView.getSqlTemplate(visitor, executionContext);
         List<RelNode> inputs = logicalModifyView.getInput(sqlTemplate, executionContext);
+
+        if (!executionContext.isAutoCommit() && inputs.size() > 1) {
+            executionContext.setNeedAutoSavepoint(true);
+        }
+
         if (!logicalModifyView.hasHint() && executionContext.getParams() != null
             && GlobalIndexMeta.hasIndex(logicalModifyView.getLogicalTableName(), schemaName, executionContext)) {
             // TODO add this back
@@ -182,9 +196,27 @@ public class LogicalModifyViewHandler extends HandlerCommon {
                                        boolean isBroadcast, String schemaName) {
         QueryConcurrencyPolicy queryConcurrencyPolicy = ExecUtils.getQueryConcurrencyPolicy(executionContext);
         List<Cursor> inputCursors = new ArrayList<>(inputs.size());
-        executeWithConcurrentPolicy(executionContext, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
+        int affectRows;
+        try {
+            executeWithConcurrentPolicy(executionContext, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
 
-        int affectRows = ExecUtils.getAffectRowsByCursors(inputCursors, isBroadcast);
+            affectRows = ExecUtils.getAffectRowsByCursors(inputCursors, isBroadcast);
+        } catch (Throwable t) {
+            if (!executionContext.isAutoCommit()) {
+                // In trx, if some plan is executed successfully,
+                // we should forbid the trx continuing,
+                // or rollback the statement by auto-savepoint.
+                for (RelNode input : inputs) {
+                    if (input instanceof BaseTableOperation && ((BaseTableOperation) input).isSuccessExecuted()) {
+                        executionContext.getTransaction()
+                            .setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL, t.getMessage());
+                        break;
+                    }
+                }
+            }
+            throw t;
+        }
+
         return new AffectRowCursor(new int[] {affectRows});
     }
 
@@ -213,7 +245,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         } catch (Throwable e) {
             // Can't commit
             executionContext.getTransaction()
-                .setCrucialError(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL);
+                .setCrucialError(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL, e.getMessage());
             throw GeneralUtil.nestedException(e);
         }
     }

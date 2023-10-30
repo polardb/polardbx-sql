@@ -138,4 +138,7 @@ public class SqlModifyColumn extends SqlAlterSpecification {
             genSourceSqlWithOutAfter(sourceSql),
             getParserPosition());
     }
+
+    @Override
+    public boolean supportFileStorage() { return true;}
 }

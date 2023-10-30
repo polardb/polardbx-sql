@@ -1,0 +1,43 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `list_t1` (
+`a` int(11) NOT NULL primary key,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by list(a)
+(
+partition p1 values in (1,11),
+partition p2 values in (2,22),
+partition p3 values in (3,33),
+partition p4 values in (4,44),
+partition p5 values in (5,55),
+partition p6 values in (6,66),
+partition p7 values in (7,77),
+partition pd values in (default)
+);
+CREATE TABLE `list_t2` (
+`a` int(11) NOT NULL primary key,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by list(a)
+(
+partition p6 values in (66,6),
+partition p1 values in (11,1),
+partition p2 values in (22,2),
+partition p7 values in (77,7),
+partition p3 values in (33,3),
+partition p4 values in (44,4),
+partition p5 values in (55,5),
+partition pd values in (default)
+);
+show create table list_t1;
+show create table list_t2;
+insert into list_t1 values (2,2);
+insert into list_t2 values (2,2);
+set GROUP_PARALLELISM=2;
+begin;
+select * from list_t1 t1 join list_t2 t2 on t1.a=t2.a and t1.a=2 for update;
+update list_t1 set b=1 where a=2;
+select * from list_t1 t1 join list_t2 t2 on t1.a=t2.a and t1.a=2 for update;
+select * from list_t2 t2 join list_t1 t1 on t2.a=t1.a and t2.a=2 for update;
+explain select * from list_t2 t2 join list_t1 t1 on t2.a=t1.a and t2.a=2 for update;
+commit;

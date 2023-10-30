@@ -25,24 +25,24 @@ import com.alibaba.polardbx.net.util.MySQLMessage;
  * <pre>
  * Bytes                       Name
  * -----                       ----
- * 1                           field_count, always = 0xff
+ * 1                           header, always = 0xff
  * 2                           errno
  * 1                           (sqlstate marker), always '#'
  * 5                           sqlstate (5 characters)
  * n                           message
  *
- * &#64;see http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol#Error_Packet
+ * &#64;see https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_err_packet.html
  * </pre>
  *
  * @author xianmao.hexm 2010-7-16 上午10:45:01
  */
 public class ErrorPacket extends MySQLPacket {
 
-    public static final byte FIELD_COUNT = (byte) 0xff;
+    public static final byte ERROR_HEADER = (byte) 0xff;
     private static final byte SQLSTATE_MARKER = (byte) '#';
     private static final byte[] DEFAULT_SQLSTATE = "HY000".getBytes();
 
-    public byte fieldCount = FIELD_COUNT;
+    public byte fieldCount = ERROR_HEADER;
     public int errno;
     public byte mark = SQLSTATE_MARKER;
     public byte[] sqlState = DEFAULT_SQLSTATE;

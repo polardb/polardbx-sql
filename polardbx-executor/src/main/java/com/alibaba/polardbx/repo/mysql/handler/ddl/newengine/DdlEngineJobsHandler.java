@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
-import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -30,6 +27,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
@@ -87,11 +85,24 @@ public abstract class DdlEngineJobsHandler extends HandlerCommon {
         GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), schemaName);
     }
 
+    /**
+     * ported from com.taobao.tddl.executor.ddl.engine.AsyncDDLManager#concatJobIds(java.util.List)
+     */
+    private String concatJobIds(List<Long> jobIds) {
+        StringBuilder sb = new StringBuilder();
+        for (Long jobId : jobIds) {
+            sb.append(",").append(jobId);
+        }
+        return sb.deleteCharAt(0).toString();
+    }
+
     protected void respond(String schemaName,
                            long jobId,
                            ExecutionContext executionContext,
-                           boolean checkResponseInMemory) {
+                           boolean checkResponseInMemory,
+                           boolean rollbackOpt) {
         DdlRequest ddlRequest = new DdlRequest(schemaName.toLowerCase(), Lists.newArrayList(jobId));
-        DdlEngineRequester.respond(ddlRequest, new DdlJobManager(), executionContext, checkResponseInMemory);
+        DdlEngineRequester.respond(ddlRequest, new DdlJobManager(), executionContext, checkResponseInMemory,
+            rollbackOpt);
     }
 }

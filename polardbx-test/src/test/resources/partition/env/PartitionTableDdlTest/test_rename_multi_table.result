@@ -1,0 +1,160 @@
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t1 (
+	a int PRIMARY KEY,
+	b int,
+	c int,
+	KEY idx1 (a, b)
+);
+CREATE TABLE t2 (
+	a int PRIMARY KEY,
+	b int,
+	c int,
+	d int,
+	KEY idx2 (c, d)
+);
+INSERT INTO t1
+VALUES (1, 2, 3),
+	(4, 5, 6),
+	(7, 8, 9);
+INSERT INTO t2
+VALUES (10, 11, 12, 13),
+	(14, 15, 16, 17),
+	(18, 19, 20, 21);
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx1_$ */ `idx1` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx1` (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx2_$ */ `idx2` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx2` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t1
+ORDER BY a DESC;
+a,b,c
+7,8,9
+4,5,6
+1,2,3
+SELECT *
+FROM t2
+ORDER BY a DESC;
+a,b,c,d
+18,19,20,21
+14,15,16,17
+10,11,12,13
+RENAME TABLE t1 TO tmp, t2 TO t1, tmp TO t2;
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx2_$ */ `idx2` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx2` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx1_$ */ `idx1` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx1` (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t1
+ORDER BY a DESC;
+a,b,c,d
+18,19,20,21
+14,15,16,17
+10,11,12,13
+SELECT *
+FROM t2
+ORDER BY a DESC;
+a,b,c
+7,8,9
+4,5,6
+1,2,3
+RENAME TABLE t1 TO tmp, t2 TO t1, tmp TO t2;
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx1_$ */ `idx1` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx1` (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx2_$ */ `idx2` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx2` (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t1
+ORDER BY a DESC;
+a,b,c
+7,8,9
+4,5,6
+1,2,3
+SELECT *
+FROM t2
+ORDER BY a DESC;
+a,b,c,d
+18,19,20,21
+14,15,16,17
+10,11,12,13

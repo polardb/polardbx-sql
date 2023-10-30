@@ -151,8 +151,8 @@ public class GsiWithSequenceTest extends GsiDMLTest {
      */
     @Test
     public void insertSequenceBatch() throws Exception {
-        if (TStringUtil.isNotEmpty(hint) && TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
-            "useServerPrepStmts=true")) {
+        if (TStringUtil.isNotEmpty(hint) && (TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
+            "useServerPrepStmts=true") || PropertiesUtil.useCursorFetch())) {
             // JDBC will rewrite batch insert to multi statement, if hint exists
             // skip sequence test for multi statement;
             return;
@@ -194,8 +194,8 @@ public class GsiWithSequenceTest extends GsiDMLTest {
      */
     @Test
     public void insertSequenceNull() throws Exception {
-        if (TStringUtil.isNotEmpty(hint) && TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
-            "useServerPrepStmts=true")) {
+        if (TStringUtil.isNotEmpty(hint) && (TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
+            "useServerPrepStmts=true") || PropertiesUtil.useCursorFetch())) {
             // JDBC will rewrite batch insert to multi statement, if hint exists
             // skip sequence test for multi statement;
             return;
@@ -238,8 +238,8 @@ public class GsiWithSequenceTest extends GsiDMLTest {
      */
     @Test
     public void insertSequenceZero() throws Exception {
-        if (TStringUtil.isNotEmpty(hint) && TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
-            "useServerPrepStmts=true")) {
+        if (TStringUtil.isNotEmpty(hint) && (TStringUtil.contains(PropertiesUtil.getConnectionProperties(),
+            "useServerPrepStmts=true") || PropertiesUtil.useCursorFetch())) {
             // JDBC will rewrite batch insert to multi statement, if hint exists
             // skip sequence test for multi statement;
             return;

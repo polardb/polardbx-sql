@@ -65,3 +65,36 @@ drop procedure if exists pro_test;
   end|
 
   call pro_test()|
+
+drop procedure if exists pro_test|
+
+drop procedure if exists `test-1`|
+
+drop table if exists `test-2`|
+
+create table `test-2` (`a-1` int)|
+
+insert into `test-2` values (1)|
+
+create procedure `test-1` ()
+comment 'test-xx1'
+begin
+select `a-1`, count(*) from `test-2` order by `a-1`;
+end|
+
+call `test-1`()|
+
+drop procedure if exists `test-3`|
+
+create procedure `test-3` ()
+    comment 'test-xx3'
+begin
+select 1;
+call `test-1`;
+end|
+
+drop procedure `test-1`|
+
+drop procedure if exists `test-3`|
+
+drop table if exists `test-2`|

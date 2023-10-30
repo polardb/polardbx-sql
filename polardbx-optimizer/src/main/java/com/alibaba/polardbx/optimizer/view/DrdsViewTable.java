@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.prepare.RelOptTableImpl;
@@ -23,6 +25,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.type.RelProtoDataType;
 import org.apache.calcite.schema.impl.ViewTable;
+import org.apache.calcite.util.Util;
 
 import java.lang.reflect.Type;
 import java.util.List;
@@ -52,6 +55,10 @@ public class DrdsViewTable extends ViewTable {
     private RelRoot expandView(DrdsViewExpander drdsViewExpander,
                                RelOptTableImpl relOptTable) {
         try {
+            PlannerContext.getPlannerContext(drdsViewExpander.getCluster()).addView(
+                CBOUtil.getDrdsViewTable(relOptTable).getRow().getSchemaName(),
+                CBOUtil.getDrdsViewTable(relOptTable).getRow().getViewName());
+
             RelRoot root =
                 drdsViewExpander.expandDrdsView(relOptTable.getRowType(), relOptTable, getSchemaPath(), getViewPath());
 

@@ -26,10 +26,11 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
  */
 public final class BeginHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore) {
+    public static boolean handle(ByteString stmt, ServerConnection c, boolean hasMore) {
         c.begin();
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 
 }

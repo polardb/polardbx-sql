@@ -30,13 +30,13 @@ import java.util.List;
 public class SQLQueryExpr extends SQLExprImpl implements Serializable {
 
     private static final long serialVersionUID = 1L;
-    public SQLSelect          subQuery;
+    public SQLSelect subQuery;
 
-    public SQLQueryExpr(){
+    public SQLQueryExpr() {
 
     }
 
-    public SQLQueryExpr(SQLSelect select){
+    public SQLQueryExpr(SQLSelect select) {
         setSubQuery(select);
     }
 

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupModifyPartitionJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -37,7 +36,6 @@ public class LogicalAlterTableGroupModifyPartitionHandler extends LogicalCommonD
         LogicalAlterTableGroupModifyPartition logicalAlterTableGroupModifyPartition =
             (LogicalAlterTableGroupModifyPartition) logicalDdlPlan;
         logicalAlterTableGroupModifyPartition.preparedData(executionContext);
-        CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupModifyPartition.getPreparedData());
         return AlterTableGroupModifyPartitionJobFactory
             .create(logicalAlterTableGroupModifyPartition.relDdl,
                 logicalAlterTableGroupModifyPartition.getPreparedData(),
@@ -47,10 +45,10 @@ public class LogicalAlterTableGroupModifyPartitionHandler extends LogicalCommonD
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
-            (SqlAlterTableGroup) ((logicalDdlPlan).relDdl.getSqlNode()),
+            (SqlAlterTableGroup) logicalDdlPlan.relDdl.getSqlNode(),
             logicalDdlPlan.getSchemaName(),
             executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

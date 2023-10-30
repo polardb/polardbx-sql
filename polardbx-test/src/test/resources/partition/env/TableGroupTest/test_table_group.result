@@ -224,3 +224,22 @@ create table txxxyz(a int,b int, global index g1(b) partition by hash(b) partiti
 select length(tables)-length(replace(tables,',',''))+1 from information_schema.full_table_group where tables like '%txxxyz%';
 length(tables) - length(replace(tables, ',', '')) + 1
 3
+create tablegroup t_mytg1;
+create tablegroup t_mytg2;
+create table t_t1(a int, b int , global index g1(b) tablegroup=t_mytg2 partition by key(b) partitions 3) partition by key(a) partitions 3 tablegroup=t_mytg1;
+show create table t_t1;
+Table,Create Table
+t_t1,CREATE TABLE `t_t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+tablegroup = `t_mytg1`
+drop table t_t1;
+drop tablegroup t_mytg1;
+drop tablegroup t_mytg2;

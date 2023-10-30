@@ -35,8 +35,8 @@ public class MySqlParameterizedOutputVisitorTest_49_createTable extends TestCase
     public void test_for_parameterize() throws Exception {
         final DbType dbType = JdbcConstants.MYSQL;
         String sql = "CREATE TABLE projects ("//
-                + "long_name int(3) NOT NULL default 1 + 2" +
-                ") ";
+            + "long_name int(3) NOT NULL default (1 + 2)" +
+            ") ";
 
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, dbType);
         List<SQLStatement> stmtList = parser.parseStatementList();
@@ -59,9 +59,8 @@ public class MySqlParameterizedOutputVisitorTest_49_createTable extends TestCase
 
         System.out.println(psql);
 
-
         assertEquals("CREATE TABLE projects (\n" +
-                "\tlong_name int(3) NOT NULL DEFAULT 1 + 2\n" +
-                ")", psql);
+            "\tlong_name int(3) NOT NULL DEFAULT (1 + 2)\n" +
+            ")", psql);
     }
 }

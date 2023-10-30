@@ -215,6 +215,7 @@ public class RuntimeFunction extends AbstractPl {
             .setMemoryPoolHolder(new QueryMemoryPoolHolder())
             .setParameters(new Parameters(parameterizedStmt.getParamsForPlan()));
         ExecutionContext context = executionContext.copy(copyOption);
+        context.setIsExecutingPreparedStmt(false);
         context.setTraceId(traceId);
         context.setMemoryPool(MemoryManager.getInstance().createQueryMemoryPool(
             true, context.getTraceId(), context.getExtraCmds()));

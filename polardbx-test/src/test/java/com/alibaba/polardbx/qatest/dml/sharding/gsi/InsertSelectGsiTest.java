@@ -42,6 +42,8 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author minggong
  */
 
+
+
 public class InsertSelectGsiTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();

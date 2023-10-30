@@ -45,7 +45,6 @@ public class DdlConstants {
 
     public static final String SQLSTATE_TABLE_EXISTS = "42S01";
     public static final int ERROR_TABLE_EXISTS = 1050;
-
     public static final String SQLSTATE_UNKNOWN_TABLE = "42S02";
     public static final int ERROR_UNKNOWN_TABLE = 1051;
 
@@ -64,7 +63,7 @@ public class DdlConstants {
     public static final String DDL_ARCHIVE_CLEANER_NAME = "DDL-Engine-Archive-Cleaner-";
     public static final String DDL_LEADER_ELECTION_NAME = "DDL-Engine-Leader-Election-Thread-";
     public static final int DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 1;
-    //默认每隔120分钟，重新调度失败的任务
+    // 默认每隔120分钟，重新调度失败的任务
     public static final int DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 120;
 
     public static final int MAX_TABLE_NAME_LENGTH_MYSQL_ALLOWS = 64;
@@ -100,4 +99,6 @@ public class DdlConstants {
     public static final long TRANSIENT_SUB_JOB_ID = -1L;
 
     public static final String SUB_JOB_RETRY_ERRER_MESSAGE = "please retry this command";
+
+    public static final long ROLLBACK_DDL_WAIT_TIMES = 10L;
 }

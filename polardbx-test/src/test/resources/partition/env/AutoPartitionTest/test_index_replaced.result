@@ -37,7 +37,9 @@ bmsql_oorder,CREATE PARTITION TABLE `bmsql_oorder` (
 	`o_all_local` int(11) DEFAULT NULL,
 	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
-	UNIQUE GLOBAL INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITION BY KEY (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+		PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_id`)
@@ -107,7 +109,9 @@ bmsql_oorder,CREATE PARTITION TABLE `bmsql_oorder` (
 	`o_all_local` int(11) DEFAULT NULL,
 	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
-	UNIQUE CLUSTERED INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITION BY KEY (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITIONS #@#,
+	UNIQUE CLUSTERED INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+		PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_id`)

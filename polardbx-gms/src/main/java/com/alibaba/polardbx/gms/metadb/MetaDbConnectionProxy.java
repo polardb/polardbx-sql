@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.gms.metadb;
 
+import com.alibaba.druid.pool.DruidConnectionHolder;
+import com.alibaba.druid.pool.DruidPooledConnection;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import javax.sql.DataSource;
 import java.sql.Array;
@@ -396,12 +400,20 @@ public class MetaDbConnectionProxy implements IConnection {
 
     @Override
     public boolean isBytesSqlSupported() throws SQLException {
+        if (conn.isWrapperFor(XConnection.class)) {
+            return conn.unwrap(XConnection.class).supportRawString();
+        }
         return false;
     }
 
     @Override
     public PreparedStatement prepareStatement(BytesSql sql, byte[] hint) throws SQLException {
-        throw new NotSupportException("bytes sql not supported in MetaDbConnectionProxy");
+        if (isBytesSqlSupported()) {
+            return conn.unwrap(XConnection.class).prepareStatement(sql, hint);
+        } else {
+            // illegal metadb conn proxy
+            throw new NotSupportException("bytes sql not supported in MetaDbConnectionProxy");
+        }
     }
 
     @Override
@@ -423,6 +435,30 @@ public class MetaDbConnectionProxy implements IConnection {
     @Override
     public void flushUnsent() throws SQLException {
         // Nothing to flush
+    }
+
+    @Override
+    public void discard(Throwable error) {
+        if (ConfigDataMode.isFastMock()) {
+            return;
+        }
+        try {
+            if (conn.isWrapperFor(XConnection.class)) {
+                conn.unwrap(XConnection.class).setLastException(new Exception("discard"));
+            } else {
+                // Discard pooled connection.
+                DruidPooledConnection druidConn = conn.unwrap(DruidPooledConnection.class);
+                // If druidConn is null, NPE is expected.
+                DruidConnectionHolder holder = druidConn.getConnectionHolder();
+                // Ignore if connection is already discard.
+                if (holder != null && !holder.isDiscard() && !druidConn.isDisable()) {
+                    holder.getDataSource().discardConnection(holder);
+                    druidConn.disable(error);
+                }
+            }
+        } catch (Throwable ex) {
+            log.error("Failed to discard connection on group METADB", ex);
+        }
     }
 
 }

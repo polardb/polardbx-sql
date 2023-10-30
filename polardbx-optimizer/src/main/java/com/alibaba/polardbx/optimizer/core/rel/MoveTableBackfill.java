@@ -45,30 +45,35 @@ public class MoveTableBackfill extends AbstractRelNode {
     */
     final Map<String, String> sourceTargetGroup;
 
+    final boolean useChangeSet;
+
     public MoveTableBackfill(RelOptCluster cluster,
                              RelTraitSet traitSet,
                              String schemaName,
                              String logicalTableName,
                              Map<String, Set<String>> sourcePhyTables,
                              Map<String, Set<String>> targetPhyTables,
-                             Map<String, String> sourceTargetGroup) {
+                             Map<String, String> sourceTargetGroup,
+                             boolean useChangeSet) {
         super(cluster, traitSet);
         this.logicalTableName = logicalTableName;
         this.schemaName = schemaName;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
         this.sourceTargetGroup = sourceTargetGroup;
+        this.useChangeSet = useChangeSet;
     }
 
     public static MoveTableBackfill createMoveTableBackfill(String schemaName,
                                                             String logicalTableName, ExecutionContext ec,
                                                             Map<String, Set<String>> sourcePhyTables,
                                                             Map<String, Set<String>> targetPhyTables,
-                                                            Map<String, String> sourceTargetGroup) {
+                                                            Map<String, String> sourceTargetGroup,
+                                                            boolean useChangeSet) {
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, ec).createRelOptCluster(null);
         RelTraitSet traitSet = RelTraitSet.createEmpty();
         return new MoveTableBackfill(cluster, traitSet, schemaName, logicalTableName, sourcePhyTables,
-            targetPhyTables, sourceTargetGroup);
+            targetPhyTables, sourceTargetGroup, useChangeSet);
     }
 
     @Override
@@ -90,5 +95,9 @@ public class MoveTableBackfill extends AbstractRelNode {
 
     public Map<String, String> getSourceTargetGroup() {
         return sourceTargetGroup;
+    }
+
+    public boolean isUseChangeSet() {
+        return useChangeSet;
     }
 }

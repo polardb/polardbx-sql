@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -69,7 +70,7 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
     }
 
     private void mark4TableGroupChange(ExecutionContext executionContext) {
-        if (TableGroupNameUtil.isOssTg(tableGroup)) {
+        if (TableGroupNameUtil.isOssTg(tableGroup) || CBOUtil.isGsi(schemaName, logicalTableName)) {
             return;
         }
 

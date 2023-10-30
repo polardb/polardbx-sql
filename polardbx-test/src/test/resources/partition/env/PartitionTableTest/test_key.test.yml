@@ -30,6 +30,6 @@ select * from tbl where a=300 and b='2012-12-14 11:11:11' and c='efg' order by a
 drop table if exists tbl;
 
 drop table if exists `W`;
-CREATE TABLE  `W` ( `8` INT  UNSIGNED ZEROFILL  AUTO_INCREMENT   KEY COMMENT 'eU' , `p` INT ( 5 )  ZEROFILL NOT NULL    COMMENT 'c2Z45dqDdW7', INDEX `xU` USING BTREE ( `8` DESC ) ) PARTITION BY KEY(`8`) PARTITIONS 3;
+CREATE TABLE  `W` ( `8` INT  UNSIGNED ZEROFILL  AUTO_INCREMENT   KEY COMMENT 'eU' , `p` INT ( 5 )  ZEROFILL NOT NULL    COMMENT 'c2Z45dqDdW7') PARTITION BY KEY(`8`) PARTITIONS 3;
 show create table W;
 drop table if exists `W`;

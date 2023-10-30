@@ -136,7 +136,7 @@ public class SequenceDDLTest extends BaseSequenceTestCase {
      */
     @Test
     public void testSimpleMaxValueSequenceValue() {
-        String sql = String.format("create simple sequence %s start with 99999999996 maxvalue 99999999999", seqName2);
+        String sql = String.format("create sequence %s start with 99999999996 maxvalue 99999999999", seqName2);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         assertExistsSequence(seqName2, 99999999996L);

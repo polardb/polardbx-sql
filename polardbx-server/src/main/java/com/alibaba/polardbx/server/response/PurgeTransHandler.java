@@ -16,7 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableTask;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.server.ServerConnection;
@@ -43,7 +44,7 @@ public class PurgeTransHandler extends AbstractTransHandler {
     }
 
     @Override
-    protected void doExecute() {
+    protected boolean doExecute() {
 
         int before = -1;
         if (offset > 0) {
@@ -52,7 +53,7 @@ public class PurgeTransHandler extends AbstractTransHandler {
                 before = Integer.parseInt(str);
             } catch (NumberFormatException ex) {
                 c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "Incorrect number of seconds: " + str);
-                return;
+                return false;
             }
         }
 
@@ -77,7 +78,16 @@ public class PurgeTransHandler extends AbstractTransHandler {
         } catch (Throwable ex) {
             c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed: " + ex.getMessage());
             logger.error("Purge trans failed", ex);
-            return;
+            return false;
+        }
+
+        try {
+            purgedCount += CleanLogTableTask.run(before, 0);
+        } catch (Throwable ex) {
+            c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed on async commit log table: "
+                + ex.getMessage());
+            logger.error("Purge trans failed on async commit log table:", ex);
+            return false;
         }
 
         OkPacket packet = new OkPacket();
@@ -85,6 +95,7 @@ public class PurgeTransHandler extends AbstractTransHandler {
         packet.affectedRows = purgedCount;
         packet.serverStatus = 2;
         packet.write(PacketOutputProxyFactory.getInstance().createProxy(c));
+        return true;
     }
 
 }

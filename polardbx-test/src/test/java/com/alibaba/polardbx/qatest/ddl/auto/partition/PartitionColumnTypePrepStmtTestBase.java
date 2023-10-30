@@ -34,9 +34,11 @@ public class PartitionColumnTypePrepStmtTestBase extends PartitionTestBase {
     @Ignore
     public void testInsertAndSelect() throws SQLException {
         try {
+
             String dbName = testDbName;
             String createDbPolarx = String.format("create database if not exists %s mode='auto'", dbName);
             String createDbMysql = String.format("create database if not exists %s", dbName);
+            String dropDBSql = String.format("drop database if exists %s", dbName);
 
             String tblName = parameter.tblName;
             String dropTbl = String.format("drop table if exists %s", tblName);
@@ -322,6 +324,9 @@ public class PartitionColumnTypePrepStmtTestBase extends PartitionTestBase {
                     execPrepStmtsByParams(pointSelectPrepSql, params, mysqlConn, polarConn);
                 }
             }
+
+            JdbcUtil.executeUpdateSuccess(tddlConnection, dropDBSql);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, dropDBSql);
 
         } catch (Throwable ex) {
             Assert.fail(ex.getMessage());

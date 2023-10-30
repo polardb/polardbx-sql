@@ -1,0 +1,175 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+create database if not exists `testConvertDrdsDb` mode=drds;
+use testConvertDrdsDb;
+## full index table
+create table `tb1` (
+`col1` int DEFAULT NULL,
+`col2` int DEFAULT NULL,
+`col3` int DEFAULT NULL,
+`col4` int DEFAULT NULL,
+`col5` int DEFAULT NULL,
+`col6` int DEFAULT NULL,
+`col7` int DEFAULT NULL,
+`col8` int DEFAULT NULL,
+`col9` int DEFAULT NULL,
+`col10` int DEFAULT NULL,
+`col11` int DEFAULT NULL,
+UNIQUE KEY `tb1_k1` (`col1`),
+KEY `tb1_k2` (`col2`),
+UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY hash(`col4`),
+CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY HASH(`col5`),
+UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`) DBPARTITION BY hash(`col6`),
+GLOBAL INDEX `tb1_k8`(`col8`, `col9`) DBPARTITION BY hash(`col9`)
+) dbpartition by hash(`col10`) tbpartition by hash(`col11`) tbpartitions 16;
+# single table
+create table `tb2` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+);
+# single table explicit
+create table `tb3` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+) single;
+# broadcast table
+create table `tb4` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+) broadcast;
+# prepare data
+insert into tb1 values
+(1,1,1,1,1,1,1,1,1,1,1),
+(2,2,2,2,2,2,2,2,2,2,2),
+(3,3,3,3,3,3,3,3,3,3,3),
+(4,4,4,4,4,4,4,4,4,4,4),
+(5,5,5,5,5,5,5,5,5,5,5),
+(6,6,6,6,6,6,6,6,6,6,6),
+(7,7,7,7,7,7,7,7,7,7,7),
+(8,8,8,8,8,8,8,8,8,8,8),
+(9,9,9,9,9,9,9,9,9,9,9);
+insert into tb2 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+insert into tb3 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+insert into tb4 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+## real run
+create database testConvertDbAuto like testConvertDrdsDb mode=auto;
+RESULT
+ALL SUCCESS
+create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
+RESULT
+ALL SUCCESS
+use testConvertDbAuto;
+select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+## real run
+create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
+RESULT
+ALL SUCCESS
+use testConvertDbAuto2;
+select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
+col1
+2
+3
+## dry run
+create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+TABLE,CREATE_TABLE_DRDS,CREATE_TABLE_AUTO
+tb1,CREATE TABLE `tb1` (
+	`col1` int(11) DEFAULT NULL,
+	`col2` int(11) DEFAULT NULL,
+	`col3` int(11) DEFAULT NULL,
+	`col4` int(11) DEFAULT NULL,
+	`col5` int(11) DEFAULT NULL,
+	`col6` int(11) DEFAULT NULL,
+	`col7` int(11) DEFAULT NULL,
+	`col8` int(11) DEFAULT NULL,
+	`col9` int(11) DEFAULT NULL,
+	`col10` int(11) DEFAULT NULL,
+	`col11` int(11) DEFAULT NULL,
+	UNIQUE KEY `tb1_k1` (`col1`),
+	KEY `tb1_k2` (`col2`),
+	KEY `auto_shard_key_col10` USING BTREE (`col10`),
+	KEY `auto_shard_key_col11` USING BTREE (`col11`),
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY HASH(`col4`),
+	CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY HASH(`col5`),
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) DBPARTITION BY HASH(`col6`),
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) DBPARTITION BY HASH(`col9`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`col10`) tbpartition by hash(`col11`) tbpartitions 16,CREATE TABLE `tb1` (
+	`col1` int(11) DEFAULT NULL,
+	`col2` int(11) DEFAULT NULL,
+	`col3` int(11) DEFAULT NULL,
+	`col4` int(11) DEFAULT NULL,
+	`col5` int(11) DEFAULT NULL,
+	`col6` int(11) DEFAULT NULL,
+	`col7` int(11) DEFAULT NULL,
+	`col8` int(11) DEFAULT NULL,
+	`col9` int(11) DEFAULT NULL,
+	`col10` int(11) DEFAULT NULL,
+	`col11` int(11) DEFAULT NULL,
+	UNIQUE KEY `tb1_k1` (`col1`),
+	KEY `tb1_k2` (`col2`),
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 256,
+	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 256,
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 256,
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 256
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col10`) PARTITIONS 256
+tb2,CREATE TABLE `tb2` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  ,CREATE TABLE `tb2` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) SINGLE ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+tb3,CREATE TABLE `tb3` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  ,CREATE TABLE `tb3` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) SINGLE ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+tb4,CREATE TABLE `tb4` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  broadcast,CREATE TABLE `tb4` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) BROADCAST ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

@@ -33,6 +33,18 @@ public class DrdsSplitHotKey extends SQLObjectImpl implements SQLAlterTableItem,
     private List<SQLExpr> hotKeys;
     private SQLIntegerExpr partitions;
     private SQLName hotKeyPartitionName;
+    private boolean subPartitionsSplit;
+    private SQLName modifyPartitionName;
+
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    public void setLocality(SQLExpr locality) {
+        this.locality = locality;
+    }
+
+    private SQLExpr locality;
 
     public List<SQLExpr> getHotKeys() {
         return hotKeys;
@@ -56,6 +68,22 @@ public class DrdsSplitHotKey extends SQLObjectImpl implements SQLAlterTableItem,
 
     public void setHotKeyPartitionName(SQLName hotKeyPartitionName) {
         this.hotKeyPartitionName = hotKeyPartitionName;
+    }
+
+    public boolean isSubPartitionsSplit() {
+        return subPartitionsSplit;
+    }
+
+    public void setSubPartitionsSplit(boolean subPartitionsSplit) {
+        this.subPartitionsSplit = subPartitionsSplit;
+    }
+
+    public SQLName getModifyPartitionName() {
+        return modifyPartitionName;
+    }
+
+    public void setModifyPartitionName(SQLName modifyPartitionName) {
+        this.modifyPartitionName = modifyPartitionName;
     }
 
     @Override

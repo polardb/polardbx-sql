@@ -16,9 +16,12 @@
 
 package com.alibaba.polardbx.gms.topology;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -32,15 +35,26 @@ public class DefaultGroupLocator implements GroupLocator {
     protected final int dbType;
     protected final Map<String, String> groupPhyDbMap;
     protected final List<String> storageInstList;
+
+    protected final LocalityDesc localityDesc;
     protected final List<String> singleGroupStorageInstList;
 
     public DefaultGroupLocator(int dbType,
                                Map<String, String> groupPhyDbMap, List<String> storageInstList,
+                               LocalityDesc localityDesc,
                                List<String> singleGroupStorageInstList) {
         this.dbType = dbType;
         this.groupPhyDbMap = groupPhyDbMap;
         this.storageInstList = storageInstList;
-        this.singleGroupStorageInstList = singleGroupStorageInstList;
+        this.localityDesc = localityDesc;
+        if (localityDesc.holdEmptyDnList()) {
+            this.singleGroupStorageInstList = singleGroupStorageInstList;
+        } else if (localityDesc.hasStoragePoolDefinition()) {
+            //TODO by yijn in merge: judge whethere statement hold storage pool
+            this.singleGroupStorageInstList = new ArrayList<>(Arrays.asList(localityDesc.getPrimaryDnId()));
+        } else {
+            this.singleGroupStorageInstList = localityDesc.getDnList().subList(0, 1);
+        }
     }
 
     @Override

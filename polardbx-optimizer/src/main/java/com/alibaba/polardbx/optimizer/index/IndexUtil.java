@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.index;
 
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMdSelectivity;
@@ -25,7 +24,7 @@ import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticService;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.CheckMysqlIndexNLJoinRelVisitor;
@@ -96,7 +95,7 @@ public class IndexUtil {
      * @param join the join to be checked
      * @return the index type and it's selectivity
      */
-    public static Index selectJoinIndex(Join join) {
+    public static Index selectJoinIndex(Join join, boolean joinSelectivityFirst) {
         if (join.getJoinType() == JoinRelType.ANTI) {
             return null;
         }
@@ -250,7 +249,9 @@ public class IndexUtil {
                     .size()) {
                     return -1;
                 } else {
-                    return o1.getTotalSelectivity() < o2.getTotalSelectivity() ? -1 : 1;
+                    return joinSelectivityFirst ?
+                        (o1.getJoinSelectivity() < o2.getJoinSelectivity() ? -1 : 1) :
+                        (o1.getTotalSelectivity() < o2.getTotalSelectivity() ? -1 : 1);
                 }
             }
         });
@@ -278,12 +279,17 @@ public class IndexUtil {
                 if (joinConditionColumnCouldUseIndex.contains(columnIndex)
                     || lookupScanColumnCouldUseIndex.contains(columnIndex)) {
                     prefixLen++;
+                    PlannerContext pc = StatisticUtils.getPlannerContextFromRelNode(join);
+                    boolean isNeedTrace = pc.isNeedStatisticTrace();
                     StatisticResult statisticResult =
                         StatisticManager.getInstance()
-                            .getCardinality(schema, tableMeta.getTableName(), columnMeta.getName(), true);
+                            .getCardinality(schema, tableMeta.getTableName(), columnMeta.getName(), true, isNeedTrace);
+                    if (isNeedTrace) {
+                        pc.recordStatisticTrace(statisticResult.getTrace());
+                    }
                     long cardinality = statisticResult.getLongValue();
                     if (cardinality <= 0) {
-                        cardinality = (long) (tableMeta.getRowCount() / CostModelWeight.INSTANCE.getAvgTupleMatch());
+                        cardinality = (long) (tableMeta.getRowCount(pc) / CostModelWeight.INSTANCE.getAvgTupleMatch());
                     }
                     if (cardinality <= 0) {
                         cardinality = 1;

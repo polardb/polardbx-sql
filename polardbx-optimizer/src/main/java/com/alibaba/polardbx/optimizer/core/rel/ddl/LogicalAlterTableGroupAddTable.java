@@ -16,17 +16,21 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupAddTablePreparedData;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
+import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddTable;
@@ -47,6 +51,27 @@ public class LogicalAlterTableGroupAddTable extends BaseDdlOperation {
 
     public LogicalAlterTableGroupAddTable(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        if (!CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, preparedData.getTableGroupName())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+                "unarchive tablegroup " + preparedData.getTableGroupName());
+        }
+        String schemaName = preparedData.getSchemaName();
+        for (String tableName : preparedData.getTables()) {
+            if (!CheckOSSArchiveUtil.checkWithoutOSS(schemaName, tableName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+                    "unarchive table " + schemaName + "." + tableName);
+            }
+        }
+        return false;
     }
 
     public void preparedData(ExecutionContext ec) {
@@ -117,7 +142,38 @@ public class LogicalAlterTableGroupAddTable extends BaseDdlOperation {
     }
 
     public static LogicalAlterTableGroupAddTable create(DDL ddl) {
-        return new LogicalAlterTableGroupAddTable(ddl);
+        return new LogicalAlterTableGroupAddTable(AlterTablePartitionHelper.fixAlterTableGroupDdlIfNeed(ddl));
     }
 
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        // TODO(siyun): Redundant preparedData, consider to optimize it
+        preparedData(executionContext);
+        if (TableGroupNameUtil.isOssTg(preparedData.getTableGroupName())) {
+            return true;
+        }
+        String schemaName = preparedData.getSchemaName();
+        for (String tableName : preparedData.getTables()) {
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(tableName);
+            if (Engine.isFileStore(tableMeta.getEngine())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        preparedData(executionContext);
+        if (!CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, preparedData.getTableGroupName())) {
+            return true;
+        }
+        String schemaName = preparedData.getSchemaName();
+        for (String tableName : preparedData.getTables()) {
+            if (!CheckOSSArchiveUtil.checkWithoutOSS(schemaName, tableName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

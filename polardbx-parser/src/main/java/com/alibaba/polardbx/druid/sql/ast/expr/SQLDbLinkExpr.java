@@ -30,13 +30,12 @@ import java.util.List;
 public class SQLDbLinkExpr extends SQLExprImpl implements SQLName, SQLExpr, SQLReplaceable {
 
     private SQLExpr expr;
-    private String  dbLink;
+    private String dbLink;
 
-    private long    dbLinkHashCode64;
-    private long    hashCode64;
+    private long dbLinkHashCode64;
+    private long hashCode64;
 
-
-    public SQLDbLinkExpr(){
+    public SQLDbLinkExpr() {
 
     }
 
@@ -86,7 +85,7 @@ public class SQLDbLinkExpr extends SQLExprImpl implements SQLName, SQLExpr, SQLR
     @Override
     public int hashCode() {
         long value = hashCode64();
-        return (int)(value ^ (value >>> 32));
+        return (int) (value ^ (value >>> 32));
     }
 
     @Override
@@ -115,7 +114,7 @@ public class SQLDbLinkExpr extends SQLExprImpl implements SQLName, SQLExpr, SQLR
 
     public long nameHashCode64() {
         if (dbLinkHashCode64 == 0
-                && dbLink != null) {
+            && dbLink != null) {
             dbLinkHashCode64 = FnvHash.hashCode64(dbLink);
         }
         return dbLinkHashCode64;
@@ -130,7 +129,7 @@ public class SQLDbLinkExpr extends SQLExprImpl implements SQLName, SQLExpr, SQLR
 
                 hash ^= '@';
                 hash *= FnvHash.PRIME;
-            } else if (expr == null){
+            } else if (expr == null) {
                 hash = FnvHash.BASIC;
             } else {
                 hash = FnvHash.fnv1a_64_lower(expr.toString());

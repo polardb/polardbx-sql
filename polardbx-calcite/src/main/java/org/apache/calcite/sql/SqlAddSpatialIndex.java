@@ -59,4 +59,7 @@ public class SqlAddSpatialIndex extends SqlAddIndex {
 
         writer.endList(frame);
     }
+
+    @Override
+    public boolean supportFileStorage() { return false;}
 }

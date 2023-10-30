@@ -32,6 +32,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -128,6 +129,7 @@ public abstract class TableScan extends AbstractRelNode {
   protected TableScan(RelInput input) {
     this(input.getCluster(), input.getTraitSet(), input.getTable("table"));
     this.flashback = input.getExpression("flashback");
+    this.indexNode = RexUtil.deSeriIndexHint(input.getStringList("index"));
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -167,6 +169,7 @@ public abstract class TableScan extends AbstractRelNode {
   @Override public RelWriter explainTerms(RelWriter pw) {
     return super.explainTerms(pw)
         .item("table", table.getQualifiedName())
+        .itemIf("index", RexUtil.seriIndexHint(indexNode), indexNode!=null)
         .item("flashback", flashback)
         ;
   }
@@ -226,7 +229,7 @@ public abstract class TableScan extends AbstractRelNode {
   @Override public RelNode accept(RelShuttle shuttle) {
     return shuttle.visit(this);
   }
-  
+
   @Override
   public RelWriter explainTermsForDisplay(RelWriter pw) {
       pw.item(RelDrdsWriter.REL_NAME, "TableScan");

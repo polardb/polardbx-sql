@@ -27,7 +27,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
  */
 public class MySqlShowTableInfoStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
-    private boolean    full = false;
+    private boolean full = false;
     private SQLName name;
     private SQLOrderBy orderBy;
     private SQLExpr where;

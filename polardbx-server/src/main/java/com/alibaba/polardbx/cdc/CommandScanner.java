@@ -21,8 +21,6 @@ import com.alibaba.polardbx.CobarConfig;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.cdc.entity.LogicMeta;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -35,8 +33,8 @@ import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandAccessor;
-import com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandAccessor;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -70,10 +68,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_FAIL;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_SUCCESS;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_TYPE.BUILD_META_SNAPSHOT;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_TYPE.CDC_START;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.FAIL;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.SUCCESS;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_TYPE.BUILD_META_SNAPSHOT;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_TYPE.CDC_START;
 
 /**
  * Created by ziyang.lb
@@ -95,8 +93,8 @@ public class CommandScanner extends AbstractLifecycle {
             return;
         }
 
-        List<PolarxCommandRecord> binlogCommandRecords = getBinlogCommandRecordsByTime().stream()
-            .filter(c -> PolarxCommandRecord.COMMAND_TYPE.valueOf(c.cmdType).isForScanner()).collect(
+        List<BinlogCommandRecord> binlogCommandRecords = getBinlogCommandRecordsByTime().stream()
+            .filter(c -> BinlogCommandRecord.COMMAND_TYPE.valueOf(c.cmdType).isForScanner()).collect(
                 Collectors.toList());
         if (CollectionUtils.isNotEmpty(binlogCommandRecords)) {
             logger.warn("query cdc binlog command record size : " + binlogCommandRecords.size());
@@ -106,22 +104,22 @@ public class CommandScanner extends AbstractLifecycle {
             });
             logger.warn("cdc record data is : " + sb.toString());
         }
-        for (PolarxCommandRecord commandRecord : binlogCommandRecords) {
+        for (BinlogCommandRecord commandRecord : binlogCommandRecords) {
             try {
                 if (CDC_START.getValue().equals(commandRecord.cmdType)) {
                     doCdcInit(commandRecord);
                 } else if (BUILD_META_SNAPSHOT.getValue().equals(commandRecord.cmdType)) {
                     buildCdcMetaSnapshot(commandRecord);
                 }
-                replyBinlogCommand(COMMAND_STATUS_SUCCESS, "", commandRecord.id);
+                replyBinlogCommand(SUCCESS.getValue(), "", commandRecord.id);
             } catch (Throwable t) {
-                replyBinlogCommand(COMMAND_STATUS_FAIL, Arrays.toString(t.getStackTrace()), commandRecord.id);
+                replyBinlogCommand(FAIL.getValue(), Arrays.toString(t.getStackTrace()), commandRecord.id);
             }
         }
         lastScanTimestamp = System.currentTimeMillis() - 3600 * 1000;
     }
 
-    private void doCdcInit(PolarxCommandRecord commandRecord) {
+    private void doCdcInit(BinlogCommandRecord commandRecord) {
         logger.warn("cdc init begin.");
         try {
             buildSnapshotAndSend(commandRecord, ICdcManager.InstructionType.CdcStart, commandRecord.cmdId);
@@ -132,7 +130,7 @@ public class CommandScanner extends AbstractLifecycle {
         logger.warn("cdc init finished.");
     }
 
-    private void buildCdcMetaSnapshot(PolarxCommandRecord commandRecord) {
+    private void buildCdcMetaSnapshot(BinlogCommandRecord commandRecord) {
         logger.warn("build cdc meta snapshot begin.");
         try {
             buildSnapshotAndSend(commandRecord, ICdcManager.InstructionType.MetaSnapshot, commandRecord.cmdId);
@@ -143,7 +141,7 @@ public class CommandScanner extends AbstractLifecycle {
         logger.warn("build cdc meta snapshot finished.");
     }
 
-    private void buildSnapshotAndSend(PolarxCommandRecord commandRecord, ICdcManager.InstructionType instructionType,
+    private void buildSnapshotAndSend(BinlogCommandRecord commandRecord, ICdcManager.InstructionType instructionType,
                                       String instructionId) throws SQLException, InterruptedException {
 
         long sleepTime = 10 * 1000;
@@ -166,12 +164,14 @@ public class CommandScanner extends AbstractLifecycle {
             try (Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
                 // forbidden create/drop database ddl sql
                 metaDbLockConn.setAutoCommit(false);
-                try {
-                    LockUtil.acquireMetaDbLockByForUpdate(metaDbLockConn);
-                } catch (Throwable ex) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
-                        "Get metaDb lock timeout during cdc init");
-                }
+//                try {
+//                    LockUtil.acquireMetaDbLockByForUpdate(metaDbLockConn);
+//                } catch (Throwable ex) {
+//                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
+//                        "Get metaDb lock timeout during cdc init");
+//                }
+                LockUtil.waitToAcquireMetaDbLock(String.format("Get metaDb lock timeout during cdc init"),
+                    metaDbLockConn);
 
                 Set<String> postDbs = getAllDbs();
 
@@ -207,13 +207,14 @@ public class CommandScanner extends AbstractLifecycle {
                             JSONObject.toJSON(preDbs),
                             JSONObject.toJSON(postDbs)));
                     }
+
                     Thread.sleep(sleepTime);
                 }
             }
         }
     }
 
-    private LogicMeta buildCdcInitData(PolarxCommandRecord commandRecord) throws SQLException {
+    private LogicMeta buildCdcInitData(BinlogCommandRecord commandRecord) throws SQLException {
         LogicMeta logicMeta = new LogicMeta();
         logicMeta.setLogicDbMetas(new ArrayList<>());
         Set<String> databases = getDatabases();
@@ -300,13 +301,13 @@ public class CommandScanner extends AbstractLifecycle {
         }
     }
 
-    private void pauseForTest(PolarxCommandRecord commandRecord) {
+    private void pauseForTest(BinlogCommandRecord commandRecord) {
         try {
             if (StringUtils.isNotBlank(commandRecord.cmdRequest) && commandRecord.cmdRequest.startsWith(TEST_FLAG)) {
                 updateBinlogCommandRequestById(TEST_FLAG + "|READY", commandRecord.id);
 
                 while (true) {
-                    PolarxCommandRecord newRecord = getBinlogCommandRecordsById(commandRecord.id);
+                    BinlogCommandRecord newRecord = getBinlogCommandRecordsById(commandRecord.id);
                     if ("CONTINUE".equals(StringUtils.substringAfterLast(newRecord.cmdRequest, "|"))) {
                         return;
                     } else {
@@ -377,11 +378,11 @@ public class CommandScanner extends AbstractLifecycle {
         }
     }
 
-    protected PolarxCommandRecord getBinlogCommandRecordsById(long id) throws SQLException {
+    protected BinlogCommandRecord getBinlogCommandRecordsById(long id) throws SQLException {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
-            PolarxCommandAccessor accessor = new PolarxCommandAccessor();
+            BinlogCommandAccessor accessor = new BinlogCommandAccessor();
             accessor.setConnection(connection);
-            List<PolarxCommandRecord> records = accessor.getBinlogCommandRecordById(id);
+            List<BinlogCommandRecord> records = accessor.getBinlogCommandRecordById(id);
             if (records.size() == 0) {
                 return null;
             }
@@ -389,9 +390,9 @@ public class CommandScanner extends AbstractLifecycle {
         }
     }
 
-    protected List<PolarxCommandRecord> getBinlogCommandRecordsByTime() throws SQLException {
+    protected List<BinlogCommandRecord> getBinlogCommandRecordsByTime() throws SQLException {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
-            PolarxCommandAccessor accessor = new PolarxCommandAccessor();
+            BinlogCommandAccessor accessor = new BinlogCommandAccessor();
             accessor.setConnection(connection);
             return accessor.getBinlogCommandRecordsByTime(lastScanTimestamp / 1000);
         }
@@ -399,7 +400,7 @@ public class CommandScanner extends AbstractLifecycle {
 
     protected void replyBinlogCommand(int status, String reply, long id) throws SQLException {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
-            PolarxCommandAccessor accessor = new PolarxCommandAccessor();
+            BinlogCommandAccessor accessor = new BinlogCommandAccessor();
             accessor.setConnection(connection);
             accessor.updateBinlogCommandStatusAndReply(status, reply, id);
         }
@@ -407,7 +408,7 @@ public class CommandScanner extends AbstractLifecycle {
 
     protected void updateBinlogCommandRequestById(String request, long id) throws SQLException {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
-            PolarxCommandAccessor accessor = new PolarxCommandAccessor();
+            BinlogCommandAccessor accessor = new BinlogCommandAccessor();
             accessor.setConnection(connection);
             accessor.updateBinlogCommandRequestById(request, id);
         }

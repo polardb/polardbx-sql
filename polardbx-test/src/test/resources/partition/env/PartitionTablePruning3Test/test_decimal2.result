@@ -1,0 +1,112 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `tb_decimal_2404` (
+`id` decimal(24,4) NOT NULL,
+`name` varchar(32) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 16;
+show create table tb_decimal_2404;
+Table,Create Table
+tb_decimal_2404,CREATE TABLE `tb_decimal_2404` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+show create table tb_decimal_2404;
+Table,Create Table
+tb_decimal_2404,CREATE TABLE `tb_decimal_2404` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+insert into tb_decimal_2404 values ('10.24','10.24');
+insert into tb_decimal_2404 values ('10.2448','10.2448');
+insert into tb_decimal_2404 values ('10.24491','10.24491');
+select * from tb_decimal_2404 where id='10.24';
+id,name
+10.2400,10.24
+select * from tb_decimal_2404 where id='10.2448';
+id,name
+10.2448,10.2448
+select * from tb_decimal_2404 where id='10.2449';
+id,name
+10.2449,10.24491
+set @auto_partition=1;
+CREATE TABLE `tb_decimal_2404_auto` (
+`id` decimal(24,4) NOT NULL,
+`name` varchar(32) DEFAULT NULL,
+primary key(id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+show create table tb_decimal_2404_auto;
+Table,Create Table
+tb_decimal_2404_auto,CREATE TABLE `tb_decimal_2404_auto` (
+	`id` decimal(24, 4) NOT NULL,
+	`name` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+CREATE TABLE `tb_decimal_3630` (
+`id` decimal(36,30) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 16;
+show create table tb_decimal_3630;
+Table,Create Table
+tb_decimal_3630,CREATE TABLE `tb_decimal_3630` (
+	`id` decimal(36, 30) NOT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+CREATE TABLE `tb_decimal_6530` (
+`id` decimal(65,30) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 16;
+show create table tb_decimal_6530;
+Table,Create Table
+tb_decimal_6530,CREATE TABLE `tb_decimal_6530` (
+	`id` decimal(65, 30) NOT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 16
+## test normal insert / select
+insert into tb_decimal_6530 values ('12345678901234567890123456789012345.123456789012345678900123456789');
+select * from tb_decimal_6530 where id = '12345678901234567890123456789012345.123456789012345678900123456789';
+id
+12345678901234567890123456789012345.123456789012345678900123456789
+## test truncate
+set sql_mode='';
+insert into tb_decimal_6530 values ('123456789012345678901234567890123450.123456789012345678900123456789');
+select * from tb_decimal_6530 where id = '123456789012345678901234567890123450.123456789012345678900123456789';
+id
+select * from tb_decimal_6530 where id = '99999999999999999999999999999999999.999999999999999999999999999999';
+id
+99999999999999999999999999999999999.999999999999999999999999999999
+select part_route('','tb_decimal_6530','123456789012345678901234567890123450.123456789012345678900123456789');
+part_route('', 'tb_decimal_6530', '123456789012345678901234567890123450.123456789012345678900123456789')
+p1
+select part_route('','tb_decimal_6530', '99999999999999999999999999999999999.999999999999999999999999999999');
+part_route('', 'tb_decimal_6530', '99999999999999999999999999999999999.999999999999999999999999999999')
+p1
+## should scan all partitions
+explain  select * from tb_decimal_6530
+  where id >= '12345678901234567890123456789012345.123456789012345678900123456789'
+   and  id <= '12345678901234567890123456789012345.123456789012345678900123456795';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_6530[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id` FROM `tb_decimal_6530` AS `tb_decimal_6530` WHERE ((`id` >= ?) AND (`id` <= ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: cc7827b4
+## should scan no partitions
+explain  select * from tb_decimal_6530
+where id <= '12345678901234567890123456789012345.123456789012345678900123456789'
+and  id >= '12345678901234567890123456789012345.123456789012345678900123456795';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tb_decimal_6530[]", shardCount=0, sql="SELECT `id` FROM `tb_decimal_6530` AS `tb_decimal_6530` WHERE ((`id` <= ?) AND (`id` >= ?))")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 2b255470

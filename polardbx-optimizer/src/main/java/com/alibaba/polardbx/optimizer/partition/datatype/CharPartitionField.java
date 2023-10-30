@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.datatype;
 
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.CharField;
 import com.google.common.base.Preconditions;

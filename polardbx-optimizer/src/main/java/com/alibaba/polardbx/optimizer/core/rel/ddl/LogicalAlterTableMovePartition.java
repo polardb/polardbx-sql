@@ -25,27 +25,24 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
-import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlAlterTableGroup;
-import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
-import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
@@ -66,6 +63,16 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
         super(ddl, ((SqlAlterTable) (ddl.getSqlNode())).getObjectNames());
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public LogicalAlterTableMovePartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
@@ -74,34 +81,88 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
     public void preparedData(ExecutionContext ec) {
         AlterTable alterTable = (AlterTable) relDdl;
         SqlAlterTable sqlAlterTable = (SqlAlterTable) alterTable.getSqlNode();
-        assert sqlAlterTable.getAlters().size() == 1;
 
-        assert sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableMovePartition;
         SqlAlterTableMovePartition sqlAlterTableMovePartition =
             (SqlAlterTableMovePartition) sqlAlterTable.getAlters().get(0);
 
         String logicalTableName = Util.last(((SqlIdentifier) alterTable.getTableName()).names);
-        PartitionInfo curPartitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
 
-        OptimizerContext oc =
+        OptimizerContext optimizerContext =
             Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+
+        PartitionInfo curPartInfo = optimizerContext.getPartitionInfoManager().getPartitionInfo(logicalTableName);
+
         TableGroupConfig tableGroupConfig =
-            oc.getTableGroupInfoManager().getTableGroupConfigById(curPartitionInfo.getTableGroupId());
+            optimizerContext.getTableGroupInfoManager().getTableGroupConfigById(curPartInfo.getTableGroupId());
+
         String tableGroupName = tableGroupConfig.getTableGroupRecord().getTg_name();
 
+        preparedData = new AlterTableMovePartitionPreparedData();
+
+        doPrepare(sqlAlterTableMovePartition, tableGroupName);
+
+        preparedData.setTableName(logicalTableName);
+        preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
+
+        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+
+        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
+        Map<String, String> partitionLocations = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (int i = 0; i < newPartitionGroups.size(); i++) {
+            String partName = newPartitionGroups.get(i).partition_name;
+            String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(partName);
+            mockOrderedTargetTableLocations.put(partName, new Pair<>("", groupName));
+            partitionLocations.put(partName, groupName);
+        }
+
+        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+            .getNewPartitionInfo(
+                preparedData,
+                curPartInfo,
+                false,
+                sqlAlterTableMovePartition,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                preparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                mockOrderedTargetTableLocations,
+                ec);
+
+        PartitionByDefinition partByDef = newPartInfo.getPartitionBy();
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+
+        for (PartitionSpec partSpec : newPartInfo.getPartitionBy().getPartitions()) {
+            if (subPartByDef != null) {
+                for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                    PartitionLocation location = subPartSpec.getLocation();
+                    if (!location.isVisiable()) {
+                        String groupKey = partitionLocations.get(subPartSpec.getName());
+                        assert groupKey != null;
+                        location.setGroupKey(groupKey);
+                    }
+                }
+            } else {
+                PartitionLocation location = partSpec.getLocation();
+                if (!location.isVisiable()) {
+                    String groupKey = partitionLocations.get(partSpec.getName());
+                    assert groupKey != null;
+                    location.setGroupKey(groupKey);
+                }
+            }
+        }
+
+        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION | PartitionInfoUtil.COMPARE_NEW_PART_LOCATION;
+        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null, null, flag, ec);
+    }
+
+    protected void doPrepare(SqlAlterTableMovePartition sqlAlterTableMovePartition, String tableGroupName) {
         List<GroupDetailInfoExRecord> candidateGroupDetailInfoExRecords =
             TableGroupLocation.getOrderedGroupList(schemaName);
 
-        Map<String, Set<String>> targetPartitions = new HashMap<>();
-        for (Map.Entry<SqlNode, List<SqlNode>> entry : sqlAlterTableMovePartition.getInstPartitions().entrySet()) {
-            String instId =
-                Util.last(((SqlIdentifier) (entry.getKey())).names);
-            Set<String> partitionsToBeMoved = entry.getValue().stream()
-                .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
-                    Collectors.toSet());
-            targetPartitions.put(instId, partitionsToBeMoved);
-        }
+        Map<String, Set<String>> targetPartitions = sqlAlterTableMovePartition.getTargetPartitions();
+        Map<String, String> newPartitionLocalities = sqlAlterTableMovePartition.getLocalities();
 
         Set<String> storageInstIds = new TreeSet<>(String::compareToIgnoreCase);
 
@@ -118,35 +179,23 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
             );
         }
 
-        LocalityInfoUtils.CheckAction localityCheckAction = new LocalityInfoUtils.CheckAction() {
-            @Override
-            public boolean checkPartition(String partition, LocalityDesc localityDesc) {
-                return localityDesc.matchStorageInstance(moveOut.get(partition));
-            }
-        };
+        LocalityInfoUtils.checkTableGroupLocalityCompatiable(schemaName, tableGroupName, moveOut,
+            newPartitionLocalities);
 
-        LocalityInfoUtils.checkTableGroupLocalityCompatiable(schemaName, tableGroupName, moveOut.keySet(),
-            localityCheckAction);
-
-        preparedData = new AlterTableMovePartitionPreparedData();
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords = new ArrayList<>();
         for (String storageInstId : storageInstIds) {
             List<GroupDetailInfoExRecord> targetGroups =
                 candidateGroupDetailInfoExRecords.stream().filter(o -> storageInstIds.contains(o.storageInstId))
-                    .collect(
-                        Collectors.toList());
+                    .collect(Collectors.toList());
 
             if (GeneralUtil.isEmpty(targetGroups)) {
-                candidateGroupDetailInfoExRecords =
-                    TableGroupLocation.getOrderedGroupList(schemaName, true);
+                candidateGroupDetailInfoExRecords = TableGroupLocation.getOrderedGroupList(schemaName, true);
                 targetGroups =
                     candidateGroupDetailInfoExRecords.stream().filter(o -> storageInstIds.contains(o.storageInstId))
-                        .collect(
-                            Collectors.toList());
+                        .collect(Collectors.toList());
                 if (GeneralUtil.isEmpty(targetGroups)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_DN_IS_NOT_READY,
-                        String.format("the dn[%s] is not ready, please retry this command later",
-                            storageInstId));
+                        String.format("the dn[%s] is not ready, please retry this command later", storageInstId));
                 } else {
                     throw new TddlRuntimeException(ErrorCode.ERR_PHYSICAL_TOPOLOGY_CHANGING,
                         String.format("the physical group[%s] is changing, please retry this command later",
@@ -160,49 +209,12 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
         preparedData.setSchemaName(schemaName);
         preparedData.setWithHint(targetTablesHintCache != null);
 
+        preparedData.setNewPartitionLocalities(newPartitionLocalities);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setTargetPartitionsLocation(targetPartitions);
 
         preparedData.prepareInvisiblePartitionGroup();
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION);
-        preparedData.setTableName(logicalTableName);
-        preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
-
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        List<Pair<String, String>> mockOrderedTargetTableLocations = new ArrayList<>(newPartitionGroups.size());
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
-        flag |= PartitionInfoUtil.COMPARE_NEW_PART_LOCATION;
-        int i = 0;
-        Map<String, String> partitionLocations = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-
-        for (int j = 0; j < newPartitionGroups.size(); j++) {
-            GroupDetailInfoExRecord groupDetailInfoExRecord =
-                preparedData.getTargetGroupDetailInfoExRecords().get(i++);
-
-            String mockTableName = "";
-            mockOrderedTargetTableLocations.add(new Pair<>(mockTableName, groupDetailInfoExRecord.getGroupName()));
-            if (i >= preparedData.getTargetGroupDetailInfoExRecords().size()) {
-                i = 0;
-            }
-            partitionLocations.put(newPartitionGroups.get(j).partition_name, groupDetailInfoExRecord.getGroupName());
-        }
-
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils.getNewPartitionInfoForMoveType(curPartitionInfo,
-            sqlAlterTableMovePartition.getTargetPartitions(), tableGroupName,
-            mockOrderedTargetTableLocations, ec);
-
-        for (PartitionSpec partitionSpec : newPartInfo.getPartitionBy().getPartitions()) {
-            PartitionLocation location = partitionSpec.getLocation();
-            if (!location.isVisiable()) {
-                String groupKey = partitionLocations.get(partitionSpec.getName());
-                assert groupKey != null;
-                location.setGroupKey(groupKey);
-            }
-        }
-
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
-            null, flag, ec);
-
     }
 
     public AlterTableGroupMovePartitionPreparedData getPreparedData() {

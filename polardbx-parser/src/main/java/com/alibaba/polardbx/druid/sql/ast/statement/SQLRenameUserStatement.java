@@ -19,10 +19,11 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLRenameUserStatement extends SQLStatementImpl {
-    private SQLName name ;
+    private SQLName name;
     private SQLName to;
 
     public SQLRenameUserStatement() {
@@ -51,5 +52,10 @@ public class SQLRenameUserStatement extends SQLStatementImpl {
 
     public void setTo(SQLName to) {
         this.to = to;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

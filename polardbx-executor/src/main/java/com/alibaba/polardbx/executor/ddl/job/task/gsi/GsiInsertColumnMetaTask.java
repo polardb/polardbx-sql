@@ -23,6 +23,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -98,6 +99,17 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
         GsiMetaChanger.addIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, indexRecords);
+
+        /**
+         * 新插入的indexRecord 的visible属性应该与当前gsi的record保持一致
+         * indexRecord 默认插入时visible的，因此只有当前gsi是invisible的时候，才需要修正
+         * */
+        if (gsiIndexMetaBean.visibility == IndexVisibility.VISIBLE) {
+            //do nothing
+        } else if (gsiIndexMetaBean.visibility == IndexVisibility.INVISIBLE) {
+            GsiMetaChanger.updateIndexVisibility(metaDbConnection, schemaName, logicalTableName, indexName,
+                IndexVisibility.VISIBLE, IndexVisibility.INVISIBLE);
+        }
     }
 
     @Override

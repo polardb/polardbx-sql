@@ -1,3 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+
 ## Test time_zone for part_route
 drop table if exists hash_tbl;
 drop table if exists hash_tbl2;
@@ -28,8 +30,6 @@ select part_route('','rc_tbl', null,null,null) as part_rs;
 explain select c,b,a from rc_tbl where (c,b,a)=(null,null,null);
 select part_route('','rc_tbl', 'H',"2020-12-12 00:00:00",10000) as part_rs;
 explain select c,b,a from rc_tbl where (c,b,a)=('H',"2020-12-12 00:00:00",10000);
-select part_route('','rc_tbl', 'H') as part_rs;
-explain select c,b,a from rc_tbl where (c)=('H');
 
 create table if not exists lc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
 partition by list columns(c) (

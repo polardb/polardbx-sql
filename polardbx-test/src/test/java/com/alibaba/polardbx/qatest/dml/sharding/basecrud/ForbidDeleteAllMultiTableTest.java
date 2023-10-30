@@ -50,6 +50,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @author arnkore 2017-03-21 17:36
  */
 
+
 //fxj
 public class ForbidDeleteAllMultiTableTest extends CrudBasedLockTestCase {
     private final String tddlHint = "/*+TDDL:cmd_extra(FORBID_EXECUTE_DML_ALL=true,ENABLE_COMPLEX_DML_CROSS_DB=true)*/";

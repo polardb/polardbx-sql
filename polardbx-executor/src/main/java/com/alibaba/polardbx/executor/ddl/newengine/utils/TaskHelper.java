@@ -18,18 +18,18 @@ package com.alibaba.polardbx.executor.ddl.newengine.utils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
-import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
-import com.google.common.base.Preconditions;
-import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.SerializableClassMapper;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Preconditions;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -57,9 +57,9 @@ public class TaskHelper {
             return null;
         }
         DdlTask task;
-        if(DdlHelper.isGzip(record.value)){
+        if (DdlHelper.isGzip(record.value)) {
             task = deSerializeTask(record.name, DdlHelper.decompress(record.value));
-        }else {
+        } else {
             task = deSerializeTask(record.name, record.value);
         }
         task.setJobId(record.jobId);
@@ -73,11 +73,11 @@ public class TaskHelper {
             SQLRecorderLogger.sqlLogger.error("error parse DdlExceptionAction:[" + record.exceptionAction + "]");
             task.setExceptionAction(DdlExceptionAction.DEFAULT_ACTION);
         }
-        if(StringUtils.isNotEmpty(record.getCost()) && task instanceof CostEstimableDdlTask){
+        if (StringUtils.isNotEmpty(record.getCost()) && task instanceof CostEstimableDdlTask) {
             try {
                 CostEstimableDdlTask.CostInfo costInfo = decodeCostInfo(record.getCost());
                 ((CostEstimableDdlTask) task).setCostInfo(costInfo);
-            }catch (Exception e){
+            } catch (Exception e) {
                 SQLRecorderLogger.ddlEngineLogger.error("parse CostInfo error for Ddl Task", e);
                 EventLogger.log(EventType.DDL_WARN, "parse CostInfo error for Ddl Task");
             }
@@ -86,15 +86,15 @@ public class TaskHelper {
         return task;
     }
 
-    public static CostEstimableDdlTask.CostInfo decodeCostInfo(String str){
-        if(StringUtils.isEmpty(str)){
+    public static CostEstimableDdlTask.CostInfo decodeCostInfo(String str) {
+        if (StringUtils.isEmpty(str)) {
             return CostEstimableDdlTask.createCostInfo(0L, 0L);
         }
         return JSONObject.parseObject(str, CostEstimableDdlTask.CostInfo.class);
     }
 
-    public static String encodeCostInfo(CostEstimableDdlTask.CostInfo costInfo){
-        if(costInfo == null){
+    public static String encodeCostInfo(CostEstimableDdlTask.CostInfo costInfo) {
+        if (costInfo == null) {
             costInfo = CostEstimableDdlTask.createCostInfo(0L, 0L);
         }
         return JSONObject.toJSONString(costInfo);
@@ -118,15 +118,15 @@ public class TaskHelper {
         taskRecord.name = SerializableClassMapper.getNameByTaskClass(task.getClass());
         taskRecord.state = task.getState().name();
         taskRecord.exceptionAction = task.getExceptionAction().name();
-        final String valueContent = JSON.toJSONString(task);
-        if(valueContent.getBytes().length > 1024 * 1024){
+        final String valueContent = JSON.toJSONString(task, SerializerFeature.DisableCircularReferenceDetect);
+        if (valueContent.getBytes().length > DdlHelper.COMPRESS_THRESHOLD_SIZE) {
             taskRecord.value = DdlHelper.compress(valueContent);
-        }else {
+        } else {
             taskRecord.value = valueContent;
         }
 
-        taskRecord.value = JSON.toJSONString(task);
-        if(task instanceof CostEstimableDdlTask && ((CostEstimableDdlTask) task).getCostInfo() != null){
+//        taskRecord.value = JSON.toJSONString(task);
+        if (task instanceof CostEstimableDdlTask && ((CostEstimableDdlTask) task).getCostInfo() != null) {
             String costInfoStr = JSONObject.toJSONString(((CostEstimableDdlTask) task).getCostInfo());
             taskRecord.cost = costInfoStr;
         }

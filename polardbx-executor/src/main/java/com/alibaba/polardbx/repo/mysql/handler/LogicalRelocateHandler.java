@@ -36,9 +36,13 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.BroadcastModifyWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ShardingModifyWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.SingleModifyWriter;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryControlByBlocked;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
@@ -47,12 +51,15 @@ import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.repo.mysql.handler.execute.ExecuteJob;
 import com.alibaba.polardbx.repo.mysql.handler.execute.LogicalRelocateExecuteJob;
 import com.alibaba.polardbx.repo.mysql.handler.execute.ParallelExecutor;
 import com.clearspring.analytics.util.Lists;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
@@ -67,6 +74,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ALLOW_EXTRA_READ_CONN;
@@ -83,8 +91,18 @@ public class LogicalRelocateHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        // Need auto-savepoint only in auto-commit mode.
+        executionContext.setNeedAutoSavepoint(!executionContext.isAutoCommit());
+
         final LogicalRelocate relocate = (LogicalRelocate) logicalPlan;
+        checkUpdateDeleteLimitLimitation(relocate.getOriginalSqlNode(), executionContext);
+
         RelNode input = relocate.getInput();
+
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks();
+        final boolean foreignKeyChecksForUpdateDelete =
+            executionContext.getParamManager().getBoolean(ConnectionParams.FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE);
 
         // The limit of records
         final int groupCount =
@@ -100,6 +118,10 @@ public class LogicalRelocateHandler extends HandlerCommon {
         boolean haveBroadcast = tables.stream().anyMatch(or::isBroadCast);
         boolean canModifyByMulti =
             !haveBroadcast && executionContext.getParamManager().getBoolean(ConnectionParams.MODIFY_SELECT_MULTI);
+
+        boolean haveGeneratedColumn = tables.stream().anyMatch(
+            tableName -> executionContext.getSchemaManager(relocate.getSchemaName()).getTable(tableName)
+                .hasLogicalGeneratedColumn());
 
         // To make it concurrently execute to avoid inserting before some
         // selecting, which could make data duplicate.
@@ -128,6 +150,10 @@ public class LogicalRelocateHandler extends HandlerCommon {
 
         int affectRows = 0;
         Cursor selectCursor = null;
+
+        final boolean skipUnchangedRow =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW);
+
         try {
             // Do select
             selectCursor = ExecutorHelper.execute(input, selectEc, true);
@@ -135,10 +161,15 @@ public class LogicalRelocateHandler extends HandlerCommon {
             // Select then modify loop
             do {
                 final List<List<Object>> values =
-                    selectForModify(selectCursor, batchSize, memoryAllocator, memoryOfOneRow);
+                    selectForModify(selectCursor, batchSize, memoryAllocator::allocateReservedMemory, memoryOfOneRow);
 
                 if (values.isEmpty()) {
                     break;
+                }
+
+                if (haveGeneratedColumn) {
+                    LogicalModifyHandler.evalGeneratedColumns(relocate, values, relocate.getEvalRowColumnMetas(),
+                        relocate.getInputToEvalFieldMappings(), relocate.getGenColRexNodes(), executionContext);
                 }
 
                 for (Integer autoIncColumnIndex : autoIncColumns) {
@@ -154,11 +185,16 @@ public class LogicalRelocateHandler extends HandlerCommon {
                 if (canModifyByMulti && values.size() >= batchSize) {
                     //values过多，转多线程执行操作
                     affectRows += doRelocateExecuteMulti(relocate, relocateEc, values, selectCursor,
-                        batchSize, selectValuesPool, memoryAllocator, memoryOfOneRow);
+                        batchSize, selectValuesPool, memoryAllocator, memoryOfOneRow, haveGeneratedColumn);
                     break;
                 }
 
                 final List<ColumnMeta> returnColumns = selectCursor.getReturnColumns();
+
+                if (checkForeignKey && foreignKeyChecksForUpdateDelete) {
+                    beforeModifyCheck(relocate, relocate.getSchemaName(), relocate.getLogicalTableName(),
+                        relocateEc, values);
+                }
 
                 if (!values.isEmpty()) {
                     relocateEc.setPhySqlId(relocateEc.getPhySqlId() + 1);
@@ -169,16 +205,39 @@ public class LogicalRelocateHandler extends HandlerCommon {
                             primaryRelocateWriter.get(tableIndex).getDeleteWriter() :
                             primaryDistinctWriter.get(tableIndex);
                         List<List<Object>> distinctValues = rowSet.distinctRowSetWithoutNull(dw);
-                        affectRows += distinctValues.size();
 
-                        if (executionContext.getParamManager()
-                            .getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW)) {
+                        if (relocateEc.isClientFoundRows()) {
+                            affectRows += distinctValues.size();
+                        }
+
+                        // 跳过没有变化的行从而：
+                        // 1. 避免没有变化的情况下更新 ON UPDATE TIMESTAMP 列
+                        // 2. 减少下发的物理 SQL 数
+                        // 目前只有在 UPDATE 只修改了主表和 GSI 的拆分键的情况下进行这个判断，因为 CN 无法做到完全兼容的全类型判断，
+                        // 这种实现是兼容了以前在 WRITER 中判断的行为
+
+                        final boolean useRowSet;
+                        if (skipUnchangedRow && relocate.getModifySkOnlyMap().get(tableIndex)) {
                             rowSet = buildChangedRowSet(distinctValues, returnColumns,
                                 relocate.getSetColumnTargetMappings().get(tableIndex),
                                 relocate.getSetColumnSourceMappings().get(tableIndex),
                                 relocate.getSetColumnMetas().get(tableIndex));
                             if (rowSet == null) {
                                 continue;
+                            }
+                            useRowSet = true;
+                        } else {
+                            useRowSet = false;
+                        }
+
+                        // calculate affected rows by comparing all changed columns
+                        if (!relocateEc.isClientFoundRows()) {
+                            // targetMap和sourceMap中只包含了更新的列，不包含 ON UPDATE TIMESTAMP 列，所以不会受自动更新列影响
+                            final Mapping targetMap = relocate.getSetColumnTargetMappings().get(tableIndex);
+                            final Mapping sourceMap = relocate.getSetColumnSourceMappings().get(tableIndex);
+                            final List<ColumnMeta> metas = relocate.getSetColumnMetas().get(tableIndex);
+                            for (List<Object> row : (useRowSet ? rowSet.getRows() : distinctValues)) {
+                                affectRows += identicalRow(row, targetMap, sourceMap, metas) ? 0 : 1;
                             }
                         }
 
@@ -200,7 +259,8 @@ public class LogicalRelocateHandler extends HandlerCommon {
             if (!executionContext.getParamManager().getBoolean(ConnectionParams.DML_SKIP_CRUCIAL_ERR_CHECK)
                 || executionContext.isModifyBroadcastTable() || executionContext.isModifyGsiTable()) {
                 // Can't commit
-                executionContext.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL);
+                executionContext.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL,
+                    e.getMessage());
             }
             throw GeneralUtil.nestedException(e);
         } finally {
@@ -214,6 +274,15 @@ public class LogicalRelocateHandler extends HandlerCommon {
         }
     }
 
+    protected static boolean identicalRow(List<Object> row, Mapping setColumnTargetMapping,
+                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas) {
+        final List<Object> targets = Mappings.permute(row, setColumnTargetMapping);
+        final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
+        final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
+        final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
+        return sourceKey.equalsForUpdate(targetKey);
+    }
+
     public static RowSet buildChangedRowSet(List<List<Object>> values, List<ColumnMeta> returnColumns,
                                             Mapping setColumnTargetMapping, Mapping setColumnSourceMapping,
                                             List<ColumnMeta> setColumnMetas) {
@@ -223,7 +292,7 @@ public class LogicalRelocateHandler extends HandlerCommon {
             final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
             final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
             final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
-            if (!targetKey.equals(sourceKey)) {
+            if (!targetKey.equalsForUpdate(sourceKey)) {
                 changedValues.add(row);
             }
         }
@@ -236,7 +305,7 @@ public class LogicalRelocateHandler extends HandlerCommon {
     private int doRelocateExecuteMulti(LogicalRelocate relocate, ExecutionContext executionContext,
                                        List<List<Object>> someValues, Cursor selectCursor,
                                        long batchSize, MemoryPool selectValuesPool, MemoryAllocatorCtx memoryAllocator,
-                                       long memoryOfOneRow) {
+                                       long memoryOfOneRow, boolean haveGeneratedColumn) {
         final List<ColumnMeta> returnColumns = selectCursor.getReturnColumns();
         //通过MemoryControlByBlocked控制内存大小，防止内存占用
         BlockingQueue<List<List<Object>>> selectValues = new LinkedBlockingQueue<>();
@@ -246,7 +315,7 @@ public class LogicalRelocateHandler extends HandlerCommon {
         long valuesSize = memoryAllocator.getAllAllocated();
         parallelExecutor.getPhySqlId().set(executionContext.getPhySqlId());
         int affectRows = doRelocateParallelExecute(relocate, executionContext, parallelExecutor, someValues, valuesSize,
-            selectCursor, batchSize, memoryOfOneRow);
+            selectCursor, batchSize, memoryOfOneRow, haveGeneratedColumn);
         executionContext.setPhySqlId(parallelExecutor.getPhySqlId().get());
         return affectRows;
 
@@ -271,13 +340,13 @@ public class LogicalRelocateHandler extends HandlerCommon {
             if (!or.isTableInSingleDb(table)) {
                 isSingleTable = false;
             }
-            List<String> groups = ExecUtils.getTableGroupNames(schemaName, table);
+            List<String> groups = ExecUtils.getTableGroupNames(schemaName, table, ec);
             allGroupNames.addAll(groups);
             //包含gsi情况下，auto库可能主表和GSI的group不同
             List<String> gsiTables = GlobalIndexMeta.getIndex(table, schemaName, ec)
                 .stream().map(TableMeta::getTableName).collect(Collectors.toList());
             for (String gsi : gsiTables) {
-                groups = ExecUtils.getTableGroupNames(schemaName, gsi);
+                groups = ExecUtils.getTableGroupNames(schemaName, gsi, ec);
                 allGroupNames.addAll(groups);
             }
         }
@@ -310,7 +379,7 @@ public class LogicalRelocateHandler extends HandlerCommon {
     public int doRelocateParallelExecute(LogicalRelocate relocate, ExecutionContext executionContext,
                                          ParallelExecutor parallelExecutor, List<List<Object>> someValues,
                                          long someValuesSize, Cursor selectCursor,
-                                         long batchSize, long memoryOfOneRow) {
+                                         long batchSize, long memoryOfOneRow, boolean haveGeneratedColumn) {
         if (parallelExecutor == null) {
             return 0;
         }
@@ -330,9 +399,14 @@ public class LogicalRelocateHandler extends HandlerCommon {
 
             // Select and DML loop
             do {
-                List<List<Object>> values = new ArrayList<>();
+                AtomicLong batchRowSize = new AtomicLong(0L);
+                List<List<Object>> values =
+                    selectForModify(selectCursor, batchSize, batchRowSize::getAndAdd, memoryOfOneRow);
 
-                long batchRowsSize = selectModifyValuesFromCursor(selectCursor, batchSize, values, memoryOfOneRow);
+                if (haveGeneratedColumn) {
+                    LogicalModifyHandler.evalGeneratedColumns(relocate, values, relocate.getEvalRowColumnMetas(),
+                        relocate.getInputToEvalFieldMappings(), relocate.getGenColRexNodes(), executionContext);
+                }
 
                 if (values.isEmpty()) {
                     parallelExecutor.finished();
@@ -350,9 +424,9 @@ public class LogicalRelocateHandler extends HandlerCommon {
                         }
                     }
                 }
-                parallelExecutor.getMemoryControl().allocate(batchRowsSize);
+                parallelExecutor.getMemoryControl().allocate(batchRowSize.get());
                 //将内存大小附带到List最后面，方便传送内存大小
-                values.add(Collections.singletonList(batchRowsSize));
+                values.add(Collections.singletonList(batchRowSize.get()));
                 parallelExecutor.getSelectValues().put(values);
             } while (true);
 
@@ -367,6 +441,78 @@ public class LogicalRelocateHandler extends HandlerCommon {
             parallelExecutor.doClose();
         }
         return affectRows;
+    }
+
+    protected void beforeModifyCheck(LogicalRelocate logicalRelocate, String schemaName, String targetTable,
+                                     ExecutionContext executionContext, List<List<Object>> values) {
+        int depth = 1;
+        int index = 0;
+
+        Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> fkPlans = logicalRelocate.getFkPlans();
+
+        final Map<Integer, DistinctWriter> primaryDistinctWriter = logicalRelocate.getPrimaryDistinctWriter();
+        final Map<Integer, RelocateWriter> primaryRelocateWriter = logicalRelocate.getPrimaryRelocateWriter();
+
+        for (Integer tableIndex : logicalRelocate.getSetColumnMetas().keySet()) {
+            final RelOptTable table = logicalRelocate.getTableInfo().getSrcInfos().get(tableIndex).getRefTable();
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(table);
+            final TableMeta tableMeta = executionContext.getSchemaManager(qn.left).getTable(qn.right);
+
+            DistinctWriter writer = primaryRelocateWriter.containsKey(tableIndex) ?
+                primaryRelocateWriter.get(tableIndex).getModifyWriter() :
+                primaryDistinctWriter.get(tableIndex);
+
+            List<List<Object>> rows = new ArrayList<>();
+            for (List<Object> value : values) {
+                List<Object> row = new ArrayList<>();
+                for (int i = 0; i < tableMeta.getAllColumns().size(); i++) {
+                    row.add(value.get(i + index));
+                }
+                rows.add(row);
+            }
+            index += tableMeta.getAllColumns().size();
+
+            if (logicalRelocate.getOperation() == TableModify.Operation.DELETE) {
+                LogicalModify modify = null;
+
+                if (writer instanceof SingleModifyWriter) {
+                    modify = ((SingleModifyWriter) writer).getModify();
+                } else if (writer instanceof BroadcastModifyWriter) {
+                    modify = ((BroadcastModifyWriter) writer).getModify();
+                } else {
+                    modify = ((ShardingModifyWriter) writer).getModify();
+                }
+                beforeDeleteFkCascade(modify, qn.left, qn.right, executionContext, rows, fkPlans, depth);
+            } else {
+                LogicalModify modify = null;
+
+                if (writer instanceof SingleModifyWriter) {
+                    modify = ((SingleModifyWriter) writer).getModify();
+                    for (int i = 0; i < rows.size(); i++) {
+                        rows.get(i).addAll(
+                            Mappings.permute(values.get(i), ((SingleModifyWriter) writer).getUpdateSetMapping()));
+                    }
+                } else if (writer instanceof BroadcastModifyWriter) {
+                    modify = ((BroadcastModifyWriter) writer).getModify();
+                    for (int i = 0; i < rows.size(); i++) {
+                        rows.get(i).addAll(
+                            Mappings.permute(values.get(i),
+                                ((BroadcastModifyWriter) writer).getUpdateSetMapping()));
+                    }
+                } else {
+                    modify = ((ShardingModifyWriter) writer).getModify();
+                    for (int i = 0; i < rows.size(); i++) {
+                        rows.get(i).addAll(
+                            Mappings.permute(values.get(i), ((ShardingModifyWriter) writer).getUpdateSetMapping()));
+                    }
+                }
+
+                beforeUpdateFkCheck(modify, qn.left, qn.right, executionContext, rows);
+                beforeUpdateFkCascade(modify, qn.left, qn.right, executionContext, rows,
+                    null, null, fkPlans, depth);
+            }
+        }
+
     }
 
 }

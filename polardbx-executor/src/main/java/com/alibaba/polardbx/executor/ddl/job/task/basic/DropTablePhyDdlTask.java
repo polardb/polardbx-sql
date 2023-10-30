@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.exception.PhysicalDdlException;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -33,6 +34,16 @@ public class DropTablePhyDdlTask extends BasePhyDdlTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         updateSupportedCommands(true, false, null);
-        super.executeImpl(executionContext);
+        try {
+            super.executeImpl(executionContext);
+        } catch (PhysicalDdlException e) {
+            int successCount = e.getSuccessCount();
+            if (successCount == 0) {
+                updateSupportedCommands(true, true, null);
+                enableRollback(this);
+            }
+            throw new PhysicalDdlException(e.getTotalCount(), e.getSuccessCount(), e.getFailCount(),
+                e.getErrMsg(), e.getSimpleErrMsg());
+        }
     }
 }

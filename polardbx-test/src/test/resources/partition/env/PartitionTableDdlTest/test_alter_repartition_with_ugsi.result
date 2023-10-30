@@ -1,0 +1,36 @@
+DROP TABLE IF EXISTS tb2;
+CREATE TABLE tb2 (
+	id varchar(20),
+	name varchar(20),
+	PRIMARY KEY (id),
+	UNIQUE GLOBAL INDEX g1 (id) PARTITION BY HASH (id)
+)
+PARTITION BY HASH (id);
+INSERT INTO tb2
+VALUES ('111', 'aaa'),
+	('222', 'bbb');
+ALTER TABLE tb2
+PARTITION BY HASH (name, id);
+SHOW CREATE TABLE tb2;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` varchar(20) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE GLOBAL INDEX `g1` (`id`) COVERING (`name`)
+		PARTITION BY KEY(`id`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_name_id` USING BTREE (`name`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`name`,`id`)
+PARTITIONS 3
+SHOW CREATE TABLE g1;
+Table,Create Table
+g1_$,CREATE TABLE `g1_$` (
+	`id` varchar(20) DEFAULT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_id` USING BTREE (`id`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3

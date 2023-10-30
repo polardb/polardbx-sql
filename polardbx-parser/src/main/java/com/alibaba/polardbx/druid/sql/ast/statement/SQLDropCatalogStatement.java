@@ -36,7 +36,7 @@ public class SQLDropCatalogStatement extends SQLStatementImpl implements SQLDrop
     }
 
     public SQLDropCatalogStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

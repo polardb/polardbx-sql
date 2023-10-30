@@ -25,7 +25,9 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.ClearCheckReportTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ShowCheckReportTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -33,6 +35,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CheckGsiPrepareData;
+import com.google.common.collect.Sets;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -68,9 +71,17 @@ public class LogicalCheckGsiHandler extends LogicalCommonDdlHandler {
             job.addSequentialTasks(Arrays.asList(validateTask, checkTask));
             job.labelAsHead(validateTask);
             job.labelAsTail(checkTask);
+
+            final String fullTableName =
+                DdlJobFactory.concatWithDot(prepareData.getSchemaName(), prepareData.getTableName());
+            final String fullIndexName =
+                DdlJobFactory.concatWithDot(prepareData.getSchemaName(), prepareData.getIndexName());
+            job.addExcludeResources(Sets.newHashSet(fullTableName, fullIndexName));
+
+            return job;
         }
 
-        return job;
+        return new TransientDdlJob();
     }
 
     @Override

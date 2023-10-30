@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import lombok.Getter;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
@@ -44,9 +45,11 @@ public class CreateOssTableAddTablesMetaTask extends BaseGmsTask {
     private Engine tableEngine;
 
     @JSONCreator
-    public CreateOssTableAddTablesMetaTask(String schemaName, String logicalTableName, String dbIndex, String phyTableName,
+    public CreateOssTableAddTablesMetaTask(String schemaName, String logicalTableName, String dbIndex,
+                                           String phyTableName,
                                            SequenceBean sequenceBean, TablesExtRecord tablesExtRecord,
-                                           boolean partitioned, boolean ifNotExists, SqlKind sqlKind, Engine tableEngine) {
+                                           boolean partitioned, boolean ifNotExists, SqlKind sqlKind,
+                                           Engine tableEngine) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -61,12 +64,19 @@ public class CreateOssTableAddTablesMetaTask extends BaseGmsTask {
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext = TableMetaChanger.buildPhyInfoSchemaContext(schemaName,
-            logicalTableName, dbIndex, phyTableName, sequenceBean, tablesExtRecord, partitioned, ifNotExists, sqlKind,
-            executionContext);
+        final ITimestampOracle timestampOracle =
+            executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
+        if (null == timestampOracle) {
+            throw new UnsupportedOperationException("Do not support timestamp oracle");
+        }
+        long ts = timestampOracle.nextTimestamp();
+
+        TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
+            TableMetaChanger.buildPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName,
+                sequenceBean, tablesExtRecord, partitioned, ifNotExists, sqlKind, ts, executionContext);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        TableMetaChanger.addOssTableMeta(metaDbConnection, phyInfoSchemaContext, tableEngine);
+        TableMetaChanger.addOssTableMeta(metaDbConnection, phyInfoSchemaContext, tableEngine, executionContext);
     }
 
     @Override

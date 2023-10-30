@@ -27,6 +27,8 @@ import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
+import com.alibaba.polardbx.executor.partitionmanagement.backfill.AlterTableGroupExtractor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
@@ -51,7 +53,8 @@ public class BackfillExecutor {
     }
 
     public int backfill(String schemaName, String tableName, ExecutionContext baseEc,
-                        Map<String, Set<String>> sourcePhyTables, Map<String, String> sourceTargetGroupMap) {
+                        Map<String, Set<String>> sourcePhyTables, Map<String, String> sourceTargetGroupMap,
+                        boolean isChangeSet) {
         final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_BATCH_SIZE);
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_MIN);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_LIMITATION);
@@ -62,10 +65,16 @@ public class BackfillExecutor {
         }
 
         // Init extractor and loader
-        final Extractor extractor =
-            MoveTableExtractor
+        Extractor extractor;
+        if (isChangeSet) {
+            extractor = ChangeSetExecutor
+                .create(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
+                    baseEc);
+        } else {
+            extractor = MoveTableExtractor
                 .create(schemaName, tableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
                     baseEc);
+        }
         final Loader loader =
             MoveTableLoader
                 .create(schemaName, tableName, tableName, this.executeFunc, baseEc.isUseHint(), baseEc,
@@ -86,7 +95,9 @@ public class BackfillExecutor {
                         loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
                             try {
                                 // Commit and close extract statement
-                                extractEcAndIndexPair.getKey().getTransaction().commit();
+                                if (!isChangeSet) {
+                                    extractEcAndIndexPair.getKey().getTransaction().commit();
+                                }
                                 return true;
                             } catch (Exception e) {
                                 logger.error("Close extract statement failed!", e);

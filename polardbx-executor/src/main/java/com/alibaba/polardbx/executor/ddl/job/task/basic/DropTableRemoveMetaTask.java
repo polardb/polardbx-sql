@@ -46,7 +46,7 @@ public class DropTableRemoveMetaTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
-        CommonMetaChanger.finalOperationsOnSuccess(schemaName, logicalTableName);
+        CommonMetaChanger.dropTableFinalOperationsOnSuccess(schemaName, logicalTableName);
     }
 
     @Override

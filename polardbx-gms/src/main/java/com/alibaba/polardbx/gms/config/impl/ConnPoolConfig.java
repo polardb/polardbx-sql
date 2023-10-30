@@ -56,10 +56,6 @@ public class ConnPoolConfig {
     public Boolean xprotoChecker = null;
     public Long xprotoMaxPacketSize = null;
 
-    // Pipe buffer.
-    public Integer xprotoQueryToken = null;
-    public Long xprotoPipeBufferSize = null;
-
     // Pass instance-level transaction isolation level to connection pool
     public Integer defaultTransactionIsolation = null;
 

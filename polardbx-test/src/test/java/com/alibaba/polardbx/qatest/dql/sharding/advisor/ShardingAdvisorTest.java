@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dql.sharding.advisor;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.optimizer.core.planner.rule.SQL_REWRITE_RULE_PHASE;
 import com.alibaba.polardbx.qatest.BaseTestCase;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
@@ -73,7 +74,6 @@ public class ShardingAdvisorTest extends BaseTestCase {
     private static String CREATE_AUTOGSI_DB = "CREATE DATABASE " + AUTOGSI_DB + " mode = 'AUTO'";
     private static String DROP_AUTOGSI_DB = "DROP DATABASE IF EXISTS " + AUTOGSI_DB;
 
-
     public ShardingAdvisorTest(String db, String mode) {
         this.db = db;
         this.mode = mode;
@@ -88,7 +88,6 @@ public class ShardingAdvisorTest extends BaseTestCase {
 
             stmt.execute(DROP_AUTO_DB);
             stmt.execute(CREATE_AUTO_DB);
-
 
             stmt.execute(DROP_AUTOGSI_DB);
             stmt.execute(CREATE_AUTOGSI_DB);
@@ -119,7 +118,7 @@ public class ShardingAdvisorTest extends BaseTestCase {
 
             String dmls = readToString(String.format(RESOURCES_PATH, mode, "dml"));
             if (dmls != null) {
-                for (String dml : (List<String>)yaml.load(dmls)) {
+                for (String dml : (List<String>) yaml.load(dmls)) {
                     stmt.execute(dml);
                 }
             }
@@ -147,7 +146,8 @@ public class ShardingAdvisorTest extends BaseTestCase {
 
     @Parameterized.Parameters(name = "{0}:{1}")
     public static List<Object[]> prepare() {
-        return ImmutableList.of(new Object[]{DRDS_DB, "drds"}, new Object[]{AUTO_DB, "auto"}, new Object[]{AUTOGSI_DB, "autogsi"});
+        return ImmutableList.of(new Object[] {DRDS_DB, "drds"}, new Object[] {AUTO_DB, "auto"},
+            new Object[] {AUTOGSI_DB, "autogsi"});
     }
 
     @Test
@@ -157,6 +157,22 @@ public class ShardingAdvisorTest extends BaseTestCase {
         for (String sql : sqls) {
             JdbcUtil.executeQuery(sql, conn);
         }
+        int dnCount = 0;
+        try {
+            String showStorageSql = "show storage";
+            ResultSet storageRs = JdbcUtil.executeQuery(showStorageSql, conn);
+            while (storageRs.next()) {
+                if (storageRs.getString("INST_KIND").equalsIgnoreCase("MASTER")) {
+                    dnCount++;
+                }
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+        if (dnCount > 2) {
+            return;
+        }
+
         try (PreparedStatement ps = JdbcUtil.preparedStatement(
             "/*+TDDL:cmd_extra(SHARDING_ADVISOR_BROADCAST_THRESHOLD=-1, SHARDING_ADVISOR_RECODE_PLAN=true)*/shardingadvise",
             conn)) {

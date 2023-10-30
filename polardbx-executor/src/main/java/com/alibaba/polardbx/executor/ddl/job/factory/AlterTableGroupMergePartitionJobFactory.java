@@ -47,6 +47,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author luoyanxin
@@ -59,7 +60,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
                                                    Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                                    Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                    Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                                   Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                                   Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                                    ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -91,7 +92,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
         List<String> outdatedPartitionGroupLocalities = new ArrayList<>();
-        for (String mergePartitionName : alterTableGroupMergePartitionPreparedData.getOldPartitionNames()) {
+        for (String mergePartitionName : alterTableGroupMergePartitionPreparedData.getOldPartitionGroupNames()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(mergePartitionName)) {
                     outdatedPartitionGroupId.add(record.id);
@@ -102,15 +103,21 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
         }
         String firstPartitionLocality = outdatedPartitionGroupLocalities.get(0);
         Boolean isIdentical = outdatedPartitionGroupLocalities.stream().allMatch(o -> o.equals(firstPartitionLocality));
-        LocalityDesc targetLocality = isIdentical ? LocalityDesc.parse(firstPartitionLocality) : new LocalityDesc();
-        List<String> localities = Arrays.asList(targetLocality.toString());
+        LocalityDesc targetLocality =
+            isIdentical ? LocalityInfoUtils.parse(firstPartitionLocality) : new LocalityDesc();
+        List<String> localities = new ArrayList<>();
         List<String> targetDbList = new ArrayList<>();
         int targetDbCnt = alterTableGroupMergePartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
         List<String> newPartitions = new ArrayList<>();
-        for (int i = 0; i < alterTableGroupMergePartitionPreparedData.getNewPartitionNames().size(); i++) {
+        for (int i = 0; i < alterTableGroupMergePartitionPreparedData.getNewPartitionGroupNames().size(); i++) {
             targetDbList.add(alterTableGroupMergePartitionPreparedData.getTargetGroupDetailInfoExRecords()
                 .get(i % targetDbCnt).phyDbName);
-            newPartitions.add(alterTableGroupMergePartitionPreparedData.getNewPartitionNames().get(i));
+            newPartitions.add(alterTableGroupMergePartitionPreparedData.getNewPartitionGroupNames().get(i));
+            String partitionLocality =
+                StringUtils.isEmpty(outdatedPartitionGroupLocalities.get(i)) ? StringUtils.EMPTY :
+                    outdatedPartitionGroupLocalities.get(i);
+
+            localities.add(targetLocality.toString());
         }
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
@@ -176,7 +183,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
             alterTableGroupMergePartitionBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableGroupMergePartitionBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableGroupMergePartitionBuilder.getOrderedTargetTablesLocations();
 
         return new AlterTableGroupMergePartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,

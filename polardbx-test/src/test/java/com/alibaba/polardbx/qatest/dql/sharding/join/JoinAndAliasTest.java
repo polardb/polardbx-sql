@@ -36,6 +36,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @since 5.0.1
  */
 
+
 public class JoinAndAliasTest extends ReadBaseTestCase {
 
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();

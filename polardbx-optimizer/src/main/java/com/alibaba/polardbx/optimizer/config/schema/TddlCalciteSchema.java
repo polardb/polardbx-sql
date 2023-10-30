@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.schema;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -238,8 +239,10 @@ public class TddlCalciteSchema extends CalciteSchema {
                     relProtoDataType = new ViewProtoDataType(schemaName, columnList, viewDefinition);
                 }
                 table = new DrdsViewTable(null, relProtoDataType, row, ImmutableList.<String>of(), null);
+            } else if (t instanceof TddlRuntimeException) {
+                throw t;
             } else {
-                throw new RuntimeException(t);
+                throw new TddlRuntimeException(ErrorCode.ERR_CANNOT_FETCH_TABLE_META, t, tableName, t.getMessage());
             }
         }
 

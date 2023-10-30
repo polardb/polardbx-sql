@@ -1026,4 +1026,16 @@ public class InsertSelectTest extends CrudBasedLockTestCase {
         rs.next();
         return rs.getInt(1);
     }
+
+    @Test
+    public void insertWithSubQueryTest() throws Exception {
+        String sql = "insert into " + baseTwoTableName
+            + " (pk, bigint_test) values(10002323, (SELECT IFNULL((select pk + 50000000 from " + baseOneTableName
+            + " order by pk desc limit 1 ), 20)));";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = "select * from " + baseTwoTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
 }

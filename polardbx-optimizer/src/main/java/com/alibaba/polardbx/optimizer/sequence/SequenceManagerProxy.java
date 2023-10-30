@@ -130,8 +130,8 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
     }
 
     @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
-        return delegate.areAllSequencesSameType(schemaName, seqType);
+    public boolean areAllSequencesSameType(String schemaName, Type[] seqTypes) {
+        return delegate.areAllSequencesSameType(schemaName, seqTypes);
     }
 
     @Override

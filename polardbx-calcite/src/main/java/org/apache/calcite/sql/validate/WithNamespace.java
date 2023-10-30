@@ -50,7 +50,7 @@ public class WithNamespace extends AbstractNamespace {
 
   protected RelDataType validateImpl(RelDataType targetRowType) {
     for (SqlNode withItem : with.withList) {
-      validator.validateWithItem((SqlWithItem) withItem);
+      validator.validateWithItem((SqlWithItem) withItem, with.isRecursive);
     }
     final SqlValidatorScope scope2 =
         validator.getWithScope(Util.last(with.withList.getList()));

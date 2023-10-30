@@ -34,8 +34,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * Created by chuanqin on 19/5/14.
  */
-@RunWith(CommonCaseRunner.class)
-@FileStoreIgnore
+
 public class SelectUnsignedTypeTest extends AutoCrudBasedLockTestCase {
 
     @Parameterized.Parameters(name = "{index}:table0={0}")

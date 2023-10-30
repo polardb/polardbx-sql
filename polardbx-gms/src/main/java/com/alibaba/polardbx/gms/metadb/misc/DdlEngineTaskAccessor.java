@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -50,10 +51,13 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String SELECT_FULL =
-            "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, `value`, `extra`, `cost`, `root_job_id`";
+        "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, `value`, `extra`, `cost`, `root_job_id`";
 
     private static final String SELECT_SIMPLE =
-            "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, null as `value`, null as `extra`, `cost`, `root_job_id` ";
+        "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, null as `value`, null as `extra`, `cost`, `root_job_id` ";
+
+    private static final String SELECT_PARTIAL =
+        "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`,  `value`, null as `extra`, `cost`, `root_job_id` ";
 
     private static final String FROM_TABLE = " from " + DDL_ENGINE_TASK_TABLE;
 
@@ -81,10 +85,27 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
     private static final String SELECT_BY_JOB_ID_TASK_NAME = SELECT_BASE + WHERE_JOB_ID + WITH_TASK_NAME;
 
     private static final String SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID =
-            SELECT_SIMPLE + FROM_TABLE + " " + WHERE_ROOT_JOB_ID;
+        SELECT_SIMPLE + FROM_TABLE + " " + WHERE_ROOT_JOB_ID;
 
     private static final String SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID_IN_ARCHIVE =
-            SELECT_SIMPLE + " FROM " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " " + WHERE_ROOT_JOB_ID;
+        SELECT_SIMPLE + " FROM " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " " + WHERE_ROOT_JOB_ID;
+
+    private static final String SELECT_TASK_PARTIAL_INFO_BY_ROOT_JOB_ID =
+        SELECT_PARTIAL + FROM_TABLE + " " + WHERE_ROOT_JOB_ID;
+
+    private static final String SELECT_TASK_PARTIAL_INFO_BY_ROOT_JOB_ID_IN_ARCHIVE =
+        SELECT_PARTIAL + " FROM " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " " + WHERE_ROOT_JOB_ID;
+
+    private static final String SELECT_TASK_BY_NAME =
+        SELECT_FULL + " FROM " + DDL_ENGINE_TASK_TABLE + " " + "WHERE ";
+
+    private static final String SELECT_TASK_BY_NAME_ARCHIVE =
+        SELECT_FULL + " FROM " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " " + "WHERE ";
+    private static final String SELECT_TASK_INFO_BY_JOB_ID_WITH_EXTRA_NOT_NULL =
+        SELECT_FULL + " FROM " + DDL_ENGINE_TASK_TABLE + WHERE_ROOT_JOB_ID + " and EXTRA is NOT NULL";
+
+    private static final String SELECT_TASK_INFO_BY_JOB_ID_WITH_EXTRA_NOT_NULL_IN_ARCHIVE =
+        SELECT_FULL + " FROM " + DDL_ENGINE_TASK_TABLE_ARCHIVE + WHERE_ROOT_JOB_ID + " and EXTRA is NOT NULL";
 
     private static final String UPDATE_BASE = "update " + DDL_ENGINE_TASK_TABLE + " set ";
 
@@ -99,6 +120,9 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String RESET_PHY_OBJECT_DONE = UPDATE_BASE + "`extra` = ?" + WHERE_JOB_ID + WITH_TASK_ID;
 
+    private static final String UPDATE_EXTRA_FOR_CREATE_DATABASE_AS_LIKE =
+        UPDATE_BASE + "`extra` = ?" + WHERE_JOB_ID + WITH_TASK_ID;
+
     private static final String DELETE_BASE = "delete" + FROM_TABLE;
 
     private static final String DELETE_BY_JOB_ID = DELETE_BASE + WHERE_JOB_ID;
@@ -111,11 +135,13 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String DELETE_ARCHIVE_BY_SCHEMA_NAME = DELETE_ARCHIVE_BASE + WHERE_SCHEMA_NAME;
 
-    private static final String ARCHIVE_BASE = "insert into " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TASK_TABLE;
+    private static final String ARCHIVE_BASE =
+        "insert into " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TASK_TABLE;
 
     private static final String ARCHIVE_SPECIFIC = ARCHIVE_BASE + WHERE_JOB_ID;
 
-    private static final String ARCHIVE_SELECT = SELECT_FULL + " from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + WHERE_JOB_ID + WITH_TASK_ID;
+    private static final String ARCHIVE_SELECT =
+        SELECT_FULL + " from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + WHERE_JOB_ID + WITH_TASK_ID;
 
     public int insert(List<DdlEngineTaskRecord> recordList) {
         try {
@@ -201,11 +227,52 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             final Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
 
-            final String sql = archive? SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID_IN_ARCHIVE: SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID;
+            final String sql =
+                archive ? SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID_IN_ARCHIVE : SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID;
             List<DdlEngineTaskRecord> records =
                 MetaDbUtil.query(sql, params, DdlEngineTaskRecord.class, connection);
 
             return records;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
+    public List<DdlEngineTaskRecord> queryTaskPartialInfoByJobId(long jobId, boolean archive) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
+
+            final String sql =
+                archive ? SELECT_TASK_PARTIAL_INFO_BY_ROOT_JOB_ID_IN_ARCHIVE : SELECT_TASK_PARTIAL_INFO_BY_ROOT_JOB_ID;
+            List<DdlEngineTaskRecord> records =
+                MetaDbUtil.query(sql, params, DdlEngineTaskRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
+    public List<DdlEngineTaskRecord> queryAllTaskByNames(boolean archive, List<String> taskNames) {
+        int paramNum = taskNames.size();
+        if (paramNum == 0) {
+            return new ArrayList<>();
+        }
+        try {
+            String whereClause = "";
+            for (int i = 0; i < paramNum - 1; i++) {
+                whereClause = whereClause + " `name` = ? or ";
+            }
+            whereClause = whereClause + " `name` = ? ";
+            final String sql = (archive ? SELECT_TASK_BY_NAME_ARCHIVE : SELECT_TASK_BY_NAME) + whereClause;
+
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            for (int i = 0; i < paramNum; i++) {
+                MetaDbUtil.setParameter(i + 1, params, ParameterMethod.setString, taskNames.get(i));
+            }
+
+            return MetaDbUtil.query(sql, params, DdlEngineTaskRecord.class, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
         }
@@ -267,6 +334,24 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
         }
     }
 
+    public int updateExtraInfoForCreateDbAsLike(long jobId, long taskId, String extraInfo) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            int i = 0;
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setString, extraInfo);
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setLong, taskId);
+            return MetaDbUtil.update(UPDATE_EXTRA_FOR_CREATE_DATABASE_AS_LIKE, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to update " + DDL_ENGINE_TASK_TABLE + " for job " + jobId + " and task " + taskId
+                    + " with updating",
+                "update done",
+                e
+            );
+        }
+    }
+
     public int deleteByJobId(long jobId) {
         try {
             final Map<Integer, ParameterContext> params =
@@ -306,19 +391,21 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
                 MetaDbUtil.buildParameters(ParameterMethod.setString, new String[] {schemaName});
             return MetaDbUtil.delete(DELETE_ARCHIVE_BY_SCHEMA_NAME, params, connection);
         } catch (Exception e) {
-            throw logAndThrow("Failed to delete from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " for schemaName " + schemaName,
+            throw logAndThrow(
+                "Failed to delete from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " for schemaName " + schemaName,
                 "delete from", e);
         }
     }
 
-    public int archive(long jobId){
+    public int archive(long jobId) {
         try {
             final Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
             DdlMetaLogUtil.logSql(ARCHIVE_SPECIFIC, params);
             return MetaDbUtil.delete(ARCHIVE_SPECIFIC, params, connection);
         } catch (Exception e) {
-            throw logAndThrow("Failed to copy record from " + DDL_ENGINE_TASK_TABLE + " for job " + jobId, "archive", e);
+            throw logAndThrow("Failed to copy record from " + DDL_ENGINE_TASK_TABLE + " for job " + jobId, "archive",
+                e);
         }
     }
 
@@ -337,6 +424,24 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             return null;
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE_ARCHIVE, "query from", e);
+        }
+    }
+
+    public List<DdlEngineTaskRecord> queryTaskWithExtraNotNull(long jobId, boolean archive) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            int i = 0;
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setLong, jobId);
+
+            String sql = archive ? SELECT_TASK_INFO_BY_JOB_ID_WITH_EXTRA_NOT_NULL_IN_ARCHIVE
+                : SELECT_TASK_INFO_BY_JOB_ID_WITH_EXTRA_NOT_NULL;
+
+            return MetaDbUtil.query(sql, params, DdlEngineTaskRecord.class, connection);
+
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to query from " + (archive ? DDL_ENGINE_TASK_TABLE_ARCHIVE : DDL_ENGINE_TASK_TABLE),
+                "query from", e);
         }
     }
 

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job;
 
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
-import com.alibaba.polardbx.executor.ddl.newengine.dag.TopologicalSorter;
 
 import java.util.List;
 import java.util.Set;
@@ -122,13 +121,6 @@ public interface DdlJob {
     boolean isValid();
 
     /**
-     * create a new iterator everytime
-     *
-     * @return TopologicalSorter
-     */
-    TopologicalSorter createTaskIterator();
-
-    /**
      * create a new taskScheduler everytime
      *
      * @return TaskScheduler
@@ -180,5 +172,7 @@ public interface DdlJob {
     String serializeTasks();
 
     int getTaskCount();
+
+    List<String> getExplainInfo();
 
 }

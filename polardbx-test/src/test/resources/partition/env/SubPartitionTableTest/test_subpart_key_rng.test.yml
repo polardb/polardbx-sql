@@ -1,0 +1,208 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+##======== key-rc ===========
+
+# k_rc_tp1
+drop table if exists k_rc_tp1;
+create table if not exists k_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by range columns (a,b)
+(
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+);
+show create table k_rc_tp1;
+
+  # k_rc_tp1st
+drop table if exists k_rc_tp1st;
+create table if not exists k_rc_tp1st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by range columns (a,b)
+subpartition template
+(
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+);
+show create table k_rc_tp1st;
+
+  # k_rc_tp2
+drop table if exists k_rc_tp2;
+create table if not exists k_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by range columns (a,b)
+(
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_rc_tp2;
+
+  # k_rc_tp3
+drop table if exists k_rc_tp3;
+create table if not exists k_rc_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by range columns (a,b)
+(
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p1,
+partition p2,
+partition p3
+);
+show create table k_rc_tp3;
+
+
+  # k_rc_ntp1
+drop table if exists k_rc_ntp1;
+create table if not exists k_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by range columns (a,b)
+(
+partition p1 (
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+),
+partition p2 (
+subpartition sp2 values less than (5,6),
+subpartition sp3 values less than (maxvalue,maxvalue)
+),
+partition p3 (
+subpartition sp4 values less than (5,7),
+subpartition sp5 values less than (maxvalue,maxvalue)
+)
+);
+show create table k_rc_ntp1;
+
+  # k_rc_ntp2
+drop table if exists k_rc_ntp1;
+create table if not exists k_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by range columns (a,b)
+(
+partition p1 values less than (3,9223372036854775807) (
+subpartition sp0 values less than (5,5),
+subpartition sp1 values less than (maxvalue,maxvalue)
+),
+partition p2 values less than (4611686018427387905,9223372036854775807) (
+subpartition sp2 values less than (5,6),
+subpartition sp3 values less than (maxvalue,maxvalue)
+),
+partition p3 values less than (9223372036854775807,9223372036854775807) (
+subpartition sp4 values less than (5,7),
+subpartition sp5 values less than (maxvalue,maxvalue)
+)
+);
+show create table k_rc_ntp1;
+
+
+##======== key-r ===========
+
+  # k_r_tp1
+drop table if exists k_r_tp1;
+create table if not exists k_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by range (year(c))
+(
+subpartition sp0 values less than (2022),
+subpartition sp1 values less than (maxvalue)
+);
+show create table k_r_tp1;
+
+  # k_r_ntp1
+drop table if exists k_r_ntp1;
+create table if not exists k_r_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 2
+subpartition by range (year(c))
+(
+  partition p1
+  (
+    subpartition sp0 values less than (2022),
+    subpartition sp1 values less than (maxvalue)
+  ),
+  partition p2
+  (
+  subpartition sp2 values less than (2023),
+  subpartition sp3 values less than (maxvalue)
+  )
+);
+show create table k_r_ntp1;
+
+  # k_r_ntp2
+drop table if exists k_r_ntp2;
+create table if not exists k_r_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 2
+subpartition by range (year(c))
+(
+partition p1 values less than (3,9223372036854775807)
+(
+subpartition sp0 values less than (2022),
+subpartition sp1 values less than (maxvalue)
+),
+partition p2 values less than (9223372036854775807,9223372036854775807)
+(
+subpartition sp2 values less than (2023),
+subpartition sp3 values less than (maxvalue)
+)
+);
+show create table k_r_ntp2;

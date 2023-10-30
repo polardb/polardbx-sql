@@ -17,14 +17,18 @@
 package com.alibaba.polardbx.executor.ddl.job.builder.gsi;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCurrentTimeExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
-import com.alibaba.polardbx.druid.sql.ast.SQLName;
-import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
@@ -40,29 +44,23 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
-import com.google.common.collect.Maps;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.job.builder.CreateTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.Maps;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlAddIndex;
@@ -70,9 +68,9 @@ import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
+import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
 import org.apache.calcite.sql.SqlAlterTableRepartition;
-import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDdl;
@@ -134,6 +132,12 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
 
     public boolean isAlterPartitionCount() {
         return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTablePartitionCount;
+    }
+
+    public boolean isModifyColumn() {
+        return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTable
+            && ((SqlAlterTable) relDdl.sqlNode).getSkAlters() != null
+            && !((SqlAlterTable) relDdl.sqlNode).getSkAlters().isEmpty();
     }
 
     public boolean isPrimaryTableRepartition(String indexName) {
@@ -272,7 +276,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
      * further more, it makes reuse CreateTableBuilder impossible
      */
     @Override
-    protected void buildSqlTemplate() {
+    public void buildSqlTemplate() {
         super.buildSqlTemplate();
         SqlDdl sqlDdl = (SqlDdl) relDdl.sqlNode;
         if (sqlDdl.getKind() == SqlKind.CREATE_TABLE || sqlDdl.getKind() == SqlKind.ALTER_TABLE) {
@@ -304,7 +308,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         this.originSqlTemplate = sqlAlterTable;
         this.sequenceBean = null;
 
-        this.sqlTemplate = buildIndexTableDefinition(sqlAlterTable, isRepartition());
+        this.sqlTemplate = buildIndexTableDefinition(sqlAlterTable, isRepartition() || isModifyColumn());
     }
 
     private void buildSqlTemplate(SqlCreateIndex sqlCreateIndex) {
@@ -358,17 +362,21 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
          * copy table structure from main table
          */
         final MySqlCreateTableStatement astCreateIndexTable = (MySqlCreateTableStatement) SQLUtils
-            .parseStatements(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0).clone();
+            .parseStatementsWithDefaultFeatures(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0)
+            .clone();
 
         assert primaryRule != null;
         final Set<String> shardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         shardingColumns.addAll(primaryRule.getShardColumns());
+        final Set<String> indexShardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexShardingColumns.addAll(indexRule.getShardColumns());
 
         return createIndexTable(sqlAlterTable,
             indexColumnMap,
             coveringMap,
             astCreateIndexTable,
             shardingColumns,
+            indexShardingColumns,
             relDdl,
             gsiPreparedData.getSchemaName(),
             gsiPreparedData.getPrimaryTableName(),
@@ -415,7 +423,8 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
          * copy table structure from main table
          */
         final MySqlCreateTableStatement indexTableStmt =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(gsiPreparedData.getPrimaryTableDefinition(),
+            (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(
+                    gsiPreparedData.getPrimaryTableDefinition(),
                     JdbcConstants.MYSQL)
                 .get(0)
                 .clone();
@@ -425,6 +434,9 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         assert primaryRule != null;
         final Set<String> shardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         shardingColumns.addAll(primaryRule.getShardColumns());
+        final Set<String> indexShardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexShardingColumns.addAll(indexRule.getShardColumns());
+
         final boolean isClusteredIndex = sqlCreateIndex.createClusteredIndex();
 
         if (isClusteredIndex) {
@@ -433,6 +445,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 indexTableStmt,
                 unique,
                 sqlCreateIndex.getOptions(),
+                indexShardingColumns,
                 relDdl,
                 null,
                 gsiPreparedData.getSchemaName(),
@@ -447,6 +460,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 unique,
                 sqlCreateIndex.getOptions(),
                 shardingColumns,
+                indexShardingColumns,
                 relDdl,
                 null,
                 gsiPreparedData.getSchemaName(),
@@ -460,7 +474,8 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                                     Map<String, SqlIndexColumnName> indexColumnMap,
                                     Map<String, SqlIndexColumnName> coveringMap,
                                     MySqlCreateTableStatement indexTableStmt, Set<String> shardingKey,
-                                    DDL relDdl, String schemaName, String primaryTableName, ExecutionContext ec) {
+                                    Set<String> indexShardingKey, DDL relDdl, String schemaName,
+                                    String primaryTableName, ExecutionContext ec) {
         final SqlAddIndex addIndex = (SqlAddIndex) sqlAlterTable.getAlters().get(0);
         final SqlIdentifier indexTableName = addIndex.getIndexDef().getIndexName();
         final boolean unique = addIndex instanceof SqlAddUniqueIndex;
@@ -473,6 +488,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 indexTableStmt,
                 unique,
                 options,
+                indexShardingKey,
                 relDdl,
                 sqlAlterTable,
                 schemaName,
@@ -487,6 +503,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 unique,
                 options,
                 shardingKey,
+                indexShardingKey,
                 relDdl,
                 sqlAlterTable,
                 schemaName,
@@ -628,7 +645,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                                        Map<String, SqlIndexColumnName> coveringMap,
                                        MySqlCreateTableStatement indexTableStmt, boolean unique,
                                        List<SqlIndexOption> options, Set<String> shardingKey,
-                                       DDL relDdl, SqlAlterTable sqlAlterTable,
+                                       Set<String> indexShardingKey, DDL relDdl, SqlAlterTable sqlAlterTable,
                                        String schemaName, String primaryTableName, ExecutionContext ec) {
         final String gsiName = indexTableName.getLastName();
 
@@ -649,6 +666,17 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         String duplicatedIndexName = null;
         List<SQLSelectOrderByItem> pkList = new ArrayList<>();
         TableMeta primaryTableMeta = ec.getSchemaManager(schemaName).getTableWithNull(primaryTableName);
+
+        // Generated column can not be sharding key
+        if (primaryTableMeta != null) {
+            for (String col : indexShardingKey) {
+                if (primaryTableMeta.getColumnIgnoreCase(col).isGeneratedColumn()) {
+                    throw new TddlRuntimeException(
+                        ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
+                        String.format("Partition key can not contain generated column [%s]", col));
+                }
+            }
+        }
 
         /**
          * <pre>
@@ -728,6 +756,9 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                             SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
                             columnDefinition.setDefaultExpr(newDefaultVal);
                         }
+                        if (columnMeta.isLogicalGeneratedColumn()) {
+                            columnDefinition.setDefaultExpr(null);
+                        }
                     }
                 }
             } else if (tableElement instanceof MySqlPrimaryKey) {
@@ -751,12 +782,21 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     duplicatedIndexName = indexName;
                 }
 
+                if (ec.getSchemaManager(schemaName).getTableWithNull(primaryTableName) != null) {
+                    List<ForeignKeyData> fks = new ArrayList<>(
+                        ec.getSchemaManager(schemaName).getTable(primaryTableName).getForeignKeys().values());
+                    if (isRepartition() && fks.stream().anyMatch(fk -> fk.indexName.equalsIgnoreCase(indexName))) {
+                        // drop the local index generated by foreign key
+                        it.remove();
+                    }
+                }
+
                 if (isRepartition() && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
                     // repartition will drop the index generated by gsi
                     continue;
                 }
 
-                if (isRemovePartitioning() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)
+                if (isRemovePartitioning() && isPrimaryTableRepartition(gsiName)
                     && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
                     // remove partitioning will drop the index generated by gsi on new primary table (gsi)
                     // remove partitioning will drop all indexes on the other new gsi
@@ -767,8 +807,14 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     continue;
                 }
 
-                if (isAlterPartitionCount() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)) {
+                if (isAlterPartitionCount() && isPrimaryTableRepartition(gsiName)) {
                     // alter partition count will drop all indexes on new gsi expect new primary table (gsi)
+                    continue;
+                }
+
+                if (isModifyColumn() && isPrimaryTableRepartition(gsiName)
+                    && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+                    // alter modify sharding key / add primary key will drop all indexes on new gsi expect new primary table
                     continue;
                 }
                 removeIndexOnGsi(fullColumn, it, key);
@@ -780,12 +826,21 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     duplicatedIndexName = indexName;
                 }
 
+                if (ec.getSchemaManager(schemaName).getTableWithNull(primaryTableName) != null) {
+                    List<ForeignKeyData> fks = new ArrayList<>(
+                        ec.getSchemaManager(schemaName).getTable(primaryTableName).getForeignKeys().values());
+                    if (isRepartition() && fks.stream().anyMatch(fk -> fk.indexName.equalsIgnoreCase(indexName))) {
+                        // drop the local index generated by foreign key
+                        it.remove();
+                    }
+                }
+
                 if (isRepartition() && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
                     // repartition will drop the index generated by gsi
                     continue;
                 }
 
-                if (isRemovePartitioning() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)
+                if (isRemovePartitioning() && isPrimaryTableRepartition(gsiName)
                     && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
                     // remove partitioning will drop the index generated by gsi on new primary table (gsi)
                     // remove partitioning will drop all indexes on the other new gsi
@@ -796,7 +851,13 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     continue;
                 }
 
-                if (isAlterPartitionCount() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)) {
+                if (isAlterPartitionCount() && isPrimaryTableRepartition(gsiName)) {
+                    // alter partition count will drop all indexes on new gsi expect new primary table (gsi)
+                    continue;
+                }
+
+                if (isModifyColumn() && isPrimaryTableRepartition(gsiName)
+                    && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
                     // alter partition count will drop all indexes on new gsi expect new primary table (gsi)
                     continue;
                 }
@@ -879,12 +940,19 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             updateAddIndex(sqlAlterTable, 0, addIndex, newIndexDef);
         }
 
-        if (isRepartition()) {
-            addLocalIndex(indexColumnMap, indexTableStmt, unique, options);
-        } else {
-            final List<String> indexShardKey = gsiPreparedData.getShardColumns();
-            SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
-        }
+        // add local index, such as auto_shard_key i_
+        addLocalIndex(indexColumnMap, indexTableStmt, unique, true, options);
+//
+//        if (isRepartition()) {
+//            addLocalIndex(indexColumnMap, indexTableStmt, unique, options);
+//        } else {
+//            if (!gsiPreparedData.isNewPartIndex()) {
+//                final List<String> indexShardKey = gsiPreparedData.getShardColumns();
+//                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
+//            } else {
+//                addLocalIndex(indexColumnMap, indexTableStmt, unique, options);
+//            }
+//        }
 
         // Generate unique index of pk on unique GSI.
         // the unique index will be dropped when backfill finish
@@ -931,11 +999,15 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
 
     protected void addLocalIndex(Map<String, SqlIndexColumnName> indexColumnMap,
                                  MySqlCreateTableStatement indexTableStmt,
-                                 boolean unique,
+                                 boolean unique, boolean isGsi,
                                  List<SqlIndexOption> options) {
         final List<String> indexShardKey = gsiPreparedData.getShardColumns();
         if (indexShardKey != null && indexShardKey.size() > 0) {
-            SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
+            if (isRepartition()) {
+                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, false, options, false, indexShardKey);
+            } else {
+                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, indexShardKey);
+            }
         }
     }
 
@@ -945,7 +1017,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
     protected SqlNode createClusteredIndexTable(SqlIdentifier indexTableName,
                                                 Map<String, SqlIndexColumnName> indexColumnMap,
                                                 MySqlCreateTableStatement indexTableStmt, boolean unique,
-                                                List<SqlIndexOption> options, DDL relDdl,
+                                                List<SqlIndexOption> options, Set<String> indexShardingKey, DDL relDdl,
                                                 SqlAlterTable sqlAlterTable, String schemaName, String primaryTableName,
                                                 ExecutionContext ec) {
         final String gsiName = indexTableName.getLastName();
@@ -965,6 +1037,17 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         String duplicatedIndexName = null;
         List<SQLSelectOrderByItem> pkList = new ArrayList<>();
         TableMeta primaryTableMeta = ec.getSchemaManager(schemaName).getTableWithNull(primaryTableName);
+
+        // Generated column can not be sharding key
+        if (primaryTableMeta != null) {
+            for (String col : indexShardingKey) {
+                if (primaryTableMeta.getColumnIgnoreCase(col).isGeneratedColumn()) {
+                    throw new TddlRuntimeException(
+                        ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
+                        String.format("Partition key can not contain generated column [%s]", col));
+                }
+            }
+        }
 
         /**
          * <pre>
@@ -1024,6 +1107,9 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     if (columnMeta.isBinaryDefault()) {
                         SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
                         columnDefinition.setDefaultExpr(newDefaultVal);
+                    }
+                    if (columnMeta.isLogicalGeneratedColumn()) {
+                        columnDefinition.setDefaultExpr(null);
                     }
                 }
             } else if (tableElement instanceof MySqlPrimaryKey) {
@@ -1112,7 +1198,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         }
 
         final List<String> indexShardKey = gsiPreparedData.getShardColumns();
-        SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
+        addLocalIndex(indexColumnMap, indexTableStmt, unique, true, options);
 
         final SqlNodeList columnList = new SqlNodeList(SqlParserPos.ZERO);
         final SequenceBean sequenceBean = FastSqlConstructUtils.convertTableElements(columnList,

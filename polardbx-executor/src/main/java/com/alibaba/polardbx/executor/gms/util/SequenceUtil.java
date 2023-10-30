@@ -22,6 +22,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceOptRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceRecord;
@@ -31,12 +33,13 @@ import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import org.apache.calcite.sql.SequenceBean;
 
+import java.util.function.Supplier;
+
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INNER_STEP;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_START_WITH;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_COUNT;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_INDEX;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.NA;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.UPPER_LIMIT_UNIT_COUNT;
 
 public class SequenceUtil {
@@ -125,6 +128,15 @@ public class SequenceUtil {
         }
     }
 
+    public static Supplier<?> buildFailPointInjector(ExecutionContext executionContext) {
+        return () -> {
+            FailPoint.injectFromHint(FailPointKey.FP_NEW_SEQ_EXCEPTION_RIGHT_AFTER_PHY_CREATION, executionContext,
+                () -> FailPoint.injectException(FailPointKey.FP_NEW_SEQ_EXCEPTION_RIGHT_AFTER_PHY_CREATION)
+            );
+            return null;
+        };
+    }
+
     private static Pair<SequenceBaseRecord, SequenceBaseRecord> buildRecordPair(SequenceBean sequence,
                                                                                 Type deletedType, Type insertedType) {
         sequence.setType(deletedType);
@@ -176,33 +188,27 @@ public class SequenceUtil {
         }
         switch (type) {
         case NEW:
+        case SIMPLE:
             SequenceOptRecord newRecord = buildSequenceOptRecord(sequence);
-            newRecord.cycle = SequenceAttribute.NEW_SEQ;
+            if (type == Type.NEW) {
+                newRecord.cycle |= SequenceAttribute.NEW_SEQ;
+            }
             if (!isNew) {
                 if (sequence.getStart() == null) {
                     newRecord.value = 0;
                     newRecord.startWith = 0;
                 }
-            }
-            return newRecord;
-        case SIMPLE:
-            SequenceOptRecord simpleRecord = buildSequenceOptRecord(sequence);
-            if (!isNew) {
-                if (sequence.getStart() == null) {
-                    simpleRecord.value = 0;
-                    simpleRecord.startWith = 0;
-                }
                 if (sequence.getIncrement() == null) {
-                    simpleRecord.incrementBy = 0;
+                    newRecord.incrementBy = 0;
                 }
                 if (sequence.getMaxValue() == null) {
-                    simpleRecord.maxValue = 0;
+                    newRecord.maxValue = 0;
                 }
                 if (sequence.getCycle() == null) {
-                    simpleRecord.cycle = NA;
+                    newRecord.cycleReset = false;
                 }
             }
-            return simpleRecord;
+            return newRecord;
         case TIME:
             SequenceOptRecord timeRecord = buildSequenceOptRecord(sequence);
             timeRecord.value = 0;

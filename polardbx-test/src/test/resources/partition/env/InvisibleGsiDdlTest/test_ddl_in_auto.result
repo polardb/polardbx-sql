@@ -1,0 +1,987 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists `invisible_gsi_auto_db`;
+create database invisible_gsi_auto_db mode=auto;
+use invisible_gsi_auto_db;
+## test invisible clustered gsi, add/drop column
+create table tb1 (
+id int,
+name varchar(20),
+addr varchar(20),
+addr2 varchar(20),
+primary key(id)
+) partition by hash(id);
+insert into tb1 values(0, 'a', 'aa', 'aaa'), (1, 'b', 'bb', 'bbb'), (3, 'c', 'cc', 'ccc'), (4, 'd', 'dd', 'ddd');
+alter table tb1 add clustered index g1 on tb1(name) partition by hash(name) invisible;
+alter table tb1 add unique global index g2 on tb1(name) covering (id, addr) partition by hash(name) invisible;
+alter table tb1 add global index g3 on tb1(name) covering (id, addr) partition by hash(name) invisible;
+## drop column from primary table
+alter table tb1 drop column addr;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show create table g1;
+Table,Create Table
+g1_$,CREATE TABLE `g1_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g2;
+Table,Create Table
+g2_$,CREATE TABLE `g2_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g3;
+Table,Create Table
+g3_$,CREATE TABLE `g3_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+## check optimizer
+alter table tb1 alter index g1 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,0
+g1_$,id,0
+g1_$,addr2,0
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g1_$[p3]", sql="SELECT `id` FROM `g1_$` AS `g1_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g1 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+alter table tb1 alter index g2 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g2_$,name,0
+g2_$,id,0
+g3_$,name,1
+g3_$,id,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g2_$[p3]", sql="SELECT `id` FROM `g2_$` AS `g2_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g2 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+alter table tb1 alter index g3 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,0
+g3_$,id,0
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g3_$[p3]", sql="SELECT `id` FROM `g3_$` AS `g3_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g3 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+## do some dml
+insert into tb1 values (5, 'e', 'eee');
+delete from tb1 where name='c';
+update tb1 set name='w' where name='d';
+## add column from primary table
+alter table tb1 add column addr3 varchar(10);
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show create table g1;
+Table,Create Table
+g1_$,CREATE TABLE `g1_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g2;
+Table,Create Table
+g2_$,CREATE TABLE `g2_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g3;
+Table,Create Table
+g3_$,CREATE TABLE `g3_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+1
+## check optimizer
+alter table tb1 alter index g1 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,0
+g1_$,id,0
+g1_$,addr2,0
+g1_$,addr3,0
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g1_$[p3]", sql="SELECT `id` FROM `g1_$` AS `g1_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g1 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+alter table tb1 alter index g2 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,0
+g2_$,id,0
+g3_$,name,1
+g3_$,id,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g2_$[p3]", sql="SELECT `id` FROM `g2_$` AS `g2_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g2 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+alter table tb1 alter index g3 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,0
+g3_$,id,0
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g3_$[p3]", sql="SELECT `id` FROM `g3_$` AS `g3_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g3 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g3_$,name,1
+g3_$,id,1
+## do some dml
+insert into tb1 values (6, 'f', 'ff', 'fff'),(7, 'g', 'gg', 'ggg'),(8, 'h', 'hh', 'hhh');
+delete from tb1 where name='a';
+update tb1 set name='z' where name='f';
+update tb1 set addr3 = name;
+## repartition primary table
+alter table tb1 drop index g2;
+alter table tb1 add unique global index g2 on tb1(name) covering (id, addr3) partition by hash(name) invisible;
+alter table tb1 partition by hash(addr3, id);
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+show create table g1;
+Table,Create Table
+g1_$,CREATE TABLE `g1_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g2;
+Table,Create Table
+g2_$,CREATE TABLE `g2_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
+	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+show create table g3;
+Table,Create Table
+g3_$,CREATE TABLE `g3_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`name`)
+PARTITIONS 3
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+## check optimizer
+alter table tb1 alter index g1 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,0
+g1_$,id,0
+g1_$,addr2,0
+g1_$,addr3,0
+g2_$,name,1
+g2_$,id,1
+g2_$,addr3,1
+g3_$,name,1
+g3_$,id,1
+g3_$,addr3,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g1_$[p3]", sql="SELECT `id` FROM `g1_$` AS `g1_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	LOCAL KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g1 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g2_$,addr3,1
+g3_$,name,1
+g3_$,id,1
+g3_$,addr3,1
+alter table tb1 alter index g2 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,0
+g2_$,id,0
+g2_$,addr3,0
+g3_$,name,1
+g3_$,id,1
+g3_$,addr3,1
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g2_$[p3]", sql="SELECT `id` FROM `g2_$` AS `g2_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	LOCAL KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g2 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g2_$,addr3,1
+g3_$,name,1
+g3_$,id,1
+g3_$,addr3,1
+alter table tb1 alter index g3 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g2_$,addr3,1
+g3_$,name,0
+g3_$,id,0
+g3_$,addr3,0
+explain select id from tb1 where name="xxx";
+Logical ExecutionPlan
+IndexScan(tables="g3_$[p3]", sql="SELECT `id` FROM `g3_$` AS `g3_$` WHERE (`name` = ?)")
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g1_$ */ `g1` (`name`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	UNIQUE GLOBAL INDEX /* g2_$ */ `g2` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3 INVISIBLE ,
+	GLOBAL INDEX /* g3_$ */ `g3` (`name`) COVERING (`addr3`)
+		PARTITION BY KEY(`name`)
+		PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_addr3_id` USING BTREE (`addr3`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`addr3`,`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table tb1 alter index g3 invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb1" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g1_$,name,1
+g1_$,id,1
+g1_$,addr2,1
+g1_$,addr3,1
+g2_$,name,1
+g2_$,id,1
+g2_$,addr3,1
+g3_$,name,1
+g3_$,id,1
+g3_$,addr3,1
+## do some dml
+insert into tb1 values (9, 'i', 'ii', 'iii');
+delete from tb1 where name='h';
+update tb1 set name='y' where name='g';
+## test tablegroup
+create tablegroup test_tg;
+create table tb2 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  addr2 varchar(20),
+  primary key(id)
+) partition by list(id)(
+  partition p1 values in(1),
+  partition pd values in(default)
+) tablegroup=test_tg;
+insert into tb2 values(0, 'a', 'aa', 'aaa'), (1, 'b', 'bb', 'bbb'), (3, 'c', 'cc', 'ccc'), (4, 'd', 'dd', 'ddd');
+alter table tb2 add clustered index g4 on tb2(name, id) partition by list(id)(
+partition p1 values in(1),
+partition pd values in(default)
+) tablegroup=test_tg invisible;
+alter table tb2 add global index g5 on tb2(name, id) covering (addr) partition by list(id)(
+partition p1 values in(1),
+partition pd values in(default)
+) tablegroup=test_tg invisible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb2" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g4_$,name,1
+g4_$,id,1
+g4_$,addr,1
+g4_$,addr2,1
+g5_$,name,1
+g5_$,id,1
+g5_$,addr,1
+alter tablegroup test_tg add partition (partition p2 values in(2));
+show full create table tb2;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g4_$ */ `g4` (`name`, `id`)
+		PARTITION BY LIST(`id`)
+		(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+		 PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB) INVISIBLE ,
+	GLOBAL INDEX /* g5_$ */ `g5` (`name`, `id`) COVERING (`addr`)
+		PARTITION BY LIST(`id`)
+		(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+		 PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+show full create table g4;
+Table,Create Table
+g4_$,CREATE TABLE `g4_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `i_name_id` USING BTREE (`name`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+show full create table g5;
+Table,Create Table
+g5_$,CREATE TABLE `g5_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `i_name_id` USING BTREE (`name`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+alter table tb2 alter index g4 visible;
+alter table tb2 alter index g5 visible;
+select index_name, column_name, visible from metadb.indexes where table_schema="invisible_gsi_auto_db" and table_name="tb2" and index_location=1 order by index_name, seq_in_index asc;
+index_name,column_name,visible
+g4_$,name,0
+g4_$,id,0
+g4_$,addr,0
+g4_$,addr2,0
+g5_$,name,0
+g5_$,id,0
+g5_$,addr,0
+alter tablegroup test_tg add partition (partition p3 values in(3));
+show full create table tb2;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX /* g4_$ */ `g4` (`name`, `id`)
+		PARTITION BY LIST(`id`)
+		(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+		 PARTITION p3 VALUES IN (3) ENGINE = InnoDB,
+		 PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB),
+	GLOBAL INDEX /* g5_$ */ `g5` (`name`, `id`) COVERING (`addr`)
+		PARTITION BY LIST(`id`)
+		(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+		 PARTITION p3 VALUES IN (3) ENGINE = InnoDB,
+		 PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (3) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+show full create table g4;
+Table,Create Table
+g4_$,CREATE TABLE `g4_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `i_name_id` USING BTREE (`name`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (3) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+show full create table g5;
+Table,Create Table
+g5_$,CREATE TABLE `g5_$` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `i_name_id` USING BTREE (`name`, `id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+(PARTITION p1 VALUES IN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (3) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `test_tg`
+use polardbx;
+drop database if exists `invisible_gsi_auto_db`;

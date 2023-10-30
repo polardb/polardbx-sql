@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.google.common.primitives.Longs;
 
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -59,55 +60,65 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
         this.timeUnit = timeUnit;
     }
 
+    public PreemptiveMdlContextStamped(String schemaName, Long connId, long initWait, long interval,
+                                       TimeUnit timeUnit) {
+        super(connId.toString());
+        this.schemaName = schemaName;
+        this.initWait = initWait;
+        this.interval = interval;
+        this.timeUnit = timeUnit;
+    }
+
     @Override
-    public MdlTicket acquireLock(@NotNull final MdlRequest request){
+    public MdlTicket acquireLock(@NotNull final MdlRequest request) {
         ScheduledExecutorService scheduler = null;
         try {
             ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
             boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-            if(enablePreemptiveMdl && request.getType()==MdlType.MDL_EXCLUSIVE){
+            if (enablePreemptiveMdl && request.getType() == MdlType.MDL_EXCLUSIVE) {
                 scheduler = ExecutorUtil.createScheduler(1,
                     new NamedThreadFactory("Mdl-Preempt-Threads"),
                     new ThreadPoolExecutor.DiscardPolicy());
                 scheduler.scheduleWithFixedDelay(() -> preemptMdlLock(request), initWait, interval, timeUnit);
             }
             return super.acquireLock(request);
-        }finally {
-            if(scheduler!=null){
+        } finally {
+            if (scheduler != null) {
                 scheduler.shutdown();
             }
         }
     }
 
-
-    private void preemptMdlLock(@NotNull final MdlRequest request){
+    private void preemptMdlLock(@NotNull final MdlRequest request) {
         try {
+            logger.warn(String.format("start do preempt mdl by kill connections"));
             List<MdlTicket> blockerList = getWaitFor(request.getKey());
-            for(MdlTicket blocker : blockerList){
-                if(blocker.getType()== MdlType.MDL_EXCLUSIVE){
-                    return;
+            for (MdlTicket blocker : blockerList) {
+                if (blocker.getType() == MdlType.MDL_EXCLUSIVE) {
+                    logger.warn(String.format("has another ddl hold the mdl. connIdStr:[%s]",
+                        blocker.getContext().getConnId()));
+                    continue;
                 }
-                if(!blocker.isValidate()){
-                    return;
+                if (!blocker.isValidate()) {
+                    continue;
                 }
                 String connIdStr = blocker.getContext().getConnId();
                 //check connId is long type
                 Long connId = Longs.tryParse(connIdStr);
                 //kill it
-                if(connId==null){
+                if (connId == null) {
                     //this is not expected
-                    logger.warn(String.format("try parse frontend connId to Long but failed. connIdStr:[%s]", connIdStr));
+                    logger.warn(
+                        String.format("try parse frontend connId to Long but failed. connIdStr:[%s]", connIdStr));
                     continue;
                 }
                 logger.warn(String.format("Preempt mdl by kill connection: %s ", connIdStr));
                 killByFrontendConnId(connId);
             }
-        }catch (Throwable t){
+        } catch (Throwable t) {
             logger.error("preemptMdlLock error", t);
         }
     }
-
-
 
     private static Class killSyncActionClass;
 

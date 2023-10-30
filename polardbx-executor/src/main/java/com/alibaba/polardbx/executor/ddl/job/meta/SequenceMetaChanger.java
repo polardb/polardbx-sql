@@ -244,12 +244,11 @@ public class SequenceMetaChanger {
         return null;
     }
 
-    public static SequenceBean renameSequenceIfExists(String schemaName, String logicalTableName,
-                                                      String newLogicalTableName) {
+    public static SequenceBean renameSequenceIfExists(Connection metaDbConn, String schemaName,
+                                                      String logicalTableName, String newLogicalTableName) {
         String seqName = AUTO_SEQ_PREFIX + logicalTableName;
         String newSeqName = AUTO_SEQ_PREFIX + newLogicalTableName;
-        Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
-        if (existingType != Type.NA) {
+        if (checkIfExists(metaDbConn, schemaName, seqName)) {
             SequenceBean sequence = new SequenceBean();
             sequence.setSchemaName(schemaName);
             sequence.setName(seqName);
@@ -271,6 +270,15 @@ public class SequenceMetaChanger {
             return sequence;
         }
         return null;
+    }
+
+    public static boolean checkIfExists(Connection metaDbConn, String schemaName, String seqName) {
+        if (metaDbConn == null) {
+            metaDbConn = MetaDbUtil.getConnection();
+        }
+        SequencesAccessor sequencesAccessor = new SequencesAccessor();
+        sequencesAccessor.setConnection(metaDbConn);
+        return sequencesAccessor.checkIfExists(schemaName, seqName);
     }
 
 }

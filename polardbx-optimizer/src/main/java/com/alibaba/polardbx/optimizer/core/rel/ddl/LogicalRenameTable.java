@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
@@ -68,4 +69,14 @@ public class LogicalRenameTable extends BaseDdlOperation {
         return preparedData;
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        CheckOSSArchiveUtil.checkTTLSource(schemaName, tableName);
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

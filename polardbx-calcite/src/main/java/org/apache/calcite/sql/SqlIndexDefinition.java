@@ -60,6 +60,12 @@ public class SqlIndexDefinition extends SqlCall {
     private SqlCreateTable primaryTableNode;
     private boolean broadcast;
     private boolean single;
+
+    /**
+     * control index visibility
+     * https://dev.mysql.com/doc/refman/8.0/en/invisible-indexes.html
+     */
+    private boolean visible;
     private final SqlNode tableGroupName;
 
     public SqlIndexDefinition(SqlParserPos pos, boolean hasConstraint, SqlIdentifier uniqueConstraint,
@@ -67,7 +73,7 @@ public class SqlIndexDefinition extends SqlCall {
                               SqlIdentifier indexName, SqlIdentifier table, List<SqlIndexColumnName> columns,
                               List<SqlIndexColumnName> covering, SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                               SqlNode tbPartitions, SqlNode partitioning, List<SqlIndexOption> options,
-                              boolean clusteredIndex, SqlNode tableGroupName) {
+                              boolean clusteredIndex, SqlNode tableGroupName, boolean visible) {
         super(pos);
         this.hasConstraint = hasConstraint;
         this.uniqueConstraint = uniqueConstraint;
@@ -85,6 +91,7 @@ public class SqlIndexDefinition extends SqlCall {
         this.clusteredIndex = clusteredIndex;
         this.partitioning = partitioning;
         this.tableGroupName = tableGroupName;
+        this.visible = visible;
     }
 
     public SqlIndexDefinition(SqlParserPos pos, boolean hasConstraint, SqlIdentifier uniqueConstraint,
@@ -93,7 +100,7 @@ public class SqlIndexDefinition extends SqlCall {
                               List<SqlIndexColumnName> covering, SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                               SqlNode tbPartitions, SqlNode partitioning, List<SqlIndexOption> options,
                               String primaryTableDefinition, SqlCreateTable primaryTableNode, boolean clusteredIndex,
-                              SqlNode tableGroupName) {
+                              SqlNode tableGroupName, boolean visible) {
         super(pos);
         this.hasConstraint = hasConstraint;
         this.uniqueConstraint = uniqueConstraint;
@@ -113,6 +120,7 @@ public class SqlIndexDefinition extends SqlCall {
         this.clusteredIndex = clusteredIndex;
         this.partitioning = partitioning;
         this.tableGroupName = tableGroupName;
+        this.visible = visible;
     }
 
     public static SqlIndexDefinition localIndex(SqlParserPos pos, boolean hasConstraint,
@@ -135,7 +143,8 @@ public class SqlIndexDefinition extends SqlCall {
             null,
             options,
             false,
-            null);
+            null,
+            true);
     }
 
     public static SqlIndexDefinition globalIndex(SqlParserPos pos, boolean hasConstraint,
@@ -144,7 +153,7 @@ public class SqlIndexDefinition extends SqlCall {
                                                  List<SqlIndexColumnName> columns, List<SqlIndexColumnName> covering,
                                                  SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions,
                                                  SqlNode partitioning, List<SqlIndexOption> options,
-                                                 SqlNode tableGroupName) {
+                                                 SqlNode tableGroupName, boolean visible) {
         return new SqlIndexDefinition(pos,
             hasConstraint,
             uniqueConstraint,
@@ -161,7 +170,8 @@ public class SqlIndexDefinition extends SqlCall {
             partitioning,
             options,
             false,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     public static SqlIndexDefinition clusteredIndex(SqlParserPos pos, boolean hasConstraint,
@@ -170,7 +180,8 @@ public class SqlIndexDefinition extends SqlCall {
                                                     SqlIdentifier table, List<SqlIndexColumnName> columns,
                                                     List<SqlIndexColumnName> covering, SqlNode dbPartitionBy,
                                                     SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
-                                                    List<SqlIndexOption> options, SqlNode tableGroupName) {
+                                                    List<SqlIndexOption> options, SqlNode tableGroupName,
+                                                    boolean visible) {
         return new SqlIndexDefinition(pos,
             hasConstraint,
             uniqueConstraint,
@@ -187,7 +198,8 @@ public class SqlIndexDefinition extends SqlCall {
             partitioning,
             options,
             true,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     @Override
@@ -256,7 +268,7 @@ public class SqlIndexDefinition extends SqlCall {
             }
 
             if (null != partitioning) {
-                // partitioning.unparse(writer, leftPrec, rightPrec);
+                 partitioning.unparse(writer, leftPrec, rightPrec);
             }
 
             if (writer instanceof SqlPrettyWriter) {
@@ -271,6 +283,14 @@ public class SqlIndexDefinition extends SqlCall {
         }
 
         writer.endList(frame);
+    }
+
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public void setVisible(boolean visible) {
+        this.visible = visible;
     }
 
     public boolean isBtree() {
@@ -447,7 +467,8 @@ public class SqlIndexDefinition extends SqlCall {
             primaryTableDefinition,
             primaryTableNode,
             clusteredIndex,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 
     public SqlIndexDefinition mergeCovering(Collection<String> coveringColumns) {
@@ -493,7 +514,8 @@ public class SqlIndexDefinition extends SqlCall {
                 primaryTableDefinition,
                 primaryTableNode,
                 clusteredIndex,
-                tableGroupName);
+                tableGroupName,
+                visible);
         }
 
     }
@@ -517,8 +539,39 @@ public class SqlIndexDefinition extends SqlCall {
             primaryTableDefinition,
             primaryTableNode,
             clustered,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
+
+//    public SqlIndexDefinition rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition, boolean clustered, List<SqlIdentifier> newAddedCols) {
+//        List<SqlIndexColumnName> newColInfos = new ArrayList<>();
+//        newColInfos.addAll(columns);
+////        for (int i = 0; i < newAddedCols.size(); i++) {
+////            SqlIdentifier colId = newAddedCols.get(i);
+////            SqlIndexColumnName colName =
+////            new SqlIndexColumnName(SqlParserPos.ZERO, colId, null, null);
+////            newColInfos.add(colName);
+////        }
+//        return new SqlIndexDefinition(pos,
+//            hasConstraint,
+//            uniqueConstraint,
+//            SqlIndexResiding.GLOBAL,
+//            type,
+//            indexType,
+//            null == newName ? indexName : newName,
+//            table,
+//            newColInfos,
+//            clustered ? null : covering,
+//            null == newPartition ? dbPartitionBy : null,
+//            null == newPartition ? tbPartitionBy : null,
+//            null == newPartition ? tbPartitions : null,
+//            null == newPartition ? partitioning : newPartition,
+//            options,
+//            primaryTableDefinition,
+//            primaryTableNode,
+//            clustered,
+//            tableGroupName);
+//    }
 
     public SqlIndexDefinition rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition, boolean clustered) {
         return new SqlIndexDefinition(pos,
@@ -539,7 +592,8 @@ public class SqlIndexDefinition extends SqlCall {
             primaryTableDefinition,
             primaryTableNode,
             clustered,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     public SqlIndexDefinition rebuildToExplicitLocal(SqlIdentifier newName) {
@@ -561,7 +615,8 @@ public class SqlIndexDefinition extends SqlCall {
             primaryTableDefinition,
             primaryTableNode,
             false,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     public SqlNode getPartitioning() {

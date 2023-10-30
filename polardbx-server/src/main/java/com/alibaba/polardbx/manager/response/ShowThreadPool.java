@@ -152,7 +152,7 @@ public final class ShowThreadPool {
     private static List<ServerThreadPool> getExecutors() {
         List<ServerThreadPool> list = new LinkedList<ServerThreadPool>();
         CobarServer server = CobarServer.getInstance();
-        list.add(server.getTimerExecutor());
+        list.add(server.getSyncExecutor());
         list.add(server.getManagerExecutor());
         list.add(server.getServerExecutor());
         list.add(server.getKillExecutor());

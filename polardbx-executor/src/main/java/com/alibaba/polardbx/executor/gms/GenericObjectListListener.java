@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
 import com.alibaba.polardbx.gms.topology.ConfigListenerRecord;
@@ -178,7 +179,7 @@ public abstract class GenericObjectListListener extends AbstractLifecycle implem
 
             for (ConfigListenerRecord record : records) {
                 if (record.status == ConfigListenerRecord.DATA_ID_STATUS_NORMAL) {
-                    activeDataIds.add(record.dataId);
+                    activeDataIds.add(MetaDbDataIdBuilder.formatDataId(record.dataId));
                 }
             }
 

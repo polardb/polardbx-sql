@@ -61,6 +61,10 @@ public class InformationSchemaGlobalIndexes extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("TB_PARTITION_COUNT", 12, typeFactory.createSqlType(SqlTypeName.INTEGER)));
         columns.add(new RelDataTypeFieldImpl("STATUS", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("SIZE_IN_MB", 14, typeFactory.createSqlType(SqlTypeName.DOUBLE)));
+        columns.add(new RelDataTypeFieldImpl("USE_COUNT", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LAST_ACCESS_TIME", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("CARDINALITY", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("ROW_COUNT", 18, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

@@ -1,0 +1,47 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_create_tablegroup"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "create database test_locality_create_tablegroup mode = auto"
+      - "use test_locality_create_tablegroup"
+      - "CREATE TABLEGROUP str_key_tg
+         PARTITION BY KEY(VARCHAR(255)) PARTITIONS 16
+         LOCALITY='dn=$dn1';
+         "
+      - "CREATE TABLE `t_kuaidi100_track2` (
+           `id` bigint(11) NOT NULL ,
+           `com` varchar(255) DEFAULT NULL ,
+           PRIMARY KEY (`id`)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ,
+         partition by key(`com`)
+         tablegroup=str_key_tg;
+         "
+      - "CREATE TABLE `t_kuaidi100_regis2` (
+           `id` bigint(11) NOT NULL ,
+           `logistics_company_name` varchar(255) DEFAULT NULL ,
+           PRIMARY KEY (`id`)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ,
+         partition by key(`logistics_company_name`)
+         tablegroup=str_key_tg;
+         "
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t_kuaidi100_track2 table $dn1
+        - t_kuaidi100_regis2 table $dn1
+      tableGroupMatchCheck:
+        - t_kuaidi100_regis2,t_kuaidi100_track2 $tg1 $dn1
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"
+  - "use polardbx;"
+  - "drop database if exists test_locality_create_tablegroup;"

@@ -35,6 +35,7 @@ import com.alibaba.polardbx.executor.scaleout.corrector.MoveTableChecker;
 import com.alibaba.polardbx.executor.scaleout.corrector.MoveTableReporter;
 import com.alibaba.polardbx.executor.scaleout.fastchecker.MoveTableFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -68,6 +69,8 @@ public class MoveTableBackfillHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         MoveTableBackfill backfill = (MoveTableBackfill) logicalPlan;
         String schemaName = backfill.getSchemaName();
+        boolean useChangeSet = backfill.isUseChangeSet();
+
         String logicalTable = backfill.getLogicalTableName();
 
         BackfillExecutor backfillExecutor = new BackfillExecutor((List<RelNode> inputs,
@@ -91,13 +94,15 @@ public class MoveTableBackfillHandler extends HandlerCommon {
         int affectRows = 0;
         if (!sourcePhyTables.isEmpty()) {
             affectRows = backfillExecutor
-                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables, sourceTargetGroupMap);
+                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables, sourceTargetGroupMap,
+                    useChangeSet);
         }
 
         // Check target table immediately after backfill by default.
         assert !targetPhyTables.isEmpty();
         final boolean check =
-            executionContext.getParamManager().getBoolean(ConnectionParams.SCALEOUT_CHECK_AFTER_BACKFILL);
+            executionContext.getParamManager().getBoolean(ConnectionParams.SCALEOUT_CHECK_AFTER_BACKFILL)
+                && !useChangeSet;
         if (check) {
             final boolean useFastChecker =
                 FastChecker.isSupported(schemaName) &&

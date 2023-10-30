@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
+import com.alibaba.polardbx.qatest.entity.ColumnEntity;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.logging.Log;
@@ -224,6 +225,46 @@ public class JdbcUtil {
             rs = ps.executeQuery(sql);
             if (rs.next()) {
                 result = rs.getString(columnIndex);
+            }
+        } catch (SQLException e) {
+            String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
+            log.error(errorMs, e);
+//            Assert.fail(errorMs + " \n" + e);
+        }
+        return result;
+    }
+
+    /**
+     * 执行查询,拿到第N列类型的全部结果
+     */
+    public static List<String> executeQueryAndGetColumnResult(String sql, Connection c, int columnIndex) {
+        Statement ps = createStatement(c);
+        ResultSet rs = null;
+        List<String> result = new ArrayList<>();
+        try {
+            rs = ps.executeQuery(sql);
+            while (rs.next()) {
+                result.add(rs.getString(columnIndex));
+            }
+        } catch (SQLException e) {
+            String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
+            log.error(errorMs, e);
+//            Assert.fail(errorMs + " \n" + e);
+        }
+        return result;
+    }
+
+    /**
+     * 执行查询,拿到指定列名称的全部结果
+     */
+    public static List<String> executeQueryAndGetColumnResult(String sql, Connection c, String columnName) {
+        Statement ps = createStatement(c);
+        ResultSet rs = null;
+        List<String> result = new ArrayList<>();
+        try {
+            rs = ps.executeQuery(sql);
+            while (rs.next()) {
+                result.add(rs.getString(columnName));
             }
         } catch (SQLException e) {
             String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
@@ -530,13 +571,13 @@ public class JdbcUtil {
             preparedStatementSet(preparedStatement, param, isTddl);
 
         } catch (SQLException e) {
-            log.error("[Create preparedStatement] failed, begin to rooback , sql is " + sql, e);
+            log.error("[Create preparedStatement] failed, begin to rollback , sql is " + sql, e);
             try {
                 if (!conn.getAutoCommit()) {
                     conn.rollback();
                 }
             } catch (SQLException e1) {
-                String errorMs = "[Create preparedStatement] failed and [Transaction roolback] failed, sql is: " + sql;
+                String errorMs = "[Create preparedStatement] failed and [Transaction rollback] failed, sql is: " + sql;
                 log.error(errorMs, e1);
                 Assert.fail(errorMs + " \n " + e1);
             }
@@ -560,6 +601,7 @@ public class JdbcUtil {
                         preparedStatement.setObject(i + 1, param.get(i));
                     }
                 } catch (Exception ex) {
+                    ex.printStackTrace();
                     String errorMs = "[preparedStatement] failed ";
                     log.error(errorMs, ex);
                     Assert.fail(errorMs + " \n " + ex);
@@ -577,13 +619,13 @@ public class JdbcUtil {
         try {
             preparedStatement = conn.prepareStatement(sql, 1);
         } catch (SQLException e) {
-            log.error("[Create preparedStatement] failed, begin to rooback , sql is " + sql, e);
+            log.error("[Create preparedStatement] failed, begin to rollback , sql is " + sql, e);
             try {
                 if (!conn.getAutoCommit()) {
                     conn.rollback();
                 }
             } catch (SQLException e1) {
-                String errorMs = "[Create preparedStatement] failed and [Transaction roolback] failed, sql is: " + sql;
+                String errorMs = "[Create preparedStatement] failed and [Transaction rollback] failed, sql is: " + sql;
                 log.error(errorMs, e1);
                 Assert.fail(errorMs + " \n " + e);
             }
@@ -601,13 +643,13 @@ public class JdbcUtil {
             preparedStatementSet(preparedStatement, param, true);
 
         } catch (SQLException e) {
-            log.error("[Create preparedStatement] failed, begin to rooback , sql is " + sql, e);
+            log.error("[Create preparedStatement] failed, begin to rollback , sql is " + sql, e);
             try {
                 if (!conn.getAutoCommit()) {
                     conn.rollback();
                 }
             } catch (SQLException e1) {
-                String errorMs = "[Create preparedStatement] failed and [Transaction roolback] failed, sql is: " + sql;
+                String errorMs = "[Create preparedStatement] failed and [Transaction rollback] failed, sql is: " + sql;
                 log.error(errorMs, e1);
                 Assert.fail(errorMs + " \n " + e1);
             }
@@ -632,13 +674,13 @@ public class JdbcUtil {
         try {
             preparedStatement = conn.prepareStatement(sql);
         } catch (SQLException e) {
-            log.error("[Create preparedStatement] failed, begin to rooback , sql is " + sql, e);
+            log.error("[Create preparedStatement] failed, begin to rollback , sql is " + sql, e);
             try {
                 if (!conn.getAutoCommit()) {
                     conn.rollback();
                 }
             } catch (SQLException e1) {
-                String errorMs = "[Create preparedStatement] failed and [Transaction roolback] failed, sql is: " + sql;
+                String errorMs = "[Create preparedStatement] failed and [Transaction rollback] failed, sql is: " + sql;
                 log.error(errorMs, e1);
                 Assert.fail(errorMs + " \n " + e);
             }
@@ -1078,7 +1120,7 @@ public class JdbcUtil {
 
     public static void setTxPolicy(ITransactionPolicy trxPolicy, Connection conn) throws SQLException {
         if (conn instanceof TConnection) {
-            ((TConnection) conn).setTrxPolicy(trxPolicy);
+            ((TConnection) conn).setTrxPolicy(trxPolicy, true);
         } else {
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("set drds_transaction_policy = '" + trxPolicy.toString() + "'");
@@ -1171,6 +1213,31 @@ public class JdbcUtil {
             ResultSet tddlRs = executeQuery(sql.toString(), tddlPs);
             Assert.assertTrue(tddlRs.next());
         }
+    }
+
+    public static List<String> showDatabases(Connection conn) {
+        List<String> dbs = new ArrayList<>();
+        ResultSet resultSet = executeQuery("show databases", conn);
+        try {
+            while (resultSet.next()) {
+                String db = resultSet.getString(1);
+                dbs.add(db.toLowerCase());
+            }
+        } catch (Throwable e) {
+            com.alibaba.polardbx.common.utils.Assert.fail();
+        }
+
+        com.alibaba.polardbx.common.utils.Assert.assertTrue(dbs.contains("information_schema"));
+        dbs.remove("information_schema");
+        if (dbs.contains("polardbx_performance_schema")) {
+            dbs.remove("polardbx_performance_schema");
+        }
+        return dbs;
+    }
+
+    public static boolean dbExists(Connection conn, String db) {
+        List<String> dbs = showDatabases(conn);
+        return dbs.contains(db.toLowerCase());
     }
 
     public static class MyNumber {
@@ -1379,8 +1446,8 @@ public class JdbcUtil {
         try {
             stmt = conn.createStatement();
             return stmt.executeUpdate(sql);
-        } catch (SQLException e) {
-            log.error(e.getMessage(), e);
+        } catch (Exception e) {
+            log.error(e.getMessage() + ":\n " + sql, e);
         } finally {
             close(stmt);
         }
@@ -1725,7 +1792,6 @@ public class JdbcUtil {
         throws SQLException {
         String originTableName = tableName;
         String tempTableName = originTableName + suffixName;
-
         try (Connection tddlConnection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
             useDb(tddlConnection, polardbxOneDB);
             JdbcUtil.executeUpdate(tddlConnection, String.format(DROP_TABLE_SQL, tempTableName), false, false);
@@ -1750,7 +1816,9 @@ public class JdbcUtil {
 
     public static void createPartDatabase(Connection polarxConn, String logDb) {
         String createDbSql =
-            String.format("/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto';", logDb);
+            String.format(
+                "/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s charset utf8mb4 collate utf8mb4_general_ci mode='auto';",
+                logDb);
         JdbcUtil.executeUpdate(polarxConn, createDbSql);
         useDb(polarxConn, logDb);
     }
@@ -1764,6 +1832,14 @@ public class JdbcUtil {
     public static void dropDatabase(Connection polarxConn, String logDb) {
         String dropDbSql = "drop database if exists " + logDb;
         JdbcUtil.executeUpdate(polarxConn, dropDbSql);
+    }
+
+    public static void dropDatabaseWithRetry(Connection polarxConn, String logDb, int retryNum) {
+        String dropDbSql = "drop database if exists " + logDb;
+        while (retryNum > 0 && dbExists(polarxConn, logDb)) {
+            retryNum--;
+            JdbcUtil.executeUpdate(polarxConn, dropDbSql, true, true);
+        }
     }
 
     public static void dropTable(Connection polarxConn, String table) {
@@ -1810,4 +1886,22 @@ public class JdbcUtil {
         String sql = String.format("drop user if exists %s@'%s'", username, host);
         executeUpdateSuccess(tddlConnection, sql);
     }
+
+    public static String getInsertAllTypePrepareSql(String tableName, List<ColumnEntity> columns) {
+        StringBuilder sql = new StringBuilder("INSERT INTO " + tableName + " (");
+        StringBuilder values = new StringBuilder(" VALUES ( ");
+
+        for (ColumnEntity column : columns) {
+            String columnName = column.getName();
+            sql.append(columnName).append(",");
+            values.append(" ?,");
+        }
+        sql.setLength(sql.length() - 1);
+        values.setLength(values.length() - 1);
+        sql.append(") ");
+        values.append(") ");
+        sql.append(values);
+        return sql.toString();
+    }
+
 }

@@ -205,14 +205,40 @@
       order by a.id limit 0, 10
 # order by ??????????????? limit ????????
   plan: |
+    limit(offset=0, fetch=10)
+      bkajoin(condition="name = name", type="left")
+        mergesort(sort="id asc", fetch=10)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` order by `id` limit 10")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where (`name` in (...))")
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2) ENABLE_SORT_OUTERJOIN_TRANSPOSE=false*/
+    select *
+    from
 
-    Limit(offset=0, fetch=10)
-      BKAJoin(condition="name = name", type="left")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` IN (...))")
+      (
+        select *
+        from
+          test_hash_tb
+      ) a
 
+      left join
+
+      (
+        select *
+        from
+          test_hash_tb2
+      ) b
+      on a.name=b.name
+      order by a.id limit 0, 10
+  plan: |
+    limit(offset=0, fetch=10)
+      bkajoin(condition="name = name", type="left")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` order by `id`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where (`name` in (...))")
 -
   sql: |
     /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2)*/
@@ -298,14 +324,41 @@
       order by b.id limit 3,5
 # order by ???????? LIMIT ????????RIGHT JOIN
   plan: |
+    limit(offset=3, fetch=5)
+      bkajoin(condition="name = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
+        mergesort(sort="id asc", fetch=8)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `id` limit 8")
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2) ENABLE_SORT_OUTERJOIN_TRANSPOSE=false*/
+    select *
+    from
 
-    Limit(offset=3, fetch=5)
-      BKAJoin(condition="name = name", type="right")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` ORDER BY `id`")
+      (
+        select *
+        from
+          test_hash_tb
+      ) a
 
+      right join
+
+      (
+        select *
+        from
+          test_hash_tb2
+      ) b
+      on a.name=b.name
+      order by b.id limit 3,5
+  # order by ???????? LIMIT ????????RIGHT JOIN
+  plan: |
+    limit(offset=3, fetch=5)
+      bkajoin(condition="name = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `id`")
 -
   sql: |
     /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2)*/
@@ -329,14 +382,12 @@
       order by b.id limit 2, 10
 # order by ??????????????? limit ???? 0, offset + fetch?? RIGHT JOIN
   plan: |
-
-    Limit(offset=2, fetch=10)
-      BKAJoin(condition="name = name", type="right")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` ORDER BY `id`")
-
+    limit(offset=2, fetch=10)
+      bkajoin(condition="name = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
+        mergesort(sort="id asc", fetch=12)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `id` limit 12")
 -
   sql: |
     /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2)*/
@@ -360,14 +411,12 @@
       order by a.id limit 2, 10
 # order by ??????????????? limit ???? 0, offset + fetch?? LEFT JOIN
   plan: |
-
-    Limit(offset=2, fetch=10)
-      BKAJoin(condition="name = name", type="left")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` IN (...))")
-
+    limit(offset=2, fetch=10)
+      bkajoin(condition="name = name", type="left")
+        mergesort(sort="id asc", fetch=12)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` order by `id` limit 12")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where (`name` in (...))")
 -
   sql: |
     /*+TDDL:BKA_JOIN(test_hash_tb,test_hash_tb2)*/

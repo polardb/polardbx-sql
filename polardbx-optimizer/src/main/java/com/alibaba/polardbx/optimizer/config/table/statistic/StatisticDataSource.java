@@ -81,4 +81,6 @@ public interface StatisticDataSource {
     void batchReplace(final ArrayList<SystemTableColumnStatistic.Row> rowList);
 
     String scheduleJobs();
+
+    long ndvModifyTime(String schema, String tableName, String columnNames);
 }

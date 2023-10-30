@@ -84,3 +84,10 @@ select_base_one_multi_db_multi_tb:
   PRIMARY KEY (`pk`)
   ) ENGINE=InnoDB DEFAULT CHARSET=gbk dbpartition by hash(`pk`) tbpartition by hash(`pk`) tbpartitions 4;
 
+tt:
+  CREATE TABLE `tt` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  PRIMARY KEY (`c1`),
+  KEY `auto_shard_key_c2` USING BTREE (`c2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c2`)

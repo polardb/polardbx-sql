@@ -1,0 +1,24 @@
+drop table if exists `t1`;
+
+CREATE TABLE `t1` (
+`a` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`b` varchar(20) DEFAULT NULL,
+`c` varchar(20) DEFAULT NULL,
+index (b),
+key (b,c),
+key (`c`)
+);
+
+show create table t1;
+
+alter table t1 drop index b;
+
+alter table t1 drop index b_2;
+
+alter table t1 add index(b);
+
+alter table t1 add index(b, c);
+
+alter table t1 add key(c, a);
+
+show create table t1;

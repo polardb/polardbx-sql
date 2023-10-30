@@ -33,6 +33,7 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
+import org.apache.calcite.rex.RexUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -103,7 +104,7 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
 
         public RemoveProjectValueRule() {
             super(operand(LogicalProject.class,
-                operand(LogicalDynamicValues.class, any())),
+                    operand(LogicalDynamicValues.class, any())),
                 "RemoveProjectValueRule");
         }
 
@@ -113,7 +114,7 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
             // if the project node contains un-pushable function, don't transform in order to the insert rel node.
             List<RexNode> exps = project.getChildExps();
             for (RexNode node : exps) {
-                if (RexUtils.containsUnPushableFunction(node, false)) {
+                if (RexUtil.containsUnPushableFunction(node, false)) {
                     return false;
                 }
             }

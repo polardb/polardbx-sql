@@ -3,3 +3,4 @@ test_part_route
 test_part_route_tz
 #fix by ??? test_part_route_charset
 test_part_route_null
+test_part_implicit_cast

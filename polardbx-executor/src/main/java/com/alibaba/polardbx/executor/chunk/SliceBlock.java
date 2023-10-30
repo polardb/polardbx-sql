@@ -18,12 +18,14 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 
 import com.google.common.base.Preconditions;
+import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
@@ -42,7 +44,9 @@ public class SliceBlock extends AbstractCommonBlock {
     private Slice data;
     private int[] offsets;
     private WeakReference<SortKey>[] sortKeys;
+
     private int[] selection;
+
     private final boolean compatible;
 
     public SliceBlock(SliceType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets,
@@ -68,9 +72,7 @@ public class SliceBlock extends AbstractCommonBlock {
         this.sortKeys = new WeakReference[positionCount];
         this.selection = selection;
         this.compatible = false;
-        // Slice.length is the memory size in bytes.
         updateSizeInfo();
-        this.sortKeys = new WeakReference[positionCount];
     }
 
     public int realPositionOf(int position) {
@@ -329,6 +331,7 @@ public class SliceBlock extends AbstractCommonBlock {
                 }
                 realOffsets[i] = currentSize;
             }
+
             for (int position = 0; position < positionCount; position++) {
                 sliceOutput.writeInt(realOffsets[position]);
             }
@@ -346,6 +349,7 @@ public class SliceBlock extends AbstractCommonBlock {
                     }
                 }
             }
+
         } else {
             int[] offset = this.offsets;
             for (int position = 0; position < positionCount; position++) {
@@ -360,10 +364,6 @@ public class SliceBlock extends AbstractCommonBlock {
         }
     }
 
-    public int[] getOffsets() {
-        return offsets;
-    }
-
     private int beginOffset(int position) {
         return position + arrayOffset > 0 ? offsets[position + arrayOffset - 1] : 0;
     }
@@ -372,18 +372,18 @@ public class SliceBlock extends AbstractCommonBlock {
         return offsets[position + arrayOffset];
     }
 
+    @Override
+    public void updateSizeInfo() {
+        // Slice.length is the memory size in bytes.
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + data.length() + sizeOf(offsets);
+        elementUsedBytes = Byte.BYTES * positionCount + data.length() + Integer.BYTES * positionCount;
+    }
+
     public int[] getSelection() {
         return selection;
     }
 
     public boolean isCompatible() {
         return compatible;
-    }
-
-    @Override
-    public void updateSizeInfo() {
-        // Slice.length is the memory size in bytes.
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + data.length() + sizeOf(offsets);
-        elementUsedBytes = Byte.BYTES * positionCount + data.length() + Integer.BYTES * positionCount;
     }
 }

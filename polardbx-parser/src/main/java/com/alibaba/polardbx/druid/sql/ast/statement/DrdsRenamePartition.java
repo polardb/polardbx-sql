@@ -32,6 +32,7 @@ import java.util.List;
 public class DrdsRenamePartition extends SQLObjectImpl implements SQLAlterTableItem, SQLAlterTableGroupItem {
 
     private final List<Pair<SQLName, SQLName>> changePartitionsPair = new ArrayList<Pair<SQLName, SQLName>>();
+    private boolean subPartitionsRename;
 
     public List<Pair<SQLName, SQLName>> getChangePartitionsPair() {
         return changePartitionsPair;
@@ -39,6 +40,14 @@ public class DrdsRenamePartition extends SQLObjectImpl implements SQLAlterTableI
 
     public void addRenamePartitionPair(Pair<SQLName, SQLName> renamePartitionPair) {
         this.changePartitionsPair.add(renamePartitionPair);
+    }
+
+    public boolean isSubPartitionsRename() {
+        return subPartitionsRename;
+    }
+
+    public void setSubPartitionsRename(boolean subPartitionsRename) {
+        this.subPartitionsRename = subPartitionsRename;
     }
 
     @Override

@@ -55,6 +55,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
   SqlSelect sourceSelect;
   SqlIdentifier alias;
   SqlNodeList orderList;
+  SqlNode offset;
   SqlNode fetch;
   SqlNodeList keywords;
   SqlNodeList hints;
@@ -125,11 +126,13 @@ public class SqlUpdate extends SqlCall implements SqlHint {
                    SqlSelect sourceSelect,
                    SqlIdentifier alias,
                    SqlNodeList orderList,
+                   SqlNode offset,
                    SqlNode fetch,
                    SqlNodeList keywords,
                    SqlNodeList hints, OptimizerHint optimizerHint) {
     this(pos, targetTable, targetColumnList, sourceExpressionList, condition, sourceSelect, alias, orderList, fetch, keywords, hints);
     this.optimizerHints = optimizerHint;
+    this.offset = offset;
   }
 
   private SqlUpdate(SqlParserPos pos, SqlNode targetTable, SqlNodeList sourceTables,
@@ -137,7 +140,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
                     Map<SqlNode, List<SqlIdentifier>> subQueryTableMap,
                     SqlNodeList targetColumnList, SqlNodeList sourceExpressionList,
                     SqlNode condition, SqlSelect sourceSelect, SqlIdentifier alias,
-                    SqlNodeList orderList, SqlNode fetch, SqlNodeList keywords, SqlNodeList hints,
+                    SqlNodeList orderList, SqlNode offset, SqlNode fetch, SqlNodeList keywords, SqlNodeList hints,
                     OptimizerHint optimizerHints, List<Pair<SqlNode, List<SqlNode>>> sourceTableColumns,
                     boolean targetTablesCollected) {
     super(pos);
@@ -151,6 +154,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
     this.sourceSelect = sourceSelect;
     this.alias = alias;
     this.orderList = orderList;
+    this.offset = offset;
     this.fetch = fetch;
     this.keywords = keywords;
     this.hints = hints;
@@ -171,7 +175,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
 
   public List<SqlNode> getOperandList() {
     return ImmutableNullableList.of(targetTable, targetColumnList,
-        sourceExpressionList, condition, alias, orderList, fetch, keywords);
+        sourceExpressionList, condition, alias, orderList, fetch, keywords, offset);
   }
 
   @Override public void setOperand(int i, SqlNode operand) {
@@ -203,6 +207,9 @@ public class SqlUpdate extends SqlCall implements SqlHint {
       break;
     case 8:
       keywords = (SqlNodeList) operand;
+      break;
+    case 9:
+      offset = operand;
       break;
     default:
       throw new AssertionError(i);
@@ -272,6 +279,10 @@ public class SqlUpdate extends SqlCall implements SqlHint {
 
   public void setOrderList(SqlNodeList orderList) {
     this.orderList = orderList;
+  }
+
+  public SqlNode getOffset() {
+    return offset;
   }
 
   public SqlNode getFetch() {
@@ -380,7 +391,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
       orderList.commaList(writer);
       writer.endList(orderFrame);
     }
-    writer.fetchOffset(fetch, null);
+    writer.fetchOffset(fetch, offset);
     writer.endList(frame);
   }
 
@@ -457,7 +468,7 @@ public class SqlUpdate extends SqlCall implements SqlHint {
   public SqlNode clone(SqlParserPos pos) {
     return new SqlUpdate(pos, getTargetTable(), getSourceTables(), getAliases(), this.subQueryTableMap,
         getTargetColumnList(), getSourceExpressionList(), getCondition(), getSourceSelect(), getAlias(), getOrderList(),
-        getFetch(), getKeywords(), getHints(), getOptimizerHints(), getSourceTableColumns(),
+        getOffset(), getFetch(), getKeywords(), getHints(), getOptimizerHints(), getSourceTableColumns(),
         this.targetTablesCollected);
   }
 }

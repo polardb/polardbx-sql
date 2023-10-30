@@ -31,9 +31,9 @@ public class Keywords {
     private long[] hashArray;
     private Token[] tokens;
 
-    public final static Keywords     DEFAULT_KEYWORDS;
+    public final static Keywords DEFAULT_KEYWORDS;
 
-    public final static Keywords     SQLITE_KEYWORDS;
+    public final static Keywords SQLITE_KEYWORDS;
 
     static {
         Map<String, Token> map = new HashMap<String, Token>();
@@ -144,7 +144,7 @@ public class Keywords {
         map.put("WITH", Token.WITH);
         map.put("GRANT", Token.GRANT);
         map.put("REVOKE", Token.REVOKE);
-        
+
         // MySql procedure: add by zz
         map.put("WHILE", Token.WHILE);
         map.put("DO", Token.DO);
@@ -163,6 +163,15 @@ public class Keywords {
 
         map.put("LIMIT", Token.LIMIT);
 
+//        map.put("ADD", Token.ADD);
+//        map.put("MODIFY", Token.MODIFY);
+//        map.put("SPLIT", Token.SPLIT);
+//        map.put("MERGE", Token.MERGE);
+//        map.put("EXTRACT", Token.EXTRACT);
+//        map.put("MOVE", Token.MOVE);
+//        map.put("REORGANIZE", Token.REORGANIZE);
+//        map.put("RENAME", Token.RENAME);
+
         DEFAULT_KEYWORDS = new Keywords(map);
 
         Map<String, Token> sqlitemap = new HashMap<String, Token>();
@@ -177,7 +186,7 @@ public class Keywords {
         return this.keywords.containsValue(token);
     }
 
-    public Keywords(Map<String, Token> keywords){
+    public Keywords(Map<String, Token> keywords) {
         this.keywords = keywords;
 
         this.hashArray = new long[keywords.size()];
@@ -195,13 +204,13 @@ public class Keywords {
         }
     }
 
-public Token getKeyword(long hash) {
-    int index = Arrays.binarySearch(hashArray, hash);
-    if (index < 0) {
-        return null;
+    public Token getKeyword(long hash) {
+        int index = Arrays.binarySearch(hashArray, hash);
+        if (index < 0) {
+            return null;
+        }
+        return tokens[index];
     }
-    return tokens[index];
-}
 
     public Token getKeyword(String key) {
         long k = FnvHash.fnv1a_64_lower(key);

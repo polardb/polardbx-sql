@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -32,18 +33,17 @@ import java.util.List;
 public class SQLCreateTableGroupStatement extends SQLStatementImpl implements SQLCreateStatement {
     protected SQLName name;
     protected boolean ifNotExists = false;
-    protected SQLExpr partitionNum;
+    protected SQLPartitionBy sqlPartitionBy;
     protected SQLExpr locality;
 
-
-    public SQLCreateTableGroupStatement(){
+    public SQLCreateTableGroupStatement() {
     }
 
-    public SQLCreateTableGroupStatement(DbType dbType){
-        super (dbType);
+    public SQLCreateTableGroupStatement(DbType dbType) {
+        super(dbType);
     }
 
-    public String getSchemaName(){
+    public String getSchemaName() {
         if (name instanceof SQLPropertyExpr) {
             return SQLUtils.toMySqlString(((SQLPropertyExpr) name).getOwner());
         }
@@ -67,15 +67,15 @@ public class SQLCreateTableGroupStatement extends SQLStatementImpl implements SQ
         return null;
     }
 
-    public SQLExpr getPartitionNum() {
-        return partitionNum;
+    public SQLPartitionBy getSqlPartitionBy() {
+        return sqlPartitionBy;
     }
 
-    public void setPartitionNum(SQLExpr x) {
+    public void setSqlPartitionBy(SQLPartitionBy x) {
         if (x != null) {
             x.setParent(this);
         }
-        this.partitionNum = x;
+        this.sqlPartitionBy = x;
     }
 
     public String getLocality() {
@@ -122,7 +122,7 @@ public class SQLCreateTableGroupStatement extends SQLStatementImpl implements SQ
     public boolean isIfNotExists() {
         return ifNotExists;
     }
-    
+
     public void setIfNotExists(boolean ifNotExists) {
         this.ifNotExists = ifNotExists;
     }

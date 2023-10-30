@@ -22,10 +22,17 @@ import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.metadb.table.GsiStatisticsAccessorDelegate;
+import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -33,6 +40,7 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaGlobalIndexes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTables;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -48,6 +56,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -174,10 +184,75 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
             }
         }
 
+        //query gsi statistics info
+        Map<String, Set<String>> schemaAndGsis = new TreeMap<>(String::compareToIgnoreCase);
+        gsiTableBeans.forEach(tableBean -> {
+            if (tableBean != null && tableBean.gsiMetaBean != null) {
+                GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
+                String schema = indexBean.tableSchema;
+                String index = indexBean.indexName;
+                if (!schemaAndGsis.containsKey(schema)) {
+                    schemaAndGsis.put(schema, new TreeSet<>(String::compareToIgnoreCase));
+                }
+                schemaAndGsis.get(schema).add(index);
+            }
+        });
+        GsiStatisticsManager statisticsManager = GsiStatisticsManager.getInstance();
+        if (statisticsManager.enableGsiStatisticsCollection()) {
+            for (String schemaToSync : schemaAndGsis.keySet()) {
+                SyncManagerHelper.sync(
+                    new GsiStatisticsSyncAction(schemaToSync, null, null, GsiStatisticsSyncAction.QUERY_RECORD));
+            }
+        }
+
+        //collect records by schemaName and indexName: Map<indexSchema, Map<indexName, record>>
+        Map<String, Map<String, IndexesRecord>> records = new TreeMap<>(String::compareToIgnoreCase);
+        for (String schema : schemaAndGsis.keySet()) {
+            Set<String> gsiNames = schemaAndGsis.get(schema);
+            List<IndexesRecord> tempRecords = queryGsiStatisticsByCondition(
+                ImmutableSet.of(schemaName),
+                null,
+                null,
+                gsiNames,
+                null
+            );
+            for (IndexesRecord rd : tempRecords) {
+                if (!records.containsKey(schema)) {
+                    records.put(schema, new TreeMap<>(String::compareToIgnoreCase));
+                }
+                records.get(schema).put(rd.indexName, rd);
+            }
+        }
+
         // make sure all GSI tables are presented in the final result
         gsiTableBeans.forEach(tableBean -> {
             if (tableBean != null && tableBean.gsiMetaBean != null) {
                 GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
+                // visit count, last access time
+                String schema = indexBean.tableSchema;
+                String indexName = indexBean.indexName;
+                String primaryTableName = indexBean.tableName;
+
+                Long cardinality = null;
+                Long rowCount = null;
+                IndexesRecord gsiStatisticsRecord = null;
+                if (records.get(schema) != null && records.get(schema).get(indexName) != null) {
+                    gsiStatisticsRecord = records.get(schema).get(indexName);
+
+                    //selectivity
+                    List<GsiMetaManager.GsiIndexColumnMetaBean> indexColumns = indexBean.indexColumns;
+                    String columnStr = indexColumns.stream().map(indexColumn -> indexColumn.columnName)
+                        .collect(Collectors.joining(","));
+                    StatisticResult cardinalityResult =
+                        StatisticManager.getInstance()
+                            .getCardinality(schema, primaryTableName, columnStr, false, false);
+                    cardinality = cardinalityResult.getLongValue();
+
+                    StatisticResult rowCountResult =
+                        StatisticManager.getInstance().getRowCount(schema, primaryTableName, false);
+                    rowCount = rowCountResult.getLongValue();
+                }
+
                 resultCursor.addRow(new Object[] {
                     indexBean.tableSchema,
                     indexBean.tableName,
@@ -195,7 +270,11 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
                     tableBean.tbPartitionPolicy,
                     tableBean.tbPartitionCount,
                     indexBean.indexStatus.toString(),
-                    gsiSizes.get(tableBean.tableName) // may be NULL if this GSI can not get size
+                    gsiSizes.get(tableBean.tableName), // may be NULL if this GSI can not get size,
+                    gsiStatisticsRecord == null ? null : gsiStatisticsRecord.visitFrequency,
+                    gsiStatisticsRecord == null ? null : gsiStatisticsRecord.lastAccessTime,
+                    cardinality,
+                    rowCount
                 });
             }
         });
@@ -271,6 +350,17 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         }
 
         return tableNames;
+    }
+
+    private List<IndexesRecord> queryGsiStatisticsByCondition(Set<String> schemaNames, Set<String> tableNames,
+                                                              String tableLike, Set<String> indexNames,
+                                                              String indexLike) {
+        return new GsiStatisticsAccessorDelegate<List<IndexesRecord>>() {
+            @Override
+            protected List<IndexesRecord> invoke() {
+                return indexesAccessor.queryGsiByCondition(schemaNames, tableNames, tableLike, indexNames, indexLike);
+            }
+        }.execute();
     }
 
 }

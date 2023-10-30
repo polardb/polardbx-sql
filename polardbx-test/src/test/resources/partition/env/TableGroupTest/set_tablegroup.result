@@ -45,9 +45,9 @@ alter table pt_k_5 set tablegroup=t_a_t_s_tg2 force;
 alter table pt_k_6 set tablegroup=t_a_t_s_tg2 force;
 is not match to table
 alter table pt_k_6 set tablegroup=t_a_t_s_tg10 force;
-## error_msg: $# is not compatible with tablegroup #$
+## error_msg: $# are not compatible with tablegroup #$
 alter table pt_k_7 set tablegroup=t_a_t_s_tg10 force;
-is not compatible with tablegroup
+are not compatible with tablegroup
 alter table pt_k_7 set tablegroup=t_a_t_s_tg4 force;
 ## error_msg: $# is not match to table #$
 alter table pt_k_8 set tablegroup=t_a_t_s_tg4 force;
@@ -130,10 +130,10 @@ pt_k_2,CREATE TABLE `pt_k_2` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`b`)
 PARTITIONS 3
-(PARTITION p1 VALUES LESS THAN (-3074457345618258601) ENGINE = InnoDB,
- PARTITION p2 VALUES LESS THAN (3074457345618258603) ENGINE = InnoDB,
- PARTITION p3 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
-/* tablegroup = `tg` */
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
 /*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_3;
 Table,Create Table
 pt_k_3,CREATE TABLE `pt_k_3` (

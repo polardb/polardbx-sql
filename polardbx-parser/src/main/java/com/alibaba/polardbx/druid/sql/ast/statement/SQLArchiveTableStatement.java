@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -68,8 +69,12 @@ public class SQLArchiveTableStatement extends SQLStatementImpl {
         return spIdList;
     }
 
-
     public List<SQLIntegerExpr> getpIdList() {
         return pIdList;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.ARCHIVE;
     }
 }

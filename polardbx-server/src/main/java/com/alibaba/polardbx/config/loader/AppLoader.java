@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.config.ServerConfigManager;
 import com.alibaba.polardbx.config.SystemConfig;
@@ -75,6 +76,8 @@ public abstract class AppLoader extends BaseAppLoader {
         ds.putConnectionProperties(ConnectionProperties.PROCESS_AUTO_INCREMENT_BY_SEQUENCE, true);
         ds.putConnectionProperties(ConnectionProperties.INIT_CONCURRENT_POOL_EVERY_CONNECTION, false);
         ds.putConnectionProperties(ConnectionProperties.ENABLE_SELF_CROSS_JOIN, true);
+        ds.putConnectionProperties(ConnectionProperties.ENABLE_ALTER_DDL, true);
+        ds.putConnectionProperties(ConnectionProperties.ENABLE_DDL, ConfigDataMode.needInitMasterModeResource());
         ds.putConnectionProperties(ConnectionProperties.NET_WRITE_TIMEOUT, 28800);
         ds.putConnectionProperties(ConnectionProperties.RETRY_ERROR_SQL_ON_OLD_SERVER,
             system.isRetryErrorSqlOnOldServer());
@@ -87,10 +90,6 @@ public abstract class AppLoader extends BaseAppLoader {
         ds.putConnectionProperties(ConnectionProperties.SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE,
             system.getDropOldDataBaseAfterSwitchDataSource());
 
-        if (system.getCoronaMode() == 1) {
-            //corona模式下rule不全，也会从0库加载表
-            ds.putConnectionProperties(ConnectionProperties.SHOW_TABLES_FROM_RULE_ONLY, false);
-        }
         if (system.getWorkloadType() != null) {
             ds.putConnectionProperties(ConnectionProperties.WORKLOAD_TYPE, system.getWorkloadType());
         }

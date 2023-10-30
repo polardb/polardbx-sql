@@ -28,17 +28,23 @@ public class SQLAssignItem extends SQLExprImpl implements SQLReplaceable {
     private SQLExpr target;
     private SQLExpr value;
 
-    public SQLAssignItem(){
+    public SQLAssignItem() {
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLAssignItem that = (SQLAssignItem) o;
 
-        if (target != null ? !target.equals(that.target) : that.target != null) return false;
+        if (target != null ? !target.equals(that.target) : that.target != null) {
+            return false;
+        }
         return value != null ? value.equals(that.value) : that.value == null;
     }
 
@@ -49,7 +55,7 @@ public class SQLAssignItem extends SQLExprImpl implements SQLReplaceable {
         return result;
     }
 
-    public SQLAssignItem(SQLExpr target, SQLExpr value){
+    public SQLAssignItem(SQLExpr target, SQLExpr value) {
         setTarget(target);
         setValue(value);
     }

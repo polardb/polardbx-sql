@@ -51,7 +51,6 @@ public class WorkloadUtil {
                 }
             }
         }
-
         RelOptCost cost = mq.getCumulativeCost(rel);
         double ioThreshold = plannerContext.getParamManager().getLong(ConnectionParams.WORKLOAD_IO_THRESHOLD);
         return cost.getIo() < ioThreshold ? WorkloadType.TP : WorkloadType.AP;

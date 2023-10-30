@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
@@ -37,7 +38,7 @@ import java.util.Map;
 @TaskName(name = "AlterTableGroupAddSubTaskMetaTask")
 // here is add meta to complex_task_outline table, no need to update tableVersion,
 // so no need to extends from BaseGmsTask
-public class AlterTableGroupAddSubTaskMetaTask extends BaseDdlTask {
+public class AlterTableGroupAddSubTaskMetaTask extends BaseGmsTask {
 
     protected String tableName;
     protected String sourceSql;
@@ -54,7 +55,7 @@ public class AlterTableGroupAddSubTaskMetaTask extends BaseDdlTask {
                                              Long tableGroupId, String sourceSql, int status, int type,
                                              TablePartitionRecord logTableRec, List<TablePartitionRecord> partRecList,
                                              Map<String, List<TablePartitionRecord>> subPartRecInfos) {
-        super(schemaName);
+        super(schemaName, tableName);
         this.tableName = tableName;
         this.sourceSql = sourceSql;
         this.type = type;
@@ -102,36 +103,36 @@ public class AlterTableGroupAddSubTaskMetaTask extends BaseDdlTask {
     }
 
     @Override
-    protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
-        executeImpl(metaDbConnection, executionContext);
-    }
-
-    @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        //ComplexTaskMetaManager.getInstance().reload();
-    }
-
-    @Override
-    protected void onRollbackSuccess(ExecutionContext executionContext) {
-        //ComplexTaskMetaManager.getInstance().reload();
-    }
-
-    @Override
-    protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
-        rollbackImpl(metaDbConnection, executionContext);
     }
 
     private void updateTablePartitionsInfo() {
         List<PartitionGroupRecord> unVisiablePartitionGroupRecords =
             TableGroupUtils.getAllUnVisiablePartitionGroupByGroupId(tableGroupId);
-        for (TablePartitionRecord record : partRecList) {
-            for (PartitionGroupRecord precord : unVisiablePartitionGroupRecords) {
-                if (precord.partition_name.equalsIgnoreCase(record.partName)) {
-                    record.setGroupId(precord.id);
-                    break;
+
+        if (subPartRecInfos.isEmpty()) {
+            for (TablePartitionRecord record : partRecList) {
+                for (PartitionGroupRecord precord : unVisiablePartitionGroupRecords) {
+                    if (precord.partition_name.equalsIgnoreCase(record.partName)) {
+                        record.setGroupId(precord.id);
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (Map.Entry<String, List<TablePartitionRecord>> phyPartRecsItem : subPartRecInfos.entrySet()) {
+                List<TablePartitionRecord> phyPartRecs = phyPartRecsItem.getValue();
+                for (TablePartitionRecord record : phyPartRecs) {
+                    for (PartitionGroupRecord phyRec : unVisiablePartitionGroupRecords) {
+                        if (phyRec.partition_name.equalsIgnoreCase(record.partName)) {
+                            record.setGroupId(phyRec.id);
+                            break;
+                        }
+                    }
                 }
             }
         }
+
     }
 
 }

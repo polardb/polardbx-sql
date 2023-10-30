@@ -115,4 +115,9 @@ public class SqlAddColumn extends SqlAlterSpecification {
     public SqlAlterSpecification replaceTableName(SqlIdentifier newTableName) {
         return new SqlAddColumn(newTableName, colName, colDef, first, afterColumn, sourceSql, getParserPosition());
     }
+
+    @Override
+    public boolean supportFileStorage() {
+        return !colDef.isGeneratedAlways() && !colDef.isGeneratedAlwaysLogical();
+    }
 }

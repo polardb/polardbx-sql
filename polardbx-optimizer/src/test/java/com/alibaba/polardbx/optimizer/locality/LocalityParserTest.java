@@ -67,7 +67,7 @@ public class LocalityParserTest {
             Pair.of("az1,az2,az3,az4,az5,az6,az7,az8,az9", PrimaryZoneInfo.build(answer1)),
             Pair.of("az9;az8;az7;az6;az5", PrimaryZoneInfo.build(answer2))
         );
-        for (val testCase : testCases) {
+        for (Pair<String, PrimaryZoneInfo> testCase : testCases) {
 
             PrimaryZoneInfo p = PrimaryZoneInfo.parse(testCase.getKey());
             Assert.assertEquals(testCase.getValue(), p);

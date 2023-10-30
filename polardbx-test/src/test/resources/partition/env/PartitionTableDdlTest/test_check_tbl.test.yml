@@ -1,3 +1,5 @@
+create database d_check_table_test MODE  'auto';
+use d_check_table_test;
 drop table if exists tbl1;
 drop table if exists tbl2;
 drop table if exists tbl3;
@@ -17,4 +19,11 @@ broadcast;
 check table tbl1;
 check table tbl2;
 check table tbl3;
+
+USE polardbx;
+CHECK TABLE d_check_table_test.tbl1;
+CHECK TABLE d_check_table_test.tbl2;
+CHECK TABLE d_check_table_test.tbl3;
+drop database d_check_table_test;
+
 

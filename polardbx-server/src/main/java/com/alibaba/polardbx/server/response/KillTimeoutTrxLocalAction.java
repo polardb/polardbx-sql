@@ -69,18 +69,18 @@ public class KillTimeoutTrxLocalAction implements Runnable {
 
         long currentTimeMs = System.currentTimeMillis();
         for (ITransaction transaction : transactions) {
-            if (!transaction.isDistributed()) {
+            if (!transaction.isDistributed() || transaction.isAsyncCommit()) {
                 continue;
             }
             final AbstractTransaction tx = (AbstractTransaction) transaction;
             // Ignore trx without start time(which is not actual started).
-            if (tx.getStartTime() != 0) {
+            if (tx.getStartTimeInMs() > 0) {
                 final TConnection connection = (TConnection) tx.getExecutionContext().getConnection();
                 final long timeoutTime = tx.getMaxTime() * 1000;
 
                 final String trxId = Long.toHexString(tx.getId());
                 final String type = tx.getType().toString();
-                final long duration = currentTimeMs - tx.getStartTime();
+                final long duration = currentTimeMs - tx.getStartTimeInMs();
                 final String state = tx.getState().toString();
 
                 if (duration > timeoutTime && timeoutTime > 1000) {

@@ -23,10 +23,10 @@ import com.google.common.base.Function;
  * <p>Most commonly, it is an item in a FROM clause, and consists of a namespace
  * (the columns it provides), and optional name (table alias), and ordinal
  * within the FROM clause. */
-class ScopeChild {
+public class ScopeChild {
   final int ordinal;
   final String name;
-  final SqlValidatorNamespace namespace;
+  final public SqlValidatorNamespace namespace;
   final boolean nullable;
 
   static final Function<ScopeChild, SqlValidatorNamespace> NAMESPACE_FN =
@@ -58,6 +58,14 @@ class ScopeChild {
     this.namespace = namespace;
     this.nullable = nullable;
   }
+
+    public String getName() {
+        return name;
+    }
+
+    public SqlValidatorNamespace getNamespace() {
+        return namespace;
+    }
 }
 
 // End ScopeChild.java

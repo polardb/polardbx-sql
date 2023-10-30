@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 public class MySqlShowEngineStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
     private SQLExpr name;
-    private Option  option;
+    private Option option;
 
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {

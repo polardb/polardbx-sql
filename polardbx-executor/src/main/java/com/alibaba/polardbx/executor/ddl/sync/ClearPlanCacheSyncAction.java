@@ -34,7 +34,7 @@ public class ClearPlanCacheSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        PlanManager.getInstance().cleanCache(schemaName);
+        PlanManager.getInstance().invalidateSchema(schemaName);
         return null;
     }
 

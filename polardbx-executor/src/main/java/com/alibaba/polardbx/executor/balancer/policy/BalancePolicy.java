@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.executor.balancer.policy;
 
+import com.alibaba.polardbx.common.model.privilege.DbInfo;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
+import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.StoragePoolUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -47,8 +50,18 @@ public interface BalancePolicy {
                                                BalanceOptions options,
                                                List<String> schemaNameList) {
         return schemaNameList.stream()
-                .flatMap(schema -> applyToDb(ec, stats.get(schema), options, schema).stream())
-                .collect(Collectors.toList());
+            .flatMap(schema -> applyToDb(ec, stats.get(schema), options, schema).stream())
+            .collect(Collectors.toList());
+    }
+
+    default List<BalanceAction> applyToMultiTenantDb(ExecutionContext ec,
+                                                     Map<String, BalanceStats> stats,
+                                                     BalanceOptions options,
+                                                     String storagePoolName,
+                                                     List<String> schemaNameList) {
+        return schemaNameList.stream()
+            .flatMap(schema -> applyToTenantDb(ec, stats.get(schema), options, storagePoolName, schema).stream())
+            .collect(Collectors.toList());
     }
 
     default List<BalanceAction> applyToDb(ExecutionContext ec,
@@ -56,16 +69,37 @@ public interface BalancePolicy {
                                           BalanceOptions options,
                                           String schema) {
         return DbInfoManager.getInstance().isNewPartitionDb(schema) ?
-                applyToPartitionDb(ec, options, stats, schema) :
-                applyToShardingDb(ec, options, stats, schema);
+            applyToPartitionDb(ec, options, stats, schema) :
+            applyToShardingDb(ec, options, stats, schema);
     }
 
+    default List<BalanceAction> applyToTenantDb(ExecutionContext ec,
+                                                BalanceStats stats,
+                                                BalanceOptions options,
+                                                String storagePoolName,
+                                                String schema) {
+        if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+            return applyToTenantPartitionDb(ec, options, stats, storagePoolName, schema);
+        } else if (storagePoolName.equalsIgnoreCase(StoragePoolUtils.DEFAULT_STORAGE_POOL)) {
+            return applyToShardingDb(ec, options, stats, schema);
+        } else {
+            return new ArrayList<>();
+        }
+    }
+
+    default List<BalanceAction> applyToTenantPartitionDb(ExecutionContext ec,
+                                                         BalanceOptions options,
+                                                         BalanceStats stats,
+                                                         String storagePoolName,
+                                                         String schema) {
+        return null;
+    }
 
     default List<BalanceAction> applyToTableGroup(ExecutionContext ec,
                                                   BalanceOptions options,
                                                   BalanceStats stats,
                                                   String schema,
-                                                  String tableGroupName ) {
+                                                  String tableGroupName) {
         return null;
     }
 
@@ -89,4 +123,11 @@ public interface BalancePolicy {
         throw new UnsupportedOperationException("TODO");
     }
 
+    default List<BalanceAction> applyToTable(ExecutionContext ec,
+                                             BalanceOptions options,
+                                             BalanceStats stats,
+                                             String schema,
+                                             String tableName) {
+        throw new UnsupportedOperationException("TODO");
+    }
 }

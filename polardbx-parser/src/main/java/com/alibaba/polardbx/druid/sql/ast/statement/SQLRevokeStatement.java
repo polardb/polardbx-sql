@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLRevokeStatement extends SQLPrivilegeStatement {
@@ -25,10 +26,9 @@ public class SQLRevokeStatement extends SQLPrivilegeStatement {
 
     }
 
-    public SQLRevokeStatement(DbType dbType){
+    public SQLRevokeStatement(DbType dbType) {
         super(dbType);
     }
-
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
@@ -45,5 +45,10 @@ public class SQLRevokeStatement extends SQLPrivilegeStatement {
 
     public void setGrantOption(boolean grantOption) {
         this.grantOption = grantOption;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

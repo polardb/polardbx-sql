@@ -349,13 +349,12 @@ public class AlterTableValidateTaskTest extends AsyncDDLBaseNewDBTestCase {
             "alter table mengshi1 drop column b", "not supported");
     }
 
-
     @Test
     public void testAlterTableModifyPartitionKey() {
         dropTableIfExists(tddlConnection, "mengshi1");
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create table mengshi1(a int,b char) dbpartition by hash(a)");
         JdbcUtil.executeUpdateFailed(tddlConnection,
-            "alter table mengshi1 modify column a int", "not supported");
+            "alter table mengshi1 modify column a bigint", "not support");
     }
 
     @Test

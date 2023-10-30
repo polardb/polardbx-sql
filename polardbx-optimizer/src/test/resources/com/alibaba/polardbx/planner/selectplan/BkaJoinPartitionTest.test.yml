@@ -1,0 +1,33 @@
+- sql: |
+    /*+TDDL:ENABLE_MPP=false*/SELECT * FROM test1 LEFT JOIN test3 ON test3.shipmentId<=>test1.id ;
+
+  plan: |
+
+    bkajoin(condition="shipmentid <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="test1[p1,p2,p3]", shardcount=3, sql="select `id`, `warehousecode`, `code` from `test1` as `test1`")
+      gather(concurrent=true)
+        logicalview(tables="test3[p1,p2,p3]", shardcount=3, sql="select `id`, `shipmentid`, `warehousecode`, `shipmentcode` from `test3` as `test3` where (`shipmentid` in (...))")
+
+- sql: |
+    /*+TDDL:ENABLE_MPP=false*/SELECT * FROM test1 LEFT JOIN test3 ON test3.shipmentCode=test1.code AND  test3.shipmentId<=>test1.id ;
+
+  plan: |
+
+    bkajoin(condition="shipmentcode = code and shipmentid <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="test1[p1,p2,p3]", shardcount=3, sql="select `id`, `warehousecode`, `code` from `test1` as `test1`")
+      gather(concurrent=true)
+        logicalview(tables="test3[p1,p2,p3]", shardcount=3, sql="select `id`, `shipmentid`, `warehousecode`, `shipmentcode` from `test3` as `test3` where (((`shipmentcode`, `shipmentid`)) in (...))")
+
+
+- sql: |
+    /*+TDDL:ENABLE_MPP=false*/SELECT * FROM test1 LEFT JOIN test3 ON test3.shipmentCode<=>test1.code AND  test3.shipmentId<=>test1.id ;
+
+  plan: |
+
+    bkajoin(condition="shipmentcode <=> code and shipmentid <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="test1[p1,p2,p3]", shardcount=3, sql="select `id`, `warehousecode`, `code` from `test1` as `test1`")
+      gather(concurrent=true)
+        logicalview(tables="test3[p1,p2,p3]", shardcount=3, sql="select `id`, `shipmentid`, `warehousecode`, `shipmentcode` from `test3` as `test3` where (`shipmentid` in (...))")

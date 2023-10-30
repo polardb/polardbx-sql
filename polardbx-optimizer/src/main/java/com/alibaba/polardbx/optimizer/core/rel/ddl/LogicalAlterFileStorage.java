@@ -26,10 +26,21 @@ import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
  * @author chenzilin
  */
 public class LogicalAlterFileStorage extends BaseDdlOperation {
+
     private AlterFileStoragePreparedData preparedData;
 
     public LogicalAlterFileStorage(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public void preparedData() {
@@ -56,4 +67,5 @@ public class LogicalAlterFileStorage extends BaseDdlOperation {
     public static LogicalAlterFileStorage create(DDL ddl) {
         return new LogicalAlterFileStorage(ddl);
     }
+
 }

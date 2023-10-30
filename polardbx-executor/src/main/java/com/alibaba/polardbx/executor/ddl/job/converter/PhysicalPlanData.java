@@ -147,4 +147,18 @@ public class PhysicalPlanData {
         return result;
     }
 
+    public List<String> explainInfo() {
+        String explainStringTemplate = "%s( tables=\"%s\", shardCount=%d, sql=\"%s\" )";
+        int shardCount = this.tableTopology.keySet().stream().mapToInt(o -> this.tableTopology.get(o).size()).sum();
+        String formatSql = this.sqlTemplate.replace("?\n\t", "? ").
+            replace("  ", " ").replace("?  ", "? ").replace("\t", "  ");
+        String explainString = String.format(explainStringTemplate,
+            this.getKind(),
+            this.getLogicalTableName(),
+            shardCount,
+            formatSql);
+        List<String> result = new ArrayList<>();
+        result.add(explainString);
+        return result;
+    }
 }

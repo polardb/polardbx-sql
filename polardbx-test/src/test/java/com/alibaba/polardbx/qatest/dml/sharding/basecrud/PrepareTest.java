@@ -21,12 +21,12 @@ import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
-import javax.annotation.concurrent.NotThreadSafe;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;

@@ -29,8 +29,10 @@ import java.util.List;
 
 /**
  * @author chenzilin
+ * @date 2022/1/17 16:14
  */
 public class InformationSchemaFileStorage extends VirtualView {
+
     public InformationSchemaFileStorage(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet, VirtualViewType.FILE_STORAGE);
     }
@@ -43,11 +45,14 @@ public class InformationSchemaFileStorage extends VirtualView {
     protected RelDataType deriveRowType() {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new ArrayList<>();
+
         columns.add(new RelDataTypeFieldImpl("URI", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ENGINE", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ROLE", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("READ_LOCK_COUNT", 2, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("WRITE_LOCK_COUNT", 2, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
         return typeFactory.createStructType(columns);
     }
 }
+

@@ -54,7 +54,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.ROW;
  */
 public class PartPredRewriter {
 
-    protected static RexNode  rewritePartPredicate(PartitionInfo partInfo,
+    protected static RexNode rewritePartPredicate(PartitionInfo partInfo,
                                                   RelDataType relRowType,
                                                   RexNode partPred,
                                                   PartPruneStepBuildingContext context) {
@@ -99,43 +99,6 @@ public class PartPredRewriter {
         }
 
         SqlKind kind = partPred.getKind();
-
-//        if (kind == SqlKind.IN && ((RexCall) partPred).getOperands().get(1).getKind() == SqlKind.ROW) {
-//            // expand IN expr and transform it to OR
-//            // RexDynamicParam.subIndexForInExpr meaning the index num of IN args, so RexDynamicParam with
-//            // subIndexForInExpr=1 meaning value "b" in case like "ROW(a, b, c)"
-//            // xx IN ROW(RexDynamicParam) ==> xx IN ROW(a, b, c) ==> xx = a OR xx = b OR xx = c
-//            // And RexDynamicParam with subIndexForInExpr=1 and skIndexForInExpr=0 meaning "c" in case like
-//            // ROW((a,b), (c,d))
-//            // ROW(x1, x2) IN ROW(RexDynamicParam) ==> ROW(x1, x2) IN ROW((a,b), (c,d))
-//            RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
-//            List<RexNode> operands = Lists.newArrayList();
-//            RexCall row = (RexCall) ((RexCall) partPred).getOperands().get(1);
-//            RexNode operand0 = ((RexCall) partPred).getOperands().get(0);
-//            for (RexNode args : row.getOperands()) {
-//                List<RexNode> equalOperands = Lists.newArrayList();
-//                equalOperands.add(operand0);
-//                if (operand0.getKind() == SqlKind.ROW
-//                    && args instanceof RexDynamicParam) {
-//                    // meaning row(xx, xx) in ((xx, xx), (xx,xx))
-//                    List<RexNode> newOps = Lists.newArrayList();
-//                    RexDynamicParam orgin = (RexDynamicParam) args;
-//                    for (int i = 0; i < ((RexCall) operand0).getOperands().size(); i++) {
-//                        RexDynamicParam tmp = new RexDynamicParam(orgin.getType(), orgin.getIndex());
-//                        tmp.setSubIndex(orgin.getSubIndex());
-//                        tmp.setSkIndex(i);
-//                        newOps.add(tmp);
-//                    }
-//                    equalOperands.add(rexBuilder.makeCall(ROW, newOps));
-//                } else {
-//                    equalOperands.add(args);
-//                }
-//                operands.add(rexBuilder.makeCall(EQUALS, equalOperands));
-//            }
-//            partPred = rexBuilder.makeCall(OR, operands);
-//            kind = SqlKind.OR;
-//        }
-
         RexCall partPredInfo = (RexCall) partPred;
         RexNode rewritedPred = null;
 
@@ -302,7 +265,7 @@ public class PartPredRewriter {
         if (!isPartCol) {
             return null;
         }
-        boolean isSingleCol = partInfo.getPartitionBy().getPartitionColumnNameList().size() == 1;
+        boolean isSingleCol = context.getPartByDef().getPartitionColumnNameList().size() == 1;
 
         switch (opKind) {
         case LESS_THAN:
@@ -458,7 +421,7 @@ public class PartPredRewriter {
             return null;
         }
 
-        boolean isSingleCol = partInfo.getPartitionBy().getPartitionColumnNameList().size() == 1;
+        boolean isSingleCol = context.getPartByDef().getPartitionColumnNameList().size() == 1;
 
         //-----left-----
         RexNode geExpr = null;
@@ -635,7 +598,7 @@ public class PartPredRewriter {
                 input = left;
                 constExpr = right;
                 predOp = op;
-            } else if (isConstant(left, context) && isInputRef(left, context)) {
+            } else if (isConstant(left, context) && isInputRef(right, context)) {
                 input = right;
                 constExpr = left;
                 predOp = inverseOp(op);
@@ -1149,7 +1112,7 @@ public class PartPredRewriter {
                     enableInQueryParamOpti = false;
                     break;
                 } else {
-                    if (((RexDynamicParam)valueNode).getIndex() < 0) {
+                    if (((RexDynamicParam) valueNode).getIndex() < 0) {
                         enableInQueryParamOpti = false;
                         break;
                     }
@@ -1175,7 +1138,8 @@ public class PartPredRewriter {
                 List<RexNode> newOpsOfActiveOneRowVal = Lists.newArrayList();
                 RexDynamicParam oneRowValDynamic = (RexDynamicParam) oneRowVal;
                 for (int c = 0; c < leftItem.getOperands().size(); c++) {
-                    RexDynamicParam oneValDynamicInRow = new RexDynamicParam(oneRowValDynamic.getType(), oneRowValDynamic.getIndex());
+                    RexDynamicParam oneValDynamicInRow =
+                        new RexDynamicParam(oneRowValDynamic.getType(), oneRowValDynamic.getIndex());
                     oneValDynamicInRow.setSubIndex(oneRowValDynamic.getSubIndex());
                     oneValDynamicInRow.setSkIndex(c);
                     newOpsOfActiveOneRowVal.add(oneValDynamicInRow);
@@ -1218,7 +1182,7 @@ public class PartPredRewriter {
         RexNode right = operands.get(1);
 
         Map<String, Integer> partColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        List<String> colList = partInfo.getPartitionBy().getPartitionColumnNameList();
+        List<String> colList = context.getPartByDef().getPartitionColumnNameList();
         for (int i = 0; i < colList.size(); i++) {
             partColIdxMap.put(colList.get(i), i);
         }
@@ -1333,7 +1297,7 @@ public class PartPredRewriter {
                 return true;
             } else if (SubQueryDynamicParamUtils.isMaxOneRowScalarSubQueryConstant(rexNode)) {
                 return true;
-            }else {
+            } else {
                 return false;
             }
         }

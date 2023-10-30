@@ -1,0 +1,32 @@
+schemaName: "rebalance_test_d3"
+dnNum: 4
+singleBalanceCaseBeans:
+  - createTableActions:
+    - tableName: "t1"
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+                                 `c1` bigint NOT NULL,
+                                 `c2` date NOT NULL,
+                                 `c3` double NOT NULL
+         )
+             PARTITION BY HASH (c1, c2)
+         PARTITIONS 32;"
+      keyDistribution: "normal"
+      distributionParameter: ["1"]
+      rowNum: 6000
+    manipulateActions:
+    - conditionStmt:
+      expectedConditionResult: [ "0" ]
+      manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
+      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
+      expectedManipulateColumns: [ 2 ]
+    dataDistributionCheckActions:
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+      expectedConditionResult: [ "0" ]
+      objectName: "t1"
+      objectType: "table"
+      expectedMu: 0.2

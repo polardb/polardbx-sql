@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
-import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
@@ -29,7 +28,6 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 public class AlterPartitionTableTruncatePartitionBuilder extends AlterTableBuilder {

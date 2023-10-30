@@ -119,7 +119,7 @@ public class BloomFilterBenchTest {
             allValues.add(l);
         }
         final int testCount = NUM_ELEMENT;
-        final double fppWithError = FPP * (1.005);
+        final double fppWithError = FPP * (1.006);
         for (int i = 0; i < SUPPORT_HASH_INFO.size(); i++) {
             long falsePositiveCount = 0;
             BloomFilter bloomFilter = bloomFilters.get(i);

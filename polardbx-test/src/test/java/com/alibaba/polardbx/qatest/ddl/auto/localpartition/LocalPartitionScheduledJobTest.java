@@ -23,8 +23,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import net.jcip.annotations.NotThreadSafe;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -193,7 +191,7 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
             + "CRON '0 0 12 1/5 * ?'  "
             + "TIMEZONE '+00:00'";
 
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Duplicate Scheduled Job For Local Partition Table");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Duplicate Scheduled Job For LOCAL_PARTITION");
 
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             String.format("drop table %s.%s", tddlDatabase1, primaryTableName)

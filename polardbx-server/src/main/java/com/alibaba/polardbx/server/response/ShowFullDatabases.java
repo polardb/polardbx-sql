@@ -40,7 +40,7 @@ public class ShowFullDatabases extends ShowDatabases {
     private static final int FIELD_COUNT = 2;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -51,10 +51,9 @@ public class ShowFullDatabases extends ShowDatabases {
 
         fields[i] = PacketUtil.getField("MODE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-        eof.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -67,11 +66,15 @@ public class ShowFullDatabases extends ShowDatabases {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
         TreeSet<String> schemaSet = getSchemas(c);
 
         for (String name : schemaSet) {
@@ -79,13 +82,13 @@ public class ShowFullDatabases extends ShowDatabases {
             boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(name);
             row.add(StringUtil.encode(name, c.getCharset()));
             row.add(StringUtil.encode(isNewPart ? "auto" : "drds", c.getCharset()));
-            row.packetId = ++packetId;
+            row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -93,6 +96,7 @@ public class ShowFullDatabases extends ShowDatabases {
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 
 }

@@ -20,7 +20,6 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
@@ -77,7 +76,6 @@ public class AlterTableSetTableGroupRefreshMetaTask extends AlterTableGroupRefre
         updateTaskStatus(metaDbConnection);
 
         long newTableGroupId = newTableGroupConfig.getTableGroupRecord().id;
-        long oldTableGroupId = oldPartitionInfo.getTableGroupId();
 
         TablePartitionConfig oldTablePartitionConfig =
             tablePartitionAccessor.getTablePartitionConfig(schemaName, tableName, false);
@@ -88,22 +86,36 @@ public class AlterTableSetTableGroupRefreshMetaTask extends AlterTableGroupRefre
         List<TablePartitionSpecConfig> tablePartitionSpecConfigs = oldTablePartitionConfig.getPartitionSpecConfigs();
         List<PartitionGroupRecord> partitionGroupRecords = newTableGroupConfig.getPartitionGroupRecords();
 
-        for (TablePartitionSpecConfig tablePartitionSpecConfig : tablePartitionSpecConfigs) {
-            TablePartitionRecord tablePartitionRecord = tablePartitionSpecConfig.getSpecConfigInfo();
-            PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
-                .filter(o -> o.getPartition_name().equalsIgnoreCase(tablePartitionRecord.getPartName())).findFirst()
-                .orElse(null);
-            if (partitionGroupRecord == null) {
+        for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
+            TablePartitionRecord tablePartitionRecord =
+                tablePartitionSpecConfigs.stream().map(tp -> tp.getSpecConfigInfo())
+                    .filter(tp -> tp.getPartName().equalsIgnoreCase(partitionGroupRecord.getPartition_name()))
+                    .findFirst().orElse(null);
+
+            if (tablePartitionRecord == null && oldPartitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+                for (TablePartitionSpecConfig tablePartitionSpecConfig : tablePartitionSpecConfigs) {
+                    tablePartitionRecord =
+                        tablePartitionSpecConfig.getSubPartitionSpecConfigs().stream().map(tp -> tp.getSpecConfigInfo())
+                            .filter(tp -> tp.getPartName().equalsIgnoreCase(partitionGroupRecord.getPartition_name()))
+                            .findFirst().orElse(null);
+                    if (tablePartitionRecord != null) {
+                        break;
+                    }
+                }
+            }
+
+            if (tablePartitionRecord == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     "can't find the partition:" + partitionGroupRecord.getPartition_name());
             }
+
             // 1.2、update partition's groupid
             tablePartitionAccessor.updateGroupIdById(partitionGroupRecord.id, tablePartitionRecord.getId());
         }
 
         // 2、cleanup partition_group_delta
         partitionGroupAccessor.deletePartitionGroupsByTableGroupId(newTableGroupId, true);
-        partitionGroupAccessor.deletePartitionGroupsByTableGroupId(oldTableGroupId, true);
+        partitionGroupAccessor.deletePartitionGroupsByTableGroupId(sourceTableGroupId, true);
 
         // 3、cleanup table_partition_delta
         // only delete the related records

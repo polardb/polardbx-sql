@@ -19,10 +19,14 @@ package com.alibaba.polardbx.planner.common;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.gms.metadb.table.JavaFunctionMetaRecord;
+import com.alibaba.polardbx.gms.metadb.table.JavaFunctionRecord;
 import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.core.expression.JavaFunctionManager;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -31,6 +35,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
@@ -39,16 +44,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -64,17 +60,11 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableRecord;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SimpleSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ToDrdsRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -83,7 +73,7 @@ import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
@@ -100,12 +90,6 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.rule.VirtualTableRoot;
 import com.alibaba.polardbx.rule.model.TargetDB;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMap.Builder;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.DDL;
@@ -157,6 +141,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean.mergeIndexRecords;
@@ -174,6 +159,8 @@ import static org.junit.Assert.assertEquals;
 public abstract class BasePlannerTest {
 
     private Map<String, String> ddlMaps = new HashMap<>();
+
+    private Map<String, String> javaUdfMaps = new HashMap<>();
 
     private Set<String> ddlFlag = Sets.newHashSet();
 
@@ -278,6 +265,7 @@ public abstract class BasePlannerTest {
         initExecutionContext();
 
         loadDdl();
+        loadJavaUdf();
         try {
             loadStatistic();
         } catch (Exception e) {
@@ -286,6 +274,7 @@ public abstract class BasePlannerTest {
         initAppNameConfig(getAppName());
         initAppNameConfig("information_schema");
         prepareSchemaByDdl();
+        prepareJavaUdf();
     }
 
     protected void initBasePlannerTestEnv() {
@@ -309,6 +298,7 @@ public abstract class BasePlannerTest {
             if (file.isFile()) {
                 if (file.getName().startsWith(clazz.getSimpleName() + ".") && file.getName().endsWith(".yml")) {
                     if (file.getName().equals(clazz.getSimpleName() + ".ddl.yml")
+                        || file.getName().equals(clazz.getSimpleName() + ".udf.yml")
                         || file.getName().equals(clazz.getSimpleName() + ".outline.yml")
                         || file.getName().equals(clazz.getSimpleName() + ".statistic.yml")
                         || file.getName().equals(clazz.getSimpleName() + ".config.yml")) {
@@ -387,13 +377,15 @@ public abstract class BasePlannerTest {
         String key = appName.equals(getAppName()) ? "defaltxxAPPName.isNew" : appName + ".isNew";
         if (configMaps.containsKey(key)) {
             useNewPartDb = (boolean) configMaps.get(key);
+            //configMaps.remove(key);
         }
         key = appName.equals(getAppName()) ? "defaltxxAPPName.dbNumber" : appName + ".dbNumber";
         int dbNumber = 4;
         if (configMaps.containsKey(key)) {
             dbNumber = ((Number) configMaps.get(key)).intValue();
+            //configMaps.remove(key);
         }
-        context = initOptiContext(appName, dbNumber);
+        context = initOptiContext(appName, dbNumber, useNewPartDb);
         appNameOptiContextMaps.put(appName, context);
         LocalityManager.setMockMode(true);
         OptimizerHelper.clear();
@@ -407,7 +399,8 @@ public abstract class BasePlannerTest {
             }
 
             @Override
-            public com.alibaba.polardbx.common.utils.Pair<String, String> findGroupByUniqueId(long uniqueId) {
+            public com.alibaba.polardbx.common.utils.Pair<String, String> findGroupByUniqueId(
+                long uniqueId, Map<String, List<String>> schemaAndGroupsCache) {
                 return null;
             }
 
@@ -436,7 +429,7 @@ public abstract class BasePlannerTest {
         });
     }
 
-    public OptimizerContext initOptiContext(String appName, int dbNumber) {
+    public static OptimizerContext initOptiContext(String appName, int dbNumber, boolean useNewPartDb) {
         OptimizerContext context = new OptimizerContext(appName);
         PartitionInfoManager partInfoMgr = new PartitionInfoManager(appName, appName, true);
         TableGroupInfoManager tableGroupInfoManager = new TableGroupInfoManager(appName);
@@ -451,10 +444,6 @@ public abstract class BasePlannerTest {
         for (int i = 0; i < dbNumber; i++) {
             groups.add(fakeGroup(appName, appName + String.format("_%04d", i)));
         }
-//        groups.add(fakeGroup(appName, appName + "_0000"));
-//        groups.add(fakeGroup(appName, appName + "_0001"));
-//        groups.add(fakeGroup(appName, appName + "_0002"));
-//        groups.add(fakeGroup(appName, appName + "_0003"));
 
         Matrix matrix = new Matrix();
         matrix.setGroups(groups);
@@ -588,7 +577,7 @@ public abstract class BasePlannerTest {
         if (sqlCreateTable.createGsi()) {
             final String mainTableDefinition = sqlCreateTable.rewriteForGsi().toString();
             final MySqlCreateTableStatement astCreateIndexTable =
-                (MySqlCreateTableStatement) SQLUtils.parseStatements(mainTableDefinition,
+                (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(mainTableDefinition,
                         JdbcConstants.MYSQL)
                     .get(0);
 
@@ -631,6 +620,25 @@ public abstract class BasePlannerTest {
             final ImmutableMap<String, GsiTableMetaBean> tableMetaBean = mergeTableRecords(allTableRecords,
                 tmpTableIndexMap).build();
             tm.setGsiTableMetaBean(tableMetaBean.get(logicalTableName));
+        }
+
+        if (!sqlCreateTable.getAddedForeignKeys().isEmpty()) {
+            final Map<String, ForeignKeyData> foreignKeys = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            final Map<String, ForeignKeyData> referencedForeignKeys = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            TableMeta refTm;
+
+            for (ForeignKeyData foreignKey : sqlCreateTable.getAddedForeignKeys()) {
+                foreignKeys.put(foreignKey.refTableName, foreignKey);
+
+                refTm = OptimizerContext.getContext(appName).getLatestSchemaManager().getTable(foreignKey.refTableName);
+                referencedForeignKeys.put(appName + "/" + foreignKey.refTableName + "/" + foreignKey.indexName,
+                    foreignKey);
+                refTm.getReferencedForeignKeys().putAll(referencedForeignKeys);
+                storeTable(appName, tr, tm, useSequence);
+            }
+
+            tm.getForeignKeys().putAll(foreignKeys);
+            storeTable(appName, tr, tm, useSequence);
         }
 
         StatisticManager statisticManager = appNameOptiContextMaps.get(appName).getStatisticManager();
@@ -797,7 +805,6 @@ public abstract class BasePlannerTest {
                 indexTm = new TableMetaParser().parse(indexStat, ec);
                 indexTm.setHasPrimaryKey(indexTm.isHasPrimaryKey());
                 indexTm.setSchemaName(schema);
-                indexTr = gsiTableRules.get(indexTableName);
             } else {
 
                 CreateGlobalIndexPreparedData createGlobalIndexPreparedData =
@@ -963,6 +970,43 @@ public abstract class BasePlannerTest {
 
     }
 
+    private void prepareJavaUdf() {
+        try {
+            this.cluster = SqlConverter.getInstance(appName, new ExecutionContext()).createRelOptCluster();
+            if (javaUdfMaps == null) {
+                return;
+            }
+            for (Entry<String, String> funcItem : javaUdfMaps.entrySet()) {
+                String funcName = funcItem.getKey();
+                String createFuncDdl = funcItem.getValue();
+                // drop first
+                JavaFunctionManager.getInstance().dropFunction(funcName);
+                // register function
+                JavaFunctionRecord record = translateToRecord(createFuncDdl);
+                JavaFunctionManager.getInstance().registerFunction(record);
+                JavaFunctionManager.getInstance().compileJavaFunction(funcName, record.noState, record);
+                // init function
+                JavaFunctionManager.getInstance().getJavaFunction(funcName);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create java udf", e);
+        }
+    }
+
+    private JavaFunctionRecord translateToRecord(String createFunc) {
+        SQLCreateJavaFunctionStatement statement =
+            (SQLCreateJavaFunctionStatement) FastsqlUtils.parseSql(createFunc).get(0);
+        JavaFunctionRecord record = new JavaFunctionRecord();
+        record.codeLanguage = "JAVA";
+        record.code = statement.getJavaCode();
+        record.funcName = SQLUtils.normalize(statement.getName().getSimpleName()).toLowerCase();
+        record.className = record.funcName.substring(0, 1).toUpperCase() + record.funcName.substring(1).toLowerCase();
+        record.inputTypes = statement.getInputTypes().stream().map(Object::toString).collect(Collectors.joining(","));
+        record.returnType = statement.getReturnType().toString();
+        record.noState = statement.isNoState();
+        return record;
+    }
+
     private void loadConfig() {
         if (totalMap.get(this.getClass()) == null) {
             String fileName = String.format("%s.config.yml", this.getClass().getSimpleName());
@@ -989,6 +1033,23 @@ public abstract class BasePlannerTest {
             IOUtils.closeQuietly(in);
         } else {
             this.ddlMaps = (Map<String, String>) totalMap.get(this.getClass()).get("DDL");
+        }
+
+    }
+
+    @SuppressWarnings("unchecked")
+    private void loadJavaUdf() {
+        if (totalMap.get(this.getClass()) == null) {
+            String fileName = String.format("%s.udf.yml", targetEnvFile);
+            InputStream in = this.getClass().getResourceAsStream(fileName);
+            if (in == null) {
+                return;
+            }
+            Yaml yaml = new Yaml();
+            this.javaUdfMaps = yaml.loadAs(in, Map.class);
+            IOUtils.closeQuietly(in);
+        } else {
+            this.javaUdfMaps = (Map<String, String>) totalMap.get(this.getClass()).get("UDF");
         }
 
     }

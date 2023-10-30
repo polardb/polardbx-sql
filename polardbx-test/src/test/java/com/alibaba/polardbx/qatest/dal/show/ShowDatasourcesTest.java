@@ -43,7 +43,7 @@ public class ShowDatasourcesTest extends ReadBaseTestCase {
                 Assert.assertEquals("Incorrect ID", expectId, id);
                 expectId++;
                 String group = rs.getString("GROUP");
-                if (group.equalsIgnoreCase("METADB")) {
+                if (group.equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME)) {
                     containsMetaDB = true;
                 } else if (group.equalsIgnoreCase("INFORMATION_SCHEMA_SINGLE_GROUP")) {
                     Assert.fail("InformationSchema should not exist in normal datasource");
@@ -84,7 +84,7 @@ public class ShowDatasourcesTest extends ReadBaseTestCase {
                         Assert.assertEquals("Unexpected STORAGE_INST_ID for InformationSchema",
                             informationSchemaStorage, rs.getString("STORAGE_INST_ID"));
                     }
-                } else if (group.equalsIgnoreCase("METADB")) {
+                } else if (group.equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME)) {
                     metaStorage = rs.getString("STORAGE_INST_ID");
                 }
             }

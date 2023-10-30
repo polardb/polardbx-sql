@@ -33,6 +33,7 @@ import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.util.BitString;
 import org.apache.calcite.util.DateString;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.IntervalString;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.NlsString;
@@ -603,7 +604,7 @@ public class SqlLiteral extends SqlNode {
     return visitor.visit(this);
   }
 
-  public boolean equalsDeep(SqlNode node, Litmus litmus) {
+  public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
     if (!(node instanceof SqlLiteral)) {
       return litmus.fail("{} != {}", this, node);
     }

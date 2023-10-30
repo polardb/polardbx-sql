@@ -55,6 +55,11 @@ public class ServerThreadPool extends AbstractExecutorService {
     private ThreadPoolExecutor executor;
 
     private int numBuckets;
+
+    public ThreadPoolExecutor[] getExecutorBuckets() {
+        return executorBuckets;
+    }
+
     private ThreadPoolExecutor[] executorBuckets;
     private AtomicLong roundrobinIndex = new AtomicLong(0);
 

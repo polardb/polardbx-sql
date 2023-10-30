@@ -32,3 +32,11 @@ alter table tbl add index `idx4` (e, b);
 show create table tbl;
 
 show full create table tbl;
+
+alter table tbl drop key idx4;
+
+show create table tbl;
+
+alter table tbl add CONSTRAINT uk2 UNIQUE(a);
+
+show create table tbl;

@@ -21,16 +21,17 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Statistics of a partition-group
@@ -65,7 +66,6 @@ public class PartitionStat {
         this.partitionGroupRecord = tableGroupConfig.getPartitionGroup(partitionRecord.groupId);
         this.partitionInfo = partitionInfo;
     }
-
 
     public PartitionStrategy getPartitionStrategy() {
         return this.getPartitionBy().getStrategy();
@@ -112,8 +112,20 @@ public class PartitionStat {
         return getPartitionRecord().partPosition.intValue();
     }
 
+    public Boolean isSubPartition() {
+        return getPartitionRecord().getPartLevel() == 2;
+    }
+
     public PartitionSpec getCurrentPartition() {
-        return this.partitionInfo.getPartitionBy().getNthPartition(getPosition());
+        if (isSubPartition()) {
+            Long parentId = getPartitionRecord().getParentId();
+            String subPartName = getPartitionRecord().partName;
+            return this.partitionInfo.getPartitionBy().getPartitions().stream().filter(o -> Objects.equals(o.getId(),
+                    parentId))
+                .collect(Collectors.toList()).get(0).getSubPartitionBySubPartName(subPartName);
+        } else {
+            return this.partitionInfo.getPartitionBy().getNthPartition(getPosition());
+        }
     }
 
     public SearchDatumInfo getCurrentBound() {
@@ -235,5 +247,9 @@ public class PartitionStat {
 
     public void setDataRows(long dataRows) {
         this.dataRows = dataRows;
+    }
+
+    public long getDataRows() {
+        return this.dataRows;
     }
 }

@@ -24,7 +24,9 @@ import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
+import com.alibaba.polardbx.rule.virtualnode.PartitionFunction;
 import org.junit.Test;
 
 import java.util.TimeZone;
@@ -194,7 +196,7 @@ public class PartitionFieldExample {
         field.store(userStr, strType, sessionProperties);
 
         // Get the year partition function
-        PartitionIntFunction yearFunc = PartitionIntFunction.create(TddlOperatorTable.YEAR);
+        PartitionIntFunction yearFunc = PartitionFunctionBuilder.create(TddlOperatorTable.YEAR, null);
         long res = yearFunc.evalInt(field, sessionProperties);
 
         int partition = (int) (Math.abs(res % partNum));

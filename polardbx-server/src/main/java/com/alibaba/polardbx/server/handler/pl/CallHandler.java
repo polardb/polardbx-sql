@@ -46,7 +46,7 @@ import java.util.Map;
 public class CallHandler implements PlCommandHandler {
 
     @Override
-    public void handle(ByteString sql, ServerConnection c, boolean hasMore) {
+    public boolean handle(ByteString sql, ServerConnection c, boolean hasMore) {
         SQLCallStatement statement =
             (SQLCallStatement) FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
 
@@ -78,6 +78,7 @@ public class CallHandler implements PlCommandHandler {
         } finally {
             RuntimeProcedureManager.getInstance().unregister(c.getId());
         }
+        return true;
     }
 
     private ProcedureResultHandler createProcResultHandler(ServerConnection c, PlContext plContext, boolean hasMore) {

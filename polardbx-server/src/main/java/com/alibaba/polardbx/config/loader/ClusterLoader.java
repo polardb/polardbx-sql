@@ -29,7 +29,9 @@ import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SystemConfig;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
+import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityWorkQueue;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaChecker;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.privilege.PolarLoginErrConfig;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
+import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.server.util.LogUtils;
 import com.alibaba.polardbx.util.RexMemoryLimitHelper;
 import org.apache.calcite.rex.RexUtil;
@@ -208,6 +211,19 @@ public abstract class ClusterLoader extends BaseClusterLoader {
                 } else {
                     PriorityWorkQueue.getInstance().setCorePoolSize(backfillParallelism);
                     PriorityWorkQueue.getInstance().setMaximumPoolSize(backfillParallelism);
+                }
+            }
+        }
+
+        if (p.containsKey(ConnectionProperties.CHANGE_SET_APPLY_PARALLELISM)) {
+            int parallelism = Integer.parseInt(p.getProperty(ConnectionProperties.CHANGE_SET_APPLY_PARALLELISM));
+            if (parallelism > 0) {
+                if (parallelism > ChangeSetThreadPool.getInstance().getMaximumPoolSize()) {
+                    ChangeSetThreadPool.getInstance().setMaximumPoolSize(parallelism);
+                    ChangeSetThreadPool.getInstance().setCorePoolSize(parallelism);
+                } else {
+                    ChangeSetThreadPool.getInstance().setCorePoolSize(parallelism);
+                    ChangeSetThreadPool.getInstance().setMaximumPoolSize(parallelism);
                 }
             }
         }
@@ -383,6 +399,12 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             DbTopologyManager.setDefaultPartitionMode(defaultPartMode);
         }
 
+        if (p.containsKey(ConnectionProperties.COLLATION_SERVER)) {
+            String defaultServerCollation =
+                String.valueOf(p.getProperty(ConnectionProperties.COLLATION_SERVER));
+            DbTopologyManager.setDefaultCollationForCreatingDb(defaultServerCollation);
+        }
+
         if (p.containsKey(ConnectionProperties.ENABLE_LOGICAL_DB_WARMMING_UP)) {
             boolean enableLogicalDbWarmmingUp =
                 Boolean.valueOf(p.getProperty(ConnectionProperties.ENABLE_LOGICAL_DB_WARMMING_UP));
@@ -396,8 +418,29 @@ public abstract class ClusterLoader extends BaseClusterLoader {
                 .setLogicalDbWarmmingUpExecutorPoolSize(logicalDbWarmmingUpPoolSize);
         }
 
+        if (p.containsKey(ConnectionProperties.GSI_STATISTICS_COLLECTION)) {
+            try {
+                boolean enableCollect =
+                    Boolean.valueOf(p.getProperty(ConnectionProperties.GSI_STATISTICS_COLLECTION));
+                GsiStatisticsManager manager = GsiStatisticsManager.getInstance();
+                if (enableCollect && manager.cacheIsEmpty()) {
+                    manager.loadFromMetaDb();
+                } else if (!enableCollect && !manager.cacheIsEmpty()) {
+                    GsiStatisticsManager.getInstance().resetStatistics();
+                }
+            } catch (Throwable t) {
+                logger.warn("load gsi statictics error", t);
+            }
+        }
+
         if (CobarServer.getInstance().isInited()) {
             CobarServer.getInstance().reloadSystemConfig();
+        }
+
+        if (p.containsKey(ConnectionProperties.ENABLE_LOWER_CASE_TABLE_NAMES)) {
+            boolean enableLowerCase =
+                Boolean.parseBoolean(p.getProperty(ConnectionProperties.ENABLE_LOWER_CASE_TABLE_NAMES));
+            InformationSchemaViewManager.getInstance().defineCaseSensitiveView(enableLowerCase);
         }
 
         logger.info("load instance properties ok");

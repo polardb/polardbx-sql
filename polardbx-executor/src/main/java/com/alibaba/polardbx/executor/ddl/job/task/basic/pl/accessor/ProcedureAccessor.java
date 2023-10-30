@@ -101,7 +101,7 @@ public class ProcedureAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             String currentTime = PLUtils.getCurrentTime();
             SQLCreateProcedureStatement statement =
-                (SQLCreateProcedureStatement) FastsqlUtils.parseSql(content, SQLParserFeature.IgnoreNameQuotes).get(0);
+                (SQLCreateProcedureStatement) FastsqlUtils.parseSql(content).get(0);
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, procedureName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schema);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, procedureName);

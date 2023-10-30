@@ -17,11 +17,13 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.cast;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -38,13 +40,24 @@ public class Convert extends Cast {
         if (FunctionUtils.isNull(args[0])) {
             return null;
         }
-
-        String arg = DataTypes.StringType.convertFrom(args[0]);
-        String charset = DataTypes.StringType.convertFrom(args[1]);
-        try {
-            return new String(args[0] instanceof byte[] ? (byte[]) args[0] : arg.getBytes(), charset);
-        } catch (UnsupportedEncodingException e) {
-            return arg;
+        int extraIndex = 2;
+        if (args.length == 4) {
+            extraIndex = 3;
+        }
+        boolean isCharsetConvert = BooleanType.isTrue(DataTypes.BooleanType.convertFrom(
+            args[extraIndex]));
+        if (isCharsetConvert) {
+            String arg = DataTypes.StringType.convertFrom(args[0]);
+            String charset = DataTypes.StringType.convertFrom(args[1]);
+            try {
+                return new String(args[0] instanceof byte[] ? (byte[]) args[0] : arg.getBytes(), charset);
+            } catch (UnsupportedEncodingException e) {
+                return arg;
+            }
+        } else {
+            CastType castType = getType(Arrays.asList(args), 1);
+            Object obj = castType.type.convertFrom(args[0]);
+            return computeInner(castType, obj);
         }
     }
 

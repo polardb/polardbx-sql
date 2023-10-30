@@ -60,7 +60,7 @@ public class PartitionTestBase extends DDLBaseNewDBTestCase {
         return queryTableGroup(query);
     }
 
-    private Long queryTableGroup(String query) {
+    protected Long queryTableGroup(String query) {
         Long tableGroupId = -1L;
         Connection metaConnection = getMetaConnection();
         ResultSet rs = JdbcUtil.executeQuery(query, metaConnection);

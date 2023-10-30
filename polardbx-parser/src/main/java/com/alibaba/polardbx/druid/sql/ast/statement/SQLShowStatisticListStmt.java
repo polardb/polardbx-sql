@@ -26,10 +26,10 @@ import java.util.List;
 public class SQLShowStatisticListStmt extends SQLStatementImpl implements SQLShowStatement {
 
     private SQLExprTableSource tableSource;
-    private boolean            full;
+    private boolean full;
 
     public SQLShowStatisticListStmt() {
-        super (DbType.mysql);
+        super(DbType.mysql);
     }
 
     public SQLExprTableSource getTableSource() {

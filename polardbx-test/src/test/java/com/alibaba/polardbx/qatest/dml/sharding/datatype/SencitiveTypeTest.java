@@ -28,6 +28,7 @@ import java.util.List;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderByNotPrimaryKeyAssert;
 
+
 public class SencitiveTypeTest extends CrudBasedLockTestCase {
 
     @Parameters(name = "{index}:table={0}")

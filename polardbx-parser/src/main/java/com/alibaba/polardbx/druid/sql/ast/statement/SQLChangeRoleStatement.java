@@ -25,10 +25,11 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
  * role: LEARNER/FOLLOWER/LEADER
  * targetType: ZONE/NODE
  * target: dn id/zone id
+ *
  * @author moyi
  * @since 2021
  */
-public class SQLChangeRoleStatement extends SQLStatementImpl implements  SQLAlterStatement {
+public class SQLChangeRoleStatement extends SQLStatementImpl implements SQLAlterStatement {
 
     private SQLExpr targetType;
     private SQLExpr target;

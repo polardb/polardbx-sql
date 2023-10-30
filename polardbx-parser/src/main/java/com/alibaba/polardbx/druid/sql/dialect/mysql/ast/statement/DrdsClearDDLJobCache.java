@@ -20,10 +20,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName DrdsClearDDLJobCache
- * @description
- * @Author zzy
- * @Date 2019-07-22 10:09
  */
 public class DrdsClearDDLJobCache extends DrdsGenericDDLJob {
 

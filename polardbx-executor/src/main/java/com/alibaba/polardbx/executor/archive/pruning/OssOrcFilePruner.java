@@ -23,9 +23,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProvider;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProviders;
+import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
+import com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import org.apache.orc.ColumnStatistics;
 import org.apache.orc.DoubleColumnStatistics;
 import org.apache.orc.IntegerColumnStatistics;
@@ -52,13 +55,17 @@ public class OssOrcFilePruner {
     private Pattern pattern;
     private Long readTs;
 
+    private TableMeta tableMeta;
+
     public OssOrcFilePruner(OSSOrcFileMeta ossOrcFileMeta, SearchArgument searchArgument,
-                            Set<String> filterSet, Pattern pattern, Long readTs) {
+                            Set<String> filterSet, Pattern pattern, Long readTs,
+                            TableMeta tableMeta) {
         this.ossOrcFileMeta = ossOrcFileMeta;
         this.searchArgument = searchArgument;
         this.filterSet = filterSet;
         this.pattern = pattern;
         this.readTs = readTs;
+        this.tableMeta = tableMeta;
     }
 
     public PruningResult prune() {
@@ -66,28 +73,28 @@ public class OssOrcFilePruner {
 
         if (ossOrcFileMeta.getCommitTs() == null) {
             // commitTs == null means file was not committed
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         }
 
         if (readTs == null) {
             // removeTs != null means file was dropped
             if (ossOrcFileMeta.getRemoveTs() != null) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
         } else {
             // visibility : readTs ∈ [commitTs --- removeTs]
             if (readTs < ossOrcFileMeta.getCommitTs()
-                    || (ossOrcFileMeta.getRemoveTs() != null && readTs > ossOrcFileMeta.getRemoveTs())) {
-                return PruningResult.SKIP;
+                || (ossOrcFileMeta.getRemoveTs() != null && readTs > ossOrcFileMeta.getRemoveTs())) {
+                return OrcFilePruningResult.SKIP;
             }
         }
 
         if (filterSet != null && !filterSet.contains(fileName)) {
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         }
 
         if (pattern != null && !pattern.matcher(fileName).matches()) {
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         }
 
         return prune(searchArgument.getExpression());
@@ -101,32 +108,49 @@ public class OssOrcFilePruner {
         } else if (expressionTree.getOperator() == ExpressionTree.Operator.LEAF) {
             return pruneLeaf(searchArgument.getLeaves().get(expressionTree.getLeaf()));
         } else {
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         }
     }
 
     private PruningResult pruneLeaf(PredicateLeaf predicateLeaf) {
-        ColumnMeta columnMeta = ossOrcFileMeta.getColumnMetaMap().get(predicateLeaf.getColumnName());
-
-        ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
+        ColumnProvider columnProvider = buildColumnProvider(predicateLeaf, tableMeta, ossOrcFileMeta);
 
         ColumnStatistics columnStatistics = ossOrcFileMeta.getStatisticsMap().get(predicateLeaf.getColumnName());
 
         Map<Long, StripeColumnMeta> stripeColumnMetaMap =
-            (ossOrcFileMeta).getStripeColumnMetas(predicateLeaf.getColumnName());
+            ossOrcFileMeta.getStripeColumnMetas(predicateLeaf.getColumnName());
 
+        if (columnStatistics == null) {
+            return OrcFilePruningResult.PASS;
+        }
         PruningResult pruningResult = columnProvider.prune(predicateLeaf, columnStatistics, stripeColumnMetaMap);
 
-        if (pruningResult == PruningResult.SKIP) {
+        if (pruningResult == OrcFilePruningResult.SKIP) {
             LOGGER.info("pruning " + ossOrcFileMeta.getFileName() + " with " + predicateLeaf);
         }
 
         return pruningResult;
     }
 
+    static ColumnProvider buildColumnProvider(PredicateLeaf predicateLeaf, TableMeta tableMeta,
+                                              OSSOrcFileMeta ossOrcFileMeta) {
+        String fieldId = predicateLeaf.getColumnName();
+        ColumnMeta columnMeta;
+        if (tableMeta.isOldFileStorage()) {
+            columnMeta = ossOrcFileMeta.getColumnMetaMap().get(predicateLeaf.getColumnName());
+            return ColumnProviders.getProvider(columnMeta);
+        }
+        if (OrcMetaUtils.isRedundantColumn(fieldId)) {
+            columnMeta = OrcMetaUtils.buildRedundantColumnMeta(tableMeta.getTableName(), fieldId);
+        } else {
+            columnMeta = OrcColumnManager.getHistory(fieldId, ossOrcFileMeta);
+        }
+        return ColumnProviders.getProvider(columnMeta);
+    }
+
     private PruningResult pruneAnd(ExpressionTree expressionTree) {
         assert expressionTree.getOperator() == ExpressionTree.Operator.AND;
-        PruningResult andPruningResult = PruningResult.PASS;
+        PruningResult andPruningResult = OrcFilePruningResult.PASS;
         for (ExpressionTree child : expressionTree.getChildren()) {
             PruningResult pruningResult = prune(child);
             if (pruningResult.skip()) {
@@ -141,7 +165,7 @@ public class OssOrcFilePruner {
 
     private PruningResult pruneOr(ExpressionTree expressionTree) {
         assert expressionTree.getOperator() == ExpressionTree.Operator.OR;
-        PruningResult orPruningResult = PruningResult.SKIP;
+        PruningResult orPruningResult = OrcFilePruningResult.SKIP;
         for (ExpressionTree child : expressionTree.getChildren()) {
             PruningResult pruningResult = prune(child);
             if (pruningResult.pass()) {
@@ -161,7 +185,7 @@ public class OssOrcFilePruner {
         String statisticsMaximum = stringColumnStatistics.getMaximum();
 
         if (statisticsMinimum == null || statisticsMaximum == null) {
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         }
 
         final PredicateLeaf.Operator operator = predicateLeaf.getOperator();
@@ -170,18 +194,20 @@ public class OssOrcFilePruner {
             String utf8Str = (String) predicateLeaf.getLiteral();
 
             if (utf8Str.compareTo(statisticsMaximum) > 0 || utf8Str.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             byte[] utf8Bytes = utf8Str.getBytes();
             List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
-                StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
-                if (statistics.getMinimum() == null || statistics.getMaximum() == null) {
-                    return false;
-                }
-                return !(utf8Str.compareTo(statistics.getMaximum()) > 0
-                    || utf8Str.compareTo(statistics.getMinimum()) < 0);
-            }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testBytes(utf8Bytes, 0, utf8Bytes.length)).collect(Collectors.toList());
+                    StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
+                    if (statistics.getMinimum() == null || statistics.getMaximum() == null) {
+                        return false;
+                    }
+                    return !(utf8Str.compareTo(statistics.getMaximum()) > 0
+                        || utf8Str.compareTo(statistics.getMinimum()) < 0);
+                }).filter(
+                    x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testBytes(utf8Bytes, 0, utf8Bytes.length))
+                .collect(Collectors.toList());
             return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
         }
         case IN: {
@@ -222,7 +248,7 @@ public class OssOrcFilePruner {
         case IS_NULL: {
             boolean test = columnStatistics.hasNull();
             if (!test) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList =
                     stripeColumnMetaMap.values().stream()
@@ -238,11 +264,11 @@ public class OssOrcFilePruner {
             String max = literalList.get(1);
 
             if (max.compareTo(min) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             if (min.compareTo(statisticsMaximum) > 0 || max.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -258,7 +284,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMinimum) <= 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -274,7 +300,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -290,7 +316,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMaximum) >= 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -306,7 +332,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMaximum) > 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -319,7 +345,7 @@ public class OssOrcFilePruner {
             }
         }
         default: {
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         }
         }
     }
@@ -335,13 +361,14 @@ public class OssOrcFilePruner {
             double value = ((Number) literal).doubleValue();
 
             if (value > statisticsMaximum || value < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
-                DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
-                return !(value > statistics.getMaximum() || value < statistics.getMinimum());
-            }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testDouble(value)).collect(Collectors.toList());
+                    DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
+                    return !(value > statistics.getMaximum() || value < statistics.getMinimum());
+                }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testDouble(value))
+                .collect(Collectors.toList());
             return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IN) {
             List<Object> literalList = predicateLeaf.getLiteralList();
@@ -376,7 +403,7 @@ public class OssOrcFilePruner {
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IS_NULL) {
             boolean test = columnStatistics.hasNull();
             if (!test) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList =
                     stripeColumnMetaMap.values().stream()
@@ -389,11 +416,11 @@ public class OssOrcFilePruner {
             double max = ((Number) literalList.get(1)).doubleValue();
 
             if (max < min) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             if (min > statisticsMaximum || max < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
@@ -407,7 +434,7 @@ public class OssOrcFilePruner {
             double value = ((Number) literal).doubleValue();
 
             if (value <= statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
@@ -421,7 +448,7 @@ public class OssOrcFilePruner {
             double value = ((Number) literal).doubleValue();
 
             if (value < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
@@ -435,7 +462,7 @@ public class OssOrcFilePruner {
             double value = ((Number) literal).doubleValue();
 
             if (value >= statisticsMaximum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
@@ -449,7 +476,7 @@ public class OssOrcFilePruner {
             double value = ((Number) literal).doubleValue();
 
             if (value > statisticsMaximum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     DoubleColumnStatistics statistics = (DoubleColumnStatistics) x.getColumnStatistics();
@@ -459,7 +486,7 @@ public class OssOrcFilePruner {
             }
         } else {
             // TODO: support more predicate for pruning
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         }
     }
 
@@ -475,13 +502,14 @@ public class OssOrcFilePruner {
             long value = ((Number) literal).longValue();
 
             if (value > statisticsMaximum || value < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
-                IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
-                return !(value > statistics.getMaximum() || value < statistics.getMinimum());
-            }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testLong(value)).collect(Collectors.toList());
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(value > statistics.getMaximum() || value < statistics.getMinimum());
+                }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testLong(value))
+                .collect(Collectors.toList());
             return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IN) {
             List<Object> literalList = predicateLeaf.getLiteralList();
@@ -515,7 +543,7 @@ public class OssOrcFilePruner {
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IS_NULL) {
             boolean test = columnStatistics.hasNull();
             if (!test) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList =
                     stripeColumnMetaMap.values().stream()
@@ -528,11 +556,11 @@ public class OssOrcFilePruner {
             long max = ((Number) literalList.get(1)).longValue();
 
             if (max < min) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             if (min > statisticsMaximum || max < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
@@ -546,7 +574,7 @@ public class OssOrcFilePruner {
             long value = ((Number) literal).longValue();
 
             if (value <= statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
@@ -560,7 +588,7 @@ public class OssOrcFilePruner {
             long value = ((Number) literal).longValue();
 
             if (value < statisticsMinimum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
@@ -574,7 +602,7 @@ public class OssOrcFilePruner {
             long value = ((Number) literal).longValue();
 
             if (value >= statisticsMaximum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
@@ -588,7 +616,7 @@ public class OssOrcFilePruner {
             long value = ((Number) literal).longValue();
 
             if (value > statisticsMaximum) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
@@ -598,7 +626,7 @@ public class OssOrcFilePruner {
             }
         } else {
             // TODO: support more predicate for pruning
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         }
     }
 
@@ -615,7 +643,7 @@ public class OssOrcFilePruner {
         String statisticsMaximum = stringColumnStatistics.getMaximum();
 
         if (statisticsMinimum == null || statisticsMaximum == null) {
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         }
 
         if (predicateLeaf.getOperator() == PredicateLeaf.Operator.EQUALS) {
@@ -624,17 +652,18 @@ public class OssOrcFilePruner {
 
             if (value.compareTo(statisticsMaximum) > 0 ||
                 value.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
-                StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
-                if (statistics.getMinimum() == null || statistics.getMaximum() == null) {
-                    return false;
-                }
-                return !(value.compareTo(statistics.getMaximum()) > 0 ||
-                    value.compareTo(statistics.getMinimum()) < 0);
-            }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testBytes(bytes, 0, bytes.length)).collect(Collectors.toList());
+                    StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
+                    if (statistics.getMinimum() == null || statistics.getMaximum() == null) {
+                        return false;
+                    }
+                    return !(value.compareTo(statistics.getMaximum()) > 0 ||
+                        value.compareTo(statistics.getMinimum()) < 0);
+                }).filter(x -> x.getBloomFilter() == null ? true : x.getBloomFilter().testBytes(bytes, 0, bytes.length))
+                .collect(Collectors.toList());
             return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IN) {
             // bloom filter
@@ -675,7 +704,7 @@ public class OssOrcFilePruner {
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IS_NULL) {
             boolean test = columnStatistics.hasNull();
             if (!test) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList =
                     stripeColumnMetaMap.values().stream()
@@ -688,12 +717,12 @@ public class OssOrcFilePruner {
             String max = (String) literalList.get(1);
 
             if (max.compareTo(min) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             }
 
             if (min.compareTo(statisticsMaximum) > 0 ||
                 max.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -710,7 +739,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMinimum) <= 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -726,7 +755,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMinimum) < 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -742,7 +771,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMaximum) >= 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -758,7 +787,7 @@ public class OssOrcFilePruner {
             String value = (String) predicateLeaf.getLiteral();
 
             if (value.compareTo(statisticsMaximum) > 0) {
-                return PruningResult.SKIP;
+                return OrcFilePruningResult.SKIP;
             } else {
                 List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
                     StringColumnStatistics statistics = (StringColumnStatistics) x.getColumnStatistics();
@@ -772,7 +801,7 @@ public class OssOrcFilePruner {
             }
         } else {
             // TODO: support more predicate for pruning
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         }
     }
 
@@ -780,13 +809,13 @@ public class OssOrcFilePruner {
                                                        Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
         if (stripeColumnMetaMap.isEmpty()) {
             // no statistic
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         } else if (stripeColumnMetaList.size() == stripeColumnMetaMap.size()) {
-            return PruningResult.PASS;
+            return OrcFilePruningResult.PASS;
         } else if (stripeColumnMetaList.isEmpty()) {
-            return PruningResult.SKIP;
+            return OrcFilePruningResult.SKIP;
         } else {
-            return new PruningResult(stripeColumnMetaList);
+            return new OrcFilePruningResult(stripeColumnMetaList);
         }
     }
 }

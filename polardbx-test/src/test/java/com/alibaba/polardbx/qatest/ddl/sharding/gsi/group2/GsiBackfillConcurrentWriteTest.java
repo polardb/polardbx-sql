@@ -21,6 +21,7 @@ import com.alibaba.polardbx.qatest.constant.GsiConstant;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.RandomUtils;
@@ -120,6 +121,8 @@ public class GsiBackfillConcurrentWriteTest extends DDLBaseNewDBTestCase {
 
     @Before
     public void before() {
+        // JDBC handles zero-date differently in prepared statement and statement, so ignore this case in cursor fetch
+        org.junit.Assume.assumeTrue(!PropertiesUtil.useCursorFetch());
 
         JdbcUtil.executeUpdateSuccess(mysqlConnection, "DROP TABLE IF EXISTS " + PRIMARY_TABLE_NAME);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, FULL_TYPE_TABLE_MYSQL);

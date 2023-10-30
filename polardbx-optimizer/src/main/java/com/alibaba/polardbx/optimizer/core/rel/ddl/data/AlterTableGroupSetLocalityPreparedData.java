@@ -34,6 +34,16 @@ public class AlterTableGroupSetLocalityPreparedData extends DdlPreparedData {
 
     private String sourceSql;
 
+    public Boolean getNeedToGetTableGroupLock() {
+        return needToGetTableGroupLock;
+    }
+
+    public void setNeedToGetTableGroupLock(Boolean needToGetTableGroupLock) {
+        this.needToGetTableGroupLock = needToGetTableGroupLock;
+    }
+
+    private Boolean needToGetTableGroupLock;
+
     private Boolean withRebalance;
 
     private String rebalanceSql;
@@ -74,19 +84,19 @@ public class AlterTableGroupSetLocalityPreparedData extends DdlPreparedData {
         this.sourceSql = sourceSql;
     }
 
-    public List<String> getDrainNodeList(){
+    public List<String> getDrainNodeList() {
         return this.drainNodeList;
     }
 
-    public void setDrainNodeList(List<String> drainNodeList){
+    public void setDrainNodeList(List<String> drainNodeList) {
         this.drainNodeList = drainNodeList;
     }
 
-    public Boolean getWithRebalance(){
+    public Boolean getWithRebalance() {
         return this.withRebalance;
     }
 
-    public void setWithRebalance(Boolean withRebalance){
+    public void setWithRebalance(Boolean withRebalance) {
         this.withRebalance = withRebalance;
     }
 

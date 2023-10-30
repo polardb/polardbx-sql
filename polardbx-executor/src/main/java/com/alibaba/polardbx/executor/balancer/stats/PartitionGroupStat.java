@@ -32,9 +32,27 @@ import java.util.Optional;
 public class PartitionGroupStat {
     public PartitionGroupRecord pg;
     public List<PartitionStat> partitions = new ArrayList<>();
+    public String tgName;
+
+    PartitionGroupStat() {
+
+    }
+
+    PartitionGroupStat(PartitionGroupRecord partitionGroupRecord, List<PartitionStat> partitions) {
+        this.pg = partitionGroupRecord;
+        this.partitions = partitions;
+    }
 
     public long getTotalDiskSize() {
         return this.partitions.stream().mapToLong(PartitionStat::getPartitionDiskSize).sum();
+    }
+
+    public String getTgName() {
+        return this.tgName;
+    }
+
+    public long getDataRows() {
+        return this.partitions.stream().mapToLong(PartitionStat::getDataRows).sum();
     }
 
     public PartitionStat getFirstPartition() {
@@ -52,5 +70,9 @@ public class PartitionGroupStat {
             }
         }
         return Optional.of(largest);
+    }
+
+    public long getPgId() {
+        return this.pg.getId();
     }
 }

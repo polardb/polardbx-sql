@@ -20,7 +20,6 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlDdl;
@@ -36,9 +35,8 @@ import java.util.Map;
  *
  * @author luoyanxin
  */
-public class AlterTableGroupMergePartition extends DDL {
+public class AlterTableGroupMergePartition extends AlterTableGroupDdl {
     final Map<SqlNode, RexNode> partBoundExprInfo;
-    final String tableGroupName;
 
     protected AlterTableGroupMergePartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                             RelDataType rowType, Map<SqlNode, RexNode> partBoundExprInfo,
@@ -68,6 +66,7 @@ public class AlterTableGroupMergePartition extends DDL {
         return partBoundExprInfo;
     }
 
+    @Override
     public String getTableGroupName() {
         return tableGroupName;
     }

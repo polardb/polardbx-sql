@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.hint.operator;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import com.alibaba.polardbx.common.constants.ExecutorAttribute;
+import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
@@ -32,6 +31,7 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCharStringLiteral;
@@ -41,13 +41,17 @@ import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.util.SqlShuttle;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
-
-import com.alibaba.polardbx.common.model.Group;
-import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 /**
  * @author chenmo.cm
@@ -222,14 +226,29 @@ public abstract class BaseHintOperator implements HintOperator {
     }
 
     protected static SqlNode updateParamIndex(SqlNode node, final List<Integer> paramIndex) {
+        return updateParamIndex(node, paramIndex, null);
+    }
+
+    protected static SqlNode updateParamIndex(SqlNode node, final List<Integer> paramIndex,
+                                              AtomicInteger maxParamIndex) {
         return node.accept(new SqlShuttle() {
 
             @Override
             public SqlNode visit(SqlDynamicParam param) {
-                if (param.getIndex() < paramIndex.size()) {
-                    return new SqlDynamicParam(paramIndex.get(param.getIndex()),
-                        param.getParserPosition(),
-                        param.getValue());
+                int index = param.getIndex();
+                boolean doMapping = index < paramIndex.size();
+
+                if (doMapping) {
+                    index = paramIndex.get(index);
+                }
+
+                if (null != maxParamIndex && index > maxParamIndex.get()) {
+                    // update max param index
+                    maxParamIndex.lazySet(index);
+                }
+
+                if (doMapping) {
+                    return new SqlDynamicParam(index, param.getParserPosition(), param.getValue());
                 } else {
                     return super.visit(param);
                 }
@@ -248,7 +267,7 @@ public abstract class BaseHintOperator implements HintOperator {
 
         List<String> result = new LinkedList<>();
         for (String group : groups) {
-            String groupKey = convertGroupNumber(allGroups, group);
+            String groupKey = convertGroupIndexToName((i) -> allGroups.get(i).getName(), group);
 
             result.add(groupKey);
         }
@@ -262,25 +281,31 @@ public abstract class BaseHintOperator implements HintOperator {
         for (String group : groups) {
             String groupKey = convertGroupNumber(allGroups, group);
 
-            if (ExecutorAttribute.DEFAULT_DB.equalsIgnoreCase(groupKey)) {
-                groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
-            } else if (ExecutorAttribute.SHADOW_DB.equalsIgnoreCase(groupKey)) {
-                groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
-                current.getExtraCmd().put(ExecutorAttribute.QUERY_SHADOW_DB, Boolean.TRUE);
-            } else if (ExecutorAttribute.INFORMATION_SCHEMA.equalsIgnoreCase(group)) {
-                groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
-                current.getExtraCmd().put(ExecutorAttribute.QUERY_INFORMATION_SCHEMA, Boolean.TRUE);
-            } else if (ExecutorAttribute.PERFORMANCE_SCHEMA.equalsIgnoreCase(group)) {
-                groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
-                current.getExtraCmd().put(ExecutorAttribute.QUERY_PERFORMANCE_SCHEMA, Boolean.TRUE);
-            }
+            groupKey = convertSystemSchema(schemaName, current, groupKey);
 
             result.add(groupKey);
         }
         return result;
     }
 
-    private String convertGroupNumber(List<Group> allGroups, String group) {
+    @Nullable
+    public static String convertSystemSchema(String schemaName, HintCmdOperator.CmdBean current, String groupKey) {
+        if (ExecutorAttribute.DEFAULT_DB.equalsIgnoreCase(groupKey)) {
+            groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
+        } else if (ExecutorAttribute.SHADOW_DB.equalsIgnoreCase(groupKey)) {
+            groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
+            current.getExtraCmd().put(ExecutorAttribute.QUERY_SHADOW_DB, Boolean.TRUE);
+        } else if (ExecutorAttribute.INFORMATION_SCHEMA.equalsIgnoreCase(groupKey)) {
+            groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
+            current.getExtraCmd().put(ExecutorAttribute.QUERY_INFORMATION_SCHEMA, Boolean.TRUE);
+        } else if (ExecutorAttribute.PERFORMANCE_SCHEMA.equalsIgnoreCase(groupKey)) {
+            groupKey = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
+            current.getExtraCmd().put(ExecutorAttribute.QUERY_PERFORMANCE_SCHEMA, Boolean.TRUE);
+        }
+        return groupKey;
+    }
+
+    public String convertGroupNumber(List<Group> allGroups, String group) {
         String groupKey = group;
         try {
             Integer groupIndex = Integer.valueOf(group);
@@ -293,9 +318,22 @@ public abstract class BaseHintOperator implements HintOperator {
         return groupKey;
     }
 
+    public String convertGroupIndexToName(Function<Integer, String> indexToNameFunc, String group) {
+        String groupKey = group;
+        try {
+            Integer groupIndex = Integer.valueOf(group);
+            groupKey = indexToNameFunc.apply(groupIndex);
+        } catch (Exception e) {
+            // using total name of group
+        }
+        return groupKey;
+    }
+
     public static Map<String, Map<String, Comparative>> buildComparative(String table, String condition,
                                                                          List<Integer> paramIndexMap,
-                                                                         String schemaName, ExecutionContext ec) {
+                                                                         String schemaName,
+                                                                         AtomicInteger maxParamIndex,
+                                                                         ExecutionContext ec) {
         final String sql = HintUtil.buildPushdown(table, condition, schemaName);
 
         final SqlNodeList astList = new FastsqlParser().parse(sql);
@@ -308,28 +346,92 @@ public abstract class BaseHintOperator implements HintOperator {
         RelNode rel = converter.toRel(validatedNode);
 
         Map<String, Map<String, Comparative>> comparative = new HashMap<>();
-        ConditionExtractor.partitioningConditionFrom(rel).extract().allCondition(comparative, null, ec);
+        if (null == maxParamIndex) {
+            ConditionExtractor.partitioningConditionFrom(rel).extract()
+                .allCondition(comparative, null, ec);
+        } else {
+            // Replace scalar function with RexCallParam
+            final AtomicBoolean replaced = new AtomicBoolean(false);
+
+            final RexUtils.RexNodeRelShuttle relReplacer = buildScalarFunctionReplacer(maxParamIndex, replaced);
+
+            rel = rel.accept(relReplacer);
+
+            // Replace scalar function again after condition extract
+            if (replaced.get()) {
+                ConditionExtractor
+                    .partitioningConditionFrom(rel)
+                    .extract()
+                    .allCondition(comparative, null, ec);
+            } else {
+                ConditionExtractor
+                    .partitioningConditionFrom(rel)
+                    .extract()
+                    .allConditionWithScalarFunctionReplaced(comparative, null, maxParamIndex, ec);
+            }
+        }
 
         return comparative;
     }
 
     public static Map<String, PartitionPruneStep> buildPartitionPruneStepMap(String table, String condition,
-                                                                   List<Integer> paramIndexMap,
-                                                                   String schemaName, ExecutionContext ec) {
+                                                                             List<Integer> paramIndexMap,
+                                                                             String schemaName,
+                                                                             AtomicInteger maxParamIndex,
+                                                                             ExecutionContext ec) {
         final String sql = HintUtil.buildPushdown(table, condition, schemaName);
 
         final SqlNodeList astList = new FastsqlParser().parse(sql);
 
         // validate
         SqlConverter converter = SqlConverter.getInstance(schemaName, ec);
-        SqlNode validatedNode = converter.validate(updateParamIndex(astList.get(0), paramIndexMap));
+        SqlNode validatedNode = converter.validate(updateParamIndex(astList.get(0), paramIndexMap, maxParamIndex));
 
         // logical plan
         RelNode rel = converter.toRel(validatedNode);
 
-        Map<String, PartitionPruneStep> result =
-            ConditionExtractor.partitioningConditionFrom(rel).extract().allPartPruneSteps( ec);
+        Map<String, PartitionPruneStep> result = null;
+        if (null == maxParamIndex) {
+            result = ConditionExtractor
+                .partitioningConditionFrom(rel)
+                .extract()
+                .allPartPruneSteps(ec);
+        } else {
+            // Replace scalar function with RexCallParam
+            final AtomicBoolean replaced = new AtomicBoolean(false);
+
+            final RexUtils.RexNodeRelShuttle relReplacer = buildScalarFunctionReplacer(maxParamIndex, replaced);
+
+            rel = rel.accept(relReplacer);
+
+            // Replace scalar function again after condition extract
+            if (replaced.get()) {
+                result = ConditionExtractor
+                    .partitioningConditionFrom(rel)
+                    .extract()
+                    .allPartPruneSteps(ec);
+            } else {
+                result = ConditionExtractor
+                    .partitioningConditionFrom(rel)
+                    .extract()
+                    .allPartPruneStepsWithScalarFunctionReplaced(maxParamIndex, ec);
+            }
+        }
 
         return result;
+    }
+
+    @NotNull
+    private static RexUtils.RexNodeRelShuttle buildScalarFunctionReplacer(AtomicInteger maxParamIndex,
+                                                                          AtomicBoolean replaced) {
+        final RexUtils.ColumnRefFinder columnRefFinder = new RexUtils.ColumnRefFinder();
+        final RexUtils.ReplaceScalarFunctionWithRexCallParamVisitor rexReplacer =
+            new RexUtils.ReplaceScalarFunctionWithRexCallParamVisitor(
+                maxParamIndex,
+                (r) -> !columnRefFinder.analyze(r) && !r.isA(SqlKind.ROW),
+                (r) -> replaced.set(true));
+        final RexUtils.RexNodeRelShuttle relReplacer = new RexUtils.RexNodeRelShuttle(rexReplacer);
+        rexReplacer.setRelShuttle(relReplacer);
+        return relReplacer;
     }
 }

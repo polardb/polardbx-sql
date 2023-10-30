@@ -140,4 +140,8 @@ public class StatisticDataTableSource implements StatisticDataSource {
         ndvSketch.reBuildShardParts(schema, tableName, columnNames);
     }
 
+    @Override
+    public long ndvModifyTime(String schema, String tableName, String columnNames) {
+        return ndvSketch.modifyTime(schema, tableName, columnNames);
+    }
 }

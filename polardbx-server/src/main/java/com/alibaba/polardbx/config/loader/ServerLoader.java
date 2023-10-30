@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.config.loader;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.ConfigException;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.executor.balancer.Balancer;
+import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
@@ -99,10 +101,10 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
     }
 
     public void loadConfig() {
-        loadServerProperty();
+        load();
     }
 
-    private Properties loadServerProperty() {
+    private void load() {
         // 加载 server.properties 的属性
         String conf = System.getProperty("server.conf", "classpath:server.properties");
         Properties serverProps = new Properties();
@@ -167,20 +169,14 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         configSystem(serverProps);
 
-        // Set private protocol port first(or we will fail to connect metaDB with Xproto).
-        XConnectionManager.getInstance().setMetaDbPort(this.system.getMetaDbXprotoPort());
-        XConnectionManager.getInstance().setStorageDbPort(this.system.getStorageDbXprotoPort());
-
-        return serverProps;
-    }
-
-    private void load() {
-        Properties serverProps = loadServerProperty();
-
         ConfigDataMode.setSupportSingleDbMultiTbs(this.system.isSupportSingleDbMultiTbs());
+        ConfigDataMode.setSupportRemoveDdl(this.system.isSupportRemoveDdl());
         ConfigDataMode.setSupportDropAutoSeq(this.system.isSupportDropAutoSeq());
         ConfigDataMode.setAllowSimpleSequence(this.system.isAllowSimpleSequence());
-        initPolarDbXComponents();
+        // mock by env or mock by meta db
+        if (!mockByEnv()) {
+            initPolarDbXComponents();
+        }
 
         /**
          * 初始化，并监听 MANAGER_CONFIG_DATAID:com.alibaba.polardbx.monitor
@@ -203,6 +199,8 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
         // Set private protocol port first(or we will fail to connect metaDB with Xproto).
         XConnectionManager.getInstance().setMetaDbPort(this.system.getMetaDbXprotoPort());
         XConnectionManager.getInstance().setStorageDbPort(this.system.getStorageDbXprotoPort());
+        XConnectionManager.getInstance().getInstId()
+            .set(ConfigDataMode.isPolarDbX() ? InstIdUtil.getInstId() : TddlNode.getInstId());
 
         // Init metadb datasource
         MetaDbDataSource
@@ -257,6 +255,9 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         // Init the stat of feature usage
         FeatureUsageStatistics.init();
+
+        //Init the gsi statistics manager
+        GsiStatisticsManager.getInstance();
     }
 
     protected void initPortInfoAndInstId() {
@@ -397,6 +398,11 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             this.system.setEnableMpp(false);
         }
 
+        String nodeDiscoveryMode = serverProps.getProperty("nodeDiscoveryMode");
+        if (!StringUtil.isEmpty(nodeDiscoveryMode)) {
+            this.system.setNodeDiscoveryMode(nodeDiscoveryMode);
+        }
+
         String coronaMode = serverProps.getProperty("coronaMode");
         if (!StringUtil.isEmpty(coronaMode)) {
             this.system.setCoronaMode(Integer.parseInt(coronaMode));
@@ -447,9 +453,9 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             this.system.setProcessorKillExecutor(Integer.parseInt(processorKillExecutorCount));
         }
 
-        String timerExecutorCount = serverProps.getProperty("timerExecutor");
-        if (!StringUtil.isEmpty(timerExecutorCount)) {
-            this.system.setTimerExecutor(Integer.parseInt(timerExecutorCount));
+        String syncExecutor = serverProps.getProperty("syncExecutor");
+        if (!StringUtil.isEmpty(syncExecutor)) {
+            this.system.setSyncExecutor(Integer.parseInt(syncExecutor));
         }
 
         String managerExecutorCount = serverProps.getProperty("managerExecutor");
@@ -626,6 +632,11 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             CostModelWeight.INSTANCE.setSortAggWeight(Double.valueOf(sortAggWeight));
         }
 
+        String sortWindowWeight = serverProps.getProperty("sortWindowWeight");
+        if (!TStringUtil.isEmpty(sortWindowWeight)) {
+            CostModelWeight.INSTANCE.setSortWindowWeight(Double.valueOf(sortWindowWeight));
+        }
+
         String sortWeight = serverProps.getProperty("sortWeight");
         if (!TStringUtil.isEmpty(sortWeight)) {
             CostModelWeight.INSTANCE.setSortWeight(Double.valueOf(sortWeight));
@@ -706,6 +717,14 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         String balanceWindow = serverProps.getProperty(ConnectionParams.BALANCER_WINDOW.getName());
         this.system.setBalanceWindow(balanceWindow);
+
+        String allowMoveBalancedSingleTable =
+            serverProps.getProperty(ConnectionParams.ALLOW_MOVING_BALANCED_SINGLE_TABLE.getName());
+        if (!StringUtil.isEmpty(allowMoveBalancedSingleTable)) {
+            this.system.setAllowMovingBalancedSingeTable(BooleanUtils.toBoolean(allowMoveBalancedSingleTable));
+        } else {
+            this.system.setAllowMovingBalancedSingeTable(false);
+        }
 
         String dropDatabaseAfterSwitchDatasource = serverProps.getProperty("dropDatabaseAfterSwitchDatasource");
         if (!StringUtil.isEmpty(dropDatabaseAfterSwitchDatasource)) {

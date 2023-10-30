@@ -20,6 +20,12 @@ import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -27,10 +33,10 @@ import java.util.List;
 
 public class SQLFetchStatement extends SQLStatementImpl implements SQLReplaceable {
 
-    private SQLName       cursorName;
-    private boolean       bulkCollect;
+    private SQLName cursorName;
+    private boolean bulkCollect;
     private List<SQLExpr> into = new ArrayList<SQLExpr>();
-    private SQLLimit      limit;
+    private SQLLimit limit;
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
@@ -86,5 +92,10 @@ public class SQLFetchStatement extends SQLStatementImpl implements SQLReplaceabl
         }
 
         return false;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

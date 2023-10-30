@@ -24,6 +24,11 @@ public class PrivilegeVerifyItem {
     private boolean isAnyTable = false;
     private PrivilegePoint privilegePoint;
 
+    /**
+     * 系统内部生成的查询
+     */
+    private boolean internalQuery = false;
+
     public PrivilegeVerifyItem(String db, String table, PrivilegePoint privilegePoint) {
         this.db = db;
         this.table = table;
@@ -63,6 +68,14 @@ public class PrivilegeVerifyItem {
 
     public void setPrivilegePoint(PrivilegePoint privilegePoint) {
         this.privilegePoint = privilegePoint;
+    }
+
+    public boolean isInternalQuery() {
+        return internalQuery;
+    }
+
+    public void setInternalQuery(boolean internalQuery) {
+        this.internalQuery = internalQuery;
     }
 
     public boolean isAnyTable() {

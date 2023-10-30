@@ -64,7 +64,7 @@ public class MysqlSchema extends AbsSchema {
             Table table = new ViewTable(null, relProtoDataType, viewDefinition, ImmutableList.<String>of(), null);
             return table;
         } else {
-            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, tableName);
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, NAME, tableName);
         }
     }
 }

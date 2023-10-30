@@ -36,7 +36,6 @@ public class DrdsSlowSqlCclStatement extends MySqlStatementImpl implements SQLCr
         visitor.endVisit(this);
     }
 
-
     public List<SQLExpr> getSqlExprs() {
         return sqlExprs;
     }

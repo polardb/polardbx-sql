@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.gms.privilege;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import org.apache.commons.lang.StringUtils;
@@ -331,5 +333,12 @@ public class PolarPrivUtil {
 
     public static boolean isPolarxRootUser(String user) {
         return POLAR_ROOT.equalsIgnoreCase(user);
+    }
+
+    public static void checkRootOnlyPriv(String user, String db) {
+        if (!isPolarxRootUser(user)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED_ON_DB,
+                user, "%", db);
+        }
     }
 }

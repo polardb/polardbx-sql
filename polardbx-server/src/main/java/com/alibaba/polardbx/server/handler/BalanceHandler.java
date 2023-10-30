@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -31,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BalanceHandler {
-    public static void handle(ByteString stmt, ServerConnection c) {
+    public static boolean handle(ByteString stmt, ServerConnection c) {
         int percent = 0;
         int i = 0;
         outer:
@@ -43,43 +43,44 @@ public class BalanceHandler {
             case '\n':
                 continue;
             case '/':
-                case '#':
-                    i = ParseUtil.comment(stmt, i);
-                    continue;
-                case 'B':
-                case 'b':
-                    break outer;
-                default:
-                    c.handleError(ErrorCode.ERR_HANDLE_DATA,
-                        new SQLSyntaxErrorException("sql is not a supported statement, " +
-                            "maybe you have an error in your SQL syntax "), stmt.toString(), false);
-                    return;
+            case '#':
+                i = ParseUtil.comment(stmt, i);
+                continue;
+            case 'B':
+            case 'b':
+                break outer;
+            default:
+                c.handleError(ErrorCode.ERR_HANDLE_DATA,
+                    new SQLSyntaxErrorException("sql is not a supported statement, " +
+                        "maybe you have an error in your SQL syntax "), stmt.toString(), false);
+                return false;
             }
         }
         i += "balance".length();
-outer : for (; i < stmt.length(); ++i) {
+        outer:
+        for (; i < stmt.length(); ++i) {
             char ch = stmt.charAt(i);
             switch (ch) {
-                case ' ':
-                case '\t':
-                case '\r':
-                case '\n':
-                    continue;
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
-                    break outer;
-                default:
-                    c.handleError(ErrorCode.ERR_HANDLE_DATA,
-                        new SQLSyntaxErrorException("sql is not a supported statement," +
-                            " maybe you have an error in your SQL syntax "), stmt.toString(), false);
-                    return;
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+                continue;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                break outer;
+            default:
+                c.handleError(ErrorCode.ERR_HANDLE_DATA,
+                    new SQLSyntaxErrorException("sql is not a supported statement," +
+                        " maybe you have an error in your SQL syntax "), stmt.toString(), false);
+                return false;
             }
         }
 
@@ -89,24 +90,24 @@ outer : for (; i < stmt.length(); ++i) {
             if (percent > 100) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, new SQLSyntaxErrorException("balance num too big"),
                     stmt.toString(), false);
-                return;
+                return false;
             }
         }
 
         for (; i < stmt.length(); ++i) {
             char ch = stmt.charAt(i);
             switch (ch) {
-                case ' ':
-                case '\t':
-                case '\r':
-                case '\n':
-                case ';':
-                    continue;
-                default:
-                    c.handleError(ErrorCode.ERR_HANDLE_DATA,
-                        new SQLSyntaxErrorException("sql is not a supported statement," +
-                            " maybe you have an error in your SQL syntax "), stmt.toString(), false);
-                    return;
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+            case ';':
+                continue;
+            default:
+                c.handleError(ErrorCode.ERR_HANDLE_DATA,
+                    new SQLSyntaxErrorException("sql is not a supported statement," +
+                        " maybe you have an error in your SQL syntax "), stmt.toString(), false);
+                return false;
             }
         }
 
@@ -141,5 +142,6 @@ outer : for (; i < stmt.length(); ++i) {
             }
         }
         PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+        return true;
     }
 }

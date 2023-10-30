@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
@@ -288,13 +289,13 @@ public abstract class SqlUtil {
                 writer.keyword(operator.getName());
             } else {
                 if (writer instanceof SqlPrettyWriter) {
-          boolean disableQuoteIdentifiers = ((SqlPrettyWriter) writer).isDisableQuoteIdentifiers();
-          ((SqlPrettyWriter) writer).setDisableQuoteIdentifiers(true);
-          id.unparse(writer, 0, 0);
-          ((SqlPrettyWriter) writer).setDisableQuoteIdentifiers(disableQuoteIdentifiers);
-        } else {
-          id.unparse(writer, 0, 0);
-        }
+                    boolean disableQuoteIdentifiers = ((SqlPrettyWriter) writer).isDisableQuoteIdentifiers();
+                    ((SqlPrettyWriter) writer).setDisableQuoteIdentifiers(true);
+                    id.unparse(writer, 0, 0);
+                    ((SqlPrettyWriter) writer).setDisableQuoteIdentifiers(disableQuoteIdentifiers);
+                } else {
+                    id.unparse(writer, 0, 0);
+                }
             }
         } else if (!operator.getKind().equals(SqlKind.ROW)) {
             // ignore ROW keyword.
@@ -349,23 +350,7 @@ public abstract class SqlUtil {
             unparseConcat(call, writer);
         } else if (operator instanceof SqlSetOperator) {
             if (operator.getKind() == SqlKind.UNION) {
-                boolean subSqlContainsOrderBy = false;
-                for (SqlNode operand : call.getOperandList()) {
-                    if (operand instanceof SqlSelect) {
-                        if (((SqlSelect) operand).orderBy != null || ((SqlSelect) operand).hasLimit()) {
-                            subSqlContainsOrderBy |= true;
-                            break;
-                        }
-                    } else if (call instanceof SqlOrderBy) {
-                        subSqlContainsOrderBy |= true;
-                        break;
-                    }
-                }
-                if (subSqlContainsOrderBy) {
-                    unparseSetOperator(operator, call, writer, leftPrec, rightPrec);
-                } else {
-                    unparseNormalBinaryOperator(operator, call, writer, leftPrec, rightPrec, FrameTypeEnum.SETOP);
-                }
+                unparseNormalBinaryOperator(operator, call, writer, leftPrec, rightPrec, FrameTypeEnum.SETOP);
             } else {
                 unparseSetOperator(operator, call, writer, leftPrec, rightPrec);
             }
@@ -377,36 +362,83 @@ public abstract class SqlUtil {
     public static void unparseNormalBinaryOperator(SqlOperator operator, SqlCall call,
                                                    SqlWriter writer, int leftPrec, int rightPrec,
                                                    FrameTypeEnum frameTypeEnum) {
+        if (DynamicConfig.getInstance().useOrOpt()
+            && (operator.getKind() == SqlKind.OR || operator.getKind() == SqlKind.AND)) {
+            unparseAndOrOperator(operator, call, writer, leftPrec, rightPrec, FrameTypeEnum.SIMPLE);
+            return;
+        }
         final SqlWriter.Frame frame = writer.startList(frameTypeEnum);
-        if ((operator.getKind() == SqlKind.IN||operator.getKind() == SqlKind.NOT_IN) && call.operand(0) instanceof SqlCall) {
-            writer.sep("(");
-        } else if (SqlKind.UNION == operator.getKind() && call.operand(0) instanceof SqlSelect &&
-            ((SqlSelect) call.operand(0)).offset != null) {
-            // Add parentheses if UNION select with limit.
-            // ref: https://dev.mysql.com/doc/refman/5.7/en/union.html
+        boolean needParentheses = needParentheses(operator, call.operand(0), false);
+        if (needParentheses) {
             writer.sep("(");
         }
         call.operand(0).unparse(writer, leftPrec, operator.getLeftPrec());
-        if ((operator.getKind() == SqlKind.IN||operator.getKind() == SqlKind.NOT_IN) && call.operand(0) instanceof SqlCall) {
-            writer.sep(")");
-        } else if (SqlKind.UNION == operator.getKind() && call.operand(0) instanceof SqlSelect &&
-            ((SqlSelect) call.operand(0)).offset != null) {
+        if (needParentheses) {
             writer.sep(")");
         }
         final boolean needsSpace = operator.needsSpace();
         writer.setNeedWhitespace(needsSpace);
         writer.sep(operator.getName());
         writer.setNeedWhitespace(needsSpace);
-        if (SqlKind.UNION == operator.getKind() && call.operand(1) instanceof SqlSelect &&
-            ((SqlSelect) call.operand(1)).offset != null) {
+        needParentheses = needParentheses(operator, call.operand(1), true);
+        if (needParentheses) {
             writer.sep("(");
         }
         call.operand(1).unparse(writer, operator.getRightPrec(), rightPrec);
-        if (SqlKind.UNION == operator.getKind() && call.operand(1) instanceof SqlSelect &&
-            ((SqlSelect) call.operand(1)).offset != null) {
+        if (needParentheses) {
             writer.sep(")");
         }
         writer.endList(frame);
+    }
+
+    private static boolean needParentheses(SqlOperator operator, SqlNode subNode, boolean secondOperand) {
+        if ((operator.getKind() == SqlKind.IN || operator.getKind() == SqlKind.NOT_IN) &&
+            subNode instanceof SqlCall) {
+            // only add parentheses for the first operand of IN type sql call
+            return !secondOperand;
+        } else if (SqlKind.UNION == operator.getKind() &&
+            subNode instanceof SqlSelect &&
+            (((SqlSelect) subNode).orderBy != null ||
+                ((SqlSelect) subNode).offset != null)) {
+            // Add parentheses if UNION select with limit.
+            // ref: https://dev.mysql.com/doc/refman/5.7/en/union.html
+            // Add parentheses if UNION select with order by
+            return true;
+        }
+        return false;
+    }
+
+    private static void unparseAndOrOperator(SqlOperator operator, SqlCall call,
+                                             SqlWriter writer, int leftPrec, int rightPrec,
+                                             FrameTypeEnum frameTypeEnum) {
+        SqlKind kind = operator.getKind();
+        final SqlWriter.Frame frame = writer.startList(frameTypeEnum);
+        final boolean needsSpace = operator.needsSpace();
+
+        // flatten all operands with the same kind
+        List<SqlNode> operands = new ArrayList<>();
+        SqlUtil.dfsTargetOp(call, kind, operands);
+        operands.get(0).unparse(writer, leftPrec, operator.getLeftPrec());
+        for (int i = 1; i < operands.size(); i++) {
+            writer.setNeedWhitespace(needsSpace);
+            writer.sep(operator.getName());
+            writer.setNeedWhitespace(needsSpace);
+            operands.get(i).unparse(writer, rightPrec, operator.getRightPrec());
+        }
+        writer.endList(frame);
+    }
+
+    private static void dfsTargetOp(SqlNode treeNode, SqlKind kind, List<SqlNode> operands) {
+        if (treeNode instanceof SqlCall) {
+            SqlCall call = (SqlCall) treeNode;
+            if (call.getOperator() != null && call.getOperator().getKind() == kind) {
+                for (SqlNode child : call.getOperandList()) {
+                    SqlUtil.dfsTargetOp(child, kind, operands);
+                }
+                return;
+            }
+        }
+        operands.add(treeNode);
     }
 
     public static void unparseSetOperator(
@@ -804,14 +836,14 @@ public abstract class SqlUtil {
         }
     }
 
-  /**
-   * If an identifier is a legitimate call to a function which has no
-   * arguments and requires no parentheses (for example "CURRENT_USER"),
-   * returns a call to that function, otherwise returns null.
-   */
-  public static SqlCall makeCall(
-      SqlOperatorTable opTab,
-      SqlIdentifier id) {
+    /**
+     * If an identifier is a legitimate call to a function which has no
+     * arguments and requires no parentheses (for example "CURRENT_USER"),
+     * returns a call to that function, otherwise returns null.
+     */
+    public static SqlCall makeCall(
+        SqlOperatorTable opTab,
+        SqlIdentifier id) {
 
 //    if (id.names.size() == 1) {
 //      if (SpecialFunction.set.contains(id.names.get(0).toUpperCase())) {
@@ -834,7 +866,7 @@ public abstract class SqlUtil {
 //        }
 //      }
 //    } else
-    if ( id.names.size() == 2  || id.names.size() == 3 ) {
+        if (id.names.size() == 2 || id.names.size() == 3) {
 
             int idNamesSize = id.names.size();
             String funcName = id.names.get(idNamesSize - 1);

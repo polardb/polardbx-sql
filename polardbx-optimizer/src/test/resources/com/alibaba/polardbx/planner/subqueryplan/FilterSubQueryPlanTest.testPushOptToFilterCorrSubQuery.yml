@@ -99,7 +99,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`test_hash_tb`.`id` = `id`) and (`name` = `test_hash_tb`.`name`)) and (`test_hash_tb`.`create_time` = `create_time`))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`name` = `test_hash_tb`.`name`) and (`test_hash_tb`.`create_time` = `create_time`))))")
 
 - sql: |
     select a.id
@@ -218,7 +218,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where ((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)))))))")
 
 - sql: |
     select a.id
@@ -331,4 +331,37 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`id` = `test_hash_tb`.`id`) and (`name` = 'xx')) and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`id` = `test_hash_tb`.`id`) and (`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where ((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)))))))")
+
+- sql: |
+    select null, c.*
+    from (
+        select distinct (ar.id), 1500000039, NULL, 92822, '2020-03-03 18:20:17', null
+        from test_hash_tb ar, test_hash_tb2 arpr
+        where not exists (
+            select *
+            from test_hash_tb2
+            where int_col1    = ar.int_col2
+              and ar.int_col3 = 0
+            )
+        ) c
+
+  plan: |
+    project(null="null", id="id", 1500000039="1500000039", null0="null", 92822="92822", 2020-03-03 18:20:17="2020-03-03 18:20:17", null1="null")
+      hashagg(group="id,1500000039,null,92822,2020-03-03 18:20:17")
+        project(id="id", 1500000039="1500000039", null="null", 92822="92822", 2020-03-03 18:20:17="'2020-03-03 18:20:17'")
+          filter(condition="apply_boolean")
+            correlateapply(cor=$cor1, leftconditions=[], opkind=null, type=anti)
+              project(id="id", int_col2="int_col2", int_col3="int_col3")
+                nljoin(condition="true", type="inner")
+                  gather(concurrent=true)
+                    logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2`, `int_col3` from `test_hash_tb` as `test_hash_tb`")
+                  gather(concurrent=true)
+                    logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2`")
+              filter(condition="int_col1 = $cor1.int_col2 and $cor1.int_col3 = 0")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
+    cache node:
+    
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")

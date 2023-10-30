@@ -36,7 +36,7 @@ import com.alibaba.polardbx.gms.tablegroup.JoinGroupTableDetailRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import lombok.Getter;
 import org.apache.commons.lang.StringUtils;
 

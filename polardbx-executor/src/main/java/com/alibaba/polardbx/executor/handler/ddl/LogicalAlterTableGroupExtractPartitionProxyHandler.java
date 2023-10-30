@@ -24,8 +24,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupExtractPartition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.sql.SqlAlterTableGroup;
+import org.apache.calcite.sql.SqlAlterTableGroupExtractPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.util.Util;
 
@@ -45,9 +46,19 @@ public class LogicalAlterTableGroupExtractPartitionProxyHandler extends LogicalA
         String tableGroupName = Util.last(original.names);
         PartitionInfo partitionInfo =
             AlterTableGroupUtils.getPartitionInfo(tableGroupName, logicalDdlPlan.getSchemaName());
-        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
+        SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
+            (SqlAlterTableGroupExtractPartition) sqlNode.getAlters().get(0);
+        boolean isExtractSubPartition = sqlAlterTableGroupExtractPartition.isExtractSubPartition();
 
-        if (!strategy.isList()) {
+        PartitionStrategy strategy;
+        if (isExtractSubPartition) {
+            strategy = partitionInfo.getPartitionBy().getSubPartitionBy().getStrategy();
+        } else {
+            strategy = partitionInfo.getPartitionBy().getStrategy();
+        }
+
+        String splitSql;
+        if (strategy != PartitionStrategy.LIST && strategy != PartitionStrategy.LIST_COLUMNS) {
             /**
              * 1. convert
              *      sql 'extract to partition [newPartitionName] by hot value(10)'
@@ -55,10 +66,16 @@ public class LogicalAlterTableGroupExtractPartitionProxyHandler extends LogicalA
              *      sql 'split into [newPartitionName] partitions 1 by hot value(10)'
              * 2. use new sql to build split partition subJob
              * */
-            String splitSql =
-                AlterTableGroupUtils.convertExtractPartitionToSplitPartitionSql(alterTableGroupExtractPartition, false,
-                    executionContext);
-            return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
+            if (isExtractSubPartition) {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractToSplitSqlForSubpartition(alterTableGroupExtractPartition, false,
+                        executionContext);
+            } else {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractPartitionToSplitPartitionSql(alterTableGroupExtractPartition,
+                        false,
+                        executionContext);
+            }
         } else {
             /**
              * 1. convert
@@ -67,11 +84,16 @@ public class LogicalAlterTableGroupExtractPartitionProxyHandler extends LogicalA
              *      sql 'split partition p1 into (partition p11 values in(10), partition p1 values in(xxx))'
              * 2. use new sql to build split partition subJob
              * */
-            String splitSql =
-                AlterTableGroupUtils.convertExtractListRelToSplitListSql(alterTableGroupExtractPartition, false,
-                    executionContext);
-
-            return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
+            if (isExtractSubPartition) {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractListToSplitListForSubpartition(alterTableGroupExtractPartition,
+                        false, executionContext);
+            } else {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractListRelToSplitListSql(alterTableGroupExtractPartition, false,
+                        executionContext);
+            }
         }
+        return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
     }
 }

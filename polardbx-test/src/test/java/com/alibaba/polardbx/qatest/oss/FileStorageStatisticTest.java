@@ -7,6 +7,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -41,6 +42,17 @@ public class FileStorageStatisticTest extends BaseTestCase {
             statement.execute(String.format("use %s", testDataBase));
             statement.execute(String.format("drop database if exists %s ", testDataBase2));
             statement.execute(String.format("create database %s mode = 'auto'", testDataBase2));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
+    @AfterClass
+    static public void DropDatabase() {
+        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            Statement statement = conn.createStatement();
+            statement.execute(String.format("drop database if exists %s ", testDataBase));
+            statement.execute(String.format("drop database if exists %s ", testDataBase2));
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -93,6 +105,10 @@ public class FileStorageStatisticTest extends BaseTestCase {
         // test analyze table
         ossRs = JdbcUtil.executeQuerySuccess(connection, "analyze table " + ossTable);
         assertThat(ossRs.next()).isTrue();
+        // skip rows like "use hll"
+        if (!ossRs.getString("MSG_TYPE").equals("status")) {
+            assertThat(ossRs.next()).isTrue();
+        }
         assertWithMessage("analyze table未收集到oss表统计信息").that(ossRs.getString("MSG_TEXT")).
             isEqualTo("OK");
         ossRs.close();

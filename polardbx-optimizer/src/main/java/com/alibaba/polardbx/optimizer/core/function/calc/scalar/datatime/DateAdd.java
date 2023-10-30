@@ -65,7 +65,6 @@ public class DateAdd extends AbstractScalarFunction {
     }
 
     protected MySQLIntervalType cachedIntervalType;
-    protected MySQLInterval cachedInterval;
 
     //
     //       DATE_ADD                                 DATE_ADD
@@ -178,15 +177,12 @@ public class DateAdd extends AbstractScalarFunction {
     }
 
     protected MySQLInterval getInterval(MySQLIntervalType intervalType, Object valueObj) {
-        if (cachedInterval == null) {
-            String intervalValue = DataTypes.StringType.convertFrom(valueObj);
-            try {
-                cachedInterval = MySQLIntervalType.parseInterval(intervalValue, intervalType);
-            } catch (Throwable t) {
-                // for invalid interval value
-                return null;
-            }
+        String intervalValue = DataTypes.StringType.convertFrom(valueObj);
+        try {
+            return MySQLIntervalType.parseInterval(intervalValue, intervalType);
+        } catch (Throwable t) {
+            // for invalid interval value
+            return null;
         }
-        return cachedInterval;
     }
 }

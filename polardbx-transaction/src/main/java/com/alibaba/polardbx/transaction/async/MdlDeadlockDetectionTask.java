@@ -33,7 +33,9 @@ import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
@@ -45,6 +47,7 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -54,10 +57,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet.Transaction.FAKE_GROUP_FOR_DDL;
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
+import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildGroupNameFromPhysicalDb;
+import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
 import static java.lang.Math.min;
 
 /**
@@ -81,6 +88,12 @@ public class MdlDeadlockDetectionTask implements Runnable {
 
     private static Class killSyncActionClass;
 
+    private static final Set<String> DDL_WAIT_MDL_LOCK_TYPE =
+        ImmutableSet.of(
+            "EXCLUSIVE", // for general online ddl: add column, drop column
+            "SHARED_NO_READ_WRITE", // for optimize table, add index.
+            "SHARED_NO_WRITE" // for modify column, modify partition.
+        );
     private static final String SELECT_PERFORMANCE_SCHEMA_METALOCKS =
         "select "
             + "`g`.`OBJECT_SCHEMA` AS `object_schema`,"
@@ -92,8 +105,6 @@ public class MdlDeadlockDetectionTask implements Runnable {
             + "`p`.`LOCK_DURATION` AS `waiting_lock_duration`,"
             + "`pt`.`PROCESSLIST_INFO` AS `waiting_query`,"
             + "`pt`.`PROCESSLIST_TIME` AS `waiting_query_secs`,"
-            + "`ps`.`ROWS_AFFECTED` AS `waiting_query_rows_affected`,"
-            + "`ps`.`ROWS_EXAMINED` AS `waiting_query_rows_examined`,"
             + "`gt`.`THREAD_ID` AS `blocking_thread_id`,"
             + "`gt`.`PROCESSLIST_ID` AS `blocking_pid`,"
             + "`gt`.`PROCESSLIST_INFO` AS `blocking_query`,"
@@ -103,7 +114,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
             + "`g`.`LOCK_DURATION` AS `blocking_lock_duration`,"
             + "concat('KILL QUERY ',`gt`.`PROCESSLIST_ID`) AS `sql_kill_blocking_query`,"
             + "concat('KILL ',`gt`.`PROCESSLIST_ID`) AS `sql_kill_blocking_connection` "
-            + "from (((((`performance_schema`.`metadata_locks` `g` "
+            + "from (((`performance_schema`.`metadata_locks` `g` "
             + "join `performance_schema`.`metadata_locks` `p` "
             + "on(((`g`.`OBJECT_TYPE` = `p`.`OBJECT_TYPE`) "
             + "and (`g`.`OBJECT_SCHEMA` = `p`.`OBJECT_SCHEMA`) "
@@ -114,14 +125,10 @@ public class MdlDeadlockDetectionTask implements Runnable {
             + "on((`g`.`OWNER_THREAD_ID` = `gt`.`THREAD_ID`))) "
             + "join `performance_schema`.`threads` `pt` "
             + "on((`p`.`OWNER_THREAD_ID` = `pt`.`THREAD_ID`))) "
-            + "left join `performance_schema`.`events_statements_current` `gs` "
-            + "on((`g`.`OWNER_THREAD_ID` = `gs`.`THREAD_ID`))) "
-            + "left join `performance_schema`.`events_statements_current` `ps` "
-            + "on((`p`.`OWNER_THREAD_ID` = `ps`.`THREAD_ID`))) "
             + "where "
             + "(`g`.`OBJECT_TYPE` = 'TABLE') "
             + "AND "
-            + "`pt`.`PROCESSLIST_ID` != `gt`.`PROCESSLIST_ID`";
+            + "(`pt`.`PROCESSLIST_ID` != `gt`.`PROCESSLIST_ID`)";
 
     /**
      * DDL will wait for MDL for some seconds, then kill the query which held the MDL
@@ -164,7 +171,12 @@ public class MdlDeadlockDetectionTask implements Runnable {
                                        Map<Long, TGroupDataSource> mysqlConn2DatasourceMap,
                                        List<MdlWaitInfo> mdlWaitInfoList) {
         final Map<Long, TrxLookupSet.Transaction> ddlTrxMap = new HashMap<>();
-        try (final IConnection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+        final Set<String> phyDbNames =
+            groupNames.stream().map(o -> buildPhysicalDbNameFromGroupName(o).toUpperCase()).collect(
+                Collectors.toSet());
+        String masterDnId = dataSource.getMasterDNId();
+        try (final Connection conn = DeadlockDetectionTask.createPhysicalConnectionForLeaderStorage(dataSource);
+            Statement stmt = conn.createStatement()) {
             final ResultSet rs = stmt.executeQuery(SELECT_PERFORMANCE_SCHEMA_METALOCKS);
             while (rs.next()) {
                 // Get the waiting and blocking processlist id
@@ -179,15 +191,21 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 final long waitingQuerySecs = rs.getLong("waiting_query_secs");
                 final String waitingLockType = rs.getString("waiting_lock_type");
                 final String blockingLockType = rs.getString("blocking_lock_type");
+                final String physicalDbName = rs.getString("object_schema");
+                final String blockingQuery = rs.getString("blocking_query");
+                final String physicalTableName = rs.getString("object_name");
 
                 // Update mdlWaitInfoList, it is used to do the following thing:
                 // If A is waiting for EXCLUSIVE MDL blocked by B, and B is holding a non-EXCLUSIVE MDL lock
                 // Then we kill B
                 if (waitingQuerySecs >= MDL_WAIT_TIMEOUT &&
-                    StringUtils.equalsIgnoreCase(waitingLockType, "EXCLUSIVE")
-                    && !StringUtils.equalsIgnoreCase(blockingLockType, "EXCLUSIVE")) {
+                    DDL_WAIT_MDL_LOCK_TYPE.contains(waitingLockType.toUpperCase()) &&
+                    !DDL_WAIT_MDL_LOCK_TYPE.contains(blockingLockType.toUpperCase()) &&
+                    phyDbNames.contains(physicalDbName.toUpperCase())) {
                     MdlWaitInfo mdlInfo =
-                        new MdlWaitInfo(waiting, blocking, waitingLockType, waitingQuerySecs, waitingQuery, dataSource);
+                        new MdlWaitInfo(waiting, blocking, waitingLockType, waitingQuerySecs, waitingQuery,
+                            blockingQuery, physicalDbName, physicalTableName, dataSource);
+
                     mdlWaitInfoList.add(mdlInfo);
                 }
 
@@ -262,7 +280,6 @@ public class MdlDeadlockDetectionTask implements Runnable {
                     blockingLocalTrx = blockingTrx.getLocalTransaction(groupName);
                 }
                 // Update other information of blocking trx
-                final String blockingQuery = rs.getString("blocking_query");
                 if (null != blockingQuery && null == blockingLocalTrx.getPhysicalSql()) {
                     final String truncatedSql = blockingQuery.substring(0, min(blockingQuery.length(), 4096));
                     blockingLocalTrx.setPhysicalSql(truncatedSql);
@@ -320,19 +337,22 @@ public class MdlDeadlockDetectionTask implements Runnable {
         ISyncAction killSyncAction;
         try {
             killSyncAction =
-                (ISyncAction) killSyncActionClass.getConstructor(String.class, Long.TYPE, Boolean.TYPE, ErrorCode.class)
-                    .newInstance(db, frontendConnId, true, ErrorCode.ERR_TRANS_DEADLOCK);
+                (ISyncAction) killSyncActionClass
+                    .getConstructor(String.class, Long.TYPE, Boolean.TYPE, Boolean.TYPE, ErrorCode.class)
+                    .newInstance("", frontendConnId, false, true, ErrorCode.ERR_TRANS_DEADLOCK);
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
-        SyncManagerHelper.sync(killSyncAction);
+        SyncManagerHelper.sync(killSyncAction, DEFAULT_DB_NAME);
     }
 
     private void killByBackendConnId(final Long backendConnId, final TGroupDataSource dataSource) {
         if (backendConnId == null || null == dataSource) {
             return;
         }
-        try (IConnection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+        String masterDnId = dataSource.getMasterDNId();
+        try (Connection conn = DeadlockDetectionTask.createPhysicalConnectionForLeaderStorage(dataSource);
+            Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(String.format("kill %s", backendConnId));
         } catch (SQLException ex) {
             final String dnId = dataSource.getMasterSourceAddress();
@@ -395,6 +415,9 @@ public class MdlDeadlockDetectionTask implements Runnable {
             final StringBuilder simpleDeadlockLog = deadlockLog.getKey();
             final StringBuilder fullDeadlockLog = deadlockLog.getValue();
 
+            Optional.ofNullable(OptimizerContext.getTransStat(DEFAULT_DB_NAME))
+                .ifPresent(s -> s.countMdlDeadlock.incrementAndGet());
+
             // ddlMap/trxMap: index in cycle -> transaction
             final Map<Integer, TrxLookupSet.Transaction> ddlMap = new HashMap<>();
             final Map<Integer, TrxLookupSet.Transaction> trxMap = new HashMap<>();
@@ -441,16 +464,44 @@ public class MdlDeadlockDetectionTask implements Runnable {
             StorageInfoManager.updateMdlDeadlockInfo(fullDeadlockLog.toString());
         });
 
-        if (!graph.detect().isPresent() && CollectionUtils.isNotEmpty(mdlWaitInfoList)) {
+        if (CollectionUtils.isNotEmpty(mdlWaitInfoList)) {
+            Map<GroupConnPair, Long> groupConnPairLongMap = lookupSet.getGroupConn2Tran();
+            Set<Long> logicalTransIds = new HashSet<>();
             for (MdlWaitInfo mdlWaitInfo : mdlWaitInfoList) {
                 final String dnId = mdlWaitInfo.dataSource.getMasterSourceAddress();
-                final String killMessage = String.format(
-                    "metadata lock wait time out: DN(%s) connection %s is trying to acquire EXCLUSIVE MDL lock, "
-                        + "but blocked by connection %s. try kill %s",
-                    dnId, mdlWaitInfo.waiting, mdlWaitInfo.blocking, mdlWaitInfo.blocking);
-                logger.warn(killMessage);
-                EventLogger.log(EventType.DEAD_LOCK_DETECTION, killMessage);
-                killByBackendConnId(mdlWaitInfo.blocking, mdlWaitInfo.dataSource);
+                final String formatWaitingQuery = formatProcessInfo(mdlWaitInfo.waitingQuery);
+                final String formatBlockingQuery = formatProcessInfo(mdlWaitInfo.blockingQuery);
+                String groupName = buildGroupNameFromPhysicalDb(mdlWaitInfo.phyDbName);
+                GroupConnPair groupConnPair =
+                    new GroupConnPair(groupName, mdlWaitInfo.blocking);
+                if (groupConnPairLongMap.containsKey(groupConnPair)) {
+                    Long logicalTransId = groupConnPairLongMap.get(groupConnPair);
+                    Long frontConnId = lookupSet.getTransaction(logicalTransId).getFrontendConnId();
+                    if (!logicalTransIds.contains(frontConnId)) {
+                        logicalTransIds.add(frontConnId);
+                        final String killLogicalTransMessage = String.format(
+                            "schema [%s] metadata lock wait time out: DN(%s) connection %s(%s) is trying to acquire %s MDL lock on %s.%s, "
+                                + "but blocked by connection %s(%s) from CN connection %s. try kill CN connection %s with transId %s",
+                            db, dnId, mdlWaitInfo.waiting, formatWaitingQuery, mdlWaitInfo.waitingLockType,
+                            mdlWaitInfo.phyDbName, mdlWaitInfo.phyTableName, mdlWaitInfo.blocking,
+                            formatBlockingQuery, frontConnId, frontConnId, logicalTransId);
+                        logger.warn(killLogicalTransMessage);
+                        killByFrontendConnId(frontConnId);
+                        EventLogger.log(EventType.DEAD_LOCK_DETECTION, killLogicalTransMessage);
+                    }
+                } else {
+                    // only kill physical connection when there is no corresponding logical connection
+                    final String killMessage = String.format(
+                        "schema [%s] metadata lock wait time out: DN(%s) connection %s(%s) is trying to acquire %s MDL lock on %s.%s, "
+                            + "but blocked by connection %s(%s). try kill %s",
+                        db, dnId, mdlWaitInfo.waiting, formatWaitingQuery, mdlWaitInfo.waitingLockType,
+                        mdlWaitInfo.phyDbName, mdlWaitInfo.phyTableName, mdlWaitInfo.blocking, formatBlockingQuery,
+                        mdlWaitInfo.blocking);
+                    logger.warn(killMessage);
+                    EventLogger.log(EventType.DEAD_LOCK_DETECTION, killMessage);
+                    killByBackendConnId(mdlWaitInfo.blocking, mdlWaitInfo.dataSource);
+                }
+
             }
         }
     }
@@ -476,20 +527,36 @@ public class MdlDeadlockDetectionTask implements Runnable {
         String waitingLockType;
         long waitingQuerySecs;
         String waitingQuery;
+
+        String blockingQuery;
         TGroupDataSource dataSource;
+
+        String phyDbName;
+
+        String phyTableName;
 
         public MdlWaitInfo(final long waiting,
                            final long blocking,
                            final String waitingLockType,
                            final long waitingQuerySecs,
                            final String waitingQuery,
+                           final String blockingQuery,
+                           final String phyDbName,
+                           final String phyTableName,
                            final TGroupDataSource dataSource) {
             this.waiting = waiting;
             this.blocking = blocking;
             this.waitingLockType = waitingLockType;
             this.waitingQuerySecs = waitingQuerySecs;
-            this.waitingQuery = waitingQuery;
+            this.waitingQuery = Optional.ofNullable(waitingQuery).orElse("");
+            this.blockingQuery = Optional.ofNullable(blockingQuery).orElse("");
+            this.phyDbName = phyDbName;
+            this.phyTableName = phyTableName;
             this.dataSource = dataSource;
         }
+    }
+
+    private static String formatProcessInfo(String processInfo) {
+        return processInfo.replace("\n", "\\n");
     }
 }

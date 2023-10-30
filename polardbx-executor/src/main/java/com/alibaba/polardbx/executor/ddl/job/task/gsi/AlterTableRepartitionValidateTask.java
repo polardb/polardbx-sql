@@ -19,8 +19,8 @@ package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -109,21 +110,24 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
         GsiValidator.validateCreateOnGsi(schemaName, indexName, executionContext);
 
         // validate gsi add columns
-        for (Map.Entry<String, List<String>> entry : addColumnsIndexes.entrySet()) {
-            String gsiName = entry.getKey();
-            this.tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(gsiName);
-            Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            columns.addAll(tableMeta.getAllColumns().stream().map(c -> c.getName()).collect(Collectors.toList()));
+        if (addColumnsIndexes != null) {
+            for (Map.Entry<String, List<String>> entry : addColumnsIndexes.entrySet()) {
+                String gsiName = entry.getKey();
+                this.tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(gsiName);
+                Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                columns.addAll(
+                    tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList()));
 
-            TableValidator.validateTableExistence(schemaName, gsiName, executionContext);
-            for (String columnName : entry.getValue()) {
-                checkColumnNotExists(columns, columnName);
-                columns.add(columnName);
+                TableValidator.validateTableExistence(schemaName, gsiName, executionContext);
+                for (String columnName : entry.getValue()) {
+                    checkColumnNotExists(columns, columnName);
+                    columns.add(columnName);
+                }
             }
         }
 
         // validate current gsi existence
-        for (String gsiName : dropIndexes) {
+        for (String gsiName : GeneralUtil.emptyIfNull(dropIndexes)) {
             GsiValidator.validateGsiExistence(schemaName, primaryTableName, gsiName, executionContext);
         }
 
@@ -144,7 +148,6 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
         if (checkBroadcastTgNotExists) {
             TableValidator.validateTableGroupNoExists(schemaName, TableGroupNameUtil.BROADCAST_TG_NAME_TEMPLATE);
         }
-        CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, primaryTableName);
         //todo for partition table, maybe we need the corresponding physical table name checker
     }
 
@@ -155,13 +158,17 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
     }
 
     private void genTableGroupInfoForValidate() {
-        for (Map.Entry<String, List<String>> entry : addColumnsIndexes.entrySet()) {
-            String gsiName = entry.getKey();
-            genTableGroupInfoFromTbName(gsiName);
+        if (addColumnsIndexes != null) {
+            for (Map.Entry<String, List<String>> entry : addColumnsIndexes.entrySet()) {
+                String gsiName = entry.getKey();
+                genTableGroupInfoFromTbName(gsiName);
+            }
         }
 
-        for (String gsiName : dropIndexes) {
-            genTableGroupInfoFromTbName(gsiName);
+        if (dropIndexes != null) {
+            for (String gsiName : dropIndexes) {
+                genTableGroupInfoFromTbName(gsiName);
+            }
         }
     }
 

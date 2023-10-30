@@ -31,6 +31,7 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+
 public class CreateGsiCaseSensitiveTest extends AsyncDDLBaseNewDBTestCase {
 
     private static final String HINT = "/*+TDDL:cmd_extra(STORAGE_CHECK_ON_GSI=false)*/ ";

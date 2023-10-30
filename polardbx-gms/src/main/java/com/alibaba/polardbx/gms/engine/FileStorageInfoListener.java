@@ -16,12 +16,33 @@
 
 package com.alibaba.polardbx.gms.engine;
 
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class FileStorageInfoListener implements ConfigListener {
     @Override
     public void onHandleConfig(String dataId, long newOpVersion) {
+        Map<Engine, FileSystemGroup> fsGroupMap = new HashMap<>();
+        for (Engine engine : Engine.values()) {
+            fsGroupMap.put(engine, FileSystemManager.getFileSystemGroup(engine, false));
+        }
         FileSystemManager.invalidFileSystem();
+        for (Engine engine : Engine.values()) {
+            FileSystemGroup newFsGroup = FileSystemManager.getFileSystemGroup(engine, false);
+            // drop file storage
+            if (fsGroupMap.get(engine) != null && newFsGroup == null) {
+                EventLogger.log(EventType.CLOSE_OSS, String.format("engine %s is close.", engine));
+            }
+            // create file storage
+            if (fsGroupMap.get(engine) == null && newFsGroup != null) {
+                EventLogger.log(EventType.INIT_OSS, String.format("engine %s is initialized.", engine));
+            }
+        }
     }
 }
 

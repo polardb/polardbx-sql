@@ -27,6 +27,7 @@ public class DrdsDropFileStorageStatement extends MySqlStatementImpl implements 
     public SQLName getName() {
         return name;
     }
+
     public void setName(SQLName name) {
         if (name != null) {
             name.setParent(this);

@@ -158,7 +158,7 @@ public class MoveDataToFileStoreTask extends BaseGmsTask {
                 Engine sourceEngine = sourceTableMeta.getEngine();
 
                 // build orc schema
-                PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta);
+                PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(targetTableMeta);
 
                 // data config
                 Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);
@@ -297,6 +297,7 @@ public class MoveDataToFileStoreTask extends BaseGmsTask {
                     sourcePhySchema,
                     sourcePhyTable,
                     sourceTableMeta,
+                    null,
                     tableEngine,
                     taskId,
 

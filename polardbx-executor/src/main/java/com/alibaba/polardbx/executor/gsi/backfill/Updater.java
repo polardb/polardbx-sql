@@ -258,7 +258,14 @@ public class Updater extends PhyOperationBuilderCommon {
                 .map(String::toUpperCase)
                 .collect(Collectors.toList());
 
-            List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(indexTableMeta);
+            List<String> primaryKeyNames;
+            if (indexTableMeta.isHasPrimaryKey()) {
+                primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(indexTableMeta);
+            } else {
+                String primaryTableName = indexTableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+                TableMeta primaryTableMeta = optimizerContext.getLatestSchemaManager().getTable(primaryTableName);
+                primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(primaryTableMeta);
+            }
             List<Integer> primaryKeyIndexes = primaryKeyNames.stream()
                 .map(selectColumns::indexOf)
                 .collect(Collectors.toList());
@@ -343,7 +350,8 @@ public class Updater extends PhyOperationBuilderCommon {
                         buildParams.setDbType(DbType.MYSQL);
                         buildParams.setDynamicParams(currentParams);
                         buildParams.setBatchParameters(null);
-                        PhyTableOperation operation = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+                        PhyTableOperation operation =
+                            PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
                         newPhysicalPlans.add(operation);
                     }
                 }
