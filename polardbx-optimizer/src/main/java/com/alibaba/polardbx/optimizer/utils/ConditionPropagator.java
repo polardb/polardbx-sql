@@ -16,15 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import org.apache.calcite.rex.RexBuilder;
@@ -34,6 +25,15 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class ConditionPropagator {
     /**
@@ -103,6 +103,7 @@ public class ConditionPropagator {
         Set<String> distinctConditionDigestSet = new HashSet<>();
         List<RexNode> allDistinctConditions = new ArrayList<>();
         for (RexNode condition : duplicateCondition) {
+
             if (distinctConditionDigestSet.add(condition.toString())) {
                 allDistinctConditions.add(condition);
             }

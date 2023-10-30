@@ -67,10 +67,7 @@ public class FileSystemUtils {
         long stamp = FileSystemManager.readLockWithTimeOut(engine);
         try {
             FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
-            if (fileSystemGroup.exists(ossKey)) {
-                return fileSystemGroup.delete(ossKey, false);
-            }
-            return false;
+            return fileSystemGroup.delete(ossKey, false);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
         } finally {

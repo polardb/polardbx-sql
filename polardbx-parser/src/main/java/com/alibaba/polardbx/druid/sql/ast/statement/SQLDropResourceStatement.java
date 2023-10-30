@@ -34,7 +34,7 @@ public class SQLDropResourceStatement extends SQLStatementImpl implements SQLDro
     }
 
     public SQLDropResourceStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

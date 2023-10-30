@@ -56,6 +56,10 @@ public class MySqlUnique extends MySqlKey {
         indexDefinition.setGlobal(global);
     }
 
+    public boolean getVisible() {
+        return this.indexDefinition.isVisible();
+    }
+
     public boolean isLocal() {
         return indexDefinition.isLocal();
     }

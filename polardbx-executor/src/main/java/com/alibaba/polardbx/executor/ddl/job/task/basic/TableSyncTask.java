@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Getter
@@ -58,7 +59,7 @@ public class TableSyncTask extends BaseSyncTask {
                          String tableName) {
         super(schemaName);
         this.tableName = tableName;
-        this.preemptive = false;
+        this.preemptive = true;
         this.initWait = null;
         this.interval = null;
         this.timeUnit = null;
@@ -68,7 +69,14 @@ public class TableSyncTask extends BaseSyncTask {
     public void executeImpl(ExecutionContext executionContext) {
         boolean throwExceptions = !isFromCDC();
         try {
-            if (!preemptive) {
+            boolean enablePreemptiveMdl =
+                executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
+            Long initWait = Optional.ofNullable(this.initWait)
+                .orElse(executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT));
+            Long interval = Optional.ofNullable(this.interval)
+                .orElse(executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL));
+            TimeUnit timeUnit = Optional.ofNullable(this.timeUnit).orElse(TimeUnit.MILLISECONDS);
+            if (!preemptive || !enablePreemptiveMdl) {
                 SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, tableName), throwExceptions);
             } else {
                 SyncManagerHelper.sync(

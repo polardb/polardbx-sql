@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.net;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.Capabilities;
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Versions;
 import com.alibaba.polardbx.common.audit.AuditAction;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
@@ -46,13 +45,6 @@ import com.alibaba.polardbx.net.util.CharsetUtil;
 import com.alibaba.polardbx.net.util.MySQLMessage;
 import com.alibaba.polardbx.net.util.RandomUtil;
 import com.alibaba.polardbx.net.util.TimeUtil;
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.CdcRpcClient.CdcRpcStreamingProxy;
-import com.alibaba.polardbx.rpc.cdc.DumpRequest;
-import com.alibaba.polardbx.rpc.cdc.DumpStream;
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
-import io.grpc.stub.StreamObserver;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -61,9 +53,6 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 
 /**
@@ -117,20 +106,6 @@ public abstract class FrontendConnection extends AbstractConnection {
     private PolarAccountInfo matchPolarUserInfo = null;
 
     protected volatile boolean rescheduled;
-
-    /**
-     * True means in cursor-fetch mode.
-     */
-    private boolean cursorFetchMode = false;
-
-    public void setCursorFetchMode(boolean cursorFetchMode) {
-        this.cursorFetchMode = cursorFetchMode;
-    }
-
-    public boolean isCursorFetchMode() {
-        return cursorFetchMode;
-    }
-
     /**
      * 一个Mysql 数据包上限,mysql 版本4.0.8 以上
      */
@@ -306,6 +281,10 @@ public abstract class FrontendConnection extends AbstractConnection {
         compressProto = (this.clientFlags & Capabilities.CLIENT_COMPRESS) != 0;
     }
 
+    public boolean isEofDeprecated() {
+        return (clientFlags & Capabilities.CLIENT_DEPRECATE_EOF) > 0;
+    }
+
     public boolean isManaged() {
         return isManaged;
     }
@@ -365,8 +344,8 @@ public abstract class FrontendConnection extends AbstractConnection {
         this.matchPolarUserInfo = matchPolarUserInfo;
     }
 
-    public void writeErrMessage(int errno, String msg) {
-        writeErrMessage(this.getNewPacketId(), errno, null, msg);
+    public void writeErrMessage(ErrorCode errorCode, String msg) {
+        writeErrMessage(this.getNewPacketId(), errorCode.getCode(), null, msg);
     }
 
     public void writeErrMessage(int errno, String sqlState, String msg) {
@@ -671,7 +650,7 @@ public abstract class FrontendConnection extends AbstractConnection {
         }
     }
 
-    public abstract LoadDataHandler prepareLoadInfile(String sql);
+    public abstract boolean prepareLoadInfile(String sql);
 
     public abstract void binlogDump(byte[] data);
 
@@ -699,6 +678,9 @@ public abstract class FrontendConnection extends AbstractConnection {
         flag |= Capabilities.CLIENT_MULTI_RESULTS;
         // flag |= Capabilities.CLIENT_PS_MULTI_RESULTS;
         flag |= Capabilities.CLIENT_PLUGIN_AUTH;
+        if (DynamicConfig.getInstance().enableDeprecateEof()) {
+            flag |= Capabilities.CLIENT_DEPRECATE_EOF;
+        }
         return flag;
     }
 
@@ -844,4 +826,5 @@ public abstract class FrontendConnection extends AbstractConnection {
     public void setInstanceId(String instanceId) {
         this.instanceId = instanceId;
     }
+
 }

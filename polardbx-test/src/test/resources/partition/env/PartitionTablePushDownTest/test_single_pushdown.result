@@ -1,0 +1,77 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup sin_tg1;
+create tablegroup sin_tg2;
+create tablegroup sin_tg3;
+CREATE TABLE sin_t1 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg1;
+CREATE TABLE sin_t2 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg2;
+CREATE TABLE sin_t3 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg3;
+CREATE TABLE sin_t4 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg1;
+explain select * from
+sin_t1 t1 join sin_t4 t2 on t1.a=t2.a;
+Logical ExecutionPlan
+LogicalView(tables="TEST_SINGLE_PUSH_15997248_P00000_GROUP.sin_t1_yNkh,sin_t4_Q7AR", sql="SELECT `t1`.`a`, `t1`.`b`, `t2`.`a`, `t2`.`b` FROM `sin_t1_yNkh` AS `t1` INNER JOIN `sin_t4_Q7AR` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+drop table sin_t1;
+drop table sin_t2;
+drop table sin_t3;
+drop table sin_t4;
+drop tablegroup sin_tg1;
+drop tablegroup sin_tg2;
+drop tablegroup sin_tg3;
+,
+
+ExceptedResult:
+## DISABLE_FAST_SQL_PARSER
+create tablegroup sin_tg1;
+create tablegroup sin_tg2;
+create tablegroup sin_tg3;
+CREATE TABLE sin_t1 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg1;
+CREATE TABLE sin_t2 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg2;
+CREATE TABLE sin_t3 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg3;
+CREATE TABLE sin_t4 (
+a int(11) NOT NULL,
+b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+single tablegroup=sin_tg1;
+explain select * from
+sin_t1 t1 join sin_t4 t2 on t1.a=t2.a;
+Logical ExecutionPlan
+LogicalView(tables="TEST_SINGLE_PUSH_15997248_P00000_GROUP.sin_t1_upr3,sin_t4_SG8o", sql="SELECT `t1`.`a`, `t1`.`b`, `t2`.`a`, `t2`.`b` FROM `sin_t1_upr3` AS `t1` INNER JOIN `sin_t4_SG8o` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+explain select * from
+sin_t1 t1 join sin_t2 t2 on t1.a=t2.a;
+Logical ExecutionPlan
+PhyTableOperation(tables="sin_t1[p1],sin_t2[p1]", sql="SELECT `t1`.`a`, `t1`.`b`, `t2`.`a`, `t2`.`b` FROM ? AS `t1` INNER JOIN ? AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+drop table sin_t1;
+drop table sin_t2;
+drop table sin_t3;
+drop table sin_t4;
+drop tablegroup sin_tg1;
+drop tablegroup sin_tg2;
+drop tablegroup sin_tg3;

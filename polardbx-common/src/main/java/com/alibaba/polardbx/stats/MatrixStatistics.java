@@ -80,7 +80,9 @@ public class MatrixStatistics {
     public long request = 0;
 
     public static AtomicLong requestAllDB = new AtomicLong(0);
-
+    /**
+     * 错误数
+     */
     public long errorCount = 0;
 
     public long integrityConstraintViolationErrorCount = 0;
@@ -141,9 +143,17 @@ public class MatrixStatistics {
 
     public AtomicLong backfillRows = new AtomicLong(0);
 
+    public AtomicLong changeSetDeleteRows = new AtomicLong(0);
+
+    public AtomicLong changeSetReplaceRows = new AtomicLong(0);
+
     public AtomicLong checkedRows = new AtomicLong(0);
 
-    private final TransactionStatistics transactionStats = new TransactionStatistics();
+    private final SchemaTransactionStatistics transactionStats = new SchemaTransactionStatistics();
+
+    public static volatile SchemaTransactionStatistics instanceTransactionStats = new SchemaTransactionStatistics();
+
+    public static final AtomicLong cachedTransactionStatsCount = new AtomicLong(0L);
 
     public AtomicLong physicalTimeCost = new AtomicLong(0);
 
@@ -339,6 +349,8 @@ public class MatrixStatistics {
         to.slowRequest = from.slowRequest;
         to.physicalSlowRequest = from.physicalSlowRequest;
         to.backfillRows = new AtomicLong(from.backfillRows.get());
+        to.changeSetDeleteRows = new AtomicLong(from.changeSetDeleteRows.get());
+        to.changeSetReplaceRows = new AtomicLong(from.changeSetReplaceRows.get());
         to.checkedRows = new AtomicLong(from.checkedRows.get());
     }
 
@@ -441,7 +453,7 @@ public class MatrixStatistics {
         getCurrentAppStatistics("", appName).addGroup(groupName).removeAtom(atomName);
     }
 
-    public TransactionStatistics getTransactionStats() {
+    public SchemaTransactionStatistics getTransactionStats() {
         return transactionStats;
     }
 

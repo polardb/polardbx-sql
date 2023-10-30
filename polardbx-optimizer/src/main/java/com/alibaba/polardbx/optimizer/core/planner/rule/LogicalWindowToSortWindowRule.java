@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
@@ -47,6 +49,15 @@ public class LogicalWindowToSortWindowRule extends RelOptRule {
     }
 
     @Override
+    public boolean matches(RelOptRuleCall call) {
+        final RelNode rel = call.rel(0);
+        if (!PlannerContext.getPlannerContext(rel).getParamManager().getBoolean(ConnectionParams.ENABLE_SORT_WINDOW)) {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
     public void onMatch(RelOptRuleCall call) {
         LogicalWindow window = (LogicalWindow) call.rels[0];
         RelNode input = call.rels[1];
@@ -59,8 +70,13 @@ public class LogicalWindowToSortWindowRule extends RelOptRule {
             relCollation = CBOUtil.createRelCollation(sortFields, orderKeys);
         }
 
-        RelNode newInput = convert(input, input.getTraitSet().replace(DrdsConvention.INSTANCE).replace(relCollation));
-
+        RelNode newInput = convert(input, input.getTraitSet().replace(DrdsConvention.INSTANCE));
+        if (relCollation != RelCollations.EMPTY) {
+            LogicalSort sort =
+                LogicalSort.create(input.getCluster().getPlanner().emptyTraitSet().replace(relCollation), newInput,
+                    relCollation, null, null);
+            newInput = convert(sort, sort.getTraitSet().replace(DrdsConvention.INSTANCE));
+        }
         SortWindow newWindow =
             SortWindow.create(
                 window.getTraitSet().replace(DrdsConvention.INSTANCE).replace(relCollation),

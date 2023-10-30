@@ -17,6 +17,7 @@ public class PartitionColumnTypeForKey2Test extends PartitionColumnTypeTestBase 
 
     public PartitionColumnTypeForKey2Test(TestParameter parameter) {
         super(parameter);
+        this.testDbName = this.testDbName + "_k2";
     }
 
     @Parameterized.Parameters(name = "{index}: partColTypeTestCase {0}")

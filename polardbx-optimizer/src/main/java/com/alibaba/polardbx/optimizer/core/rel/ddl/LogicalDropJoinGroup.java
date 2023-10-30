@@ -33,6 +33,16 @@ public class LogicalDropJoinGroup extends BaseDdlOperation {
         super(ddl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void preparedData() {
         DropJoinGroup dropJoinGroup = (DropJoinGroup) relDdl;
         SqlDropJoinGroup sqlDropJoinGroup = (SqlDropJoinGroup) dropJoinGroup.sqlNode;

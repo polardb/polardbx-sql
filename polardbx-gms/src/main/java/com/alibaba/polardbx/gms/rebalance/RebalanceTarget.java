@@ -18,7 +18,9 @@ package com.alibaba.polardbx.gms.rebalance;
 
 public enum RebalanceTarget {
     TABLE,
-    TABLEGROUP,
     DATABASE,
-    CLUSTER
+    CLUSTER,
+    TABLEGROUP,
+    TENANT_DB,
+    TENANT
 }

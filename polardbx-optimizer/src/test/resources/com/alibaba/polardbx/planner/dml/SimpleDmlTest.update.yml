@@ -40,8 +40,7 @@
     update test_hash_tb set name 'a' order by id limit 10;
 
   plan: |
-
-    syntax error, expect EQ, actual LITERAL_CHARS pos 32, line 1, column 30, token LITERAL_CHARS a
+    err-code: [pxc-4500][err_parser] syntax error, expect eq, actual literal_chars pos 32, line 1, column 30, token literal_chars a
 
 - sql: |
     update test_hash_tb set name = 'a' where id = 1 limit 10;

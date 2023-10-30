@@ -16,9 +16,12 @@
 
 package com.alibaba.polardbx.server.parser;
 
-import com.alibaba.polardbx.server.util.ParseUtil;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.server.util.ParseUtil;
+import org.apache.commons.lang.StringUtils;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -74,6 +77,7 @@ public final class ServerParse {
     public static final int LOAD_DATA_INFILE_SQL = 99;
     public static final int TABLE = 100;
     public static final int START_SLAVE = 101;
+    public static final int START_MASTER = 102;
 
     private static final Pattern ALTER_PROCEDURE_PATTERN = Pattern.compile("^\\s*alter\\s+procedure\\s+[\\s\\S]*$",
         Pattern.CASE_INSENSITIVE);
@@ -117,6 +121,35 @@ public final class ServerParse {
     private static final Pattern DEBUG_PROCEDURE_CLEAR_BREAKPOINTS_PATTERN =
         Pattern.compile("^\\s*debug\\s+procedure\\s+clear\\s+breakpoints\\s+[\\s\\S]*$",
             Pattern.CASE_INSENSITIVE);
+
+    public static final Set<Integer> PREPARE_UNSUPPORTED_QUERY_TYPE;
+
+    static {
+        PREPARE_UNSUPPORTED_QUERY_TYPE = new HashSet<>();
+
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(START);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(USE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(KILL);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(KILL_QUERY);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(PREPARE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(EXECUTE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(DEALLOCATE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(HELP);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(GRANT);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(REVOKE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(CREATE_USER);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(DROP_USER);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(CREATE_ROLE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(DROP_ROLE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(SET_PASSWORD);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(PURGE_TRANS);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(BALANCE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(RELOAD);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(LOAD_DATA_INFILE_SQL);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(SHARDING_ADVISE);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(FLUSH);
+        PREPARE_UNSUPPORTED_QUERY_TYPE.add(CALL);
+    }
 
     public static int parse(String stmt) {
         return parse(ByteString.from(stmt));
@@ -209,6 +242,29 @@ public final class ServerParse {
         return OTHER;
     }
 
+    private static boolean isFlushLog(ByteString stmt, int offset) {
+        for (int i = offset; i < stmt.length(); ++i) {
+            switch (stmt.charAt(i)) {
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+                continue;
+
+            case 'L':
+            case 'l':
+                // LOGS' '
+                if (i + 3 < stmt.length() &&
+                    ('O' == stmt.charAt(i + 1) || 'o' == stmt.charAt(i + 1)) &&
+                    ('G' == stmt.charAt(i + 2) || 'g' == stmt.charAt(i + 2)) &&
+                    ('S' == stmt.charAt(i + 3) || 's' == stmt.charAt(i + 3))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static int flushCheck(ByteString stmt, int offset) {
         if (stmt.length() > offset + "ush".length()) {
             char c1 = stmt.charAt(++offset);
@@ -217,6 +273,9 @@ public final class ServerParse {
             char c4 = stmt.charAt(++offset);
             if ((c1 == 'U' || c1 == 'u') && (c2 == 'S' || c2 == 's') && (c3 == 'H' || c3 == 'h')
                 && (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+                if (isFlushLog(stmt, offset)) {
+                    return OTHER;
+                }
                 return (offset << 8) | FLUSH;
             } else {
                 return OTHER;
@@ -934,7 +993,7 @@ public final class ServerParse {
                 return cmd;
             case 'T':
             case 't':
-                return startCheck(stmt, offset);
+                return stCheck(stmt, offset);
             default:
                 return OTHER;
             }
@@ -1054,18 +1113,33 @@ public final class ServerParse {
         return OTHER;
     }
 
+    private static int stCheck(ByteString stmt, int offset) {
+        if (stmt.length() > ++offset) {
+            switch (stmt.charAt(offset)) {
+            case 'A':
+            case 'a':
+                return startCheck(stmt, offset);
+            default:
+                return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
     // START' '
     private static int startCheck(ByteString stmt, int offset) {
-        if (stmt.length() > offset + 4) {
+        if (stmt.length() > offset + 3) {
             char c1 = stmt.charAt(++offset);
             char c2 = stmt.charAt(++offset);
             char c3 = stmt.charAt(++offset);
-            char c4 = stmt.charAt(++offset);
-            if ((c1 == 'A' || c1 == 'a') && (c2 == 'R' || c2 == 'r') && (c3 == 'T' || c3 == 't')
-                && (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+            if ((c1 == 'R' || c1 == 'r') && (c2 == 'T' || c2 == 't')
+                && (c3 == ' ' || c3 == '\t' || c3 == '\r' || c3 == '\n')) {
                 String stmtStr = stmt.toString().toLowerCase();
-                if (stmtStr.contains("slave") || stmtStr.contains("replica")) {
+                if (StringUtils.containsIgnoreCase(stmtStr, "slave") || StringUtils.containsIgnoreCase(stmtStr,
+                    "replica")) {
                     return START_SLAVE;
+                } else if (StringUtils.containsIgnoreCase(stmtStr, "master")) {
+                    return START_MASTER;
                 } else {
                     return (offset << 8) | START;
                 }

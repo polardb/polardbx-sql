@@ -32,6 +32,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -41,7 +42,6 @@ import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
@@ -61,6 +61,7 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDynamicParam;
@@ -69,6 +70,7 @@ import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
@@ -102,10 +104,10 @@ public class BuildPlanUtils {
         String logicalTableName,
         List<List<Object>> values,
         Mapping pkMapping,
-        ExecutionContext executionContext) {
-        PartitionInfoManager partitionInfoManager =
-            executionContext.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager();
-        PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(logicalTableName);
+        ExecutionContext executionContext,
+        boolean needPrimaryKeys) {
+        PartitionInfo partitionInfo =
+            executionContext.getSchemaManager(schemaName).getTable(logicalTableName).getPartitionInfo();
         final String physicalTableName;
         if (partitionInfo != null) {
             physicalTableName = partitionInfo.getTopology().values().stream().findFirst().get().iterator().next();
@@ -127,10 +129,12 @@ public class BuildPlanUtils {
         }
 
         List<Pair<Integer, List<Object>>> rowList = new ArrayList<>(values.size());
-        for (int i = 0; i < values.size(); i++) {
-            final List<Object> row = values.get(i);
-            final List<Object> primaryKeyValues = Mappings.permute(row, pkMapping);
-            rowList.add(Pair.of(i, primaryKeyValues));
+        if (needPrimaryKeys) {
+            for (int i = 0; i < values.size(); i++) {
+                final List<Object> row = values.get(i);
+                final List<Object> primaryKeyValues = Mappings.permute(row, pkMapping);
+                rowList.add(Pair.of(i, primaryKeyValues));
+            }
         }
 
         // targetDb: { targetTb: [[pk1], [pk2]] }
@@ -199,8 +203,7 @@ public class BuildPlanUtils {
         List<Integer> primaryKeyIndexes,
         ExecutionContext ec) {
 
-        boolean isPartTable = OptimizerContext.getContext(schemaName).getRuleManager().getPartitionInfoManager()
-            .isNewPartDbTable(logicalTableName);
+        boolean isPartTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (isPartTable) {
 
             TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
@@ -275,9 +278,7 @@ public class BuildPlanUtils {
                                                       ExecutionContext executionContext,
                                                       PartitionInfo partInfo) {
 
-        boolean isPartTable =
-            OptimizerContext.getContext(schemaName).getRuleManager().getPartitionInfoManager()
-                .isNewPartDbTable(logicalTableName);
+        boolean isPartTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (!isPartTable) {
             // Do sharding for sharded table
             return doShardSingleRow(shardingKeyValues, shardingKeyMetas, shardingKeyNames, logicalTableName, schemaName,
@@ -317,7 +318,7 @@ public class BuildPlanUtils {
             .buildPartitionTupleRoutingContext(schemaName, logTbName, partInfo, partKeyMetas);
         SqlCall rowsAst = routingContext.createPartColDynamicParamAst();
         PartitionTupleRouteInfo tupleRouteInfo = buildPartitionTupleRouteInfo(routingContext, rowsAst, true, context);
-        Parameters valuesParams = routingContext.createPartColValueParameters(partKeyValues);
+        Parameters valuesParams = routingContext.createPartColValueParameters(partKeyValues, true);
         return routeSingleValueRow(tupleRouteInfo, context, true, 0, valuesParams);
     }
 
@@ -396,9 +397,7 @@ public class BuildPlanUtils {
                                                                       String schemaName,
                                                                       PartitionInfo newPartitionInfo) {
 
-        String logTbName = indexMeta.getTableName();
-        PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
-        boolean isPartitionedTable = partitionInfoManager.isNewPartDbTable(logTbName);
+        boolean isPartitionedTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (!isPartitionedTable) {
             return shardValuesForShardedTable(sqlInsert, indexMeta, executionContext, schemaName);
         } else {
@@ -412,9 +411,8 @@ public class BuildPlanUtils {
                                                                                 String schemaName,
                                                                                 PartitionInfo newPartitionInfo,
                                                                                 String partName) {
-        String logTbName = indexMeta.getTableName();
-        PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
-        boolean isPartitionedTable = partitionInfoManager.isNewPartDbTable(logTbName);
+
+        boolean isPartitionedTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (!isPartitionedTable) {
             throw GeneralUtil.nestedException("Unsupported to shard key");
         } else {
@@ -429,6 +427,7 @@ public class BuildPlanUtils {
         PartitionInfo partInfo,
         ExecutionContext executionContext,
         String schemaName, String partName) {
+
         String logTbName = tableMeta.getTableName();
         List<ColumnMeta> rowColMeta = new ArrayList<>();
         SqlNodeList rowColsAst = sqlInsert.getTargetColumnList();
@@ -440,11 +439,14 @@ public class BuildPlanUtils {
                 rowColMeta.add(cm);
             }
         }
+
         List<Integer> partColIndexList;
         Parameters parameters = executionContext.getParams();
+
         if (partInfo == null) {
             partInfo = tableMeta.getPartitionInfo();
         }
+
         List<String> partitionNameList = ImmutableList.of(partName);
         PhysicalPartitionInfo loadTablePhysicalPartitionInfo =
             partInfo.getPhysicalPartitionTopology(partitionNameList)
@@ -453,6 +455,7 @@ public class BuildPlanUtils {
                 .findFirst().get().get(0);
         final Pair<String, String> dbAndTable = Pair
             .of(loadTablePhysicalPartitionInfo.getGroupKey(), loadTablePhysicalPartitionInfo.getPhyTable());
+
         /**
          * isBatch:
          *   isBatch=false,
@@ -463,11 +466,14 @@ public class BuildPlanUtils {
         PartitionTupleRoutingContext routingContext =
             PartitionTupleRoutingContext.buildPartitionTupleRoutingContext(schemaName, logTbName, partInfo, rowColMeta);
         partColIndexList = routingContext.getPartColIndexMappings();
+
         // Pick part columns Values from insert Values ast of SqlInsert，
         // each column of each value of multiValues is tha same as part column definitions
         List<List<Object>> multiValues = valuesForInsert(sqlInsert, partColIndexList, parameters, true);
+
         // Do Tuple Routing
         Map<String, Map<String, List<Integer>>> shardResults = new HashMap<>();
+
         for (int i = 0; i < multiValues.size(); i++) {
             shardResults.computeIfAbsent(dbAndTable.getKey(), b -> new HashMap<>())
                 .computeIfAbsent(dbAndTable.getValue(), b -> new ArrayList<>())
@@ -532,7 +538,7 @@ public class BuildPlanUtils {
      *
      * </pre>
      *
-     * @param routingContext the context of tupling
+     * @param routingContext the context of tuple
      * @param rowValuesAst the tuple templates
      * @param isBatch flag that label if rowValuesAst is a batch sql
      */
@@ -550,12 +556,12 @@ public class BuildPlanUtils {
             partInfo = tableMeta.getPartitionInfo();
         }
 
-        RelDataType valueRowType = routingContext.getPartColRelRowType();
+        RelDataType tupleValType = routingContext.getPartColRelRowType();
         List<Integer> pickedColumnIdxList = routingContext.getPartColIndexMappings();
 
         // Fetch the tuple template from SqlInsert Values according to the value of parameters.isBatch()
         List<SqlNode> rows = ((SqlCall) rowValuesAst).getOperandList();
-        List<List<SqlNode>> tupleTemplates = new ArrayList<>();
+        List<List<SqlNode>> tupleValAstTemplates = new ArrayList<>();
         if (isBatch) {
             /**
              * <pre>
@@ -583,7 +589,7 @@ public class BuildPlanUtils {
             for (int i = 0; i < pickedColumnIdxList.size(); i++) {
                 nodesOfPickedColumn.add(nodesInRow.get(pickedColumnIdxList.get(i)));
             }
-            tupleTemplates.add(nodesOfPickedColumn);
+            tupleValAstTemplates.add(nodesOfPickedColumn);
         } else {
             /**
              * <pre>
@@ -607,12 +613,12 @@ public class BuildPlanUtils {
                 for (int i = 0; i < pickedColumnIdxList.size(); i++) {
                     nodesOfPickedColumn.add(nodesInRow.get(pickedColumnIdxList.get(i)));
                 }
-                tupleTemplates.add(nodesOfPickedColumn);
+                tupleValAstTemplates.add(nodesOfPickedColumn);
             }
         }
 
         PartitionTupleRouteInfo tupleRouteInfo = PartitionPruner
-            .generatePartitionTupleRoutingInfo(schemaName, logTbName, partInfo, valueRowType, tupleTemplates, ec);
+            .generatePartitionTupleRoutingInfo(schemaName, logTbName, partInfo, tupleValType, tupleValAstTemplates, ec);
 
         return tupleRouteInfo;
     }
@@ -652,7 +658,7 @@ public class BuildPlanUtils {
                 }
                 return value;
             }).collect(Collectors.toList());
-            Parameters singleValParams = routingContext.createPartColValueParameters(shardingKeyValues);
+            Parameters singleValParams = routingContext.createPartColValueParameters(shardingKeyValues, true);
 
             Pair<String, String> dbAndTable =
                 routeSingleValueRow(tupleRouteInfo, tmpEc, false, tupleTemplateIdx, singleValParams);
@@ -707,15 +713,15 @@ public class BuildPlanUtils {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NO_FOUND,
                 "GSI table or temp table has no partition corresponding the value from primary table");
         }
-        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedPartitions();
+        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedParttions();
         return prunedParts;
     }
 
-    public static SearchDatumInfo resetParamsAndDoCalcSearchDatum(PartitionTupleRouteInfo tupleRouteInfo,
-                                                                  ExecutionContext ec,
-                                                                  boolean useTmpCtx,
-                                                                  int tupleTemplateIdx,
-                                                                  Parameters singleValueParams) {
+    public static List<SearchDatumInfo> resetParamsAndDoCalcSearchDatum(PartitionTupleRouteInfo tupleRouteInfo,
+                                                                        ExecutionContext ec,
+                                                                        boolean useTmpCtx,
+                                                                        int tupleTemplateIdx,
+                                                                        Parameters singleValueParams) {
         ExecutionContext tmpEc;
         if (useTmpCtx) {
             tmpEc = ec.copy();
@@ -774,12 +780,12 @@ public class BuildPlanUtils {
          */
         PartitionTupleRoutingContext routingContext =
             PartitionTupleRoutingContext.buildPartitionTupleRoutingContext(schemaName, logTbName, partInfo, rowColMeta);
-        partColIndexList = routingContext.getPartColIndexMappings();
         PartitionTupleRouteInfo tupleRouteInfo =
             buildPartitionTupleRouteInfo(routingContext, rowValuesAst, isBatch, executionContext);
 
         // Pick part columns Values from insert Values ast of SqlInsert，
         // each column of each value of multiValues is tha same as part column definitions
+        partColIndexList = routingContext.getPartColIndexMappings();
         List<List<Object>> multiValues = valuesForInsert(sqlInsert, partColIndexList, parameters, true);
 
         // Do Tuple Routing
@@ -821,12 +827,12 @@ public class BuildPlanUtils {
         String schemaName,
         String logicalTableName,
         List<List<Object>> values,
-        List<Integer> primaryKeyIndexes) {
-        OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+        List<Integer> primaryKeyIndexes,
+        ExecutionContext ec) {
         String physicalTableName;
         String dbIndex = "";
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
-            PartitionInfo partitionInfo = optimizerContext.getPartitionInfoManager().getPartitionInfo(logicalTableName);
+            PartitionInfo partitionInfo = ec.getSchemaManager(schemaName).getTable(logicalTableName).getPartitionInfo();
             physicalTableName = partitionInfo.getPrefixTableName();
 
             Map<String, Set<String>> topology = partitionInfo.getTopology();
@@ -835,7 +841,7 @@ public class BuildPlanUtils {
                 dbIndex = entry.getKey();
             }
         } else {
-            TddlRuleManager or = optimizerContext.getRuleManager();
+            TddlRuleManager or = ec.getSchemaManager(schemaName).getTddlRuleManager();
             TableRule tableRule = or.getTableRule(logicalTableName);
             physicalTableName = tableRule.getTbNamePattern();
 
@@ -1072,6 +1078,68 @@ public class BuildPlanUtils {
         return result;
     }
 
+    public static boolean checkAllUpdatedSkRefAfterValue(List<String> updateColumnList, Set<String> partitionKeys,
+                                                         LogicalInsert logicalInsert) {
+        if (logicalInsert.isSourceSelect()) {
+            return false;
+        }
+
+        int refCnt = 0;
+        for (int i = 0; i < updateColumnList.size(); i++) {
+            String columnName = updateColumnList.get(i);
+            if (partitionKeys.contains(updateColumnList.get(i))) {
+                refCnt++;
+                try {
+                    RexCall rexCall =
+                        (RexCall) ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands().get(1);
+                    SqlOperator op = rexCall.getOperator();
+                    if (!"VALUES".equalsIgnoreCase(op.getName())) {
+                        return false;
+                    }
+                    RexNode operand = rexCall.getOperands().get(0);
+                    RexInputRef inputRef = (RexInputRef) operand;
+                    String refColumnName = logicalInsert.getInsertRowType().getFieldNames().get(inputRef.getIndex());
+                    if (!refColumnName.equalsIgnoreCase(columnName)) {
+                        return false;
+                    }
+                } catch (Throwable e) {
+                    // If it's not values(col), just return false
+                    return false;
+                }
+            }
+        }
+
+        // Need to make sure all partition key ref to after value
+        return refCnt == partitionKeys.size();
+    }
+
+    public static boolean checkAllUpdatedSkRefBeforeValue(List<String> updateColumnList, Set<String> partitionKeys,
+                                                          LogicalInsert logicalInsert) {
+        if (logicalInsert.isSourceSelect()) {
+            return false;
+        }
+
+        for (int i = 0; i < updateColumnList.size(); i++) {
+            String columnName = updateColumnList.get(i);
+            if (partitionKeys.contains(updateColumnList.get(i))) {
+                try {
+                    RexNode rexNode = ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands().get(1);
+                    RexInputRef inputRef = (RexInputRef) rexNode;
+                    String refColumnName = logicalInsert.getInsertRowType().getFieldNames().get(inputRef.getIndex());
+                    if (!refColumnName.equalsIgnoreCase(columnName)) {
+                        return false;
+                    }
+                } catch (Throwable e) {
+                    // If it's not col, just return false
+                    return false;
+                }
+            }
+        }
+
+        // If partition key does not appear in update list, it must ref to before value
+        return true;
+    }
+
     public static List<Map<Integer, ParameterContext>> buildInsertBatchParam(List<List<Object>> values) {
         final int batchSize = values.size();
         final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>(batchSize);
@@ -1089,5 +1157,105 @@ public class BuildPlanUtils {
             batchParams.add(rowParams);
         }
         return batchParams;
+    }
+
+    protected static Map<String, Map<String, Parameters>> routeMultiValueRowWithParameter(
+        PartitionTupleRouteInfo tupleRouteInfo,
+        PartitionTupleRoutingContext routingContext,
+        ExecutionContext executionContext,
+        List<Integer> shardingKeyIndexes,
+        Parameters parameters) {
+
+        Map<String, Map<String, List<Map<Integer, ParameterContext>>>> tmpShardResults = new HashMap<>();
+
+        // Ust tmp ExecutionContext to dynamic update the info of params for part pruning
+        ExecutionContext tmpEc = executionContext.copy();
+
+        int tupleTemplateIdx = 0;
+        for (Map<Integer, ParameterContext> batchParameter : parameters.getBatchParameters()) {
+            List<Object> singleValue =
+                batchParameter.values().stream().map(ParameterContext::getValue).collect(Collectors.toList());
+            List<Object> shardingKeyValues = shardingKeyIndexes.stream().map(idx -> {
+                final Object value = singleValue.get(idx);
+                if (value instanceof ZeroDate || value instanceof ZeroTime || value instanceof ZeroTimestamp) {
+                    // For date like "0000-00-00" partition result is different for ZeroDate and String.
+                    // INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+                    return value.toString();
+                }
+                return value;
+            }).collect(Collectors.toList());
+            Parameters singleValParams = routingContext.createPartColValueParameters(shardingKeyValues, true);
+
+            Pair<String, String> dbAndTable =
+                routeSingleValueRow(tupleRouteInfo, tmpEc, false, tupleTemplateIdx, singleValParams);
+
+            tmpShardResults.computeIfAbsent(dbAndTable.getKey(), b -> new HashMap<>())
+                .computeIfAbsent(dbAndTable.getValue(), b -> new ArrayList<>())
+                .add(batchParameter);
+        }
+
+        Map<String, Map<String, Parameters>> shardResults = new HashMap<>();
+        tmpShardResults.forEach((group, tbMap) -> {
+            tbMap.forEach((tb, result) -> {
+                shardResults.computeIfAbsent(group, b -> new HashMap<>())
+                    .computeIfAbsent(tb, b -> new Parameters())
+                    .setBatchParams(result);
+            });
+        });
+
+        return shardResults;
+    }
+
+    public static Map<String, Map<String, Parameters>> buildResultForChangeSetApply(
+        String schemaName,
+        String logicalTableName,
+        Parameters parameters,
+        List<Integer> shardingKeyIndexes,
+        List<ColumnMeta> shardingKeyMetas,
+        ExecutionContext ec) {
+
+        boolean isPartTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (isPartTable) {
+
+            TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+            PartitionInfo partitionInfo = tableMeta.getNewPartitionInfo();
+            PartitionTupleRoutingContext routingContext = PartitionTupleRoutingContext
+                .buildPartitionTupleRoutingContext(schemaName, logicalTableName, partitionInfo, shardingKeyMetas);
+
+            SqlCall rowsAst = routingContext.createPartColDynamicParamAst();
+            PartitionTupleRouteInfo tupleRouteInfo = buildPartitionTupleRouteInfo(routingContext, rowsAst, true, ec);
+
+            return routeMultiValueRowWithParameter(tupleRouteInfo, routingContext, ec, shardingKeyIndexes, parameters);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * @return {targetDb: {targetTb: [[index, pk]]}}
+     */
+    public static Map<String, Map<String, Parameters>> getShardResults(String schemaName,
+                                                                       String tableName,
+                                                                       Parameters parameters,
+                                                                       ExecutionContext ec) {
+
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+        List<String> columns = tableMeta.getWriteColumns()
+            .stream()
+            .map(ColumnMeta::getName)
+            .map(String::toLowerCase)
+            .collect(Collectors.toList());
+
+        // sharding key indexes and ColumnMetas
+        List<String> shardingKeyNames = GlobalIndexMeta.getShardingKeys(tableMeta, schemaName);
+        List<ColumnMeta> shardingKeyMetas = new ArrayList<>(shardingKeyNames.size());
+        List<Integer> shardingKeyIndexes = new ArrayList<>(shardingKeyNames.size());
+        for (String shardingKey : shardingKeyNames) {
+            shardingKeyIndexes.add(columns.indexOf(shardingKey.toLowerCase()));
+            shardingKeyMetas.add(tableMeta.getColumnIgnoreCase(shardingKey));
+        }
+
+        return buildResultForChangeSetApply(schemaName, tableMeta.getTableName(), parameters, shardingKeyIndexes,
+            shardingKeyMetas, ec);
     }
 }

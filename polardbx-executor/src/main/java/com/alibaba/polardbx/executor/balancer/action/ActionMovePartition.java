@@ -25,7 +25,9 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
+import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -36,8 +38,10 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -54,6 +58,7 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
 
     public static final String NAME = "MovePartition";
     private static final String MOVE_PARTITION_SQL = "alter tablegroup %s move partitions %s to %s";
+    private static final String MOVE_SUBPARTITION_SQL = "alter tablegroup %s move subpartitions %s to %s";
 
     private String schema;
     private String tableGroupName;
@@ -61,6 +66,7 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
     private String toGroup;
     private String toInst;
     private BalanceStats stats;
+    private Boolean isSubpartition;
 
     private ActionMovePartition(String schema) {
         this.schema = schema;
@@ -75,6 +81,19 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         this.toInst = toInst;
     }
 
+    @Override
+    public Long getBackfillRows() {
+        Set<String> partitionNameSet = new HashSet<>(this.partitionNames);
+        TableGroupStat tableGroupStat = stats.getTableGroupStats().stream()
+            .filter(o -> o.getTableGroupConfig().getTableGroupRecord().getTg_name().equals(this.tableGroupName))
+            .collect(
+                Collectors.toList()).get(0);
+        return tableGroupStat.getPartitionGroups().stream()
+            .filter(o -> partitionNameSet.contains((o.pg == null) ? "" : o.pg.getPartition_name()))
+            .map(
+                PartitionGroupStat::getDataRows).mapToLong(o -> o).sum();
+    }
+
     public static List<ActionMovePartition> createMoveToGroups(String schema,
                                                                List<PartitionStat> partitions,
                                                                String toGroup,
@@ -85,9 +104,12 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
             .collect(
                 Collectors.groupingBy(
                     PartitionStat::getTableGroupName,
-                    Collectors.mapping(PartitionStat::getPartitionName, Collectors.toList())))
+                    Collectors.mapping(o -> o, Collectors.toList())))
             .forEach((tableGroupName, partList) -> {
-                res.add(createMoveToGroup(schema, tableGroupName, partList, toGroup, stats));
+                List<String> partNameList =
+                    partList.stream().map(o -> o.getPartitionName()).collect(Collectors.toList());
+                Boolean isSubpartition = partList.get(0).isSubPartition();
+                res.add(createMoveToGroup(schema, tableGroupName, partNameList, toGroup, stats, isSubpartition));
             });
 
         return res;
@@ -115,12 +137,14 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
                                                          String tgName,
                                                          List<String> partitions,
                                                          String toGroup,
-                                                         BalanceStats stats) {
+                                                         BalanceStats stats,
+                                                         Boolean isSubpartition) {
         ActionMovePartition res = new ActionMovePartition(schema);
         res.tableGroupName = tgName;
         res.partitionNames = partitions;
         res.toGroup = toGroup;
         res.stats = stats;
+        res.isSubpartition = isSubpartition;
         return res;
     }
 
@@ -134,6 +158,7 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         res.partitionNames = partitions;
         res.toInst = toInst;
         res.stats = stats;
+        res.isSubpartition = false;
         return res;
     }
 
@@ -152,7 +177,11 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         String target = this.toInst != null ?
             "instance(" + this.toInst + ")" :
             "group(" + this.toGroup + ")";
-        return String.format("move partition %s.%s to %s",
+        String stepTemplate = "move partition %s.%s to %s";
+        if (isSubpartition) {
+            stepTemplate = "move subpartition %s.%s to %s";
+        }
+        return String.format(stepTemplate,
             this.tableGroupName, TStringUtil.join(this.partitionNames, ","), target);
     }
 
@@ -165,10 +194,19 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         }
         String partitionList =
             this.partitionNames.stream().map(TStringUtil::backQuote).collect(Collectors.joining(","));
-        String sql = String.format(MOVE_PARTITION_SQL,
-            TStringUtil.backQuote(this.tableGroupName),
-            partitionList,
-            TStringUtil.quoteString(targetStorage));
+        String sql = null;
+        if (isSubpartition) {
+            sql = String.format(MOVE_SUBPARTITION_SQL,
+                TStringUtil.backQuote(this.tableGroupName),
+                partitionList,
+                TStringUtil.quoteString(targetStorage));
+
+        } else {
+            sql = String.format(MOVE_PARTITION_SQL,
+                TStringUtil.backQuote(this.tableGroupName),
+                partitionList,
+                TStringUtil.quoteString(targetStorage));
+        }
         return sql;
     }
 
@@ -178,15 +216,17 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         long totalRows = 0L;
         long totalSize = 0L;
         try {
-            List<PartitionStat> partitionStatList = stats.filterPartitionStat(tableGroupName, Sets.newHashSet(partitionNames));
-            for(PartitionStat partitionStat: partitionStatList){
+            List<PartitionStat> partitionStatList =
+                stats.filterPartitionStat(tableGroupName, Sets.newHashSet(partitionNames));
+            for (PartitionStat partitionStat : partitionStatList) {
                 totalRows += partitionStat.getPartitionRows();
                 totalSize += partitionStat.getPartitionDiskSize();
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
         }
-        return ActionUtils.convertToDelegatorJob(schema, sql, CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+        return ActionUtils.convertToDelegatorJob(schema, sql,
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
     }
 
     @Override

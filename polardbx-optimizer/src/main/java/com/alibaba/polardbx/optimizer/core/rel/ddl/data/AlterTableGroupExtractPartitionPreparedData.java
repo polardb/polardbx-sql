@@ -21,6 +21,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPartition;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,10 +59,13 @@ public class AlterTableGroupExtractPartitionPreparedData extends AlterTableGroup
     public void setNewPartitions(List<SqlPartition> newPartitions) {
         this.newPartitions = newPartitions;
         List<String> newPartitionNames = new ArrayList<>();
+        Map<String, String> newPartitionLocalities = new HashMap<>();
         for (SqlPartition sqlPartition : newPartitions) {
             newPartitionNames.add(sqlPartition.getName().toString());
+            newPartitionLocalities.put(sqlPartition.getName().toString(), sqlPartition.getLocality());
         }
         setNewPartitionNames(newPartitionNames);
+        setNewPartitionLocalities(newPartitionLocalities);
     }
 
     public void setSplitPartitions(List<String> splitPartitions) {

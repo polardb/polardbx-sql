@@ -21,8 +21,10 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateFileStorageJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.engine.FileStorageInfoKey;
+import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
@@ -30,6 +32,7 @@ import org.apache.calcite.rel.ddl.CreateFileStorage;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class LogicalCreateFileStorageHandler extends LogicalCommonDdlHandler {
@@ -46,6 +49,16 @@ public class LogicalCreateFileStorageHandler extends LogicalCommonDdlHandler {
         if (engine == null || !Engine.isFileStore(engine)) {
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
                 "invalid engine : " + createFileStorage.getEngineName());
+        }
+
+        if (createFileStorage.isIfNotExists()) {
+            try {
+                if (FileSystemManager.getInstance().getCache().get(engine).isPresent()) {
+                    return new TransientDdlJob();
+                }
+            } catch (ExecutionException e) {
+                //ignore
+            }
         }
 
         // check fileStorageInfoKey

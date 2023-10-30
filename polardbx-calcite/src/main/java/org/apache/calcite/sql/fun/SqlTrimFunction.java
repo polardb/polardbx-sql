@@ -40,6 +40,8 @@ import com.google.common.collect.ImmutableList;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.apache.calcite.sql.type.InferTypes.FIRST_KNOWN;
+
 /**
  * Definition of the "TRIM" builtin SQL function.
  */
@@ -98,6 +100,16 @@ public class SqlTrimFunction extends SqlFunction {
       SqlTypeTransformCascade returnTypeInference,
       SqlSingleOperandTypeChecker operandTypeChecker) {
     super(name, kind, returnTypeInference, InferTypes.VARCHAR_2000, operandTypeChecker,
+        SqlFunctionCategory.STRING);
+  }
+
+  public SqlTrimFunction(String funcName) {
+    super(
+        funcName,
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.MIX_OF_COLLATION_RETURN_VARCHAR,
+        FIRST_KNOWN,
+        OperandTypes.VARIADIC,
         SqlFunctionCategory.STRING);
   }
 

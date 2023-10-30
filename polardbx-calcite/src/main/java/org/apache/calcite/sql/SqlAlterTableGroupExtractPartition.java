@@ -16,6 +16,7 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
@@ -30,8 +31,8 @@ public class SqlAlterTableGroupExtractPartition extends SqlAlterTableExtractPart
 
     private SqlAlterTableGroup parent;
 
-    public SqlAlterTableGroupExtractPartition(SqlParserPos pos, List<SqlNode> hotKeys, SQLName hotKeyPartitionName) {
-        super(pos, hotKeys, hotKeyPartitionName);
+    public SqlAlterTableGroupExtractPartition(SqlParserPos pos, List<SqlNode> hotKeys, SQLName hotKeyPartitionName, SQLExpr locality) {
+        super(pos, hotKeys, hotKeyPartitionName, locality);
     }
 
     public SqlAlterTableGroup getParent() {

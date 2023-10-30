@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.manager.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.manager.ManagerConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;

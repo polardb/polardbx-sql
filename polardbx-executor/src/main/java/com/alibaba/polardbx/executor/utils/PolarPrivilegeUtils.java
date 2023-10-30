@@ -78,8 +78,9 @@ public class PolarPrivilegeUtils {
         // verify privilege
         if (executionPlan.getPrivilegeVerifyItems() != null) {
             for (PrivilegeVerifyItem item : executionPlan.getPrivilegeVerifyItems()) {
-                verifyPrivilege(item.getDb(), item.getTable(), item.isAnyTable(), item.getPrivilegePoint(),
-                    executionContext);
+                if (!item.isInternalQuery()) {
+                    verifyPrivilege(item.getDb(), item.getTable(), item.isAnyTable(), item.getPrivilegePoint(),
+                    executionContext);}
             }
         }
     }
@@ -113,11 +114,6 @@ public class PolarPrivilegeUtils {
                 pc.getUser(),
                 pc.getHost(),
                 db);
-        }
-
-        // check for meta_db
-        if (StringUtils.equalsIgnoreCase(MetaDbSchema.NAME, db)) {
-            return;
         }
 
         // check for default db

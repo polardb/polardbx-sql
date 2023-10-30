@@ -1,0 +1,15 @@
+drop table if exists t1;
+drop table if exists t2;
+drop table if exists t3;
+
+create table t1(a int, b int, c int, unique global index ugsi1(a) partition by key(a)) partition by key(a);
+
+create table t2(a int, b int, c int, global index ugsi2(a) partition by key(a)) partition by key(a);
+
+create table t3(a int, b int, c int, unique index idx3(a)) partition by key(a);
+
+show create table t1;
+
+show create table t2;
+
+show create table t3;

@@ -20,7 +20,9 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
@@ -41,7 +43,7 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 import org.apache.commons.lang.StringUtils;
@@ -246,6 +248,7 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                 tableGroupId = tableGroupAccessor.addNewTableGroup(tableGroupRecord);
                 int tgType = tableGroupRecord.tg_type;
                 String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(tableGroupId, tgType);
+                String localiity = partitionInfo.getLocality();
                 List<TableGroupRecord> tableGroupRecords =
                     tableGroupAccessor
                         .getTableGroupsBySchemaAndName(partitionInfo.getTableSchema(), finalTgName, false);
@@ -253,6 +256,7 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                     finalTgName = "tg" + tableGroupRecord.tg_name;
                 }
                 tableGroupAccessor.updateTableGroupName(tableGroupId, finalTgName);
+                tableGroupAccessor.updateTableGroupLocalityById(tableGroupId, localiity);
                 targetTableGroup = finalTgName;//will pass the new create targetTableGroup to the following tasks
 
             } else {
@@ -270,35 +274,68 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                 tableGroupAccessor.updateTableGroupType(tableGroupId, tableGroupType);
                 partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, false);
             }
-            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                PartitionGroupRecord partitionGroupRecord = new PartitionGroupRecord();
-                partitionGroupRecord.visible = 1;
-                partitionGroupRecord.partition_name = partitionSpec.getName();
-                partitionGroupRecord.tg_id = tableGroupId;
-                partitionGroupRecord.phy_db =
-                    GroupInfoUtil.buildPhysicalDbNameFromGroupName(partitionSpec.getLocation().getGroupKey());
-                partitionGroupRecord.locality = "";
-                partitionGroupRecord.pax_group_id = 0L;
-                Long newPartitionGroupId =
-                    partitionGroupAccessor.addNewPartitionGroup(partitionGroupRecord, false);
-                tablePartitionAccessor.updateGroupIdById(newPartitionGroupId, partitionSpec.getId());
-                if (firstPart) {
-                    tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
-                }
-                firstPart = false;
+
+            PartitionSpec firstPartSpec = partitionInfo.getPartitionBy().getPartitions().get(0);
+            updateLogicalTableRecord(tableGroupId, firstPartSpec, tablePartitionAccessor);
+            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
+                addAndUpdateNewPartitionRecords(tableGroupId, partitionSpec, partitionGroupAccessor,
+                    tablePartitionAccessor);
             }
+//            if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+//                for (PartitionSpec partSpec : partitionInfo.getPartitionBy().getPartitions()) {
+//                    for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+//                        addAndUpdateNewPartitionRecords(tableGroupId, subPartSpec, partitionGroupAccessor,
+//                            tablePartitionAccessor);
+//                    }
+//                }
+//            } else {
+//                for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+//                    addAndUpdateNewPartitionRecords(tableGroupId, partitionSpec, partitionGroupAccessor,
+//                        tablePartitionAccessor);
+//                }
+//            }
+
+            // ToBeRemoved
+//            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+//                PartitionGroupRecord partitionGroupRecord = new PartitionGroupRecord();
+//                partitionGroupRecord.visible = 1;
+//                partitionGroupRecord.partition_name = partitionSpec.getName();
+//                partitionGroupRecord.tg_id = tableGroupId;
+//                partitionGroupRecord.phy_db =
+//                    GroupInfoUtil.buildPhysicalDbNameFromGroupName(partitionSpec.getLocation().getGroupKey());
+//                partitionGroupRecord.locality = "";
+//                partitionGroupRecord.pax_group_id = 0L;
+//                Long newPartitionGroupId =
+//                    partitionGroupAccessor.addNewPartitionGroup(partitionGroupRecord, false);
+//                tablePartitionAccessor.updateGroupIdById(newPartitionGroupId, partitionSpec.getId());
+//                if (firstPart) {
+//                    tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
+//                }
+//                firstPart = false;
+//            }
+
         } else {
-            assert partitionGroupRecords.size() == partitionInfo.getPartitionBy().getPartitions().size();
-            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
-                    .filter(o -> o.partition_name.equalsIgnoreCase(partitionSpec.getName())).findFirst()
-                    .orElse(null);
+            assert partitionGroupRecords.size() == partitionInfo.getPartitionBy().getPhysicalPartitions().size();
+            PartitionSpec firstPartSpec = partitionInfo.getPartitionBy().getPartitions().get(0);
+            updateLogicalTableRecord(tableGroupId, firstPartSpec, tablePartitionAccessor);
+            for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
+                PartitionSpec partitionSpec =
+                    AlterTableGroupUtils.findPartitionSpec(partitionInfo, partitionGroupRecord);
                 tablePartitionAccessor.updateGroupIdById(partitionGroupRecord.id, partitionSpec.getId());
-                if (firstPart) {
-                    tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
-                }
-                firstPart = false;
             }
+
+            // ToBeRemoved
+//            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+//                PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
+//                    .filter(o -> o.partition_name.equalsIgnoreCase(partitionSpec.getName())).findFirst()
+//                    .orElse(null);
+//                tablePartitionAccessor.updateGroupIdById(partitionGroupRecord.id, partitionSpec.getId());
+//                if (firstPart) {
+//                    tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
+//                }
+//                firstPart = false;
+//            }
+
             JoinGroupInfoAccessor joinGroupInfoAccessor = new JoinGroupInfoAccessor();
             JoinGroupTableDetailAccessor joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
             joinGroupInfoAccessor.setConnection(connection);
@@ -316,8 +353,34 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                     joinGroupTableDetailAccessor.insertJoingroupTableDetail(schemaName, joinGroupInfoRecord.id,
                         logicalTable);
                 }
+                tableGroupAccessor.updateTableGroupLocality(schemaName, tableGroupConfig.getTableGroupRecord().tg_name,
+                    partitionInfo.getLocality());
             }
         }
+    }
+
+    private void addAndUpdateNewPartitionRecords(Long tableGroupId,
+                                                 PartitionSpec partitionSpec,
+                                                 PartitionGroupAccessor partitionGroupAccessor,
+                                                 TablePartitionAccessor tablePartitionAccessor) {
+        PartitionGroupRecord partitionGroupRecord = new PartitionGroupRecord();
+        partitionGroupRecord.visible = 1;
+        partitionGroupRecord.partition_name = partitionSpec.getName();
+        partitionGroupRecord.tg_id = tableGroupId;
+        partitionGroupRecord.phy_db =
+            GroupInfoUtil.buildPhysicalDbNameFromGroupName(partitionSpec.getLocation().getGroupKey());
+        partitionGroupRecord.locality = "";
+        partitionGroupRecord.pax_group_id = 0L;
+
+        Long newPartitionGroupId = partitionGroupAccessor.addNewPartitionGroup(partitionGroupRecord, false);
+
+        tablePartitionAccessor.updateGroupIdById(newPartitionGroupId, partitionSpec.getId());
+    }
+
+    private void updateLogicalTableRecord(Long tableGroupId,
+                                          PartitionSpec firstLevelPartSpec,
+                                          TablePartitionAccessor tablePartitionAccessor) {
+        tablePartitionAccessor.updateGroupIdById(tableGroupId, firstLevelPartSpec.getParentId());
     }
 
 }

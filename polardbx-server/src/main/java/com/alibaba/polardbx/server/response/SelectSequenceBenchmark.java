@@ -36,7 +36,7 @@ public class SelectSequenceBenchmark {
     private static final int FIELD_COUNT = 1;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
 
-    public static void response(ServerConnection c, boolean hasMore, Object[] exData, boolean isNextval) {
+    public static boolean response(ServerConnection c, boolean hasMore, Object[] exData, boolean isNextval) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -50,9 +50,12 @@ public class SelectSequenceBenchmark {
         field.packetId = ++packetId;
         proxy = field.write(proxy);
 
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = ++packetId;
-        proxy = eof.write(proxy);
+        // write eof
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++packetId;
+            proxy = eof.write(proxy);
+        }
 
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
 
@@ -71,6 +74,7 @@ public class SelectSequenceBenchmark {
         proxy = lastEof.write(proxy);
 
         proxy.packetEnd();
+        return true;
     }
 
     private static String benchmarkSequence(ServerConnection c, String seqName, int count, boolean isNextval) {

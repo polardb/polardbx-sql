@@ -23,15 +23,15 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLAlterTableAlterColumn extends SQLObjectImpl implements SQLAlterTableItem {
-    private SQLName             originColumn;
+    private SQLName originColumn;
     private SQLColumnDefinition column;
-    private boolean             setNotNull;
-    private boolean             dropNotNull;
-    private SQLExpr             setDefault;
-    private boolean             dropDefault;
-    private SQLName             first;
-    private SQLName             after;
-    private SQLDataType         dataType;
+    private boolean setNotNull;
+    private boolean dropNotNull;
+    private SQLExpr setDefault;
+    private boolean dropDefault;
+    private SQLName first;
+    private SQLName after;
+    private SQLDataType dataType;
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {

@@ -84,13 +84,13 @@ public class LogicalCreateCclRuleHandler extends HandlerCommon {
                 //check if not exists
                 List<CclRuleRecord> cclRuleRecords = cclRuleAccessor.queryByIds(ImmutableList.of(ruleName));
                 if (CollectionUtils.isNotEmpty(cclRuleRecords)) {
-                    if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FailedMessage)) {
+                    if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FAILED_MESSAGE)) {
                         executionContext.getExtraDatas()
-                            .put(ExecutionContext.FailedMessage, Lists.newArrayListWithCapacity(1));
+                            .put(ExecutionContext.FAILED_MESSAGE, Lists.newArrayListWithCapacity(1));
                     }
                     List<ExecutionContext.ErrorMessage> errorMessages =
                         (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas()
-                            .get(ExecutionContext.FailedMessage);
+                            .get(ExecutionContext.FAILED_MESSAGE);
                     errorMessages.add(new ExecutionContext.ErrorMessage(ErrorCode.ERR_CCL.getCode(), null,
                         "The ccl rule has been existing"));
                     return new AffectRowCursor(new int[] {0});
@@ -142,6 +142,7 @@ public class LogicalCreateCclRuleHandler extends HandlerCommon {
                 List<String> keywordList = Lists.newArrayListWithCapacity(keywords.size());
                 for (int i = 0; i < keywords.size(); ++i) {
                     String keyword = ((SqlCharStringLiteral) keywords.get(i)).toValue();
+                    keyword = StringUtils.strip(keyword, "`");
                     keywordList.add(keyword);
                 }
                 String keywordJson = JSON.toJSONString(keywordList);

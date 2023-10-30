@@ -60,7 +60,7 @@ public abstract class FileStorageAccessorDelegate<T> extends MetaDbAccessorWrapp
                 MetaDbUtil.commit(metaDbConn);
                 return r;
             } catch (Throwable t) {
-                MetaDbUtil.rollback(metaDbConn, new RuntimeException(t), LOGGER, "change file storage metas");
+                MetaDbUtil.rollback(metaDbConn, new RuntimeException(t), LOGGER, "schema evolution");
                 throw t;
             } finally {
                 MetaDbUtil.endTransaction(metaDbConn, LOGGER);

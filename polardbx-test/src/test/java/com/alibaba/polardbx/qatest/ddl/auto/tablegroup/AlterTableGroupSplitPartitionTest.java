@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablegroup;
 
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
@@ -25,7 +25,6 @@ import org.apache.calcite.util.Pair;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
@@ -41,9 +40,9 @@ import static org.hamcrest.Matchers.is;
  *
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
-public class AlterTableGroupSplitPartitionTest extends AlterTableGroupBaseTest {
+public class AlterTableGroupSplitPartitionTest extends AlterTableGroupTestBase {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> tableStatus =
         Stream.of(
@@ -326,7 +325,7 @@ public class AlterTableGroupSplitPartitionTest extends AlterTableGroupBaseTest {
     @Before
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, true);
+            setUp(true, partitionRuleInfo, true, false, false);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

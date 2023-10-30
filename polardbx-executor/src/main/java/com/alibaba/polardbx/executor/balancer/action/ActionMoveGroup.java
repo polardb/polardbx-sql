@@ -104,7 +104,7 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
             );
             hint = String.format("/*+TDDL:CMD_EXTRA(%s)*/", StringUtils.join(params, ","));
         }
-        return String.format("move database %s %s to '%s'", hint, sourceGroup, this.target);
+        return String.format("move database %s '%s' to '%s'", hint, sourceGroup, this.target);
     }
 
     @Override
@@ -185,5 +185,9 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
             }
         }
         return Integer.compare(sourceGroups.size(), o.sourceGroups.size());
+    }
+
+    public String getTarget() {
+        return target;
     }
 }

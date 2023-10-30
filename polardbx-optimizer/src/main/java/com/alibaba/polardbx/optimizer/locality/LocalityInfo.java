@@ -43,7 +43,7 @@ public class LocalityInfo {
         this.locality = rhs.locality;
     }
 
-    public boolean contains(List<String> dstDnList){
+    public boolean contains(List<String> dstDnList) {
         List<String> srcDnList = LocalityDesc.parse(locality).getDnList();
         return srcDnList.containsAll(dstDnList);
     }
@@ -61,24 +61,24 @@ public class LocalityInfo {
         base.setLocality(LocalityDesc.parse(newLocality).toString());
     }
 
-    private static List<String> intersect(List<String> list1, List<String> list2){
-        if(list1.isEmpty() || list2.isEmpty()){
+    private static List<String> intersect(List<String> list1, List<String> list2) {
+        if (list1.isEmpty() || list2.isEmpty()) {
             list1.addAll(list2);
             return list1;
-        }else{
+        } else {
             list1.retainAll(list2);
             return list1;
         }
     }
 
-    public static LocalityDesc intersect(List<LocalityInfo> localityInfos){
+    public static LocalityDesc intersect(List<LocalityInfo> localityInfos) {
         // universe set INTERSECT non-empty set = universe set
         List<String> intersectionDnlist = new ArrayList<>();
-        for(LocalityInfo localityInfo:localityInfos){
+        for (LocalityInfo localityInfo : localityInfos) {
             List<String> dnList;
-            if(localityInfo == null){
+            if (localityInfo == null) {
                 dnList = new ArrayList<>();
-            }else {
+            } else {
                 dnList = LocalityDesc.parse(localityInfo.locality).getDnList();
             }
             intersectionDnlist = intersect(intersectionDnlist, dnList);
@@ -86,6 +86,7 @@ public class LocalityInfo {
         String locality = "dn=" + String.join(",", intersectionDnlist);
         return LocalityDesc.parse(locality);
     }
+
     /**
      * Inherit hierarchical locality: default/database/table-group/partition-group
      */

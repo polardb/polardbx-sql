@@ -34,7 +34,7 @@ public class SQLDropOutlineStatement extends SQLStatementImpl implements SQLDrop
     }
 
     public SQLDropOutlineStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

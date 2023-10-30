@@ -249,7 +249,7 @@ public class RelMdDistinctRowCount
     Double selectivity = RelMdUtil.guessSelectivity(predicate);
 
     // assume half the rows are duplicates
-    Double nRows = rel.estimateRowCount(mq) / 2;
+    Double nRows = mq.getRowCount(rel) / 2;
     return RelMdUtil.numDistinctVals(nRows, nRows * selectivity);
   }
 

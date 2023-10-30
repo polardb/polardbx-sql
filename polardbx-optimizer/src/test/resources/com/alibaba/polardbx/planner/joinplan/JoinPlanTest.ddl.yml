@@ -54,3 +54,43 @@ test_hash_tb4:
   PRIMARY KEY (`id`),
   KEY `auto_shard_key_ID` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+single_a:
+  CREATE TABLE `single_a` (
+  `id` int(11) NOT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+single_b:
+  CREATE TABLE `single_b` (
+  `id` int(11) NOT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+single_c:
+  CREATE TABLE `single_c` (
+  `id` int(11) NOT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+single_d:
+  CREATE TABLE `single_d` (
+  `id` int(11) NOT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

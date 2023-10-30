@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -111,5 +112,10 @@ public class SQLAlterFunctionStatement extends SQLStatementImpl {
 
     public boolean isExistsSqlSecurity() {
         return existsSqlSecurity;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.ALTER;
     }
 }

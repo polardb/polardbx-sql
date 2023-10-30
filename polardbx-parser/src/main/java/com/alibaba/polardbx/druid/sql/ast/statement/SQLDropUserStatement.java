@@ -29,13 +29,13 @@ public class SQLDropUserStatement extends SQLStatementImpl implements SQLDropSta
     private List<SQLExpr> users = new ArrayList<SQLExpr>(2);
 
     protected boolean ifExists = false;
-    
+
     public SQLDropUserStatement() {
-        
+
     }
-    
+
     public SQLDropUserStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public boolean isIfExists() {

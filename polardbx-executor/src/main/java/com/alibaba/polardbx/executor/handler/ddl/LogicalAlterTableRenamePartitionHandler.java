@@ -74,7 +74,7 @@ public class LogicalAlterTableRenamePartitionHandler extends LogicalCommonDdlHan
 
         AlterTableGroupUtils.alterTableGroupRenamePartitionCheck(sqlAlterTableRenamePartition, tableGroupConfig,
             executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

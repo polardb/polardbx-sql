@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -29,14 +30,19 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshTopologyPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeSet;
 
 public class LogicalRefreshTopology extends BaseDdlOperation {
 
@@ -44,6 +50,16 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
 
     public LogicalRefreshTopology(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public static LogicalRefreshTopology create(DDL ddl) {
@@ -77,7 +93,8 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
             refreshDbTopologyPreparedData.setInstGroupDbInfo(instGroupDbInfo);
             if (tableGroupConfig != null && tableGroupConfig.getAllTables().size() > 0) {
                 List<String> newPartitions =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, groupDetailInfoExRecords.size());
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, groupDetailInfoExRecords.size(),
+                        new TreeSet<>(String::compareToIgnoreCase), false);
                 refreshDbTopologyPreparedData.setTableGroupName(tableGroupConfig.getTableGroupRecord().tg_name);
                 refreshDbTopologyPreparedData.setNewPartitionNames(newPartitions);
                 refreshDbTopologyPreparedData.setTargetGroupDetailInfoExRecords(groupDetailInfoExRecords);
@@ -107,8 +124,15 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
                 Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " not found");
             TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getBroadcastTableGroupConfig();
 
+            // if truely locality here.
+            String dbLocality = LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality();
+            LocalityDesc dbLocalityDesc = LocalityInfoUtils.parse(dbLocality);
+            if (StoragePoolManager.getInstance().isTriggered() && dbLocalityDesc.holdEmptyDnList()) {
+                dbLocalityDesc = StoragePoolManager.getInstance().getDefaultLocalityDesc();
+            }
+
             Map<String, List<Pair<String, String>>> instGroupDbInfo =
-                DbTopologyManager.generateDbAndGroupNewConfigInfo(schemaName);
+                DbTopologyManager.generateDbAndGroupNewConfigInfo(schemaName, dbLocalityDesc);
             if (GeneralUtil.isNotEmpty(instGroupDbInfo)) {
                 final boolean shareStorageMode =
                     executionContext.getParamManager().getBoolean(ConnectionParams.SHARE_STORAGE_MODE);

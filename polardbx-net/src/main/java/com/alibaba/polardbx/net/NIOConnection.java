@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.net;
 
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 
 import java.io.IOException;
@@ -59,7 +60,7 @@ public interface NIOConnection {
     /**
      * 处理错误
      */
-    void handleError(int errCode, Throwable t);
+    void handleError(ErrorCode errCode, Throwable t);
 
     /**
      * 关闭连接

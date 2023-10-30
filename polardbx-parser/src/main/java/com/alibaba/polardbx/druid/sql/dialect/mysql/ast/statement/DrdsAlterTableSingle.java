@@ -15,13 +15,24 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class DrdsAlterTableSingle extends MySqlObjectImpl implements SQLAlterTableItem {
 
-    public DrdsAlterTableSingle(){
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    public void setLocality(SQLExpr locality) {
+        this.locality = locality;
+    }
+
+    SQLExpr locality;
+
+    public DrdsAlterTableSingle() {
 
     }
 

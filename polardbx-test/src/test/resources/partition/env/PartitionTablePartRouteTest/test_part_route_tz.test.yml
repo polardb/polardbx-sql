@@ -1,3 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+
 ## Test time_zone for part_route
 drop table if exists rc_tbl;
 create table if not exists rc_tbl (a bigint unsigned not null, b timestamp not null, c varchar(128) not null)
@@ -17,15 +19,15 @@ set time_zone='+10:00';
 insert into rc_tbl(a,b,c) values (5,'2012-12-12 01:00:00', ''),(6,'2012-12-12 03:00:00','');
 
 set time_zone='+08:00';
-explain select b from rc_tbl where b='2012-12-11 23:00:00' or b='2012-12-12 01:00:00';
+explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select b from rc_tbl where b='2012-12-11 23:00:00' or b='2012-12-12 01:00:00';
 select part_route('','rc_tbl','2012-12-11 23:00:00'),part_route('','rc_tbl','2012-12-12 01:00:00');
 
 set time_zone='+00:00';
-explain select b from rc_tbl where b='2012-12-11 15:00:00' or b='2012-12-11 17:00:00';
+explain  /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select b from rc_tbl where b='2012-12-11 15:00:00' or b='2012-12-11 17:00:00';
 select part_route('','rc_tbl','2012-12-11 15:00:00'),part_route('','rc_tbl','2012-12-11 17:00:00');
 
 set time_zone='+10:00';
-explain select b from rc_tbl where b='2012-12-12 01:00:00' or b='2012-12-12 03:00:00';
+explain  /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/ select b from rc_tbl where b='2012-12-12 01:00:00' or b='2012-12-12 03:00:00';
 select part_route('','rc_tbl','2012-12-12 01:00:00'),part_route('','rc_tbl','2012-12-12 03:00:00');
 
 set time_zone='+08:00';

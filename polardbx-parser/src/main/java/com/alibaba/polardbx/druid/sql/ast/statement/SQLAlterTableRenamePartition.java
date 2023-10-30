@@ -26,7 +26,7 @@ public class SQLAlterTableRenamePartition extends SQLObjectImpl implements SQLAl
     private boolean ifNotExists = false;
 
     private final List<SQLAssignItem> partition = new ArrayList<SQLAssignItem>(4);
-    private final List<SQLAssignItem> to        = new ArrayList<SQLAssignItem>(4);
+    private final List<SQLAssignItem> to = new ArrayList<SQLAssignItem>(4);
 
     public List<SQLAssignItem> getPartition() {
         return partition;

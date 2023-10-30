@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLExportDatabaseStatement extends SQLStatementImpl {
@@ -45,5 +46,10 @@ public class SQLExportDatabaseStatement extends SQLStatementImpl {
             acceptChild(v, db);
         }
         v.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

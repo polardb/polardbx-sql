@@ -46,7 +46,7 @@ import java.util.TreeMap;
  * @author shengyu
  */
 public class ShardingAdvisorHandler {
-    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore) {
+    public static boolean handle(ByteString stmt, ServerConnection c, boolean hasMore) {
         try {
             Preconditions.checkArgument(c.getSchema() != null);
             // fetch plan caches
@@ -82,7 +82,7 @@ public class ShardingAdvisorHandler {
             ShardingWhatIf shardingWhatIf = new ShardingWhatIf();
             shardingWhatIf.whatIf(result, c.getSchema(), shardingAdvisor.getParamManager());
             // response
-            ShardingAdvice.response(c, hasMore, result, shardingWhatIf);
+            return ShardingAdvice.response(c, hasMore, result, shardingWhatIf);
         } catch (Throwable ex) {
             ex.printStackTrace();
             throw ex;

@@ -97,4 +97,21 @@ public class RawStringTest extends TestCase {
         System.out.println(rawString.display());
         Assert.assertTrue(rawString.buildRawString().equals("('string','1',3,null),('s\\n','s\\rt','s\\'t','s\"t')"));
     }
+
+    @Test
+    public void testPruneRawStringWithTypeConvert() {
+        List list = Lists.newLinkedList();
+        list.add("string");
+        list.add("1");
+        list.add(3);
+        list.add("s\n");
+        list.add("s\rt");
+        list.add("s't");
+        list.add("s\"t");
+        PruneRawString pr = new PruneRawString(list, PruneRawString.PRUNE_MODE.RANGE, 2, 4, null);
+
+        Assert.assertTrue("3,'s\\n'".equals(pr.buildRawString()));
+        RawString newPr = pr.convertType(o -> o, -1);
+        Assert.assertTrue("3,'s\\n'".equals(newPr.buildRawString()));
+    }
 }

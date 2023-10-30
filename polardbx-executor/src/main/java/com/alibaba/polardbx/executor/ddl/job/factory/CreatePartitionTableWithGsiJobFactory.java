@@ -20,10 +20,17 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWit
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionTable;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
+import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
@@ -51,6 +58,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     private final String primaryTableName;
 
     private final ExecutionContext executionContext;
+    private String selectSql;
 
     public CreatePartitionTableWithGsiJobFactory(@Deprecated DDL ddl,
                                                  CreateTableWithGsiPreparedData preparedData,
@@ -91,11 +99,15 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                 primaryTablePhysicalPlans,
                 false,
                 isAutoPartition);
-        ExecutableDdlJob thisParentJob =
+        CreatePartitionTableJobFactory ret =
             new CreatePartitionTableJobFactory(preparedData.getPrimaryTablePreparedData().isAutoPartition(),
                 preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault(),
-                preparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues(),
-                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null).create();
+                preparedData.getPrimaryTablePreparedData().getSpecialDefaultValues(),
+                preparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags(),
+                preparedData.getPrimaryTablePreparedData().getAddedForeignKeys(),
+                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null);
+//        ret.setSelectSql(selectSql);
+        ExecutableDdlJob thisParentJob = ret.create();
         if (preparedData.getPrimaryTablePreparedData().isNeedToGetTableGroupLock()) {
             return thisParentJob;
         }
@@ -114,6 +126,13 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
             ExecutableDdlJob thisJob =
                 CreatePartitionGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
+            DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
+                gsiPreparedData.getSchemaName(),
+                gsiPreparedData.getPrimaryTableName(),
+                gsiPreparedData.getIndexTableName(),
+                GsiStatisticsSyncAction.INSERT_RECORD,
+                null);
+            thisJob.appendTask(gsiStatisticsInfoTask);
             if (gsiPreparedData.isNeedToGetTableGroupLock()) {
                 return thisJob;
             }
@@ -130,6 +149,19 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                 gsiJob.getCreateGsiPreCheckTask());
             result.addTaskRelationship(gsiJob.getCreateGsiPreCheckTask(),
                 createTableJob.getCreateTableAddTablesPartitionInfoMetaTask());
+        }
+        if (selectSql != null) {
+            InsertIntoTask
+                insertIntoTask = new InsertIntoTask(schemaName, primaryTableName, selectSql, null, 0);
+            ExecutableDdlJob insertJob = new ExecutableDdlJob();
+            insertJob.addTask(insertIntoTask);
+            ExecutableDdlJob4CreateSelect ans = new ExecutableDdlJob4CreateSelect();
+            ans.appendJob2(result);
+            ans.appendJob2(insertJob);
+            ans.setInsertTask(insertIntoTask);
+            //insert 只能rollback，无法重试
+            insertIntoTask.setExceptionAction(DdlExceptionAction.ROLLBACK);
+            return ans;
         }
         return result;
     }
@@ -148,4 +180,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     protected void sharedResources(Set<String> resources) {
     }
 
+    public void setSelectSql(String selectSql) {
+        this.selectSql = selectSql;
+    }
 }

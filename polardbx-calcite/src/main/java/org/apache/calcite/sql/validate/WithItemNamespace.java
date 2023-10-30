@@ -19,24 +19,45 @@ package org.apache.calcite.sql.validate;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlWithItem;
 import org.apache.calcite.util.Pair;
 
 /** Very similar to {@link AliasNamespace}. */
-class WithItemNamespace extends AbstractNamespace {
+public class WithItemNamespace extends AbstractNamespace {
   private final SqlWithItem withItem;
+  private final boolean isRecursive;
 
   WithItemNamespace(SqlValidatorImpl validator, SqlWithItem withItem,
-      SqlNode enclosingNode) {
+      SqlNode enclosingNode, boolean isRecursive) {
     super(validator, enclosingNode);
     this.withItem = withItem;
+    this.isRecursive = isRecursive;
   }
 
   @Override protected RelDataType validateImpl(RelDataType targetRowType) {
-    final SqlValidatorNamespace childNs =
-        validator.getNamespace(withItem.query);
+    final SqlValidatorNamespace childNs;
+    if (isRecursive) {
+      // recursive cte should build rel datatype by its anchor part.
+      // anchor part must be detached from recursive cte body query firstly
+      if(withItem.query.getKind() == SqlKind.UNION){
+        childNs = validator.getNamespace(((SqlCall) withItem.query).operand(0));
+      }else if(withItem.query instanceof SqlSelect){
+        SqlNode from = ((SqlSelect)withItem.query).getFrom();
+        // From node must be union call here
+        childNs = validator.getNamespace( ((SqlBasicCall) from).getOperands()[0]);
+      }else{
+        throw new AssertionError("not support cte form:" + withItem.query);
+      }
+    } else {
+      childNs = validator.getNamespace(withItem.query);
+    }
+
     final RelDataType rowType = childNs.getRowTypeSansSystemColumns();
     if (withItem.columnList == null) {
       return rowType;
@@ -70,6 +91,10 @@ class WithItemNamespace extends AbstractNamespace {
     }
     throw new AssertionError("unknown field '" + name
         + "' in rowtype " + underlyingRowType);
+  }
+
+  public boolean isRecursive(){
+    return isRecursive;
   }
 }
 

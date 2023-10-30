@@ -26,8 +26,8 @@ public class MySqlShowTraceStatement extends MySqlStatementImpl implements MySql
 
     private List<SQLExpr> selectList;
     private SQLOrderBy orderBy;
-    private SQLExpr    where;
-    private SQLLimit   limit;
+    private SQLExpr where;
+    private SQLLimit limit;
 
     public List<SQLExpr> getSelectList() {
         return selectList;

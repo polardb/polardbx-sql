@@ -20,7 +20,6 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLSetQuantifier;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLLiteralExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectQuery;
@@ -46,28 +45,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 
  * @author zz [455910092@qq.com]
  */
 public class MySqlSelectIntoParser extends SQLSelectParser {
-	private List<SQLExpr> argsList;
+    private List<SQLExpr> argsList;
 
-    public MySqlSelectIntoParser(SQLExprParser exprParser){
+    public MySqlSelectIntoParser(SQLExprParser exprParser) {
         super(exprParser);
     }
 
-    public MySqlSelectIntoParser(ByteString sql){
+    public MySqlSelectIntoParser(ByteString sql) {
         this(new MySqlExprParser(sql));
     }
-    
-    public MySqlSelectIntoStatement parseSelectInto()
-    {
-    	SQLSelect select=select();
-    	MySqlSelectIntoStatement stmt=new MySqlSelectIntoStatement();
-    	stmt.setSelect(select);
-    	stmt.setVarList(argsList);
-    	return stmt;
-    	
+
+    public MySqlSelectIntoStatement parseSelectInto() {
+        SQLSelect select = select();
+        MySqlSelectIntoStatement stmt = new MySqlSelectIntoStatement();
+        stmt.setSelect(select);
+        stmt.setVarList(argsList);
+        return stmt;
+
     }
 
     @Override
@@ -146,8 +143,8 @@ public class MySqlSelectIntoParser extends SQLSelectParser {
             }
 
             parseSelectList(queryBlock);
-            
-            argsList=parseIntoArgs();
+
+            argsList = parseIntoArgs();
         }
 
         parseFrom(queryBlock);
@@ -186,37 +183,34 @@ public class MySqlSelectIntoParser extends SQLSelectParser {
 
         return queryRest(queryBlock, acceptUnion);
     }
+
     /**
      * parser the select into arguments
-     * @return
      */
-	protected List<SQLExpr> parseIntoArgs() {
-		
-		List<SQLExpr> args=new ArrayList<SQLExpr>();
-		if (lexer.token() == (Token.INTO)) {
-			accept(Token.INTO);
-			//lexer.nextToken();
-			for (;;) {
-				SQLExpr var = exprParser.primary();
-				if (var instanceof SQLIdentifierExpr) {
-					var = new SQLVariantRefExpr(
-							((SQLIdentifierExpr) var).getName());
-				}
-				args.add(var);
-				if (lexer.token() == Token.COMMA) {
-					accept(Token.COMMA);
-					continue;
-				}
-				else
-				{
-					break;
-				}
-			}
-		}
-		return args;
-	}
-    
-    
+    protected List<SQLExpr> parseIntoArgs() {
+
+        List<SQLExpr> args = new ArrayList<SQLExpr>();
+        if (lexer.token() == (Token.INTO)) {
+            accept(Token.INTO);
+            //lexer.nextToken();
+            for (; ; ) {
+                SQLExpr var = exprParser.primary();
+                if (var instanceof SQLIdentifierExpr) {
+                    var = new SQLVariantRefExpr(
+                        ((SQLIdentifierExpr) var).getName());
+                }
+                args.add(var);
+                if (lexer.token() == Token.COMMA) {
+                    accept(Token.COMMA);
+                    continue;
+                } else {
+                    break;
+                }
+            }
+        }
+        return args;
+    }
+
     protected void parseInto(SQLSelectQueryBlock queryBlock) {
         if (lexer.token() == (Token.INTO)) {
             lexer.nextToken();
@@ -269,6 +263,11 @@ public class MySqlSelectIntoParser extends SQLSelectParser {
                         accept(Token.BY);
                         outFile.setLinesTerminatedBy((SQLLiteralExpr) expr());
                     }
+                }
+
+                if (lexer.identifierEquals("STATISTICS")) {
+                    lexer.nextToken();
+                    outFile.setStatistics(true);
                 }
             } else {
                 queryBlock.setInto(this.exprParser.name());
@@ -352,7 +351,7 @@ public class MySqlSelectIntoParser extends SQLSelectParser {
         }
         return super.unionRest(union);
     }
-    
+
     public MySqlExprParser getExprParser() {
         return (MySqlExprParser) exprParser;
     }

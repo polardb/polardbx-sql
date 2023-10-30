@@ -33,7 +33,7 @@ public class SQLAlterTableDropKey extends SQLObjectImpl implements SQLAlterTable
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {
-        if(visitor.visit(this)) {
+        if (visitor.visit(this)) {
             acceptChild(visitor, keyName);
         }
         visitor.endVisit(this);

@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.SortKey;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import io.airlift.slice.Slice;

@@ -19,25 +19,17 @@ package com.alibaba.polardbx.optimizer.locality;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
-import com.alibaba.polardbx.common.model.privilege.DbInfo;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
-import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.locality.LocalityId;
 import com.alibaba.polardbx.gms.locality.LocalityInfoAccessor;
 import com.alibaba.polardbx.gms.locality.LocalityInfoRecord;
 import com.alibaba.polardbx.gms.locality.PrimaryZoneInfo;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,9 +41,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-
-import static java.util.Arrays.asList;
 
 /**
  * @author moyi
@@ -77,7 +66,7 @@ public class LocalityManager extends AbstractLifecycle {
     protected void doInit() {
         super.doInit();
         logger.info("init LocalityManager");
-        if(mockMode){
+        if (mockMode) {
             this.localityCache = new HashMap<>();
             return;
         }
@@ -95,7 +84,7 @@ public class LocalityManager extends AbstractLifecycle {
             reloadLocalityInfoFromMetaDB();
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                    "setup locality config_listener failed");
+                "setup locality config_listener failed");
         }
     }
 
@@ -130,13 +119,13 @@ public class LocalityManager extends AbstractLifecycle {
         long dbId = DbInfoManager.getInstance().getDbInfo(dbName).id;
         LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_DATABASE, dbId);
         LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null)?new LocalityInfo(id, ""):localityInfo;
+        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
     }
 
     public LocalityInfo getLocalityOfDb(long dbId) {
         LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_DATABASE, dbId);
         LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null)?new LocalityInfo(id, ""):localityInfo;
+        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
     }
 
     public void setLocalityOfDb(long dbId, String locality) {
@@ -173,7 +162,7 @@ public class LocalityManager extends AbstractLifecycle {
     public LocalityInfo getLocalityOfTable(long tableId) {
         LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_TABLE, tableId);
         LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null)?new LocalityInfo(id, ""):localityInfo;
+        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
     }
 
     public void setLocalityOfTable(long tableId, String locality) {
@@ -199,7 +188,7 @@ public class LocalityManager extends AbstractLifecycle {
     public LocalityInfo getLocalityOfTableGroup(String dbName, long tgId) {
         LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_TABLEGROUP, tgId);
         LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null)?new LocalityInfo(id, ""):localityInfo;
+        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
     }
 
     public LocalityInfo getLocalityOfPartition(String dbName, String tableGroup, long pgId) {
@@ -210,7 +199,7 @@ public class LocalityManager extends AbstractLifecycle {
     public LocalityInfo getLocalityOfPartitionGroup(String dbName, long pgId) {
         LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_PARTITIONGROUP, pgId);
         LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null)?new LocalityInfo(id, ""):localityInfo;
+        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
     }
 
     public void setLocalityOfPartitionGroup(String dbName, long pgId, String locality) {
@@ -231,6 +220,7 @@ public class LocalityManager extends AbstractLifecycle {
         localityCache.remove(id);
         deleteLocalityInDatabase(id);
     }
+
     public void deleteLocalityOfPartitionGroup(long pgId) {
         LocalityId id = LocalityId.ofPartitionGroup(pgId);
         localityCache.remove(id);

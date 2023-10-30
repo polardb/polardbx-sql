@@ -19,12 +19,16 @@ package com.alibaba.polardbx.optimizer.partition.datatype.iterator;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
+import com.alibaba.polardbx.rule.virtualnode.PartitionFunction;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -67,7 +71,9 @@ public class PartitionFieldIteratorExample {
         p2.store("2002-12-11 11:11:11", new VarcharType(), sessionProperties);
 
         // get the iterator of month interval
-        PartitionFieldIterator iterator = PartitionFieldIterators.getIterator(fieldType, MySQLIntervalType.INTERVAL_MONTH);
+        PartitionFieldIterator iterator =
+            PartitionFieldIterators.getIterator(fieldType, MySQLIntervalType.INTERVAL_MONTH,
+                PartitionFunctionBuilder.create(TddlOperatorTable.MONTH, null));
 
         // set the range, lower bound included and upper bound included
         iterator.clear();
@@ -76,7 +82,7 @@ public class PartitionFieldIteratorExample {
         // how many months we will get from that range?
         long count = iterator.count();
         while (iterator.hasNext()) {
-            long month = iterator.next();
+            long month = (Long) iterator.next();
         }
         // test
         Assert.assertEquals(count, 39);
@@ -88,7 +94,7 @@ public class PartitionFieldIteratorExample {
         // how many months we will get from that range?
         count = iterator.count();
         while (iterator.hasNext()) {
-            long month = iterator.next();
+            long month = (Long) iterator.next();
         }
         // test
         Assert.assertEquals(count, 38);
@@ -100,7 +106,7 @@ public class PartitionFieldIteratorExample {
         // how many months we will get from that range?
         count = iterator.count();
         while (iterator.hasNext()) {
-            long month = iterator.next();
+            long month = (Long) iterator.next();
         }
         // test
         Assert.assertEquals(count, 38);
@@ -112,7 +118,7 @@ public class PartitionFieldIteratorExample {
         // how many months we will get from that range?
         count = iterator.count();
         while (iterator.hasNext()) {
-            long month = iterator.next();
+            long month = (Long) iterator.next();
         }
         // test
         Assert.assertEquals(count, 37);

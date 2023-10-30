@@ -27,7 +27,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -43,13 +42,22 @@ public class SqlAlterTableGroup extends SqlDdl {
     private static final SqlOperator OPERATOR = new SqlAlterTableGroupOperator();
     private final List<SqlAlterSpecification> alters;
     private final String sourceSql;
+    private boolean alterByTable;
+    private boolean alterIndexTg;
+    protected SqlNode tblNameOfIndex;
+    private Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel;
 
-    private Map<SqlNode, RexNode> partRexInfoCtx;
-
-    public SqlAlterTableGroup(SqlParserPos pos, SqlNode tableGroupName, List<SqlAlterSpecification> alters,
+    public SqlAlterTableGroup(SqlParserPos pos, SqlNode tableGroupName,
+                              boolean alterByTable,
+                              boolean alterIndexTg,
+                              SqlNode tblNameOfIndex,
+                              List<SqlAlterSpecification> alters,
                               String sourceSql) {
         super(OPERATOR, pos);
         this.name = tableGroupName;
+        this.alterByTable = alterByTable;
+        this.alterIndexTg = alterIndexTg;
+        this.tblNameOfIndex = tblNameOfIndex;
         this.alters = alters;
         this.sourceSql = sourceSql;
         for (SqlAlterSpecification item : alters) {
@@ -59,6 +67,8 @@ public class SqlAlterTableGroup extends SqlDdl {
                 ((SqlAlterTableAddPartition) item).setParent(this);
             } else if (item instanceof SqlAlterTableModifyPartitionValues) {
                 ((SqlAlterTableModifyPartitionValues) item).setParent(this);
+            } else if (item instanceof SqlAlterTableReorgPartition) {
+                ((SqlAlterTableReorgPartition) item).setParent(this);
             }
         }
     }
@@ -90,12 +100,32 @@ public class SqlAlterTableGroup extends SqlDdl {
         return name;
     }
 
-    public Map<SqlNode, RexNode> getPartRexInfoCtx() {
-        return partRexInfoCtx;
+    public Map<Integer, Map<SqlNode, RexNode>> getPartRexInfoCtxByLevel() {
+        return partRexInfoCtxByLevel;
     }
 
-    public void setPartRexInfoCtx(Map<SqlNode, RexNode> partRexInfoCtx) {
-        this.partRexInfoCtx = partRexInfoCtx;
+    public void setPartRexInfoCtxByLevel(Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel) {
+        this.partRexInfoCtxByLevel = partRexInfoCtxByLevel;
+    }
+
+    public boolean isAlterByTable() {
+        return alterByTable;
+    }
+
+    public boolean isAlterIndexTg() {
+        return alterIndexTg;
+    }
+
+    public void setAlterIndexTg(boolean alterIndexTg) {
+        this.alterIndexTg = alterIndexTg;
+    }
+
+    public SqlNode getTblNameOfIndex() {
+        return tblNameOfIndex;
+    }
+
+    public void setTblNameOfIndex(SqlNode tblNameOfIndex) {
+        this.tblNameOfIndex = tblNameOfIndex;
     }
 
     public static class SqlAlterTableGroupOperator extends SqlSpecialOperator {
@@ -131,6 +161,11 @@ public class SqlAlterTableGroup extends SqlDdl {
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         writer.print(toString());
+    }
+
+
+    public void setAlterByTable(boolean alterByTable) {
+        this.alterByTable = alterByTable;
     }
 
 }

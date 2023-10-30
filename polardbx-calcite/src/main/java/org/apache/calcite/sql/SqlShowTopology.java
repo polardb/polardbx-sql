@@ -29,7 +29,6 @@ import org.apache.calcite.sql.validate.SqlValidatorScope;
 
 /**
  * @author chenmo.cm
- * @date 2018/6/12 上午10:20
  */
 public class SqlShowTopology extends SqlShow {
 
@@ -38,7 +37,8 @@ public class SqlShowTopology extends SqlShow {
     public SqlShowTopology(SqlParserPos pos,
                            List<SqlSpecialIdentifier> specialIdentifiers, List<SqlNode> operands,
                            SqlNode like, SqlNode where, SqlNode orderBy, SqlNode limit) {
-        super(pos, specialIdentifiers, operands, like, where, orderBy, limit, specialIdentifiers.size() + operands.size() - 1);
+        super(pos, specialIdentifiers, operands, like, where, orderBy, limit,
+            specialIdentifiers.size() + operands.size() - 1);
     }
 
     @Override
@@ -58,7 +58,7 @@ public class SqlShowTopology extends SqlShow {
 
     public static class SqlShowTopologyOperator extends SqlSpecialOperator {
 
-        public SqlShowTopologyOperator(){
+        public SqlShowTopologyOperator() {
             super("SHOW_TOPOLOGY", SqlKind.SHOW_TOPOLOGY);
         }
 
@@ -69,6 +69,13 @@ public class SqlShowTopology extends SqlShow {
             columns.add(new RelDataTypeFieldImpl("ID", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
             columns.add(new RelDataTypeFieldImpl("GROUP_NAME", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("TABLE_NAME", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
+            columns.add(new RelDataTypeFieldImpl("PARTITION_NAME", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(
+                new RelDataTypeFieldImpl("SUBPARTITION_NAME", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("PHY_DB_NAME", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("DN_ID", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
             return typeFactory.createStructType(columns);
         }
     }

@@ -21,6 +21,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -155,7 +156,7 @@ public class SqlNodeList extends SqlNode implements Iterable<SqlNode> {
     return visitor.visit(this);
   }
 
-  public boolean equalsDeep(SqlNode node, Litmus litmus) {
+  public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
     if (!(node instanceof SqlNodeList)) {
       return litmus.fail("{} != {}", this, node);
     }
@@ -166,7 +167,7 @@ public class SqlNodeList extends SqlNode implements Iterable<SqlNode> {
     for (int i = 0; i < list.size(); i++) {
       SqlNode thisChild = list.get(i);
       final SqlNode thatChild = that.list.get(i);
-      if (!thisChild.equalsDeep(thatChild, litmus)) {
+      if (!thisChild.equalsDeep(thatChild, litmus, context)) {
         return litmus.fail(null);
       }
     }

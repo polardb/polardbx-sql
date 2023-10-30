@@ -46,7 +46,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @author chenmo.cm
  */
 
-@RunWith(Parameterized.class)
+
 public class UpdateShardingKeyTest extends AutoCrudBasedLockTestCase {
 
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();

@@ -38,6 +38,11 @@ public class LogicalRebalance extends BaseDdlOperation {
     protected String getExplainName() {
         return "LogicalRebalance";
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
 }
 
 

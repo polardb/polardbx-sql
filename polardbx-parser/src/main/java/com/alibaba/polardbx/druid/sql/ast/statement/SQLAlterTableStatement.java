@@ -21,6 +21,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlignToTableGroup;
@@ -49,6 +50,18 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
     private SQLPartitionBy partition = null;
     private SQLPartitionBy localPartition = null;
     private DrdsAlignToTableGroup alignToTableGroup = null;
+
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    public void setLocality(SQLExpr locality) {
+        this.locality = locality;
+    }
+
+    private SQLExpr locality = null;
+    private boolean fromAlterIndexPartition = false;
+    private SQLName alterIndexName = null;
 
     // odps
     private boolean mergeSmallFiles = false;
@@ -285,5 +298,26 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
     public void setAlignToTableGroup(
         DrdsAlignToTableGroup alignToTableGroup) {
         this.alignToTableGroup = alignToTableGroup;
+    }
+
+    public boolean isFromAlterIndexPartition() {
+        return fromAlterIndexPartition;
+    }
+
+    public void setFromAlterIndexPartition(boolean fromAlterIndexPartition) {
+        this.fromAlterIndexPartition = fromAlterIndexPartition;
+    }
+
+    public SQLName getAlterIndexName() {
+        return alterIndexName;
+    }
+
+    public void setAlterIndexName(SQLName alterIndexName) {
+        this.alterIndexName = alterIndexName;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.ALTER;
     }
 }

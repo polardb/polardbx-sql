@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.qatest.failpoint.newpartition.failpoint;
 
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.calcite.util.Pair;
 

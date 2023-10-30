@@ -1,0 +1,392 @@
+# simple select window
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+      sum(c2) over (partition by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t1;
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+      exchange(distribution=hash[0], collation=[])
+        logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# different partition column
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+         sum(c2) over (partition by c1) ow1,
+         avg(c2) over (partition by c2) ow2 
+        from t1;
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", f2w0$o0="f2w0$o0", f3w0$o0="window#0avg($1)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [avg($1)])")
+      exchange(distribution=hash[1], collation=[])
+        hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+          exchange(distribution=hash[0], collation=[])
+            logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# with pruning
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select c1,
+        sum(c2) over (partition by c1) ow1,          
+        avg(c2) over (partition by c1) ow2          
+    from t1 where c1 = 1;
+
+  plan: |
+
+    project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
+      hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="optest_0001.t1", sql="select `c1`, `c2` from `t1` as `t1` where (`c1` = 1)")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_WINDOW=FALSE)*/
+    select c1,
+      sum(c2) over (partition by c1) ow1,          
+      avg(c2) over (partition by c1) ow2          
+    from t1 where c1 = 1;
+
+  plan: |
+
+    project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
+      sortwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+        exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+          logicalview(tables="optest_0001.t1", sql="select `c1`, `c2` from `t1` as `t1` where (`c1` = 1) order by `c1`")
+
+# with limit
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select c1,
+      sum(c2) over (partition by c1) ow1,          
+      avg(c2) over (partition by c1) ow2          
+    from t1 limit 10;
+
+  plan: |
+
+    limit(offset=0, fetch=10)
+      exchange(distribution=single, collation=[])
+        limit(fetch=10)
+          project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
+            hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# with order by
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select c1,
+      sum(c2) over (partition by c1) ow1,          
+      avg(c2) over (partition by c1) ow2          
+    from t1 order by c1;
+
+  plan: |
+
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="c1 asc")
+        project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_WINDOW=FALSE)*/
+    select c1,
+      sum(c2) over (partition by c1) ow1,          
+      avg(c2) over (partition by c1) ow2          
+    from t1 order by c1;
+
+  plan: |
+
+    project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        sortwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+          exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+            logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` order by `c1`")
+
+# window with scalar function
+- sql: |
+    SELECT (3.14 DIV (   sum(     FROM_DAYS(248630980553))   OVER()   ) );
+
+  plan: |
+
+    project(3.14 div sum(from_days(248630980553)) over ()="3.14 div f1w0$o0")
+      hashwindow($0="$0", f1w0$o0="window#0sum($0)", reference windows="window#0=window(partition {} order by [] range between unbounded preceding and unbounded following aggs [sum($0)])")
+        exchange(distribution=single, collation=[])
+          project($0="from_days(248630980553)")
+            values(table="dual")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select c1,
+      max(concat(c2, current_user())) over (partition by c1) ow1        
+    from t1 order by c1;
+
+  plan: |
+
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="c1 asc")
+        project(c1="c1", $1="f2w0$o0")
+          hashwindow(c1="c1", $1="$1", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            project(c1="c1", $1="concat(c2, current_user())")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# sub query
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    where (c1, c2) in (
+      select c1, max(c2) over(partition by c1) from t2
+    );
+
+  plan: |
+
+    materializedsemijoin(condition="c1 = c1 and c2 = $1", type="semi")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (((`c1`, `c2`)) in (...))")
+      exchange(distribution=broadcast, collation=[])
+        project(c1="c1", $1="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    where (c1) in (
+      select max(c2) over(partition by c1) from t2
+    );
+
+  plan: |
+
+    materializedsemijoin(condition="c1 = $0", type="semi")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
+      exchange(distribution=broadcast, collation=[])
+        project($0="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    where (c1) not in (
+      select max(c2) over(partition by c1) from t2
+    );
+
+  plan: |
+
+    semihashjoin(condition="c1 = $0", type="anti")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+      exchange(distribution=broadcast, collation=[])
+        project($0="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    where (c1) = any(
+      select max(c2) over(partition by c1) from t2
+    );
+
+  plan: |
+
+    materializedsemijoin(condition="c1 = $0", type="semi")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
+      exchange(distribution=broadcast, collation=[])
+        project($0="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    where (c1) >= all(
+      select max(c2) over(partition by c1) from t2
+    );
+
+  plan: |
+
+    seminljoin(condition="c1 < $0", type="anti")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+      exchange(distribution=broadcast, collation=[])
+        project($0="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+# with join
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    join (
+      select c1, max(c2) over(partition by c1) as max_c2 from t2
+    ) t3 on t1.c1 = t3.max_c2;
+
+  plan: |
+
+    project(c10="c10", c2="c20", c1="c1", $1="f2w0$o0")
+      bkajoin(condition="f2w0$o0 = c1", type="inner")
+        hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+          exchange(distribution=hash[0], collation=[])
+            logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+        logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=FALSE ENABLE_BROADCAST_JOIN=FALSE ENABLE_SORT_WINDOW=FALSE)*/
+    select *       
+    from t1
+    join (
+      select c1, max(c2) over(partition by c1) as max_c2 from t2
+    ) t3 on t1.c1 = t3.c1;
+
+  plan: |
+
+    project(c10="c1", c2="c2", c1="c10", $1="f2w0$o0")
+      hashjoin(condition="c1 = c1", type="inner")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+        hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+          exchange(distribution=hash[0], collation=[])
+            logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=FALSE )*/
+    select *       
+    from  (
+      select c1, max(c2) over(partition by c1) as max_c2 from t2
+    ) t3 left join t1 on t1.c1 = t3.c1 order by t3.c1;
+
+  plan: |
+
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="c1 asc")
+        project(c1="c1", $1="f2w0$o0", c10="c10", c2="c20")
+          hashjoin(condition="c1 = c1", type="left", build="left")
+            hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# test single table
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+      sum(c2) over (partition by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t_single;
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+      exchange(distribution=hash[0], collation=[])
+        logicalview(tables="optest_0000.t_single", sql="select `c1`, `c2` from `t_single` as `t_single`")
+
+# test broadcast table
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+      sum(c2) over (partition by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t_broadcast;
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+      exchange(distribution=hash[0], collation=[])
+        logicalview(tables="optest_0000.t_broadcast", sql="select `c1`, `c2` from `t_broadcast` as `t_broadcast`")
+
+# test gsi
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select c1,c2,
+      sum(c2) over (partition by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t_gsi;
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+      exchange(distribution=hash[0], collation=[])
+        indexscan(tables="[0000-0003].g_t_gsi", shardcount=4, sql="select `c1`, `c2` from `g_t_gsi` as `g_t_gsi`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+      sum(c2) over (partition by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t_gsi force index(g_t_gsi);
+
+  plan: |
+
+    hashwindow(c1="c1", c2="c2", c3="c3", f3w0$o0="window#0sum($1)", f4w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
+      exchange(distribution=hash[0], collation=[])
+        project(c1="c1", c2="c2", c3="c3")
+          bkajoin(condition="c1 = c1", type="inner")
+            indexscan(tables="[0000-0003].g_t_gsi", shardcount=4, sql="select `c1`, `c2` from `g_t_gsi` as `g_t_gsi`")
+            logicalview(tables="[0000-0003].t_gsi", shardcount=4, sql="select `c1`, `c3` from `t_gsi` as `t_gsi` where (`c1` in (...))")
+
+# with insert
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    insert into t2 select c1,
+      sum(c2) over (partition by c1) ow1
+    from t1;
+
+  plan: |
+
+    logicalinsert(table="t2", columns=recordtype(integer c1, decimal(65, 0) c2), mode=multi)
+      project(c1="c1", c2="f2w0$o0")
+        hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
+
+# with delete
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    delete from t2 where (c1, c2) in (select c1,
+      sum(c2) over (partition by c1) ow1
+    from t1);
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.t2")
+      semihashjoin(condition="c1 = c1 and c2 = $1", type="semi")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2` for update")
+        project(c1="c1", $1="f2w0$o0")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` for update")
+
+# with update
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    update t2 set c2 = 1 where (c1, c2) in (select c1,
+      sum(c2) over (partition by c1) ow1
+    from t1);
+
+  plan: |
+
+    logicalmodify(type="update", set="t2.c2=1")
+      project(c1="c1", c2="c2", gen$0="1")
+        semihashjoin(condition="c1 = c1 and c2 = $1", type="semi")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2` for update")
+          project(c1="c1", $1="f2w0$o0")
+            hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` for update")

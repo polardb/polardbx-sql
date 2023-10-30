@@ -50,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -64,7 +65,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
 
     private static final Logger logger = LoggerFactory.getLogger(MetaDbConfigManager.class);
 
-    protected final static int MAX_QUEUE_LEN = 100;
+    protected final static int MAX_QUEUE_LEN = 100000;
 
     public final static int DEFAULT_NOTIFY_INTERVAL = 1000;
     public final static int DEFAULT_SCAN_INTERVAL = 1000;
@@ -83,7 +84,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Scanner-Executor", true));
     protected final ScheduledExecutorService dataIdNotifyTaskExecutor = Executors
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Notifier-Executor", true));
-    protected BlockingQueue<DataIdContext> completeListenTaskQueue = new ArrayBlockingQueue<DataIdContext>(MAX_QUEUE_LEN * 10);
+    protected BlockingQueue<DataIdContext> completeListenTaskQueue = new LinkedBlockingQueue<>(MAX_QUEUE_LEN * 10);
     protected final ScheduledExecutorService cleanTaskExecutor = Executors
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Scanner-Executor", true));
 
@@ -163,7 +164,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
 
                 for (int i = 0; i < datas.size(); i++) {
                     ConfigListenerRecord record = datas.get(i);
-                    String dataId = record.dataId;
+                    String dataId = MetaDbDataIdBuilder.formatDataId(record.dataId);
                     int dataIdStatus = record.status;
                     long newOpVersion = record.opVersion;
                     if (manager.dataIdContextMap.containsKey(dataId)) {

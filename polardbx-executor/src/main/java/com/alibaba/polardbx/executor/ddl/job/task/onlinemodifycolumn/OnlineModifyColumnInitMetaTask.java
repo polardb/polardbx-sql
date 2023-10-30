@@ -23,7 +23,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
-import java.util.List;
 
 @Getter
 @TaskName(name = "OnlineModifyColumnInitMetaTask")
@@ -42,7 +41,8 @@ public class OnlineModifyColumnInitMetaTask extends BaseGmsTask {
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        TableMetaChanger.onlineModifyColumnInitColumnRollBack(metaDbConnection, schemaName, logicalTableName, columnName);
+        TableMetaChanger.onlineModifyColumnInitColumnRollBack(metaDbConnection, schemaName, logicalTableName,
+            columnName);
     }
 
     @Override

@@ -16,11 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPartition;
+import org.apache.calcite.sql.SqlSubPartition;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,10 +35,12 @@ public class AlterTableGroupSplitPartitionPreparedData extends AlterTableGroupBa
     }
 
     private List<SqlPartition> newPartitions;
+
     private boolean includeFullPartitionDefinition;
     private List<String> targetStorageInstIds;
     private Map<SqlNode, RexNode> partBoundExprInfo;
     private SqlNode atVal;
+    private boolean splitSubPartition;
 
     public List<String> getSplitPartitions() {
         return getOldPartitionNames();
@@ -50,10 +57,21 @@ public class AlterTableGroupSplitPartitionPreparedData extends AlterTableGroupBa
     public void setNewPartitions(List<SqlPartition> newPartitions) {
         this.newPartitions = newPartitions;
         List<String> newPartitionNames = new ArrayList<>();
+        Map<String, String> newPartitionLocalities = new HashMap<>();
         for (SqlPartition sqlPartition : newPartitions) {
-            newPartitionNames.add(sqlPartition.getName().toString());
+            String partitionName = ((SqlIdentifier) (sqlPartition).getName()).getSimple();
+            if (GeneralUtil.isNotEmpty(sqlPartition.getSubPartitions())) {
+                for (SqlNode sqlNode : sqlPartition.getSubPartitions()) {
+                    String subPartitionName = ((SqlIdentifier) ((SqlSubPartition) sqlNode).getName()).getSimple();
+                    newPartitionNames.add(subPartitionName);
+                }
+            } else {
+                newPartitionNames.add(partitionName);
+            }
+            newPartitionLocalities.put(sqlPartition.getName().toString(), sqlPartition.getLocality());
         }
         setNewPartitionNames(newPartitionNames);
+        setNewPartitionLocalities(newPartitionLocalities);
     }
 
     public boolean isIncludeFullPartitionDefinition() {
@@ -87,5 +105,13 @@ public class AlterTableGroupSplitPartitionPreparedData extends AlterTableGroupBa
 
     public void setAtVal(SqlNode atVal) {
         this.atVal = atVal;
+    }
+
+    public boolean isSplitSubPartition() {
+        return splitSubPartition;
+    }
+
+    public void setSplitSubPartition(boolean splitSubPartition) {
+        this.splitSubPartition = splitSubPartition;
     }
 }

@@ -1,0 +1,72 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_db16"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_locality_db16"
+      - "create database test_locality_db16 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db16;"
+      # partition -> single
+      - "
+      create table c0(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');
+      "
+      - " alter table c0 single "
+      # partition -> broadcast
+      - "
+      create table c1(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');
+      "
+      - "alter table c1 broadcast"
+      # single -> broadcast
+      - "
+      create table s1(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';
+      "
+      - "alter table s1 broadcast"
+      # single -> partition
+      - "create table s2(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "
+      alter table s2 partition by range(x) (partition p1 values less than (1), partition p2 values less than (100), partition p3 values less than (1000), partition p4 values less than (MAXVALUE));
+      "
+      # broadcast -> partition
+      - "create table b1(x int, y int) broadcast; "
+      - "
+      alter table b1 partition by range(x) (partition p1 values less than (1), partition p2 values less than (100), partition p3 values less than (1000), partition p4 values less than (MAXVALUE));
+      "
+      # broadcast -> single
+      - "create table b2(x int, y int) broadcast; "
+      - "
+      alter table b2 single;
+      "
+      # partition -> partition
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) locality = 'dn=$dn2';"
+      - "
+      alter table t1 partition by hash(x) partitions 16;
+      "
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db16;"
+    checkActions:
+      localityValueCheck:
+        - c0 table ""
+        - c1 table ""
+        - s1 table ""
+        - s2 table $dn1
+        - b1 table ""
+        - b2 table ""
+        - t1 table $dn2
+        - test_locality_db16 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - c0 $tg1 "" #single
+        - c1,s1 $tg2 "" #broadcast
+        - s2 $tg3 $dn1 #partition
+        - b1 $tg4 "" #partition
+        - b2 $tg5 "" #single
+        - t1 $tg6 $dn2 #partition
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+
+cleanupDDls:
+  - "use polardbx;"
+  - "drop database if exists test_locality_db16;"

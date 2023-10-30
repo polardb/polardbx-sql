@@ -23,6 +23,7 @@ import java.util.Comparator;
 
 /**
  * Just used to Test
+ *
  * @author chenghui.lch
  */
 public class LocationRouter extends PartitionRouter {
@@ -47,7 +48,16 @@ public class LocationRouter extends PartitionRouter {
     public RouterResult routePartitions(ExecutionContext ec, ComparisonKind comp, Object searchVal) {
         return null;
     }
-    
+
+    @Override
+    public int getPartitionCount() {
+        return sortedBoundObjArr.length;
+    }
+
+    @Override
+    public String getDigest() {
+        return null;
+    }
 
     /**
      * Test method

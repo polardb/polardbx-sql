@@ -26,6 +26,7 @@ import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.SqlWindow;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.util.SqlBasicVisitor;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 
 import java.util.ArrayDeque;
@@ -77,13 +78,13 @@ class AggChecker extends SqlBasicVisitor<Void> {
 
   boolean isGroupExpr(SqlNode expr) {
     for (SqlNode groupExpr : groupExprs) {
-      if (groupExpr.equalsDeep(expr, Litmus.IGNORE)) {
+      if (groupExpr.equalsDeep(expr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return true;
       }
     }
 
     for (SqlNode extraExpr : extraExprs) {
-      if (extraExpr.equalsDeep(expr, Litmus.IGNORE)) {
+      if (extraExpr.equalsDeep(expr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return true;
       }
     }
@@ -142,7 +143,7 @@ class AggChecker extends SqlBasicVisitor<Void> {
             }
 
             if (validator.expand(sqlNode, scope)
-                .equalsDeep(call, Litmus.IGNORE)) {
+                .equalsDeep(call, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
               return null;
             }
           }

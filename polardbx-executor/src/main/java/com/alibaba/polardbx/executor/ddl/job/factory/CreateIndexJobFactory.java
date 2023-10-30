@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
@@ -38,6 +39,7 @@ import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -85,7 +87,9 @@ public class CreateIndexJobFactory extends DdlJobFactory {
         DdlTask addMetaTask = new CreateIndexAddMetaTask(schemaName, logicalTableName);
         DdlTask phyDdlTask =
             new CreateIndexPhyDdlTask(schemaName, physicalPlanData).onExceptionTryRecoveryThenRollback();
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcDdlMarkTask =
+            CBOUtil.isOss(schemaName, logicalTableName) || CBOUtil.isGsi(schemaName, logicalTableName) ? null :
+                new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
         DdlTask showMetaTask = new CreateIndexShowMetaTask(schemaName, logicalTableName, indexName,
             physicalPlanData.getDefaultDbIndex(), physicalPlanData.getDefaultPhyTableName());
         DdlTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
@@ -97,7 +101,7 @@ public class CreateIndexJobFactory extends DdlJobFactory {
             cdcDdlMarkTask,
             showMetaTask,
             tableSyncTask
-        );
+        ).stream().filter(Objects::nonNull).collect(Collectors.toList());
     }
 
     @Override

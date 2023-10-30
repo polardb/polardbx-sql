@@ -30,6 +30,7 @@ import java.util.List;
 public class SqlWith extends SqlCall {
   public SqlNodeList withList;
   public SqlNode body;
+  public boolean isRecursive;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -37,6 +38,13 @@ public class SqlWith extends SqlCall {
     super(pos);
     this.withList = withList;
     this.body = body;
+  }
+
+  public SqlWith(SqlParserPos pos, SqlNodeList withList, SqlNode body, boolean isRecursive) {
+    super(pos);
+    this.withList = withList;
+    this.body = body;
+    this.isRecursive = isRecursive;
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -109,7 +117,8 @@ public class SqlWith extends SqlCall {
 
     @Override public SqlCall createCall(SqlLiteral functionQualifier,
         SqlParserPos pos, SqlNode... operands) {
-      return new SqlWith(pos, (SqlNodeList) operands[0], operands[1]);
+      // not support recursive transform
+      return new SqlWith(pos, (SqlNodeList) operands[0], operands[1], false);
     }
 
     @Override public void validateCall(SqlCall call,

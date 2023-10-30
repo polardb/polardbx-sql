@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
@@ -76,5 +77,10 @@ public class SQLBuildTableStatement extends SQLStatementImpl {
 
     public void setPartitions(SQLCharExpr partitions) {
         this.partitions = partitions;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

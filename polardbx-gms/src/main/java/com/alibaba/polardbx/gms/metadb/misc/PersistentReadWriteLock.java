@@ -606,20 +606,18 @@ public class PersistentReadWriteLock {
 
     public String toRecommend(List<ReadWriteLockRecord> records, Set<String> resources) {
         if (CollectionUtils.isEmpty(records)) {
-            return CollectionUtils.isEmpty(resources) ?
-            "empty resources" :
-            "ReadWriteLock conflict for " + String.join(",", resources) + ". Please try again";
+            return CollectionUtils.isEmpty(resources) ? "empty resources" : null;
         }
 
         StringBuilder sb = new StringBuilder();
         records.stream()
-            .filter(e-> org.apache.commons.lang3.StringUtils.startsWith(e.owner, PersistentReadWriteLock.OWNER_PREFIX))
+            .filter(e -> org.apache.commons.lang3.StringUtils.startsWith(e.owner, PersistentReadWriteLock.OWNER_PREFIX))
             .forEach(e -> {
                 try {
                     long id = Long.parseLong(e.owner.substring(PersistentReadWriteLock.OWNER_PREFIX.length()));
                     if (!StringUtils.isEmpty(e.schemaName)) {
                         sb.append(String.format("Please check ddl state in schema:[%s] using 'show ddl %d'"
-                            ,e.schemaName, id));
+                            , e.schemaName, id));
                     }
                 } catch (Exception exception) {
                     LOGGER.error("fail to convert owner to job id. owner:" + e, exception);
@@ -634,7 +632,7 @@ public class PersistentReadWriteLock {
         }
         Set<Long> result = new HashSet<>(ownerSet.size());
         ownerSet.stream()
-            .filter(e-> org.apache.commons.lang3.StringUtils.startsWith(e, PersistentReadWriteLock.OWNER_PREFIX))
+            .filter(e -> org.apache.commons.lang3.StringUtils.startsWith(e, PersistentReadWriteLock.OWNER_PREFIX))
             .forEach(e -> {
                 try {
                     result.add(Long.valueOf(e.substring(PersistentReadWriteLock.OWNER_PREFIX.length())));

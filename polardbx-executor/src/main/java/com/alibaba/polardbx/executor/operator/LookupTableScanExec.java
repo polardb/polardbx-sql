@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartLookupPruningCache;
@@ -88,6 +89,8 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
     MemoryAllocatorCtx conditionMemoryAllocator;
 
     private long allocatedMem = 0;
+
+    private long phySqlCnt = 0;
 
     private PartLookupPruningCache cache;
 
@@ -154,6 +157,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
             JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
             DynamicJdbcSplit dynamicSplit = new DynamicJdbcSplit(jdbcSplit, lookupCondition);
             reserveSize += jdbcSplit.getSqlTemplate().size();
+            phySqlCnt++;
             scanClient.addSplit(split.copyWithSplit(dynamicSplit));
         }
         reserveMemory(reserveSize);
@@ -221,6 +225,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
         if (valid) {
             DynamicJdbcSplit dynamicSplit = new DynamicJdbcSplit(jdbcSplit, conditions);
             reserveSize += jdbcSplit.getSqlTemplate().size();
+            phySqlCnt++;
             scanClient.addSplit(split.copyWithSplit(dynamicSplit));
         }
         reserveMemory(reserveSize);
@@ -273,6 +278,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
             }
             DynamicJdbcSplit dynamicSplit = new DynamicJdbcSplit(jdbcSplit, conditions);
             reserveSize += jdbcSplit.getSqlTemplate().size();
+            phySqlCnt++;
             scanClient.addSplit(split.copyWithSplit(dynamicSplit));
         }
         reserveMemory(reserveSize);
@@ -342,6 +348,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
 
     @Override
     synchronized void doClose() {
+        OptimizerAlertUtil.bkaAlert(context, logicalView, phySqlCnt);
         super.doClose();
         releaseConditionMemory();
         this.conditionMemoryAllocator = null;

@@ -45,43 +45,43 @@ import java.util.stream.Collectors;
  * ${DESCRIPTION}
  *
  * @author hongxi.chx
- * @create 2018-06-09 12:22
  */
 public class SqlCreateIndex extends SqlCreate {
 
     private static final SqlOperator OPERATOR =
-            new SqlSpecialOperator("CREATE INDEX", SqlKind.CREATE_INDEX);
+        new SqlSpecialOperator("CREATE INDEX", SqlKind.CREATE_INDEX);
 
-    private final SqlIdentifier            originTableName;
-    private final SqlIdentifier            indexName;
+    private final SqlIdentifier originTableName;
+    private final SqlIdentifier indexName;
     private final List<SqlIndexColumnName> columns;
-    private final SqlIndexConstraintType   constraintType;
-    private final SqlIndexResiding         indexResiding;
-    private final SqlIndexType             indexType;
-    private final List<SqlIndexOption>     options;
-    private final SqlIndexAlgorithmType    algorithm;
-    private final SqlIndexLockType         lock;
+    private final SqlIndexConstraintType constraintType;
+    private final SqlIndexResiding indexResiding;
+    private final SqlIndexType indexType;
+    private final List<SqlIndexOption> options;
+    private final SqlIndexAlgorithmType algorithm;
+    private final SqlIndexLockType lock;
     private final List<SqlIndexColumnName> covering;
-    private final SqlNode                  dbPartitionBy;
-    private final SqlNode                  dbPartitions = null;
-    private final SqlNode                  tbPartitionBy;
-    private final SqlNode                  tbPartitions;
+    private final SqlNode dbPartitionBy;
+    private final SqlNode dbPartitions = null;
+    private final SqlNode tbPartitionBy;
+    private final SqlNode tbPartitions;
 
     private final SqlNode partitioning;
-    private final String                   sourceSql;
+    private final String sourceSql;
     //originalSql is the same as what user input, while sourceSql maybe rewrite
-    private String                         originalSql;
-    private String                         primaryTableDefinition;
-    private SqlCreateTable                 primaryTableNode;
-    private final boolean                  clusteredIndex;
-    private final SqlNode                  tableGroupName;
+    private String originalSql;
+    private String primaryTableDefinition;
+    private SqlCreateTable primaryTableNode;
+    private final boolean clusteredIndex;
+    private final SqlNode tableGroupName;
+    private boolean visible = true;
 
     private SqlCreateIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
                            List<SqlIndexColumnName> columns, SqlIndexConstraintType constraintType,
                            SqlIndexResiding indexResiding, SqlIndexType indexType, List<SqlIndexOption> options,
                            SqlIndexAlgorithmType algorithm, SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                            SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
-                           String sourceSql, boolean clusteredIndex, SqlNode tableGroupName) {
+                           String sourceSql, boolean clusteredIndex, SqlNode tableGroupName, boolean visible) {
         super(OPERATOR, pos, false, false);
         this.indexName = indexName;
         this.name = table;
@@ -101,6 +101,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.sourceSql = sourceSql;
         this.clusteredIndex = clusteredIndex;
         this.tableGroupName = tableGroupName;
+        this.visible = visible;
     }
 
     public SqlCreateIndex(SqlParserPos pos, boolean replace, boolean ifNotExists, SqlIdentifier originTableName,
@@ -111,7 +112,7 @@ public class SqlCreateIndex extends SqlCreate {
                           SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
                           String sourceSql, String primaryTableDefinition,
                           SqlCreateTable primaryTableNode, boolean clusteredIndex,
-                          SqlNode tableGroupName){
+                          SqlNode tableGroupName, boolean visible) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.originTableName = originTableName;
         this.indexName = indexName;
@@ -132,6 +133,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.clusteredIndex = clusteredIndex;
         this.partitioning = partitioning;
         this.tableGroupName = tableGroupName;
+        this.visible = visible;
     }
 
     public static SqlCreateIndex createLocalIndex(SqlIdentifier indexName, SqlIdentifier tableName,
@@ -157,7 +159,8 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             sql,
             false,
-            null);
+            null,
+            true);
     }
 
     public static SqlCreateIndex createGlobalIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -166,7 +169,8 @@ public class SqlCreateIndex extends SqlCreate {
                                                    List<SqlIndexOption> options, SqlIndexAlgorithmType algorithm,
                                                    SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                                                    SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions,
-                                                   SqlNode partitioning, String sourceSql, SqlNode tableGroupName) {
+                                                   SqlNode partitioning, String sourceSql, SqlNode tableGroupName,
+                                                   boolean visible) {
         return new SqlCreateIndex(pos,
             indexName,
             table,
@@ -184,7 +188,8 @@ public class SqlCreateIndex extends SqlCreate {
             partitioning,
             sourceSql,
             false,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     public static SqlCreateIndex createClusteredIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -195,7 +200,7 @@ public class SqlCreateIndex extends SqlCreate {
                                                       SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                                                       SqlNode tbPartitions,
                                                       SqlNode partitioning, String sourceSql,
-                                                      SqlNode tableGroupName) {
+                                                      SqlNode tableGroupName, boolean visible) {
         return new SqlCreateIndex(pos,
             indexName,
             table,
@@ -213,7 +218,8 @@ public class SqlCreateIndex extends SqlCreate {
             partitioning,
             sourceSql,
             true,
-            tableGroupName);
+            tableGroupName,
+            visible);
     }
 
     @Override
@@ -247,7 +253,8 @@ public class SqlCreateIndex extends SqlCreate {
         return clusteredIndex;
     }
 
-    public void unparse(SqlWriter writer, int leftPrec, int rightPrec, SqlIndexResiding indexResiding, boolean withOriginTableName) {
+    public void unparse(SqlWriter writer, int leftPrec, int rightPrec, SqlIndexResiding indexResiding,
+                        boolean withOriginTableName) {
         final boolean isGlobal = SqlUtil.isGlobal(indexResiding);
 
         final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "CREATE", "");
@@ -291,7 +298,7 @@ public class SqlCreateIndex extends SqlCreate {
 
             final boolean quoteAllIdentifiers = writer.isQuoteAllIdentifiers();
             if (writer instanceof SqlPrettyWriter) {
-                ((SqlPrettyWriter)writer).setQuoteAllIdentifiers(false);
+                ((SqlPrettyWriter) writer).setQuoteAllIdentifiers(false);
             }
 
             if (null != dbPartitionBy) {
@@ -310,7 +317,7 @@ public class SqlCreateIndex extends SqlCreate {
             }
 
             if (writer instanceof SqlPrettyWriter) {
-                ((SqlPrettyWriter)writer).setQuoteAllIdentifiers(quoteAllIdentifiers);
+                ((SqlPrettyWriter) writer).setQuoteAllIdentifiers(quoteAllIdentifiers);
             }
         }
 
@@ -333,6 +340,14 @@ public class SqlCreateIndex extends SqlCreate {
         writer.endList(frame);
     }
 
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public void setVisible(boolean visible) {
+        this.visible = visible;
+    }
+
     public void setTargetTable(SqlIdentifier sqlIdentifier) {
         this.name = sqlIdentifier;
     }
@@ -351,12 +366,13 @@ public class SqlCreateIndex extends SqlCreate {
             sqlForExecute = writer.toSqlString().getSql();
         }
 
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sqlForExecute, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList =
+            SQLUtils.parseStatementsWithDefaultFeatures(sqlForExecute, JdbcConstants.MYSQL);
         SQLCreateIndexStatement stmt = (SQLCreateIndexStatement) statementList.get(0);
         Set<String> shardKeys = new HashSet<>();
         if (this.name instanceof SqlDynamicParam) {
             StringBuilder sql = new StringBuilder();
-            MySqlOutputVisitor questionarkTableSource  = new MySqlOutputVisitor(sql) {
+            MySqlOutputVisitor questionarkTableSource = new MySqlOutputVisitor(sql) {
                 @Override
                 protected void printTableSourceExpr(SQLExpr expr) {
                     print("?");
@@ -369,7 +385,7 @@ public class SqlCreateIndex extends SqlCreate {
     }
 
     public MySqlStatement rewrite() {
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList = SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
         return stmt;
     }
@@ -382,7 +398,7 @@ public class SqlCreateIndex extends SqlCreate {
     @Override
     public SqlString toSqlString(SqlDialect dialect) {
         String sql = prepare();
-        return new SqlString(dialect ,sql);
+        return new SqlString(dialect, sql);
     }
 
     public SqlNode getDbPartitionBy() {
@@ -520,7 +536,8 @@ public class SqlCreateIndex extends SqlCreate {
             primaryTableDefinition,
             primaryTableNode,
             clusteredIndex,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 
     public SqlCreateIndex rebuildToGsi(SqlIdentifier newName, SqlNode dbpartition, boolean clustered) {
@@ -541,7 +558,8 @@ public class SqlCreateIndex extends SqlCreate {
             partitioning,
             sourceSql,
             clustered,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 
     public SqlCreateIndex rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition, boolean clustered) {
@@ -562,7 +580,8 @@ public class SqlCreateIndex extends SqlCreate {
             null == newPartition ? partitioning : newPartition,
             sourceSql,
             clustered,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 
     public SqlCreateIndex rebuildToExplicitLocal(SqlIdentifier newName, String sql) {
@@ -583,7 +602,8 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             null == sql ? sourceSql : sql,
             false,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 
     public SqlCreateIndex replaceTableName(SqlIdentifier newTableName) {
@@ -604,6 +624,7 @@ public class SqlCreateIndex extends SqlCreate {
             partitioning,
             sourceSql,
             clusteredIndex,
-            tableGroupName);
+            tableGroupName,
+            this.visible);
     }
 }

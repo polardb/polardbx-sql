@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.dag;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import org.apache.commons.collections.CollectionUtils;
@@ -28,9 +27,12 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class DirectedAcyclicGraph {
 
@@ -59,6 +61,29 @@ public class DirectedAcyclicGraph {
             vertexes.add(newVertex);
             return new Pair<>(newVertex, true);
         }
+    }
+
+    /**
+     * task MUST NOT exist in the Graph already.
+     *
+     * @return generated vertex
+     */
+    public synchronized Vertex addVertexIgnoreCheck(DdlTask task) {
+        Vertex newVertex = Vertex.create(task);
+        vertexes.add(newVertex);
+        return newVertex;
+    }
+
+    /**
+     * sourceVertex and targetVertex MUST exist in the Graph already
+     * and no existed edge between them.
+     */
+    public synchronized Edge addEdgeIgnoreCheck(Vertex sourceVertex, Vertex targetVertex) {
+        Edge newEdge = Edge.create(sourceVertex, targetVertex);
+        edges.add(newEdge);
+        sourceVertex.outgoingEdges.add(newEdge);
+        targetVertex.inDegree++;
+        return newEdge;
     }
 
     public synchronized Pair<Vertex, Boolean> addVertex(Vertex newVertex) {
@@ -241,6 +266,10 @@ public class DirectedAcyclicGraph {
         return Collections.unmodifiableSet(vertexes);
     }
 
+    public synchronized Set<Edge> getEdges() {
+        return Collections.unmodifiableSet(edges);
+    }
+
     public synchronized void removeEdge(DdlTask source, DdlTask target) {
         Edge existingEdge = findEdge(source, target);
         if (existingEdge != null) {
@@ -258,7 +287,7 @@ public class DirectedAcyclicGraph {
         return null;
     }
 
-    private synchronized Edge findEdge(DdlTask source, DdlTask target) {
+    protected synchronized Edge findEdge(DdlTask source, DdlTask target) {
         for (Edge edge : edges) {
             boolean sourceMatched = edge.source.object == source || edge.source.object.equals(source);
             boolean targetMatched = edge.target.object == target || edge.target.object.equals(target);
@@ -318,8 +347,8 @@ public class DirectedAcyclicGraph {
         StringBuilder dag = new StringBuilder();
         dag.append("digraph G {\n");
         for (Vertex v : vertexes) {
-            dag.append(String.format("%s [shape=record  label=\"{taskId:%s|name:%s}\"];",
-                v.object.hashCode(), v.object.getTaskId(), v.object.getName()) + "\n");
+            dag.append(String.format("%s [shape=record  label=\"{taskId:%s|name:%s}\"];", v.object.hashCode(),
+                v.object.getTaskId(), v.object.getName()) + "\n");
         }
         for (Edge e : edges) {
             dag.append(String.format("%s -> %s\n", e.source.hashCode(), e.target.hashCode()));
@@ -331,11 +360,19 @@ public class DirectedAcyclicGraph {
     @Override
     public synchronized DirectedAcyclicGraph clone() {
         DirectedAcyclicGraph copy = DirectedAcyclicGraph.create();
+
+        // Create a map to store the original and copied vertex
+        Map<Vertex, Vertex> vertexMap = new HashMap<>(this.vertexes.size());
+
         for (Vertex vertex : this.vertexes) {
-            copy.addVertex(vertex.object);
+            Vertex copiedVertex = copy.addVertexIgnoreCheck(vertex.object);
+            vertexMap.put(vertex, copiedVertex);
         }
+
         for (Edge edge : this.edges) {
-            copy.addEdge(edge.source.object, edge.target.object);
+            Vertex copiedSourceVertex = vertexMap.get(edge.source);
+            Vertex copiedTargetVertex = vertexMap.get(edge.target);
+            copy.addEdgeIgnoreCheck(copiedSourceVertex, copiedTargetVertex);
         }
         return copy;
     }
@@ -353,19 +390,43 @@ public class DirectedAcyclicGraph {
         edges.clear();
     }
 
+    public synchronized List<Vertex> getSequentialVertexByTopologyOrder() {
+        List<Vertex> result = new ArrayList<>();
+        Map<Vertex, Long> inDegree =
+            edges.stream().collect(Collectors.groupingBy(o -> o.target, Collectors.counting()));
+        Set<Vertex> zeroInDegreeVertexes = getAllZeroInDegreeVertexes();
+        while (!zeroInDegreeVertexes.isEmpty()) {
+            Set<Vertex> nextRoundZeroInDegree = new HashSet();
+            for (Vertex vertex : zeroInDegreeVertexes) {
+                result.add(vertex);
+                for (Edge edge : vertex.outgoingEdges) {
+                    Vertex toVertex = edge.target;
+                    inDegree.put(toVertex, inDegree.get(toVertex) - 1);
+                    if (inDegree.get(toVertex) == 0) {
+                        nextRoundZeroInDegree.add(toVertex);
+                    }
+                }
+            }
+            zeroInDegreeVertexes = nextRoundZeroInDegree;
+        }
+        return result;
+    }
+
     public synchronized void removeRedundancyRelations() {
         List<Pair<Vertex, Vertex>> redundancyRelations = findRedundancyRelations();
-        for (Pair<Vertex,Vertex> pair: redundancyRelations) {
+        for (Pair<Vertex, Vertex> pair : redundancyRelations) {
             removeEdge(pair.getKey().object, pair.getValue().object);
         }
     }
+
     private synchronized List<Pair<Vertex, Vertex>> findRedundancyRelations() {
         Map<Vertex, Map<Vertex, Integer>> connectivityMatrix = new HashMap<>();
         List<Pair<Vertex, Vertex>> redundancyRelations = new ArrayList<>();
         for (Edge edge : edges) {
             //1->2, 2->3
             //cur:1->3
-            if (connectivityMatrix.containsKey(edge.source) && connectivityMatrix.get(edge.source).containsKey(edge.target)) {
+            if (connectivityMatrix.containsKey(edge.source) && connectivityMatrix.get(edge.source)
+                .containsKey(edge.target)) {
                 Pair<Vertex, Vertex> pair = new Pair<>(edge.source, edge.target);
                 redundancyRelations.add(pair);
             } else {
@@ -383,7 +444,8 @@ public class DirectedAcyclicGraph {
                         } else {
                             entry.getValue().put(edge.target, new Integer(1));
                             if (connectivityMatrix.containsKey(edge.target)) {
-                                for (Map.Entry<Vertex, Integer> entry1 :connectivityMatrix.get(edge.target).entrySet()) {
+                                for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.target)
+                                    .entrySet()) {
                                     entry.getValue().put(entry1.getKey(), entry1.getValue() + 1);
                                 }
                             }
@@ -391,8 +453,10 @@ public class DirectedAcyclicGraph {
                             //cur: 3->4
                             //remove:1->2
                             if (connectivityMatrix.containsKey(edge.target)) {
-                                for (Map.Entry<Vertex,Integer> entry1 : connectivityMatrix.get(edge.target).entrySet()) {
-                                    if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.target)
+                                    .entrySet()) {
+                                    if (entry.getValue().containsKey(entry1.getKey())
+                                        && entry1.getValue().intValue() == 1) {
                                         Pair<Vertex, Vertex> pair = new Pair<>(entry.getKey(), entry1.getKey());
                                         redundancyRelations.add(pair);
                                     }
@@ -401,7 +465,7 @@ public class DirectedAcyclicGraph {
                         }
                     } else if (entry.getValue().containsKey(edge.target)) {
                         if (connectivityMatrix.containsKey(edge.source)) {
-                            for (Map.Entry<Vertex,Integer> entry1 : connectivityMatrix.get(edge.source).entrySet()) {
+                            for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.source).entrySet()) {
                                 if (entry.getKey().equals(entry1.getKey()) && entry1.getValue().intValue() == 1) {
                                     Pair<Vertex, Vertex> pair = new Pair<>(edge.source, edge.target);
                                     redundancyRelations.add(pair);
@@ -414,7 +478,8 @@ public class DirectedAcyclicGraph {
                         //remove 4->2
                         if (connectivityMatrix.containsKey(edge.target)) {
                             for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.target).entrySet()) {
-                                if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                if (entry.getValue().containsKey(entry1.getKey())
+                                    && entry1.getValue().intValue() == 1) {
                                     Pair<Vertex, Vertex> pair = new Pair<>(entry.getKey(), entry1.getKey());
                                     redundancyRelations.add(pair);
                                 }
@@ -423,7 +488,8 @@ public class DirectedAcyclicGraph {
                     } else if (entry.getKey().equals(edge.target)) {
                         if (connectivityMatrix.containsKey(edge.source)) {
                             for (Map.Entry<Vertex, Integer> entry1 : connectivityMatrix.get(edge.source).entrySet()) {
-                                if (entry.getValue().containsKey(entry1.getKey()) && entry1.getValue().intValue() == 1) {
+                                if (entry.getValue().containsKey(entry1.getKey())
+                                    && entry1.getValue().intValue() == 1) {
                                     Pair<Vertex, Vertex> pair = new Pair<>(edge.source, entry1.getKey());
                                     redundancyRelations.add(pair);
                                 }
@@ -432,7 +498,8 @@ public class DirectedAcyclicGraph {
                     }
                 }
                 if (!connectivityMatrix.containsKey(edge.source)) {
-                    connectivityMatrix.computeIfAbsent(edge.source, o-> new HashMap<>()).put(edge.target, new Integer(1));
+                    connectivityMatrix.computeIfAbsent(edge.source, o -> new HashMap<>())
+                        .put(edge.target, new Integer(1));
                 } else {
                     connectivityMatrix.get(edge.source).put(edge.target, new Integer(1));
                 }
@@ -443,6 +510,44 @@ public class DirectedAcyclicGraph {
 
     public synchronized boolean isEmpty() {
         return vertexes.isEmpty() && edges.isEmpty();
+    }
+
+    public boolean hasCycle() {
+        //0: 未访问
+        //1: 正在访问
+        //2: 已访问
+        Map<Vertex, Integer> colors = new HashMap<>();
+        for (Vertex vertex : vertexes) {
+            colors.put(vertex, 0);
+        }
+        for (Vertex vertex : vertexes) {
+            if (colors.get(vertex) != 0) {
+                continue;
+            }
+
+            Stack<Vertex> stack = new Stack<>();
+            stack.push(vertex);
+            while (!stack.isEmpty()) {
+                Vertex v = stack.peek();
+
+                if (colors.get(v) == 0) {
+                    colors.put(v, 1);
+                } else {
+                    stack.pop();
+                    colors.put(v, 2);
+                }
+
+                for (Edge edge : v.outgoingEdges) {
+                    Vertex target = edge.target;
+                    if (colors.get(target) == 1) {
+                        return true;
+                    } else if (colors.get(target) == 0) {
+                        stack.push(target);
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public static class Vertex {
@@ -471,10 +576,8 @@ public class DirectedAcyclicGraph {
 
         @Override
         public boolean equals(Object object) {
-            return this == object ||
-                (object instanceof Vertex &&
-                    (((Vertex) object).object == this.object ||
-                        ((Vertex) object).object.equals(this.object)));
+            return this == object || (object instanceof Vertex && (((Vertex) object).object == this.object
+                || ((Vertex) object).object.equals(this.object)));
         }
 
         @Override
@@ -504,12 +607,26 @@ public class DirectedAcyclicGraph {
 
         @Override
         public boolean equals(Object object) {
-            return this == object ||
-                (object instanceof Edge &&
-                    ((Edge) object).source.equals(source) &&
-                    ((Edge) object).target.equals(target));
+            return this == object || (object instanceof Edge && ((Edge) object).source.equals(source)
+                && ((Edge) object).target.equals(target));
         }
 
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        DirectedAcyclicGraph that = (DirectedAcyclicGraph) o;
+        return Objects.equals(edges, that.edges) && Objects.equals(vertexes, that.vertexes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(edges, vertexes);
+    }
 }

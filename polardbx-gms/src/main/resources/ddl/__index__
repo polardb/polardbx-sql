@@ -12,6 +12,8 @@ scale_out.xml
 sequence.xml
 topology.xml
 statistics.xml
+schema_evolution.xml
 ccl_rule.xml
 cdc.xml
 table_group.xml
+foreign_key.xml

@@ -1,0 +1,140 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table if not exists rc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (a,b)
+subpartition by range columns (a,b)
+(
+  partition p1 values less than ( 1000,2000 )
+  (
+    subpartition p1sp1 values less than ( 1000,2000 ),
+    subpartition p1sp2 values less than ( 1000,3000 ),
+    subpartition p1sp3 values less than ( 1000,4000 ),
+    subpartition p1sp4 values less than ( 2000,1000 ),
+    subpartition p1sp5 values less than ( 2000,2000 ),
+    subpartition p1sp6 values less than ( 2000, maxvalue )
+  )
+  ,
+  partition p2 values less than ( 1000,3000 )
+  (
+  subpartition p2sp1 values less than ( 1000,2000 ),
+  subpartition p2sp2 values less than ( 1000,3000 )
+  )
+  ,
+  partition p3 values less than ( 1000,4000 )
+  (
+  subpartition p3sp1 values less than ( 1000,2000 ),
+  subpartition p3sp2 values less than ( 1000,3000 ),
+  subpartition p3sp3 values less than ( 1000,4000 )
+  )
+  ,
+  partition p4 values less than ( 2000,1000 )
+  (
+  subpartition p4sp1 values less than ( 1000,2000 ),
+  subpartition p4sp2 values less than ( 1000,3000 ),
+  subpartition p4sp3 values less than ( 1000,4000 ),
+  subpartition p4sp4 values less than ( 2000,1000 )
+  )
+  ,
+  partition p5 values less than ( 2000,2000 )
+  (
+  subpartition p5sp1 values less than ( 1000,2000 ),
+  subpartition p5sp2 values less than ( 1000,3000 ),
+  subpartition p5sp3 values less than ( 1000,4000 ),
+  subpartition p5sp4 values less than ( 2000,1000 ),
+  subpartition p5sp5 values less than ( 2000,2000 )
+  )
+  ,
+  partition p6 values less than ( 2000, maxvalue )
+  (
+  subpartition p6sp1 values less than ( 1000,2000 ),
+  subpartition p6sp2 values less than ( 1000,3000 ),
+  subpartition p6sp6 values less than ( 2000, maxvalue )
+  )
+);
+
+create table if not exists rc1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (a,b)
+(
+partition p1 values less than ( 1000,2000 ),
+partition p2 values less than ( 1000,3000 ),
+partition p3 values less than ( 1000,4000 ),
+partition p4 values less than ( 2000,1000 ),
+partition p5 values less than ( 2000,2000 ),
+partition p6 values less than ( 2000, maxvalue )
+);
+
+select * from rc1 where  (a,b) > (1000,3000) and (a,b) <= (1000,2000);
+select * from rc_rc_tp1 where  (a,b) > (1000,3000) and (a,b) <= (1000,2000);
+
+
+create table if not exists rc_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (a,b)
+subpartition by range columns (d)
+(
+partition p1 values less than ( 1000,2000 )
+(
+subpartition p1sp1 values less than ( '123' ),
+subpartition p1sp2 values less than ( '1234' ),
+subpartition p1sp3 values less than ( maxvalue )
+)
+,
+partition p2 values less than ( 1000,3000 )
+(
+subpartition p2sp1 values less than ( '456'  ),
+subpartition p2sp2 values less than ( '4567'  ),
+subpartition p2sp3 values less than ( maxvalue )
+)
+,
+partition p3 values less than ( 1000,4000 )
+(
+subpartition p3sp1 values less than ( '100' ),
+subpartition p3sp2 values less than ( maxvalue )
+)
+,
+partition p4 values less than ( 2000,1000 )
+(
+subpartition p4sp1 values less than ( '200' ),
+subpartition p4sp2 values less than ( '300' )
+)
+,
+partition p5 values less than ( 2000,2000 )
+(
+subpartition p5sp1 values less than ( '201' ),
+subpartition p5sp2 values less than ( '202' ),
+subpartition p5sp3 values less than ( '203' )
+)
+,
+partition p6 values less than ( 2000, maxvalue )
+(
+subpartition p6sp6 values less than ( maxvalue )
+)
+);
+
+select * from rc_rc_ntp1 where (a,b) > (1000,3000) and (a,b) <= (1000,3000) and d>='202' and d<='201';
+
+select * from rc_rc_ntp1 where d>='202' and d<='201';
+
+explain select * from rc_rc_ntp1 where d>='202' and d<='202';
+select * from rc_rc_ntp1 where (a,b) > (2000,1999) and (a,b) <= (2000,1999) and d>='202' and d<='201';
+
+select * from rc_rc_ntp1 where (a,b) > (2000,1999) and (a,b) <= (2000,1999) and d>='202' and d<='202';
+
+

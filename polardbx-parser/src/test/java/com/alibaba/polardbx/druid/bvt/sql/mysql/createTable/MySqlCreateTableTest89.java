@@ -26,13 +26,13 @@ public class MySqlCreateTableTest89 extends MysqlTest {
 
     public void test_one() throws Exception {
         String sql = "CREATE TABLE IF NOT EXISTS `test_table_normal`(  \n" +
-                "scoreID INTEGER NOT NULL PRIMARY KEY,  \n" +
-                "stuID     INTEGER NOT NULL,  \n" +
-                "KEMUID     INTEGER NOT NULL,  \n" +
-                "score     FLOAT,  \n" +
-                "FOREIGN KEY SCORE_ID_FK (stuID) REFERENCES students (stuid),  \n" +
-                "CONSTRAINT CHK_SCORE_ZIP CHECK (SCORE > 0)  \n" +
-                ");  ";
+            "scoreID INTEGER NOT NULL PRIMARY KEY,  \n" +
+            "stuID     INTEGER NOT NULL,  \n" +
+            "KEMUID     INTEGER NOT NULL,  \n" +
+            "score     FLOAT,  \n" +
+            "FOREIGN KEY SCORE_ID_FK (stuID) REFERENCES students (stuid),  \n" +
+            "CONSTRAINT CHK_SCORE_ZIP CHECK (SCORE > 0)  \n" +
+            ");  ";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql, SQLParserFeature.KeepComments);
         SQLStatement stmt = parser.parseCreateTable();
@@ -51,25 +51,25 @@ public class MySqlCreateTableTest89 extends MysqlTest {
         {
             String output = SQLUtils.toMySqlString(stmt);
             assertEquals("CREATE TABLE IF NOT EXISTS `test_table_normal` (\n" +
-                    "\tscoreID INTEGER NOT NULL PRIMARY KEY,\n" +
-                    "\tstuID INTEGER NOT NULL,\n" +
-                    "\tKEMUID INTEGER NOT NULL,\n" +
-                    "\tscore FLOAT,\n" +
-                    "\tFOREIGN KEY SCORE_ID_FK (stuID) REFERENCES students (stuid),\n" +
-                    "\tCONSTRAINT CHK_SCORE_ZIP CHECK (SCORE > 0)\n" +
-                    ")", output);
+                "\tscoreID INTEGER NOT NULL PRIMARY KEY,\n" +
+                "\tstuID INTEGER NOT NULL,\n" +
+                "\tKEMUID INTEGER NOT NULL,\n" +
+                "\tscore FLOAT,\n" +
+                "\tCONSTRAINT FOREIGN KEY SCORE_ID_FK (stuID) REFERENCES students (stuid),\n" +
+                "\tCONSTRAINT CHK_SCORE_ZIP CHECK (SCORE > 0)\n" +
+                ")", output);
         }
-        
+
         {
             String output = SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION);
             assertEquals("create table if not exists `test_table_normal` (\n" +
-                    "\tscoreID INTEGER not null primary key,\n" +
-                    "\tstuID INTEGER not null,\n" +
-                    "\tKEMUID INTEGER not null,\n" +
-                    "\tscore FLOAT,\n" +
-                    "\tforeign key SCORE_ID_FK (stuID) references students (stuid),\n" +
-                    "\tconstraint CHK_SCORE_ZIP check (SCORE > 0)\n" +
-                    ")", output);
+                "\tscoreID INTEGER not null primary key,\n" +
+                "\tstuID INTEGER not null,\n" +
+                "\tKEMUID INTEGER not null,\n" +
+                "\tscore FLOAT,\n" +
+                "\tconstraint foreign key SCORE_ID_FK (stuID) references students (stuid),\n" +
+                "\tconstraint CHK_SCORE_ZIP check (SCORE > 0)\n" +
+                ")", output);
         }
     }
 }

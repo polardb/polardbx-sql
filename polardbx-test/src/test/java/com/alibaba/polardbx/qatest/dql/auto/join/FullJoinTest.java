@@ -59,8 +59,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * @author fangwu
  */
-@RunWith(CommonCaseRunner.class)
-@FileStoreIgnore
+
 public class FullJoinTest extends AutoCrudBasedLockTestCase {
 
     BinaryJoinUnit binaryJoinUnit;
@@ -75,7 +74,7 @@ public class FullJoinTest extends AutoCrudBasedLockTestCase {
             int j = 0;
             for (String table : tableNames) {
                 String newTable =
-                    createLikeTable(table, PropertiesUtil.polardbXAutoDBName1(), PropertiesUtil.mysqlDBName1(), "FJT",
+                    createLikeTable(table, polardbXAutoDBName1(), PropertiesUtil.mysqlDBName1(), "FJT",
                         true);
                 newTableNames[j] = newTable;
                 try (

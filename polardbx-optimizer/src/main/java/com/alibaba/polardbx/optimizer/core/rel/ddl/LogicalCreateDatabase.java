@@ -16,18 +16,83 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateDatabasePreparedData;
 import org.apache.calcite.rel.ddl.CreateDatabase;
+import org.apache.calcite.sql.SqlCreateDatabase;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.parser.SqlParserPos;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
  */
 public class LogicalCreateDatabase extends BaseDdlOperation {
+    protected SqlCreateDatabase sqlCreateDatabase;
+    protected CreateDatabasePreparedData createDatabasePreparedData;
 
     public LogicalCreateDatabase(CreateDatabase createDatabase) {
         super(createDatabase.getCluster(), createDatabase.getTraitSet(), createDatabase);
+        if (createDatabase.getSqlNode() instanceof SqlCreateDatabase) {
+            SqlCreateDatabase sqlCreateDatabase = (SqlCreateDatabase) createDatabase.getSqlNode();
+            SqlIdentifier sourceDatabaseName = (SqlIdentifier) sqlCreateDatabase.getSourceDatabaseName();
+            if (sqlCreateDatabase.getLike() || sqlCreateDatabase.getAs()) {
+                this.setSchemaName(DefaultDbSchema.NAME);
+            }
+        }
+        this.relDdl.setTableName(new SqlIdentifier("nonsense", SqlParserPos.ZERO));
+        this.setTableName("nonsense");
+        this.sqlCreateDatabase = (SqlCreateDatabase) relDdl.sqlNode;
     }
 
     public static LogicalCreateDatabase create(CreateDatabase createDatabase) {
         return new LogicalCreateDatabase(createDatabase);
+    }
+
+    public CreateDatabasePreparedData getCreateDatabasePreparedData() {
+        return createDatabasePreparedData;
+    }
+
+    public void setCreateDatabasePreparedData(
+        CreateDatabasePreparedData createDatabasePreparedData) {
+        this.createDatabasePreparedData = createDatabasePreparedData;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
+    public void prepareData() {
+        SqlIdentifier sourceDatabaseName = sqlCreateDatabase.getSourceDatabaseName();
+        String srcSchemaName = sourceDatabaseName.names.get(0);
+        String dstSchemaName = sqlCreateDatabase.getDbName().getSimple();
+        List<String> includeTables = new ArrayList<>();
+        List<String> excludeTables = new ArrayList<>();
+        sqlCreateDatabase.getIncludeTables().forEach(
+            sqlIdentifier -> includeTables.add(sqlIdentifier.getLastName())
+        );
+        sqlCreateDatabase.getExcludeTables().forEach(
+            sqlIdentifier -> excludeTables.add(sqlIdentifier.getLastName())
+        );
+        boolean needDoCreateTables = sqlCreateDatabase.isCreateTables();
+
+        this.createDatabasePreparedData = new CreateDatabasePreparedData(
+            srcSchemaName,
+            dstSchemaName,
+            includeTables,
+            excludeTables,
+            sqlCreateDatabase.getLike(),
+            sqlCreateDatabase.getAs(),
+            sqlCreateDatabase.getWithLock(),
+            needDoCreateTables
+        );
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
     }
 }

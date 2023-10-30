@@ -25,6 +25,7 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 
 import java.sql.Connection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,6 +41,7 @@ public class ServerInstIdManager extends AbstractLifecycle {
     protected volatile String masterInstId = null;
     protected volatile int instType = ServerInfoRecord.INST_TYPE_MASTER;
     protected volatile Map<String, Set<String>> instId2StorageIds = new HashMap<>();
+    protected volatile Set<String> htapLearnerInstIds = new HashSet<>();
 
     protected ServerInstIdManager() {
     }
@@ -59,12 +61,14 @@ public class ServerInstIdManager extends AbstractLifecycle {
     protected void doInit() {
         loadMasterInstId();
         loadAllInstIdAndStorageIdSet();
+        loadAllHtapInstIds();
         initInstType();
     }
 
     public void reload() {
         loadMasterInstId();
         loadAllInstIdAndStorageIdSet();
+        loadAllHtapInstIds();
         initInstType();
         //here register the new storageIds listener after load the new learner InstId.
         registerLearnerStorageInstId();
@@ -117,6 +121,17 @@ public class ServerInstIdManager extends AbstractLifecycle {
         }
     }
 
+    public synchronized void loadAllHtapInstIds() {
+        try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
+            ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
+            serverInfoAccessor.setConnection(connection);
+            this.htapLearnerInstIds = serverInfoAccessor.getAllHTAPReadOnlyInstIdList();
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
     protected void initInstType() {
         String instId = InstIdUtil.getInstId();
         if (instId.equalsIgnoreCase(masterInstId)) {
@@ -136,6 +151,10 @@ public class ServerInstIdManager extends AbstractLifecycle {
 
     public String getMasterInstId() {
         return masterInstId;
+    }
+
+    public Set<String> getAllHTAPReadOnlyInstIdSet() {
+        return this.htapLearnerInstIds;
     }
 
     public Set<String> getAllReadOnlyInstIdSet() {

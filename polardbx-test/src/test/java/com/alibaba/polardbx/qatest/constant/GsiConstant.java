@@ -1525,6 +1525,8 @@ public class GsiConstant {
     public static Map<String, String> PK_COLUMN_DEF_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     public static Map<String, String> PK_DEF_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
+    public static Map<String, String> SK_DEF_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
     static {
         COLUMN_DEF_MAP.put("id", "  `id` bigint(20) DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_bit_1", "  `c_bit_1` bit(1) DEFAULT NULL,\n");
@@ -1596,6 +1598,28 @@ public class GsiConstant {
         COLUMN_DEF_MAP.put("c_multilinestring", "  `c_multilinestring` multilinestring DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_multipolygon", "  `c_multipolygon` multipolygon DEFAULT NULL,\n");
         COLUMN_DEF_MAP.put("c_geometrycollection", "  `c_geometrycollection` geometrycollection DEFAULT NULL,\n");
+
+        SK_DEF_MAP.put("id", "  `id` bigint(20) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_1", "  `c_tinyint_1` tinyint(1) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_1_un", "  `c_tinyint_1_un` tinyint(1) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_4", "  `c_tinyint_4` tinyint(4) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_4_un", "  `c_tinyint_4_un` tinyint(4) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_8", "  `c_tinyint_8` tinyint(8) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_tinyint_8_un", "  `c_tinyint_8_un` tinyint(8) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_smallint_1", "  `c_smallint_1` smallint(1) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_smallint_16", "  `c_smallint_16` smallint(16) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_smallint_16_un", "  `c_smallint_16_un` smallint(16) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_mediumint_1", "  `c_mediumint_1` mediumint(1) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_mediumint_24", "  `c_mediumint_24` mediumint(24) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_mediumint_24_un", "  `c_mediumint_24_un` mediumint(24) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_int_1", "  `c_int_1` int(1) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_int_32", "  `c_int_32` int(32) DEFAULT NULL ,\n");
+        SK_DEF_MAP.put("c_int_32_un", "  `c_int_32_un` int(32) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_bigint_1", "  `c_bigint_1` bigint(1) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_bigint_64", "  `c_bigint_64` bigint(64) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_bigint_64_un", "  `c_bigint_64_un` bigint(64) unsigned DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_char", "  `c_char` char(10) DEFAULT NULL,\n");
+        SK_DEF_MAP.put("c_varchar", "  `c_varchar` varchar(10) DEFAULT NULL,\n");
 
         PK_COLUMN_DEF_MAP.put("id",
             "  `id` bigint(20)                            NOT NULL AUTO_INCREMENT                                   , \n ");

@@ -84,7 +84,7 @@ public class SourcePartitionedScheduler implements StageScheduler {
         if (splitInfo.getConcurrencyPolicy() == QueryConcurrencyPolicy.SEQUENTIAL) {
             totalPrefetch = 1;
         } else {
-            context.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS);
+            totalPrefetch = context.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS);
             if (totalPrefetch < 0) {
                 totalPrefetch = ExecUtils.getMppPrefetchNumForLogicalView(splitInfo.getSplitParallelism());
                 if (expandSplitInfos != null && expandSplitInfos.size() > 0) {

@@ -46,7 +46,7 @@ public abstract class AbstractScalarFunction implements IScalarFunction {
     public abstract String[] getFunctionNames();
 
     @Override
-    public final DataType getReturnType() {
+    public DataType getReturnType() {
         return resultType;
     }
 

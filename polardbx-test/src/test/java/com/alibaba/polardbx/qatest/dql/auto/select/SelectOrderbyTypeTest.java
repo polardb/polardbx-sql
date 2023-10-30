@@ -33,6 +33,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderByN
  * orderby各种类型的测试
  */
 
+
 public class SelectOrderbyTypeTest extends AutoReadBaseTestCase {
 
     String normaltblOrderTableName;

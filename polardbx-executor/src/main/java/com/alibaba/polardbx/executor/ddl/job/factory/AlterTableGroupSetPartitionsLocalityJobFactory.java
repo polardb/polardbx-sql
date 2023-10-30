@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSetPartitionsLocalityPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 
@@ -102,9 +103,10 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
         List<LocalityDetailInfoRecord> toChangeMetaLocalityItems =
             PolicyUtils.getLocalityDetails(preparedData.getSchemaName(), preparedData.getTableGroupName(),
                 preparedData.getPartition());
+        String localityInfo = LocalityInfoUtils.parse(preparedData.getTargetLocality()).toString();
         DdlTask changeMetaTask = new AlterTableGroupSetPartitionsLocalityChangeMetaTask(preparedData.getSchemaName(),
             preparedData.getTableGroupName(), logicalTableNames, preparedData.getPartition(),
-            preparedData.getTargetLocality(),
+            localityInfo,
             toChangeMetaLocalityItems);
         DdlTask tablesSyncTask =
             new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, true, initWait, interval,
@@ -147,14 +149,14 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
 
     @Override
     protected void excludeResources(Set<String> resources) {
-        resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
-        TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
-                .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
-            resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
-        }
+//        resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
+//        TableGroupConfig tableGroupConfig =
+//            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+//                .getTableGroupConfigByName(preparedData.getTableGroupName());
+//        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+//            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+//            resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
+//        }
     }
 
     @Override

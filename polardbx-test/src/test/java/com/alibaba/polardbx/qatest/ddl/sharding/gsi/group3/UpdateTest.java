@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import org.hamcrest.Matchers;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -368,8 +369,6 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    // TODO(qianjing): fix set update timestamp
-    @Ignore
     @Test
     public void testGsiSetTimestamp() throws Exception {
         String tableName = "update_gsi_set_timestamp_test_tb";
@@ -392,8 +391,6 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         checkGsi(tddlConnection, gsiName);
     }
 
-    // TODO(qianjing): fix set update timestamp
-    @Ignore
     @Test
     public void testGsiSet() throws Exception {
         String tableName = "update_gsi_set_test_tb";
@@ -423,40 +420,41 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
         dropTableIfExists(gsiName);
         String sql =
-            String.format("create table %s (id int primary key, b int, c int) dbpartition by hash(id);", tableName);
+            String.format("create table %s (id int primary key, b int, c int) dbpartition by hash(id);",
+                tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("insert into %s(id,b,c) values(1,2,3)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         // Skip
-        sql = String.format(
-            "trace /*+TDDL:CMD_EXTRA(DML_RELOCATE_SKIP_UNCHANGED_ROW=TRUE)*/ update %s set b=2,id=1 where id=1",
-            tableName);
+        sql = String.format("trace update %s set id=1 where id=1", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         assertEquals(getTrace(tddlConnection).size(), 1);
 
-        // Push UPDATE, by default
-        sql = String.format("trace  update %s set b=2,id=1 where id=1", tableName);
+        // Push UPDATE
+        sql = String.format(
+            "trace /*+TDDL:CMD_EXTRA(DML_RELOCATE_SKIP_UNCHANGED_ROW=FALSE)*/ update %s set id=1 where id=1",
+            tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         assertEquals(getTrace(tddlConnection).size(), 2);
 
-        sql =
-            String.format("create global index %s on %s(id) covering(b) dbpartition by hash(id);", gsiName, tableName);
+        sql = String.format("create global index %s on %s(c) covering(b) dbpartition by hash(c)", gsiName,
+            tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         // Skip
-        sql = String.format(
-            "trace /*+TDDL:CMD_EXTRA(DML_RELOCATE_SKIP_UNCHANGED_ROW=TRUE)*/ update %s set id=1,b=2,c=3 where id=1",
-            tableName);
+        sql = String.format("trace update %s set id=1,c=3 where id=1", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         assertEquals(getTrace(tddlConnection).size(), 1);
 
-        // Primary Push UPDATE, GSI skip, by default
-        sql = String.format("trace update %s set id=1,c=2 where id=1", tableName);
+        // Push UPDATE
+        sql = String.format(
+            "trace /*+TDDL:CMD_EXTRA(DML_RELOCATE_SKIP_UNCHANGED_ROW=FALSE)*/ update %s set id=1,c=3 where id=1",
+            tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         System.out.println(getTrace(tddlConnection));
-        assertEquals(getTrace(tddlConnection).size(), 2);
+        assertEquals(getTrace(tddlConnection).size(), 3);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -671,5 +669,249 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
                 }
             }
         }
+    }
+
+    @Test
+    public void testUpdateCurrentTimestamp() throws SQLException {
+        String tableName = "update_cur_ts_tbl";
+        String gsiName = tableName + "_gsi";
+
+        String create = String.format(
+            "create table %s (a int primary key, b timestamp default '2022-12-12 12:12:12' on update current_timestamp(), c int) dbpartition by hash(a)",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+        create =
+            String.format("create global index %s on %s(c) covering (b) dbpartition by hash(c)", gsiName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert = String.format("insert into %s(a,c) values (1,2)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        String update = String.format("update %s set c=2", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+
+        checkGsi(tddlConnection, gsiName);
+
+        update = String.format("update %s set a=1,c=2", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+
+        checkGsi(tddlConnection, gsiName);
+    }
+
+    @Test
+    public void testUpdateCurrentTimestamp1() throws SQLException {
+        String tableName = "update_cur_ts_tbl1";
+        String gsiName = tableName + "_gsi";
+
+        String create = String.format(
+            "create table %s (a int primary key, b timestamp default '2022-12-12 12:12:12' on update current_timestamp(), c int) dbpartition by hash(a)",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+        create = String.format("create global index %s on %s(b) dbpartition by YYYYMM(b)", gsiName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert = String.format("insert into %s(a,c) values (1,2)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        String update = String.format("update %s set a=1", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+
+        checkGsi(tddlConnection, gsiName);
+
+        update = String.format("update %s set a=1,c=2", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+
+        checkGsi(tddlConnection, gsiName);
+    }
+
+    @Test
+    public void testUpdateBinaryFunc1() throws SQLException {
+        String tableName = "update_update_binary_tbl1";
+        String create = String.format("create table %s (a int primary key auto_increment, b varbinary(32))", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String[] binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234"};
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            for (int j = 0; j < 10; j++) {
+                String insert = String.format("insert into %s values (null, %s)", tableName, binaryValues[i]);
+                JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+                JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+            }
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String update =
+                String.format("update %s set a=a+1000, b=%s where b=%s", tableName, binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String hint = "/*+TDDL:CMD_EXTRA(ENABLE_PUSH_PROJECT=FALSE)*/";
+            String update = hint + String.format("update %s set a=a+1000, b=%s where b=%s", tableName, binaryValues[i],
+                binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String hint = "/*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1)*/";
+            String update = hint + String.format("update %s set a=a+1000, b=%s where b=%s", tableName, binaryValues[i],
+                binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String hint = "/*+TDDL:CMD_EXTRA(ENABLE_PUSH_PROJECT=FALSE,UPDATE_DELETE_SELECT_BATCH_SIZE=1)*/";
+            String update = hint + String.format("update %s set a=a+1000, b=%s where b=%s", tableName, binaryValues[i],
+                binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testUpdateBinaryFunc2() throws SQLException {
+        String tableName = "update_update_binary_tbl2";
+        String create = String.format("create table %s (a int primary key auto_increment, b varbinary(32))", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String[] binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234"};
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            for (int j = 0; j < 10; j++) {
+                String insert = String.format("insert into %s values (null, %s)", tableName, binaryValues[i]);
+                JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+                JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+            }
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String update =
+                String.format("update %s set b=%s where b=%s", tableName, binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/";
+            String update =
+                hint + String.format("update %s set b=%s where b=%s", tableName, binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,UPDATE_DELETE_SELECT_BATCH_SIZE=1)*/";
+            String update =
+                hint + String.format("update %s set b=%s where b=%s", tableName, binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, update);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    /**
+     * 主表拆分键和gsi拆分键不一样
+     * update 主表拆分键
+     * 主表 UPDATE 转 SELECT + DELETE + INSERT
+     * 处于write only 阶段的gsi UPDATE 转 SELECT + DELETE + INSERT
+     */
+    @Test
+    public void tableWithPkNoUkWithGsi_writeOnly2() throws SQLException {
+        final String tableName = "update_test_tb_with_write_only_gsi";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT 2,\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT 3,\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`c1`, `c2`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+        final String gsiName = "g_update_c2_write_only";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT 2,\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT 3,\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`c1`, `c2`),\n"
+            + "  GLOBAL INDEX " + gsiName
+            + "(`c2`) COVERING(`c5`) DBPARTITION BY HASH(`c2`) TBPARTITION BY HASH(`c2`) TBPARTITIONS 3\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c1`) tbpartition by hash(`c1`) tbpartitions 3";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String insert =
+            "insert into " + tableName
+                + "(c1, c2, c8) values(4, 5, '2020-06-16 06:49:32'), (2, 3, '2020-06-16 06:49:32'), (3, 4, '2020-06-16 06:49:32');";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+
+        final String hint = "/*+TDDL: cmd_extra(GSI_DEBUG=\"GsiStatus2\",DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ ";
+        final String updateSql = "update " + tableName + " set c1 = 38 where c1 = 4";
+        final String updateSql2 = "update " + tableName + " set c1 = 4 where c1 = 38";
+
+        checkGsi(tddlConnection, gsiName);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        // write only
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateSql, "trace " + hint + updateSql, null, true);
+        final List<List<String>> trace = getTrace(tddlConnection);
+
+        org.junit.Assert.assertThat(trace.size(), Matchers.is(1 + 2 + 2));
+
+        // public
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateSql2, "trace " + updateSql2, null, true);
+        final List<List<String>> trace2 = getTrace(tddlConnection);
+
+        org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, gsiName);
     }
 }

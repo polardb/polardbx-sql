@@ -157,7 +157,7 @@
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2` from `test_hash_tb` as `test_hash_tb` where ((`int_col2` > 5) and (`int_col2` < 3))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where (((`int_col4` < 3) and (`int_col4` > 5)) and (`int_col4` in (...)))")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col4` < 3) and (`int_col4` > 5) and (`int_col4` in (...)))")
 
 -
   sql: |
@@ -213,8 +213,8 @@
       bkajoin(condition="int_col3 = int_col4 and int_col3 = int_col2 and int_col3 = int_col3", type="inner")
         bkajoin(condition="int_col4 = int_col2 and int_col4 = int_col3", type="inner")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2`, `int_col3` from `test_hash_tb` as `test_hash_tb` where (((((`int_col2` = `int_col3`) and (`int_col2` > 5)) and (`int_col3` > 5)) and (`int_col2` < 1)) and (`int_col3` < 1))")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2`, `int_col3` from `test_hash_tb` as `test_hash_tb` where ((`int_col2` = `int_col3`) and (`int_col2` > 5) and (`int_col3` > 5) and (`int_col2` < 1) and (`int_col3` < 1))")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where (((`int_col4` > 5) and (`int_col4` < 1)) and (`int_col4` in (...)))")
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col4` > 5) and (`int_col4` < 1) and (`int_col4` in (...)))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb3", shardcount=4, sql="select `int_col3` from `test_hash_tb3` as `test_hash_tb3` where (((`int_col3` > 5) and (`int_col3` < 1)) and (`int_col3` in (...)))")
+          logicalview(tables="[0000-0003].test_hash_tb3", shardcount=4, sql="select `int_col3` from `test_hash_tb3` as `test_hash_tb3` where ((`int_col3` > 5) and (`int_col3` < 1) and (`int_col3` in (...)))")

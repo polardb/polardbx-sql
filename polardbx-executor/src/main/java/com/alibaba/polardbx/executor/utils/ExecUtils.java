@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.RepoInst;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -37,10 +38,12 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
@@ -49,6 +52,7 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.StageInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskInfo;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
@@ -59,10 +63,15 @@ import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
-import com.alibaba.polardbx.gms.node.StorageStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -71,12 +80,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
-import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
-import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
@@ -95,15 +103,13 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.alibaba.polardbx.optimizer.utils.GroupConnId;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
@@ -124,26 +130,27 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.weakref.jmx.internal.guava.primitives.Bytes;
 
+import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -153,13 +160,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
-import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
@@ -537,6 +543,8 @@ public class ExecUtils {
                 masterSlaveVal = MasterSlave.SLAVE_ONLY;
             } else if (ec.getExtraCmds().containsKey(ConnectionProperties.FOLLOWER)) {
                 masterSlaveVal = MasterSlave.FOLLOWER_ONLY;
+            } else if (ec.getExtraCmds().containsKey(ConnectionProperties.FOLLOWER)) {
+                masterSlaveVal = MasterSlave.FOLLOWER_ONLY;
             } else {
                 masterSlaveVal = getMasterSlaveByWeight(ec);
             }
@@ -550,7 +558,7 @@ public class ExecUtils {
         MasterSlave ret = null;
         if (!ConfigDataMode.isMasterMode()) {
             ret = MasterSlave.SLAVE_ONLY;
-        } else if (!StorageStatusManager.getInstance().getAllowReadLearnerStorageMap().isEmpty() ||
+        } else if (!ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet().isEmpty() ||
             DynamicConfig.getInstance().enableFollowReadForPolarDBX()) {
             int readMasterWeight = ec.getParamManager().getInt(MASTER_READ_WEIGHT);
             if (readMasterWeight >= 100 || readMasterWeight < 0) {
@@ -567,7 +575,7 @@ public class ExecUtils {
             ret = MasterSlave.MASTER_ONLY;
         }
 
-        if (ret == MasterSlave.SLAVE_ONLY) {
+        if (ret == MasterSlave.SLAVE_ONLY && ConfigDataMode.isMasterMode()) {
             int executeStrategy = ec.getParamManager().getInt(ConnectionParams.DELAY_EXECUTION_STRATEGY);
             if (executeStrategy == 2) {
                 //all slave is delay, so can't continue use slave connection!
@@ -618,7 +626,7 @@ public class ExecUtils {
         }
 
         if (executionContext.getParamManager().getBoolean(ConnectionParams.GROUP_CONCURRENT_BLOCK)) {
-            if (logicalView != null && (logicalView.isUnderMergeSort() || executionContext.getParamManager()
+            if (logicalView != null && (logicalView.pushedRelNodeIsSort() || executionContext.getParamManager()
                 .getBoolean(ConnectionParams.MERGE_CONCURRENT))) {
                 return QueryConcurrencyPolicy.CONCURRENT;
             }
@@ -691,6 +699,8 @@ public class ExecUtils {
             group = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
         } else if (relNode instanceof DirectShardingKeyTableOperation) {
             group = executionContext.getDbIndexAndTableName().getKey();
+        } else if (relNode instanceof DirectMultiDBTableOperation) {
+            group = ((DirectMultiDBTableOperation) relNode).getBaseDbIndex(executionContext);
         } else if (relNode instanceof BaseTableOperation) {
             group = ((BaseTableOperation) relNode).getDbIndex();
         } else if (relNode instanceof LogicalInsert) {
@@ -813,6 +823,10 @@ public class ExecUtils {
                     return 0;
                 }
 
+                if (logicalPlan instanceof OSSTableScan) {
+                    return 1;
+                }
+
                 // Compatible with DRDS 5.2
                 if (!executionContext.getParamManager().getBoolean(ConnectionParams.MERGE_UNION)) {
                     return 1;
@@ -849,40 +863,12 @@ public class ExecUtils {
     }
 
     public static boolean useExplicitTransaction(ExecutionContext context) {
-        //Autocommit is true, but the GSI must be in transaction.
-        boolean ret = context.getTransaction().getTransactionClass().isA(EXPLICIT_TRANSACTION);
-        return ret && ConfigDataMode.isMasterMode() && !ExecUtils.isMppMode(context);
+        return OptimizerUtils.useExplicitTransaction(context);
+
     }
 
     public static boolean allowMultipleReadConns(ExecutionContext context, LogicalView logicalView) {
-        boolean ret = useExplicitTransaction(context);
-        if (ret) {
-            boolean shareReadView = context.isShareReadView() && context.getTransaction().
-                getTransactionClass().isA(SUPPORT_SHARE_READVIEW_TRANSACTION);
-            if (!shareReadView && !context.isAutoCommit()) {
-                return false;
-            } else {
-                if (!isSelectQuery(context)) {
-                    return false;
-                }
-                if (logicalView != null) {
-                    return ((IDistributedTransaction) context.getTransaction()).allowMultipleReadConns()
-                        && logicalView.getLockMode() == SqlSelect.LockMode.UNDEF;
-                } else {
-                    return ((IDistributedTransaction) context.getTransaction()).allowMultipleReadConns();
-                }
-            }
-        } else {
-            return true;
-        }
-    }
-
-    private static boolean isSelectQuery(ExecutionContext context) {
-        if (context.getFinalPlan() == null || context.getFinalPlan().getAst() == null) {
-            return context.getSqlType() == SqlType.SELECT;
-        } else {
-            return context.getFinalPlan().getAst().getKind().belongsTo(SqlKind.QUERY);
-        }
+        return OptimizerUtils.allowMultipleReadConns(context, logicalView);
     }
 
     public static String buildDRDSTraceComment(ExecutionContext context) {
@@ -1303,6 +1289,43 @@ public class ExecUtils {
         }
     }
 
+    public static int reorderGroupsByDnId(Collection<String> groups, String schema,
+                                          ConcurrentLinkedQueue<IDataSource> reorderedQueue) {
+        // Reorder groups by DN inst id.
+        // For example, group 0-8 in DN0, group 9-15 in DN1,
+        // before reorder: group 0, 1, 2, ..., 9, 10, ..., 15
+        // after reorder: group 0, 9, 1, 10, 2, 11, ..., 8, 15
+        // DN inst id -> all group data sources in that DN.
+        Map<String, List<IDataSource>> instIdToDataSources = new HashMap<>();
+        for (String group : groups) {
+            TGroupDataSource dataSource =
+                (TGroupDataSource) ExecutorContext.getContext(schema).getTopologyHandler().get(group).getDataSource();
+            String instId = dataSource.getMasterSourceAddress();
+            List<IDataSource> datasourceList = instIdToDataSources.computeIfAbsent(instId, o -> new ArrayList<>());
+            datasourceList.add(dataSource);
+        }
+        List<Iterator<IDataSource>> dnIterators =
+            instIdToDataSources.values().stream().map(List::iterator).collect(Collectors.toList());
+        // Simple k-way merge.
+        while (!dnIterators.isEmpty()) {
+            // Iterator of all DN.
+            Iterator<Iterator<IDataSource>> it = dnIterators.iterator();
+            while (it.hasNext()) {
+                // Iterator of all group data sources in one DN.
+                Iterator<IDataSource> dnDatasource = it.next();
+                if (dnDatasource.hasNext()) {
+                    reorderedQueue.offer(dnDatasource.next());
+                    dnDatasource.remove();
+                } else {
+                    // This DN is done.
+                    it.remove();
+                }
+            }
+        }
+
+        return instIdToDataSources.size();
+    }
+
     public static boolean isPowerOfTwo(int val) {
         return (val & -val) == val;
     }
@@ -1412,16 +1435,6 @@ public class ExecUtils {
             replaceRow.add(new GroupKey(groupKeys, metas));
         }
         return replaceRow;
-    }
-
-    public static DataType getTypeForNewGroupKey(RexNode rex, Object value) {
-        DataType type = DataTypeUtil.calciteToDrdsType(rex.getType());
-        ExprContextProvider exprCxtProvider = new ExprContextProvider();
-        IExpression evalFuncExec = RexUtils.getEvalFuncExec(rex, exprCxtProvider);
-        if (evalFuncExec instanceof DynamicParamExpression) {
-            type = DataTypeUtil.getTypeOfObject(value);
-        }
-        return type;
     }
 
     public static List<GroupKey> buildNewGroupKeys(List<List<Integer>> ukColumnsList,
@@ -1542,22 +1555,31 @@ public class ExecUtils {
         return outputCount;
     }
 
-    public static LogicalView convertToLogicalView(BaseTableOperation tableOperation) {
+    public static LogicalView convertToLogicalView(
+        BaseTableOperation tableOperation, ExecutionContext context) {
         RelNode relNode = tableOperation.getParent();
         if (relNode == null) {
             throw new RuntimeException("Don't support " + tableOperation + " convertTo LogicalView");
         }
 
         List<String> tableNameList;
-        String schemaName = tableOperation.getSchemaName();
+        String schemaName;
+        if (tableOperation instanceof DirectMultiDBTableOperation) {
+            schemaName = ((DirectMultiDBTableOperation) tableOperation).getBaseSchemaName(context);
+        } else {
+            schemaName = tableOperation.getSchemaName();
+        }
+
         if (tableOperation instanceof DirectTableOperation) {
-            tableNameList = ((DirectTableOperation) tableOperation).getLogicalTableNames();
+            tableNameList = (tableOperation).getLogicalTableNames();
+        } else if (tableOperation instanceof DirectMultiDBTableOperation) {
+            tableNameList = ((DirectMultiDBTableOperation) tableOperation).getLogicalTables(schemaName);
         } else if (tableOperation instanceof SingleTableOperation) {
-            tableNameList = ((SingleTableOperation) tableOperation).getLogicalTableNames();
+            tableNameList = (tableOperation).getLogicalTableNames();
         } else if (tableOperation instanceof DirectShardingKeyTableOperation) {
-            tableNameList = ((DirectShardingKeyTableOperation) tableOperation).getLogicalTableNames();
+            tableNameList = (tableOperation).getLogicalTableNames();
         } else if (tableOperation instanceof PhyTableOperation) {
-            tableNameList = ((PhyTableOperation) tableOperation).getLogicalTableNames();
+            tableNameList = (tableOperation).getLogicalTableNames();
             if (tableNameList == null && tableOperation.getParent() instanceof DirectTableOperation) {
                 tableNameList = ((DirectTableOperation) tableOperation.getParent()).getTableNames();
                 if (schemaName == null) {
@@ -1578,9 +1600,6 @@ public class ExecUtils {
             final RelOptTable table = catalog.getTableForMember(
                 ImmutableList.of(schemaName, tableNameList.get(0)));
             logicalView = LogicalView.create(relNode, table);
-//            if (tableOperation.getNativeSqlNode() != null) {
-//                logicalView.setSqlTemplate(tableOperation.getNativeSqlNode());
-//            }
         }
         logicalView.setTableName(tableNameList);
         logicalView.setFromTableOperation(tableOperation);
@@ -1603,7 +1622,7 @@ public class ExecUtils {
     public static Set<String> getQuerySchedulerHosts(ExecutionContext context) {
         Set<String> hosts = new LinkedHashSet<>();
         // coordinator
-        hosts.add(ServiceProvider.getInstance().getServer().getLocalNode().getHostPort());
+        hosts.add(ServiceProvider.getInstance().getServer().getLocalNode().getHostMppPort());
         if (ExecUtils.isMppMode(context)) {
             QueryInfo queryInfo = ServiceProvider.getInstance().getServer().getQueryManager().getQueryInfo(
                 context.getTraceId());
@@ -1745,7 +1764,13 @@ public class ExecUtils {
      * @param tso Task to send a timestamp to MASTER storage nodes in order to keep their latest timestamp up-to-date.
      */
     public static long getLsn(IDataSource dataSource, long tso, String hint) throws SQLException {
-        final String tsoSql = hint + "SET GLOBAL innodb_heartbeat_seq = " + tso;
+        final String tsoSql;
+        if (InstanceVersion.isMYSQL80()) {
+            tsoSql = hint + "call dbms_xa.advance_gcn_no_flush(" + tso + ")";
+        } else {
+            tsoSql = hint + "SET GLOBAL innodb_heartbeat_seq = " + tso;
+        }
+
         final String lsnSql = hint + "SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL";
 
         ResultSet result;
@@ -1777,6 +1802,21 @@ public class ExecUtils {
                 } else {
                     throw new SQLException("Empty result while getting Applied_index");
                 }
+            }
+        }
+    }
+
+
+    public static long getLsn(IDataSource dataSource) throws SQLException {
+        try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
+            Statement stmt = masterConn.createStatement()) {
+            ResultSet result =
+                stmt.executeQuery("SELECT LAST_APPLY_INDEX FROM information_schema.ALISQL_CLUSTER_LOCAL");
+            if (result.next()) {
+                long masterLsn = Long.parseLong(result.getString(1));
+                return masterLsn;
+            } else {
+                throw new SQLException("Empty result while getting Applied_index");
             }
         }
     }
@@ -1843,14 +1883,23 @@ public class ExecUtils {
         return isMysql80Version;
     }
 
-    public static List<String> getTableGroupNames(String schemaName, String tableName) {
+    public static String getMysqlVersion() {
+        String version = null;
+        try {
+            version = ExecutorContext.getContext(
+                SystemDbHelper.INFO_SCHEMA_DB_NAME).getStorageInfoManager().getDnVersion();
+        } catch (Throwable t) {
+            //ignore
+        }
+        return version;
+    }
+
+    public static List<String> getTableGroupNames(String schemaName, String tableName, ExecutionContext ec) {
         final Set<String> dbNames;
         final TddlRuleManager or = Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getRuleManager();
-        PartitionInfoManager partitionInfoManager =
-            Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getPartitionInfoManager();
-        if (partitionInfoManager.isNewPartDbTable(tableName)) {
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             PartitionInfo partitionInfo =
-                partitionInfoManager.getPartitionInfo(tableName);
+                ec.getSchemaManager(schemaName).getTable(tableName).getPartitionInfo();
             dbNames = partitionInfo.getTopology().keySet();
         } else {
             dbNames = or.getTableRule(tableName).getActualTopology().keySet();
@@ -1902,13 +1951,11 @@ public class ExecUtils {
         if (!InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
             return com.alibaba.polardbx.common.utils.Pair.of(true, "ENABLE_HLL not enabled");
         }
-        try {
-            return com.alibaba.polardbx.common.utils.Pair.of(InstConfUtil.isInMaintenanceTimeWindow(),
-                "not in maintenance time window");
-        } catch (ParseException e) {
-            // should not happen
-            logger.error("ndv sketch interrupted judge error", e);
-            return com.alibaba.polardbx.common.utils.Pair.of(true, "unexpected error" + e.getMessage());
+
+        if (InstConfUtil.isInMaintenanceTimeWindow()) {
+            return com.alibaba.polardbx.common.utils.Pair.of(false, "");
+        } else {
+            return com.alibaba.polardbx.common.utils.Pair.of(true, "not in maintenance time window");
         }
     }
 
@@ -1935,4 +1982,29 @@ public class ExecUtils {
         }
     }
 
+    public static String getDnPolardbVersion() {
+        String dnPolardbVersion = null;
+        if (ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) != null) {
+            TopologyHandler topologyHandler =
+                ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
+            if (topologyHandler.getMatrix().getGroups().isEmpty()) {
+                return dnPolardbVersion;
+            }
+            Group group = topologyHandler.getMatrix().getGroups().get(0);
+            String groupName = group.getName();
+            IGroupExecutor groupExecutor = topologyHandler.get(groupName);
+            DataSource dataSource = groupExecutor.getDataSource();
+            try (Connection conn = dataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT @@polardb_version")) {
+                if (rs.next()) {
+                    dnPolardbVersion = rs.getString(1);
+                }
+                return dnPolardbVersion;
+            } catch (SQLException e) {
+                logger.error(e.getMessage(), e);
+            }
+        }
+        return dnPolardbVersion;
+    }
 }

@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.handler;
 import com.alibaba.polardbx.common.ddl.tablegroup.AutoSplitPolicy;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.scheduler.SchedulePolicy;
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.common.scheduler.SchedulerType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -34,6 +33,7 @@ import com.alibaba.polardbx.executor.scheduler.executor.AutoSplitTableGroupSched
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessorDelegate;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
@@ -72,16 +72,24 @@ public class LogicalCreateScheduleHandler extends HandlerCommon {
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         SqlCreateSchedule createSchedule = (SqlCreateSchedule) ((LogicalDal) logicalPlan).getNativeSqlNode();
+        String executorType = createSchedule.getExecutorType();
+        ScheduledJobExecutorType scheduledJobExecutorType = null;
+        try {
+            scheduledJobExecutorType = ScheduledJobExecutorType.valueOf(executorType);
+        } catch (IllegalArgumentException e) {
+            throw new TddlNestableRuntimeException(String.format(
+                "unsupported schedule job : %s", executorType
+            ));
+        }
 
-        final boolean forLocalPartition = createSchedule.isForLocalPartition();
-        final boolean forAutoSplitTableGroup = createSchedule.isForAutoSplitTableGroup();
-
-        if (forLocalPartition) {
+        switch (scheduledJobExecutorType) {
+        case LOCAL_PARTITION:
+        case REFRESH_MATERIALIZED_VIEW:
             return new AffectRowCursor(createLocalPartitionScheduledJob(createSchedule, executionContext));
-        } else if (forAutoSplitTableGroup) {
+        case AUTO_SPLIT_TABLE_GROUP:
             return new AffectRowCursor(createAutoSplitTableGroupScheduledJob(createSchedule, executionContext));
-        } else {
-            throw new TddlNestableRuntimeException("unknown schedule type");
+        default:
+            throw new TddlNestableRuntimeException("unsupported schedule type: " + scheduledJobExecutorType);
         }
     }
 
@@ -90,6 +98,16 @@ public class LogicalCreateScheduleHandler extends HandlerCommon {
         String timeZone = createSchedule.getTimeZone();
         if (StringUtils.isEmpty(timeZone)) {
             timeZone = executionContext.getTimeZone().getMySqlTimeZoneName();
+        }
+
+        String executorType = createSchedule.getExecutorType();
+        ScheduledJobExecutorType scheduledJobExecutorType = null;
+        try {
+            scheduledJobExecutorType = ScheduledJobExecutorType.valueOf(executorType);
+        } catch (IllegalArgumentException e) {
+            throw new TddlNestableRuntimeException(String.format(
+                "unsupported schedule job : %s", executorType
+            ));
         }
         final String tableSchema = createSchedule.getSchemaName();
         final String tableName = ((SqlIdentifier) createSchedule.getTableName()).getLastName();
@@ -104,18 +122,21 @@ public class LogicalCreateScheduleHandler extends HandlerCommon {
         PolarPrivilegeUtils.checkPrivilege(tableSchema, tableName, PrivilegePoint.ALTER, executionContext);
         PolarPrivilegeUtils.checkPrivilege(tableSchema, tableName, PrivilegePoint.DROP, executionContext);
 
-        final TableMeta primaryTableMeta =
-            OptimizerContext.getContext(tableSchema).getLatestSchemaManager().getTable(tableName);
-        if (primaryTableMeta.getLocalPartitionDefinitionInfo() == null) {
-            throw new TddlNestableRuntimeException(String.format(
-                "table %s.%s is not a local partition table", tableSchema, tableName
-            ));
+        if (scheduledJobExecutorType.equals(ScheduledJobExecutorType.LOCAL_PARTITION)) {
+            final TableMeta primaryTableMeta =
+                OptimizerContext.getContext(tableSchema).getLatestSchemaManager().getTable(tableName);
+            if (primaryTableMeta.getLocalPartitionDefinitionInfo() == null) {
+                throw new TddlNestableRuntimeException(String.format(
+                    "table %s.%s is not a local partition table", tableSchema, tableName
+                ));
+            }
         }
+
         ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
             tableSchema,
             null,
             tableName,
-                ScheduledJobExecutorType.LOCAL_PARTITION,
+                scheduledJobExecutorType,
             cronExpr,
             timeZone,
             SchedulePolicy.WAIT
@@ -128,13 +149,14 @@ public class LogicalCreateScheduleHandler extends HandlerCommon {
             protected Integer invoke() {
                 List<ScheduledJobsRecord> list =
                     scheduledJobsAccessor.query(scheduledJobsRecord.getTableSchema(),
-                        scheduledJobsRecord.getTableName());
+                        scheduledJobsRecord.getTableName(), scheduledJobsRecord.getExecutorType());
                 list = list.stream()
                     .filter(e -> StringUtils.equalsIgnoreCase(e.getExecutorType(),
                         ScheduledJobExecutorType.LOCAL_PARTITION.name()))
                     .collect(Collectors.toList());
                 if (list.size() > 0) {
-                    throw new TddlNestableRuntimeException("Duplicate Scheduled Job For Local Partition Table");
+                    throw new TddlNestableRuntimeException(
+                        "Duplicate Scheduled Job For " + scheduledJobsRecord.getExecutorType());
                 }
                 return scheduledJobsAccessor.insert(scheduledJobsRecord);
             }

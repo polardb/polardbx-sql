@@ -1,0 +1,144 @@
+storageList: [$dn1, $dn2, $dn3, $dn4]
+dbName: "test_db1"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_db1"
+      - "create database test_db1 mode = auto locality = 'dn=$dn1,$dn2,$dn3'"
+      - "use test_db1;"
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn1';"
+      - "create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn2';"
+      - "create table t3(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn1';"
+      - "create table t4(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4;"
+      - "create table t5(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn3';"
+      - "create table t6(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn1,$dn2,$dn3';"
+      - "create table c0(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c1(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c2(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c3(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c4(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn1', partition p4 values less than (MAXVALUE) locality='dn=$dn2') locality='dn=$dn1,$dn2';"
+      - "create table c5(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1,$dn2', partition p2 values less than (100) locality='dn=$dn1,$dn2',partition p3 values less than (1000) locality='dn=$dn3', partition p4 values less than (MAXVALUE) locality='dn=$dn3') locality='dn=$dn1,$dn2,$dn3';"
+      - "create table s0(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "create table s1(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn2';"
+      - "create table s2(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn3';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_db1;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn2
+        - t3 table $dn1
+        - t4 table ""
+        - t5 table $dn3
+        - t6 table $dn1,$dn2,$dn3
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table $dn1,$dn2
+        - c5 table $dn1,$dn2,$dn3
+        - s0 table $dn1
+        - s1 table $dn2
+        - s2 table $dn3
+        - test_db1 database $dn1,$dn2,$dn3
+      tableGroupMatchCheck:
+        - t1,t3 $tg0 $dn1
+        - t2 $tg2 $dn2
+        - t4 $tg3 ""
+        - t5 $tg4 $dn3
+        - t6 $tg5 $dn1,$dn2,$dn3
+        - c0,c1 $tg6 ""
+        - c2,c3 $tg7 ""
+        - c4 $tg8 $dn1,$dn2
+        - c5 $tg9 $dn1,$dn2,$dn3
+        - s0 $tg10 $dn1
+        - s1 $tg11 $dn2
+        - s2 $tg12 $dn3
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+        - $tg6.p3 $dn2
+        - $tg6.p4 $dn2
+        - $tg8.p1 $dn1
+        - $tg8.p2 $dn1
+        - $tg8.p3 $dn1
+        - $tg8.p4 $dn2
+        - $tg9.p1 $dn1,$dn2
+        - $tg9.p2 $dn1,$dn2
+        - $tg9.p3 $dn3
+        - $tg9.p4 $dn3
+      topologyCheck:
+        - c2 table $dn1,$dn2,$dn3
+        - c3 table $dn1,$dn2,$dn3
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "rebalance database drain_node = '$dn3'"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_db1;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'test_db1';###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn2
+        - t3 table $dn1
+        - t4 table ""
+        - t5 table ""
+        - t6 table ""
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table $dn1,$dn2
+        - c5 table ""
+        - s0 table $dn1
+        - s1 table $dn2
+        - s2 table ""
+        - test_db1 database ""
+      tableGroupMatchCheck:
+        - t1,t3 $tg0 $dn1
+        - t2 $tg2 $dn2
+        - t4 $tg3 ""
+        - t5 $tg4 ""
+        - t6 $tg5 ""
+        - c0,c1 $tg6 ""
+        - c2,c3 $tg7 ""
+        - c4 $tg8 $dn1,$dn2
+        - c5 $tg9 ""
+        - s0 $tg10 $dn1
+        - s1 $tg11 $dn2
+        - s2 $tg12 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+        - $tg6.p3 $dn2
+        - $tg6.p4 $dn2
+        - $tg8.p1 $dn1
+        - $tg8.p2 $dn1
+        - $tg8.p3 $dn1
+        - $tg8.p4 $dn2
+        - $tg9.p1 $dn1,$dn2
+        - $tg9.p2 $dn1,$dn2
+        - $tg9.p3 ""
+        - $tg9.p4 ""
+      topologyCheck:
+        - t4 table $dn1,$dn2
+        - t5 table $dn1,$dn2
+        - t6 table $dn1,$dn2
+        - c0 table $dn1,$dn2
+        - c1 table $dn1,$dn2
+        - c2 table $dn1,$dn2
+        - c3 table $dn1,$dn2
+        - c5 table $dn1,$dn2
+        - s2 table $dn1,$dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"
+  - "drop database if exists test_db1;"

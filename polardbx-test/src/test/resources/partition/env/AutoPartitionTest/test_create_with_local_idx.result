@@ -14,8 +14,8 @@ t_order,CREATE TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SHOW FULL CREATE TABLE `t_order`;
 Table,Create Table
@@ -24,8 +24,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -45,8 +45,8 @@ t_order,CREATE TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SHOW FULL CREATE TABLE `t_order`;
 Table,Create Table
@@ -55,8 +55,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -75,8 +75,8 @@ t_order,CREATE TABLE `t_order` (
 	`x` int(11) NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 SHOW FULL CREATE TABLE `t_order`;
 Table,Create Table
@@ -86,8 +86,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	`seller_id` varchar(20) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
-	UNIQUE LOCAL KEY `i_1` (`order_id`),
-	LOCAL KEY `i_0` (`seller_id`)
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS #@#

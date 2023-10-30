@@ -16,10 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
@@ -28,7 +27,8 @@ import com.alibaba.polardbx.executor.operator.frame.OverWindowFrame;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.Arrays;
 import java.util.List;
@@ -58,6 +58,7 @@ public class OverWindowFramesExec extends AbstractExecutor {
 
     private boolean isFinish;
     private ListenableFuture<?> blocked;
+    private boolean[] converts;
     private DataType[] targetTypes;
     private boolean needToProcessEachRow;
     private int inputCount = 0;
@@ -295,7 +296,6 @@ public class OverWindowFramesExec extends AbstractExecutor {
     public List<DataType> getDataTypes() {
         return columnMetas;
     }
-
 
     @Override
     void doClose() {

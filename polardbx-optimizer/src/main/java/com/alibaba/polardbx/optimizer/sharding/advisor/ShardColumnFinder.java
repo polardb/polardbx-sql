@@ -140,11 +140,11 @@ public class ShardColumnFinder {
         }
 
         long cardinality = StatisticManager.getInstance()
-            .getCardinality(schemaName, tableName, columnOrigin.getColumnName(), true).getLongValue();
+            .getCardinality(schemaName, tableName, columnOrigin.getColumnName(), true, false).getLongValue();
         if (cardinality <= 0) {
             return true;
         }
-        long rowCount = StatisticManager.getInstance().getRowCount(schemaName, tableName).getLongValue();
+        long rowCount = StatisticManager.getInstance().getRowCount(schemaName, tableName, false).getLongValue();
         return cardinality > rowCount * 0.000001;
     }
 

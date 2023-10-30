@@ -35,6 +35,7 @@ import static com.google.common.truth.Truth.assertWithMessage;
 public class LocalIndexTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());
+    private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
 
     @Before
     public void beforeMethod() {
@@ -127,6 +128,14 @@ public class LocalIndexTest extends DDLBaseNewDBTestCase {
         for (List<Object> list : tddlResults) {
             list.remove(0);
         }
+
+        if (isRDS80) {
+            for (List<Object> list : mysqlResults) {
+                list.remove(13);
+                list.remove(12);
+            }
+        }
+
         assertWithMessage("Index not match")
             .that(tddlResults)
             .containsExactlyElementsIn(mysqlResults);
@@ -405,7 +414,8 @@ public class LocalIndexTest extends DDLBaseNewDBTestCase {
         assertSameIndexInfoClusteredIndex(getRealGsiName(tddlConnection, tableName, gsiTableName),
             getRealGsiName(tddlConnection, refTableName, refGsiTableName), false);
 
-        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(alterSqlTemplate, tableName) + USE_OMC_ALGORITHM);
+        execDdlWithRetry(tddlDatabase1, tableName, String.format(alterSqlTemplate, tableName) + USE_OMC_ALGORITHM,
+            tddlConnection);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(alterSqlTemplate, refTableName));
 
         assertSameIndexInfoClusteredIndex(tableName, refTableName, false);
@@ -624,6 +634,7 @@ public class LocalIndexTest extends DDLBaseNewDBTestCase {
             String alterSql =
                 hint + String.format("alter table %s modify column b bigint, algorithm=omc", tableName);
             JdbcUtil.executeUpdateFailed(conn, alterSql, "");
+            rollbackDdl(tddlDatabase1, tableName, conn);
 
             // check if there is any paused job left
             ResultSet rs = JdbcUtil.executeQuerySuccess(conn, "SHOW DDL ALL");
@@ -634,8 +645,9 @@ public class LocalIndexTest extends DDLBaseNewDBTestCase {
                     objectName.equalsIgnoreCase(tableName) && !state.equalsIgnoreCase("ROLLBACK_COMPLETED"));
             }
 
-            alterSql = hint + String.format("alter table %s change column b c bigint, algorithm=omc", tableName);
+            alterSql = hint + String.format("alter table %s change column b d bigint, algorithm=omc", tableName);
             JdbcUtil.executeUpdateFailed(conn, alterSql, "");
+            rollbackDdl(tddlDatabase1, tableName, conn);
             rs = JdbcUtil.executeQuerySuccess(conn, "SHOW DDL ALL");
             while (rs.next()) {
                 String objectName = rs.getString("OBJECT_NAME");

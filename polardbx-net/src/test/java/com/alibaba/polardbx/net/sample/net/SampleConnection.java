@@ -16,14 +16,15 @@
 
 package com.alibaba.polardbx.net.sample.net;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
 import java.nio.channels.SocketChannel;
+
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_HANDLE_DATA;
 
 /**
  * @author xianmao.hexm 2011-4-21 上午11:22:57
@@ -37,10 +38,10 @@ public class SampleConnection extends FrontendConnection {
     }
 
     @Override
-    public void handleError(int errCode, Throwable t) {
+    public void handleError(ErrorCode errorCode, Throwable t) {
         logger.warn(toString(), t);
-        switch (errCode) {
-        case ErrorCode.ERR_HANDLE_DATA:
+        switch (errorCode) {
+        case ERR_HANDLE_DATA:
             writeErrMessage(ErrorCode.ER_YES, t.getMessage());
             break;
         default:
@@ -49,8 +50,8 @@ public class SampleConnection extends FrontendConnection {
     }
 
     @Override
-    public LoadDataHandler prepareLoadInfile(String sql) {
-        return null;
+    public boolean prepareLoadInfile(String sql) {
+        return false;
     }
 
     @Override

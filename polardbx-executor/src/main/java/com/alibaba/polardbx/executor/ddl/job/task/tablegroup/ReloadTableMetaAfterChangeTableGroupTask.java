@@ -59,6 +59,14 @@ public class ReloadTableMetaAfterChangeTableGroupTask extends BaseGmsTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
     }
 
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+    }
+
     protected void reloadTableGroup() {
 
         DdlJobManager jobManager = new DdlJobManager();

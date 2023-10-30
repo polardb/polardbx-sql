@@ -1,7 +1,24 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -21,13 +38,25 @@ public class SqlAlterTableSplitPartitionByHotValue extends SqlAlterSpecification
     private final List<SqlNode> hotKeys;
     private final SqlNode partitions;
     private final SQLName hotKeyPartitionName;
+    private final boolean subPartitionsSplit;
+    private final SQLName modifyPartitionName;
+
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    private final SQLExpr locality;
 
     public SqlAlterTableSplitPartitionByHotValue(SqlParserPos pos, List<SqlNode> hotkeys, SqlNode partitions,
-                                                 SQLName hotKeyPartitionName) {
+                                                 SQLName hotKeyPartitionName, boolean subPartitionsSplit,
+                                                 SQLName modifyPartitionName, SQLExpr locality) {
         super(pos);
         this.hotKeys = hotkeys;
         this.partitions = partitions;
         this.hotKeyPartitionName = hotKeyPartitionName;
+        this.locality = locality;
+        this.subPartitionsSplit = subPartitionsSplit;
+        this.modifyPartitionName = modifyPartitionName;
     }
 
     @Override
@@ -52,6 +81,14 @@ public class SqlAlterTableSplitPartitionByHotValue extends SqlAlterSpecification
         return hotKeyPartitionName;
     }
 
+    public boolean isSubPartitionsSplit() {
+        return subPartitionsSplit;
+    }
+
+    public SQLName getModifyPartitionName() {
+        return modifyPartitionName;
+    }
+
     @Override
     public void validate(SqlValidator validator, SqlValidatorScope scope) {
         validator.setColumnReferenceExpansion(false);
@@ -70,6 +107,11 @@ public class SqlAlterTableSplitPartitionByHotValue extends SqlAlterSpecification
             if (dataType == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
                     "The partitions number is invalid"));
+            }
+            int splitIntoParts = ((SqlNumericLiteral) (partitions)).intValue(true);
+            if (splitIntoParts < 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                    "The partitions number should greater than 0"));
             }
         }
     }

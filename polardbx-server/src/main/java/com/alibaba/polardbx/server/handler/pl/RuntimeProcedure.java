@@ -27,7 +27,9 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBooleanExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumericLiteralExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLQueryExpr;
@@ -56,6 +58,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.parse.util.SpParameter;
 import com.alibaba.polardbx.optimizer.parse.visitor.DrdsSpParameterizeSqlVisitor;
+import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.ServerQueryHandler;
 import com.alibaba.polardbx.server.handler.SetHandler;
@@ -64,6 +67,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.calcite.rex.RexCall;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -84,7 +88,7 @@ public class RuntimeProcedure extends AbstractPl {
     private static Set<String> SUPPORTED_FAST_FUNC = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER) {
         {
             addAll(Arrays.asList("!", "NOT", ">", "=", "<", ">=", "<=", "!=", "ADD", "+", "SUB", "-", "MULTIPLY", "*",
-                "DIV", "/"));
+                "DIV", "/", "SUBSTRING_INDEX", "CONCAT_WS"));
         }
     };
 
@@ -144,6 +148,8 @@ public class RuntimeProcedure extends AbstractPl {
             return ((SQLNumericLiteralExpr) expr).getNumber();
         } else if (expr instanceof SQLCharExpr) {
             return ((SQLCharExpr) expr).getText();
+        } else if (expr instanceof SQLHexExpr) {
+            return ((SQLHexExpr) expr).getValue();
         } else if (params == null) {
             String sql = expr instanceof SQLQueryExpr ? expr.toString() : SELECT_PREFIX + expr;
             return selectExprValue(new SpParameterizedStmt(sql));
@@ -250,6 +256,16 @@ public class RuntimeProcedure extends AbstractPl {
             return handleSimpleExpr(stmt, expr);
         } else if (canCalcFast(expr)) {
             return calcUsingCache(stmt, expr);
+        } else if (expr instanceof SQLMethodInvokeExpr) {
+            String methodName = ((SQLMethodInvokeExpr) expr).getMethodName();
+            if ("ROW_COUNT".equalsIgnoreCase(methodName)) {
+                return handler.lastAffectRows;
+            } else if ("FOUND_ROWS".equalsIgnoreCase(methodName)) {
+                return handler.lastFoundRows;
+            } else if ("IS_NULL".equalsIgnoreCase(methodName)
+                && ((SQLMethodInvokeExpr) expr).getArguments().size() == 1) {
+                return FunctionUtils.isNull(getExprValue(stmt, ((SQLMethodInvokeExpr) expr).getArguments().get(0)));
+            }
         }
         SpParameterizedStmt parameterizedStmt = getParameterizedStmt(stmt, SELECT_PREFIX + expr);
         return selectExprValue(parameterizedStmt);
@@ -292,6 +308,8 @@ public class RuntimeProcedure extends AbstractPl {
             funcName = ((SQLBinaryOpExpr) expr).getOperator().getName();
         } else if (expr instanceof SQLUnaryExpr) {
             funcName = ((SQLUnaryExpr) expr).getOperator().name();
+        } else if (expr instanceof SQLMethodInvokeExpr) {
+            funcName = ((SQLMethodInvokeExpr) expr).getMethodName();
         }
         if (funcName != null && SUPPORTED_FAST_FUNC.contains(funcName)) {
             return true;
@@ -309,17 +327,20 @@ public class RuntimeProcedure extends AbstractPl {
 
     private Object calcUsingCache(SQLStatement stmt, SQLExpr expr) {
         AbstractScalarFunction function = getFunction(stmt, expr);
-        Object[] funArgs = prepareFuncArgs(stmt, expr);
+        Object[] funArgs = prepareFuncArgs(stmt, expr).toArray(new Object[0]);
         return function.compute(funArgs, new ExecutionContext());
     }
 
-    private Object[] prepareFuncArgs(SQLStatement stmt, SQLExpr expr) {
-        Object[] funArgs = new Object[2];
+    private List<Object> prepareFuncArgs(SQLStatement stmt, SQLExpr expr) {
+        List<Object> funArgs = new ArrayList<>();
         if (expr instanceof SQLUnaryExpr) {
-            funArgs[0] = getExprValue(stmt, ((SQLUnaryExpr) expr).getExpr());
+            funArgs.add(getExprValue(stmt, ((SQLUnaryExpr) expr).getExpr()));
         } else if (expr instanceof SQLBinaryOpExpr) {
-            funArgs[0] = getExprValue(stmt, ((SQLBinaryOpExpr) expr).getLeft());
-            funArgs[1] = getExprValue(stmt, ((SQLBinaryOpExpr) expr).getRight());
+            funArgs.add(getExprValue(stmt, ((SQLBinaryOpExpr) expr).getLeft()));
+            funArgs.add(getExprValue(stmt, ((SQLBinaryOpExpr) expr).getRight()));
+        } else if (expr instanceof SQLMethodInvokeExpr) {
+            List<SQLExpr> arguments = ((SQLMethodInvokeExpr) expr).getArguments();
+            arguments.forEach(arg -> funArgs.add(getExprValue(stmt, arg)));
         } else {
             throw new RuntimeException(
                 "procedure execute failed: Expression type: " + expr.getClass() + " using cache not supported yet");

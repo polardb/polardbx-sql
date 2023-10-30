@@ -22,17 +22,21 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.splitpartition.SplitPoint;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
+import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.google.common.collect.Sets;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -72,6 +76,18 @@ public class ActionSplitPartition implements BalanceAction {
         this.splitPoints = splitPointList;
         this.stats = stats;
         genSplitPartitionSql();
+    }
+
+    @Override
+    public Long getBackfillRows() {
+        TableGroupStat tableGroupStat = stats.getTableGroupStats().stream()
+            .filter(o -> o.getTableGroupConfig().getTableGroupRecord().getTg_name().equals(this.tableGroupName))
+            .collect(
+                Collectors.toList()).get(0);
+        return tableGroupStat.getPartitionGroups().stream()
+            .filter(o -> partitionName.equals((o.pg == null) ? "" : o.pg.getPartition_name()))
+            .map(
+                PartitionGroupStat::getDataRows).mapToLong(o -> o).sum();
     }
 
     @Override
@@ -129,7 +145,9 @@ public class ActionSplitPartition implements BalanceAction {
             this.splitPoints.stream()
                 .map(x -> Pair.of(x.leftPartition, x.getValue()))
                 .collect(Collectors.toList());
-        SearchDatumInfo rightBound = this.rightBound;
+        PartitionBoundVal[] partitionBoundVals = splitPoints.get(0).getValue().getDatumInfo();
+        partitionBoundVals = Arrays.copyOfRange(this.rightBound.getDatumInfo(), 0, partitionBoundVals.length);
+        SearchDatumInfo rightBound = new SearchDatumInfo(partitionBoundVals);
         res.add(Pair.of(lastSplit().rightPartition, rightBound));
         return res;
     }

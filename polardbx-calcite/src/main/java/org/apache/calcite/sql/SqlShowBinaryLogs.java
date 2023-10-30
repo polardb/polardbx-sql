@@ -22,6 +22,11 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @Author ShuGuang
+ * @Description
+ * @Date 2020/10/20 3:30 下午
+ */
 public class SqlShowBinaryLogs extends SqlShow {
     private SqlNode with;
     private static final List<SqlNode> OPERANDS_EMPTY = new ArrayList<>(0);

@@ -78,7 +78,7 @@ public class PlParameterTest extends BaseTestCase {
         for (int i = 1; i < DATA_COLUMN_NO_GEOM.split(",").length; ++i) {
             if (isMySQL80()) {
                 selectContentSameAssert(
-                    "select SPECIFIC_CATALOG,SPECIFIC_SCHEMA,ORDINAL_POSITION,PARAMETER_MODE,PARAMETER_NAME,CONVERT (DATA_TYPE USING utf8),ROUTINE_TYPE from information_schema.parameters where SPECIFIC_NAME like \'%test_type_parameter%\' and ORDINAL_POSITION = "
+                    "select SPECIFIC_CATALOG,SPECIFIC_SCHEMA,ORDINAL_POSITION,PARAMETER_MODE,PARAMETER_NAME,CONVERT(DATA_TYPE, CHAR),ROUTINE_TYPE from information_schema.parameters where SPECIFIC_NAME like \'%test_type_parameter%\' and ORDINAL_POSITION = "
                         + i,
                     null, mysqlConnection, tddlConnection, true);
             } else {

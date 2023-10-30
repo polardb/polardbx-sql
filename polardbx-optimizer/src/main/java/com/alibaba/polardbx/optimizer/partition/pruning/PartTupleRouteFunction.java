@@ -19,13 +19,18 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 
+import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.List;
 
 /**
  * Route one tuple for the special key level of partitioned table
@@ -39,20 +44,51 @@ public class PartTupleRouteFunction extends PartRouteFunction {
      */
     protected PartClauseExprExec[] partClauseExprExecArr;
 
-    public PartTupleRouteFunction(PartClauseExprExec[] partExprExecArr) {
-        this.partClauseExprExecArr = partExprExecArr;
+    /**
+     * The tuple route info of subpartition
+     */
+    protected PartTupleRouteFunction subPartDispatchFunc;
+
+    public PartTupleRouteFunction() {
     }
 
     @Override
     public PartRouteFunction copy() {
-        PartTupleRouteFunction routeFunction = new PartTupleRouteFunction(this.partClauseExprExecArr);
-        return routeFunction;
+
+        PartTupleRouteFunction newFn = new PartTupleRouteFunction();
+        newFn.setCmpKind(this.cmpKind);
+        newFn.setStrategy(this.strategy);
+        newFn.setMatchLevel(this.matchLevel);
+        newFn.setPartInfo(this.partInfo);
+        newFn.setPartClauseExprExecArr(this.partClauseExprExecArr);
+        newFn.setSubPartDispatchFunc(this.subPartDispatchFunc);
+        return newFn;
+    }
+
+    protected SearchDatumHasher getHasherByPartInfo(PartKeyLevel partLevel,
+                                                    PartitionInfo partInfo) {
+
+        if (partLevel == PartKeyLevel.PARTITION_KEY) {
+            return partInfo.getPartitionBy().getHasher();
+        }
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            return partInfo.getPartitionBy().getSubPartitionBy().getHasher();
+        }
+        return null;
     }
 
     @Override
-    public BitSet routePartitions(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+    public PartPrunedResult routePartitions(ExecutionContext ec, PartPruneStepPruningContext pruningCtx,
+                                            List<Integer> parentPartPosiSet) {
+        return routePartitionsInner(ec, pruningCtx, parentPartPosiSet == null ? null : parentPartPosiSet.get(0));
+    }
 
-        BitSet partBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSet(partInfo);
+    protected PartPrunedResult routePartitionsInner(ExecutionContext ec,
+                                                    PartPruneStepPruningContext pruningCtx,
+                                                    Integer parentPartPosi) {
+
+        PartitionRouter router = getRouterByPartInfo(this.matchLevel, parentPartPosi, this.partInfo);
+        BitSet partBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSetByPartRouter(router);
 
         // build the datum of the search value
         SearchDatumInfo finalVal = buildSearchDatumInfoForTupleData(ec, pruningCtx);
@@ -62,50 +98,83 @@ public class PartTupleRouteFunction extends PartRouteFunction {
 
         // Put the pruned result into the partition bitset
         if (result.strategy != PartitionStrategy.LIST && result.strategy != PartitionStrategy.LIST_COLUMNS) {
-            PartitionPrunerUtils
-                .setPartBitSetByStartEnd(partBitSet, result.partStartPosi, result.pasrEndPosi, matchLevel, partCount,
-                    subPartCount, true);
+            PartitionPrunerUtils.setPartBitSetByStartEnd(partBitSet, result.partStartPosi, result.pasrEndPosi, true);
         } else {
-            PartitionPrunerUtils
-                .setPartBitSetForPartList(partBitSet, result.partPosiSet, matchLevel, partCount, subPartCount, true);
+            PartitionPrunerUtils.setPartBitSetForPartList(partBitSet, result.partPosiSet, true);
         }
 
-        return partBitSet;
+        // Route and build bitset for subpartition by tuple value
+        if (subPartDispatchFunc != null) {
+            List<PartitionSpec> partSpecList = this.partInfo.getPartitionBy().getPartitions();
+            int partCnt = router.getPartitionCount();
+            BitSet phyPartBitSet = PartitionPrunerUtils.buildEmptyPhysicalPartitionsBitSet(partInfo);
+            for (int i = partBitSet.nextSetBit(0); i >= 0; i = partBitSet.nextSetBit(i + 1)) {
+                if (i >= partCnt) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "Find pruned partition error");
+                }
+
+                PartitionSpec ps = partSpecList.get(i);
+                PartPrunedResult subPartPruneRs =
+                    subPartDispatchFunc.routePartitionsInner(ec, pruningCtx, ps.getPosition().intValue());
+
+                /**
+                 * Change the bitset of sub-parts of one part to the bitset of sub-parts of all parts
+                 */
+                BitSet oneSubPartBitSet = subPartPruneRs.getPartBitSet();
+                List<PartitionSpec> subPartSpecList = ps.getSubPartitions();
+                for (int j = oneSubPartBitSet.nextSetBit(0); j >= 0; j = oneSubPartBitSet.nextSetBit(j + 1)) {
+                    PartitionSpec subPartSpec = subPartSpecList.get(j);
+                    phyPartBitSet.set(subPartSpec.getPhyPartPosition().intValue() - 1);
+                }
+            }
+            PartPrunedResult prunedResult =
+                PartPrunedResult.buildPartPrunedResult(partInfo, phyPartBitSet, PartKeyLevel.SUBPARTITION_KEY,
+                    parentPartPosi, true);
+            return prunedResult;
+        } else {
+            PartPrunedResult prunedResult =
+                PartPrunedResult.buildPartPrunedResult(partInfo, partBitSet, this.matchLevel, parentPartPosi, false);
+            return prunedResult;
+        }
     }
 
     /**
      * Calculate the actual SearchDatum for a query value that is used to search the target partition
      * if the partition policy is key or hash,
      * the calculating result are the final hashcode values that are used to search the hash partition
-     *
+     * <p>
      * if the partition policy is range/rangeCol/list/listCol,
      * the calculating result are the values after finish computing partition function
-     *
-     * @param ec
-     * @param pruningCtx
-     * @return
      */
-    public SearchDatumInfo calcSearchDatum(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+    public List<SearchDatumInfo> calcSearchDatum(ExecutionContext ec,
+                                                 PartPruneStepPruningContext pruningCtx) {
 
         // build the datum of the search value after calc partition expression
         SearchDatumInfo finalVal = buildSearchDatumInfoForTupleData(ec, pruningCtx);
 
-        PartitionStrategy strategy = partInfo.getPartitionBy().getStrategy();
+        List<SearchDatumInfo> calcResult = new ArrayList<>();
+        PartitionStrategy strategy = this.strategy;
         SearchDatumInfo hashValSearchDatumInfo = null;
         if (strategy == PartitionStrategy.KEY) {
-            hashValSearchDatumInfo = ((KeyPartRouter)router).buildHashSearchDatumInfo(finalVal, ec);
-            return hashValSearchDatumInfo;
+            SearchDatumHasher hasher = getHasherByPartInfo(this.matchLevel, this.partInfo);
+            hashValSearchDatumInfo = KeyPartRouter.buildHashSearchDatumInfo(finalVal, hasher, ec);
+            calcResult.add(hashValSearchDatumInfo);
         } else if (strategy == PartitionStrategy.HASH) {
-            hashValSearchDatumInfo = ((HashPartRouter)router).buildHashSearchDatumInfo(finalVal, ec);
-            return hashValSearchDatumInfo;
+            SearchDatumHasher hasher = getHasherByPartInfo(this.matchLevel, this.partInfo);
+            hashValSearchDatumInfo = HashPartRouter.buildHashSearchDatumInfo(finalVal, hasher, ec);
+            calcResult.add(hashValSearchDatumInfo);
         } else {
             // return directly
-            return finalVal;
+            calcResult.add(finalVal);
         }
-    }
+        if (subPartDispatchFunc == null) {
+            return calcResult;
+        }
 
-    public SearchDatumInfo buildTupleSearchDatumInfo(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
-        return buildSearchDatumInfoForTupleData(ec, pruningCtx);
+        List<SearchDatumInfo> subPartFinalVals = subPartDispatchFunc.calcSearchDatum(ec, pruningCtx);
+        calcResult.add(subPartFinalVals.get(0));
+        return calcResult;
     }
 
     protected SearchDatumInfo buildSearchDatumInfoForTupleData(ExecutionContext context,
@@ -146,4 +215,21 @@ public class PartTupleRouteFunction extends PartRouteFunction {
         return datumInfo;
     }
 
+    public PartTupleRouteFunction getSubPartDispatchFunc() {
+        return subPartDispatchFunc;
+    }
+
+    public void setSubPartDispatchFunc(
+        PartTupleRouteFunction subPartDispatchFunc) {
+        this.subPartDispatchFunc = subPartDispatchFunc;
+    }
+
+    public PartClauseExprExec[] getPartClauseExprExecArr() {
+        return partClauseExprExecArr;
+    }
+
+    public void setPartClauseExprExecArr(
+        PartClauseExprExec[] partClauseExprExecArr) {
+        this.partClauseExprExecArr = partClauseExprExecArr;
+    }
 }

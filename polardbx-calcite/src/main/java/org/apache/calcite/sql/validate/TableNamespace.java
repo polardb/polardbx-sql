@@ -16,6 +16,10 @@
  */
 package org.apache.calcite.sql.validate;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -29,18 +33,13 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
 
-import com.google.common.base.Preconditions;
-import com.google.common.base.Predicate;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterables;
-
 import java.util.List;
 import java.util.Map;
 
 import static org.apache.calcite.util.Static.RESOURCE;
 
 /** Namespace based on a table from the catalog. */
-class TableNamespace extends AbstractNamespace {
+public class TableNamespace extends AbstractNamespace {
   private final SqlValidatorTable table;
   public final ImmutableList<RelDataTypeField> extendedFields;
 

@@ -16,18 +16,15 @@
 
 package com.alibaba.polardbx.transaction;
 
-import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
-import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.utils.TransactionAsyncUtils;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 public class AutoCommitConnectionHolder extends BaseConnectionHolder {
@@ -48,6 +45,7 @@ public class AutoCommitConnectionHolder extends BaseConnectionHolder {
                 this.connections.add(conn);
             }
         }
+        heldSchema.add(schemaName);
         return conn;
     }
 
@@ -62,6 +60,7 @@ public class AutoCommitConnectionHolder extends BaseConnectionHolder {
                 this.connections.add(conn);
             }
         }
+        heldSchema.add(schemaName);
         return conn;
     }
 

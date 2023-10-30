@@ -21,7 +21,9 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import org.apache.calcite.rex.RexNode;
 
@@ -42,19 +44,21 @@ public class PartPruneStepBuildingContext {
     protected AtomicInteger constExprIdGenerator = new AtomicInteger(0);
     protected ExprContextProvider exprCtxHolder = new ExprContextProvider();
     protected PartitionInfo partInfo;
+    protected PartKeyLevel partLevel;
+    protected PartitionByDefinition partByDef;
+
     protected Set<String> allPartColSet;
     protected int partColCnt = 1;
     protected Map<String, Integer> partColIdxMap;
-    protected Map<String, Integer> subPartColIdxMap;
 
     /**
-     * Key: the a digest of const expr of a partition predicate in PartClauseInfo
+     * Key: a digest of const expr of a partition predicate in PartClauseInfo
      * Val: PartPredConstExprInfo ( included the RexNode of the constExpr and its referenced count)
      */
     protected Map<String, PredConstExprReferenceInfo> constExprReferenceInfoMaps;
 
     /**
-     * Key: the a digest of parttion pruning step
+     * Key: a digest of partition pruning step
      * Val: PartPruneStepReferenceInfo ( the reference info of step)
      */
     protected Map<String, PartPruneStepReferenceInfo> stepReferenceInfoMaps;
@@ -120,21 +124,20 @@ public class PartPruneStepBuildingContext {
 
     /**
      * Label if treat the first found equal-expr as the interval merging result of the and expr
-     *
+     * <p>
      * e.g
      * When there are many equal expr in an AndExpr, such as pk=?1 and pk=?2 and pk=?3,
      * then the equal expr of pk=?1 will become the the interval merging result of the whole and expr
-     *
      */
     private boolean useFastSinglePointIntervalMerging = true;
 
-
     public static PartPruneStepBuildingContext getNewPartPruneStepContext(PartitionInfo partInfo,
+                                                                          PartKeyLevel partLevel,
                                                                           AtomicInteger constExprIdGenerator,
                                                                           ExprContextProvider exprCtxHolder,
                                                                           ExecutionContext ec) {
         PartPruneStepBuildingContext
-            newStepCtx = new PartPruneStepBuildingContext(partInfo, constExprIdGenerator, exprCtxHolder, ec);
+            newStepCtx = new PartPruneStepBuildingContext(partInfo, partLevel, constExprIdGenerator, exprCtxHolder, ec);
         return newStepCtx;
     }
 
@@ -143,10 +146,20 @@ public class PartPruneStepBuildingContext {
         return super.clone();
     }
 
-    private PartPruneStepBuildingContext(PartitionInfo partInfo, AtomicInteger constExprIdGenerator,
-                                         ExprContextProvider exprCtxHolder, ExecutionContext ec) {
+    private PartPruneStepBuildingContext(PartitionInfo partInfo,
+                                         PartKeyLevel partLevel,
+                                         AtomicInteger constExprIdGenerator,
+                                         ExprContextProvider exprCtxHolder,
+                                         ExecutionContext ec) {
         this.partInfo = partInfo;
-        this.partColCnt = partInfo.getPartitionBy().getPartitionColumnNameList().size();
+        this.partLevel = partLevel;
+
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            this.partByDef = partInfo.getPartitionBy().getSubPartitionBy();
+        } else {
+            this.partByDef = partInfo.getPartitionBy();
+        }
+        this.partColCnt = this.partByDef.getPartitionColumnNameList().size();
 
         this.constExprReferenceInfoMaps = new HashMap<>();
         this.stepReferenceInfoMaps = new HashMap<>();
@@ -156,9 +169,9 @@ public class PartPruneStepBuildingContext {
         }
 
         this.allPartColSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        if (partInfo.getPartitionBy() != null) {
+        if (this.partByDef != null) {
             partColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            List<String> colList = partInfo.getPartitionBy().getPartitionColumnNameList();
+            List<String> colList = this.partByDef.getPartitionColumnNameList();
             for (int i = 0; i < colList.size(); i++) {
                 partColIdxMap.put(colList.get(i), i);
             }
@@ -263,7 +276,8 @@ public class PartPruneStepBuildingContext {
                      * No found any predicates that contains the first partition column( keyIndex = 0),
                      * So in this situations should return a full-scan-step instead
                      */
-                    PartitionPruneStep step = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
+                    PartitionPruneStep step =
+                        PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo, partLevel, false);
                     outputSteps.add(step);
                     return outputSteps;
                 }
@@ -379,18 +393,6 @@ public class PartPruneStepBuildingContext {
         return partColIdxMap;
     }
 
-    public void setPartColIdxMap(Map<String, Integer> partColIdxMap) {
-        this.partColIdxMap = partColIdxMap;
-    }
-
-    public Map<String, Integer> getSubPartColIdxMap() {
-        return subPartColIdxMap;
-    }
-
-    public void setSubPartColIdxMap(Map<String, Integer> subPartColIdxMap) {
-        this.subPartColIdxMap = subPartColIdxMap;
-    }
-
     public ExprContextProvider getExprCtxHolder() {
         return exprCtxHolder;
     }
@@ -419,9 +421,15 @@ public class PartPruneStepBuildingContext {
         return pruneStepOpCountLimit;
     }
 
-
     public boolean isUseFastSinglePointIntervalMerging() {
         return useFastSinglePointIntervalMerging;
     }
 
+    public PartKeyLevel getPartLevel() {
+        return partLevel;
+    }
+
+    public PartitionByDefinition getPartByDef() {
+        return partByDef;
+    }
 }

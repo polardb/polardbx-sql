@@ -202,6 +202,15 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             " `schedule_id` = ? " +
             "AND `fire_time` = ? ";
 
+    private static final String CAS_STATE =
+        "UPDATE " + FIRED_SCHEDULED_JOBS + " " +
+            "SET `state` = ? " +
+            " , `remark` = ? " +
+            " , `result` = ? " +
+            "WHERE `state` = ? " +
+            "AND `schedule_id` = ? " +
+            "AND `fire_time` = ? ";
+
     private static final String CAS_STATE_WITH_START_TIME =
         "UPDATE " + FIRED_SCHEDULED_JOBS + " " +
             "SET `state` = ? " +
@@ -236,6 +245,30 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
         } catch (Exception e) {
             throw logAndThrow(
                 "Failed to Update " + FIRED_SCHEDULED_JOBS +
+                    " for scheduler_id " + schedulerId + " to state " + newState.name(),
+                "update", e);
+        }
+    }
+
+    public boolean compareAndSetState(long schedulerId,
+                                      long fireTime,
+                                      FiredScheduledJobState currentState,
+                                      FiredScheduledJobState newState,
+                                      String remark,
+                                      String result) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(6);
+            int index = 1;
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, newState.name());
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, remark);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, result);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, currentState.name());
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, schedulerId);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, fireTime);
+            return MetaDbUtil.update(CAS_STATE, params, connection) > 0;
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to Compare-And-Set " + FIRED_SCHEDULED_JOBS +
                     " for scheduler_id " + schedulerId + " to state " + newState.name(),
                 "update", e);
         }

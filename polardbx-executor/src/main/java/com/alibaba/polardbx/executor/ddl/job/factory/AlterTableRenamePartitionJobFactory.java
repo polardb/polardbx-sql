@@ -91,7 +91,8 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         Map<String, Long> tablesVersion = getTablesVersion();
 
         DdlTask changeMetaTask = new AlterTableRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
-            preparedData.getTargetTableGroup(), preparedData.getTableName(), preparedData.getChangePartitionsPair());
+            preparedData.getTargetTableGroup(), preparedData.getTableName(), preparedData.getChangePartitionsPair(),
+            preparedData.isSubPartitionRename());
         DdlTask syncTask = new TableSyncTask(preparedData.getSchemaName(), tablesVersion.keySet().iterator().next(),
             enablePreemptiveMdl, initWait, interval,
             TimeUnit.MILLISECONDS);
@@ -148,9 +149,8 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
                 preparedData.getTableGroupName(), tablesVersion, false,
                 preparedData.getTargetPhysicalGroups());
 
-        SubJobTask subJobMoveTableToNewGroup =
-            new SubJobTask(schemaName, String.format("alter table %s set tablegroup=''", preparedData.getTableName()),
-                null);
+        SubJobTask subJobMoveTableToNewGroup = new SubJobTask(schemaName,
+            String.format(AlterTableGroupBaseJobFactory.SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
         SubJobTask subJobSplitTable = new SubJobTask(schemaName, preparedData.getSourceSql(), null);
         subJobMoveTableToNewGroup.setParentAcquireResource(true);
         subJobSplitTable.setParentAcquireResource(true);
@@ -192,7 +192,8 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         }
 
         DdlTask changeMetaTask = new AlterTableGroupRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
-            preparedData.getTableGroupName(), preparedData.getChangePartitionsPair());
+            preparedData.getTableGroupName(), preparedData.getChangePartitionsPair(),
+            preparedData.isSubPartitionRename());
         DdlTask syncTask =
             new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, initWait, interval,
                 TimeUnit.MILLISECONDS);

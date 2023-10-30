@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -41,11 +42,11 @@ public class MySqlCheckTableStatement extends MySqlStatementImpl {
         this.withLocalPartitions = withLocalPartitions;
     }
 
-    public String getDisplayMode(){
+    public String getDisplayMode() {
         return this.displayMode;
     }
 
-    public void setDisplayMode(String mode){
+    public void setDisplayMode(String mode) {
         this.displayMode = mode;
     }
 
@@ -67,5 +68,10 @@ public class MySqlCheckTableStatement extends MySqlStatementImpl {
             acceptChild(visitor, tables);
         }
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

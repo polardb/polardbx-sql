@@ -29,7 +29,7 @@ public class SQLAlterTableCheckPartition extends SQLObjectImpl implements SQLAlt
     public List<SQLName> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLName partition) {
         if (partition != null) {
             partition.setParent(this);

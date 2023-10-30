@@ -59,7 +59,9 @@ public class AlterTableGroupExtractor extends Extractor {
                                    ExecutionContext ec) {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName);
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
+
+        SqlSelect.LockMode lockMode = SqlSelect.LockMode.SHARED_LOCK;
 
         return new AlterTableGroupExtractor(schemaName,
             sourceTableName,
@@ -70,15 +72,15 @@ public class AlterTableGroupExtractor extends Extractor {
             parallelism,
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
-                false, true, SqlSelect.LockMode.SHARED_LOCK),
+                false, true, lockMode),
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
                 true, false,
-                SqlSelect.LockMode.SHARED_LOCK),
+                lockMode),
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
                 true, true,
-                SqlSelect.LockMode.SHARED_LOCK),
+                lockMode),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
             builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
                 false, false),

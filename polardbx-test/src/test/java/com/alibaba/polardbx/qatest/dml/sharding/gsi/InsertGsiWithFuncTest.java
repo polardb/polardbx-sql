@@ -43,6 +43,8 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.traceAllResult
  * @author changyuan.lh
  */
 
+
+
 public class InsertGsiWithFuncTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();

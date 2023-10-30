@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.index;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -32,7 +33,7 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.TableRuleUtil;
 import com.alibaba.polardbx.rule.TableRule;
@@ -133,6 +134,11 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
     }
 
     @Override
+    public Collection<TableMeta> getAllTables() {
+        return tables.values();
+    }
+
+    @Override
     public void putTable(String tableName, TableMeta tableMeta) {
         throw new UnsupportedOperationException();
     }
@@ -215,7 +221,8 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
                 candidateGsi.getIndexName(),
                 IndexStatus.PUBLIC,
                 Long.MAX_VALUE,
-                false
+                false,
+                IndexVisibility.VISIBLE
             );
         return gsiIndexMetaBean;
     }

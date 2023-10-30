@@ -18,6 +18,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
@@ -26,13 +27,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * @Author ShuGuang
- * @Description
- * @Date 2020/02/25 10:14 上午
+ * @author mario
  */
 public class MySqlChangeReplicationFilterStatement extends SQLStatementImpl {
     private List<SQLAssignItem> filters = new ArrayList<SQLAssignItem>();
     private SQLCharExpr channel;
+    private SQLCharExpr subChannel;
 
     @Override
     protected void accept0(SQLASTVisitor v) {
@@ -54,5 +54,18 @@ public class MySqlChangeReplicationFilterStatement extends SQLStatementImpl {
 
     public void setChannel(SQLCharExpr channel) {
         this.channel = channel;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
+
+    public SQLCharExpr getSubChannel() {
+        return subChannel;
+    }
+
+    public void setSubChannel(SQLCharExpr subChannel) {
+        this.subChannel = subChannel;
     }
 }

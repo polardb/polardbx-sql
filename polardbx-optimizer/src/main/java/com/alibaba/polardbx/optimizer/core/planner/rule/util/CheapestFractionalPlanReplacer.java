@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
+import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
@@ -166,7 +167,7 @@ public class CheapestFractionalPlanReplacer {
             result.add(fraction);
             result.add(1.0);
         } else if (rel instanceof TopN || rel instanceof MemSort || rel instanceof HashAgg
-            || rel instanceof SortWindow || rel instanceof SortAgg) {
+            || rel instanceof SortWindow || rel instanceof HashWindow || rel instanceof SortAgg) {
             result.add(1.0);
         } else {
             // BKAJoin

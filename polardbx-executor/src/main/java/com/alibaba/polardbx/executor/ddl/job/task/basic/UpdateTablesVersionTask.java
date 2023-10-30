@@ -54,6 +54,14 @@ public class UpdateTablesVersionTask extends BaseGmsTask {
         updateTablesVersion(metaDbConnection);
     }
 
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+    }
+
     private void updateTablesVersion(Connection metaDbConnection) {
         if (GeneralUtil.isNotEmpty(tableNames)) {
             int i = 0;

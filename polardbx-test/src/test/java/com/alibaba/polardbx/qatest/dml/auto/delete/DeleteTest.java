@@ -21,6 +21,9 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.ConfigUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataOperator;
+import com.alibaba.polardbx.qatest.validator.DataValidator;
+import com.google.common.collect.ImmutableSet;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -29,6 +32,7 @@ import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -125,6 +129,18 @@ public class DeleteTest extends AutoCrudBasedLockTestCase {
         sql = String.format("select * from %s", baseOneTableName);
         selectContentSameAssert(sql, null, mysqlConnection,
             tddlConnection);
+    }
+
+    /**
+     * @since 5.0.1
+     */
+    @Test
+    public void deleteWithInTest2() throws Exception {
+        try (Statement statement = tddlConnection.createStatement()) {
+            statement.executeQuery("set session GROUP_PARALLELISM=1");
+            String sql = String.format("delete from %s where pk in (2,7,10)", baseOneTableName);
+            statement.execute(sql);
+        }
     }
 
     /**
@@ -1011,6 +1027,103 @@ public class DeleteTest extends AutoCrudBasedLockTestCase {
 
         String sql = "SELECT * FROM " + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void deleteWithLimitOffset() {
+        String countSql = String.format("select count(1) from %s", baseOneTableName);
+        int oldCount = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+
+        String deleteSql = String.format("delete from %s limit 0,2", baseOneTableName);
+        int deleteNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, deleteSql);
+        Assert.assertEquals(2, deleteNum);
+
+        int nowCount = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, oldCount - nowCount);
+
+        String deleteSqlErr = String.format("delete from %s limit 2,2", baseOneTableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, deleteSqlErr, "UPDATE/DELETE statement");
+
+        deleteNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, deleteSql);
+        Assert.assertEquals(2, deleteNum);
+
+        deleteSqlErr = String.format("delete from %s limit 1,1", baseOneTableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, deleteSqlErr, "UPDATE/DELETE statement");
+
+        oldCount = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        deleteSql =
+            String.format("/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ delete from %s limit 2,2",
+                baseOneTableName);
+        deleteNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, deleteSql);
+        Assert.assertEquals(2, deleteNum);
+        nowCount = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, oldCount - nowCount);
+
+    }
+
+    @Test
+    public void deleteWithOrderAndLimitOffset() {
+        String mysqlSql = String.format("delete from %s order by pk limit 2", baseOneTableName);
+        String tddlSql = String.format("delete from %s order by pk limit 0,2", baseOneTableName);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+
+        String sql = "SELECT * FROM " + baseOneTableName;
+        DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        sql = "SELECT * FROM " + baseOneTableName;
+        DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        String deleteSqlErr = String.format("delete from %s order by pk limit 2,2", baseOneTableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, deleteSqlErr, "UPDATE/DELETE statement");
+
+        String selectSql = String.format("select pk from %s order by pk limit 2,1", baseOneTableName);
+        int findPk = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(selectSql, tddlConnection)).get(0).get(0).toString());
+        tddlSql = String.format(
+            "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ delete from %s order by pk limit 2,1",
+            baseOneTableName);
+        int count = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, tddlSql);
+        Assert.assertEquals(1, count);
+
+        selectSql = String.format("select pk from %s where pk = %d", baseOneTableName, findPk);
+        List<List<Object>> result = JdbcUtil.getAllResult(JdbcUtil.executeQuery(selectSql, tddlConnection));
+        Assert.assertEquals(0, result.size());
+    }
+
+    @Test
+    public void deleteWithView() {
+        final String viewName = "delete_with_view_test_view";
+
+        // Recreate view
+        String sql = "drop view " + viewName;
+        JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql, ImmutableSet.of("Unknown view"));
+        JdbcUtil.executeUpdateSuccessIgnoreErr(mysqlConnection, sql, ImmutableSet.of("Unknown table"));
+
+        sql = String.format("create view %s as\n"
+            + "(\n"
+            + "    select integer_test, varchar_test from %s as a where a.pk < 11 \n"
+            + ")\n", viewName, baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Execute update
+        sql =
+            String.format("delete a from %s a, %s v where a.varchar_test = v.varchar_test", baseOneTableName, viewName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+
+        // Check error message
+        sql =
+            String.format("delete v from %s a, %s v where a.varchar_test = v.varchar_test", baseOneTableName, viewName);
+        executeErrorAssert(tddlConnection, sql, null,
+            MessageFormat.format("{0}'' of the {1} is not updatable", viewName, "DELETE"));
     }
 }
 

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.MoreFiles;
 import com.google.common.io.RecursiveDeleteOption;
@@ -103,7 +104,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         aggregators.add(new Count(new int[] {1}, false, -1));
         List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
-            AbstractHashAggExec.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
+            AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
 
         List<Chunk> actual = execForMppMode(hashAggExec, input, 10, true);
         assertExecResultByRow(actual, expects, false);
@@ -135,7 +136,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         aggregators.add(new Count(new int[] {1}, false, -1));
         List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
-            AbstractHashAggExec.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
+            AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
         List<Chunk> actual = execForMppMode(hashAggExec, input, 10, true);
         assertExecResultByRow(actual, expects, false);
     }
@@ -166,7 +167,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         aggregators.add(new Count(new int[] {1}, false, -1));
         List<DataType> columns = ImmutableList.of(DataTypes.StringType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
-            AbstractHashAggExec.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
+            AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
         List<Chunk> actual = execForMppMode(hashAggExec, input, 5, false);
         assertExecResultByRow(actual, expects, false);
     }
@@ -188,7 +189,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         List<Aggregator> copiedAggregators = new ArrayList<>();
 
         List<DataType> columns = ImmutableList.of(DataTypes.StringType, DataTypes.LongType);
-        DataType[] aggValueType = AbstractHashAggExec.collectDataTypes(columns, 1, 2);
+        DataType[] aggValueType = AggregateUtils.collectDataTypes(columns, 1, 2);
         //count
         aggregators.add(new Count(new int[] {1}, false, -1));
         copiedAggregators.add(new Count(new int[] {1}, false, -1));

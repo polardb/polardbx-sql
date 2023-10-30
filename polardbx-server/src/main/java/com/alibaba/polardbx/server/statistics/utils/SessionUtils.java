@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.server.statistics.utils;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.server.ServerConnection;
@@ -24,11 +25,51 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 
 public class SessionUtils {
 
+    /**
+     * 获取除了系统库的活跃连接数总和
+     */
+    public static long getAllActiveConnectionsNum() {
+        long count = 0L;
+        for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
+            for (FrontendConnection fc : p.getFrontends().values()) {
+                if (fc instanceof ServerConnection &&
+                    !TStringUtil.equals(SystemDbHelper.DEFAULT_DB_NAME, fc.getSchema()) &&
+                    !TStringUtil.equals(SystemDbHelper.CDC_DB_NAME, fc.getSchema())) {
+                    ServerConnection sc = (ServerConnection) fc;
+                    boolean isStmtExecuting = sc.isStatementExecuting().get();
+                    if (isStmtExecuting) {
+                        count++;
+                    }
+                }
+
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 获取除了系统库的连接数总和
+     */
+    public static long getAllConnectionsNum() {
+        long count = 0L;
+        for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
+            for (FrontendConnection fc : p.getFrontends().values()) {
+                if (fc instanceof ServerConnection &&
+                    !TStringUtil.equals(SystemDbHelper.DEFAULT_DB_NAME, fc.getSchema()) &&
+                    !TStringUtil.equals(SystemDbHelper.CDC_DB_NAME, fc.getSchema())) {
+                    count++;
+                }
+
+            }
+        }
+        return count;
+    }
+
     public static long getActiveConnectionsNum(String schema) {
         long count = 0L;
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
             for (FrontendConnection fc : p.getFrontends().values()) {
-                if (fc != null && fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
+                if (fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
                     ServerConnection sc = (ServerConnection) fc;
                     boolean isStmtExecuting = sc.isStatementExecuting().get();
                     if (isStmtExecuting) {
@@ -45,7 +86,7 @@ public class SessionUtils {
         long count = 0L;
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
             for (FrontendConnection fc : p.getFrontends().values()) {
-                if (fc != null && fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
+                if (fc instanceof ServerConnection && TStringUtil.equals(schema, fc.getSchema())) {
                     count++;
                 }
 

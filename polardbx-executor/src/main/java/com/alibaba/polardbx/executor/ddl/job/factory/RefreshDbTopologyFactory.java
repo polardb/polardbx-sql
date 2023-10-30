@@ -52,7 +52,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
                                     Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                     Map<String, Map<String, Set<String>>> targetTablesTopology,
                                     Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                    Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                    Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                     ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -80,7 +80,8 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, refreshTopologyPreparedData.getTableGroupName(), tablesVersion,
                 true, null);
-        RefreshTopologyValidateTask refreshTopologyValidateTask = new RefreshTopologyValidateTask(schemaName, refreshTopologyPreparedData.getInstGroupDbInfo());
+        RefreshTopologyValidateTask refreshTopologyValidateTask =
+            new RefreshTopologyValidateTask(schemaName, refreshTopologyPreparedData.getInstGroupDbInfo());
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(refreshTopologyPreparedData.getTableGroupName());
@@ -151,7 +152,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
             refreshTopologyBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             refreshTopologyBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             refreshTopologyBuilder.getOrderedTargetTablesLocations();
         return new RefreshDbTopologyFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
@@ -165,7 +166,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
         boolean emptyTaskAdded = false;
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             RefreshDbTopologySubTaskJobFactory subTaskJobFactory =
-                new RefreshDbTopologySubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
+                new RefreshDbTopologySubTaskJobFactory(ddl, preparedData, tablesPrepareData.get(entry.getKey()),
                     newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
                     targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
                     orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, false, executionContext);

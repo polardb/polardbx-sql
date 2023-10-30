@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
+import com.alibaba.polardbx.common.constants.TransactionAttribute;
+import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
+import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.LongConfigParam;
@@ -25,15 +28,14 @@ import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.config.InstanceRoleManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ExecutorCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
-import com.alibaba.polardbx.executor.handler.LogicalShowVariablesHandler;
+import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.operator.FilterExec;
 import com.alibaba.polardbx.executor.operator.ResultSetCursorExec;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
@@ -55,22 +57,14 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
 import java.util.TreeMap;
-
-import static com.alibaba.polardbx.common.constants.ServerVariables.CN_VARIABLES_REPLACE_DN_VARIABLES;
-import static com.alibaba.polardbx.common.constants.ServerVariables.PROCEDURE_PARAMS;
-import static com.alibaba.polardbx.common.constants.ServerVariables.SUPPORT_SHOW_CN_GLOBAL_VARIABLES;
 
 /**
  * @author chenmo.cm
  */
-public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
+public class LogicalShowVariablesMyHandler extends HandlerCommon {
 
     private static final Logger logger = LoggerFactory.getLogger(LogicalShowVariablesMyHandler.class);
 
@@ -78,31 +72,84 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
         super(repo);
     }
 
-    @Override
-    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-
-        final LogicalShow show = (LogicalShow) logicalPlan;
-        final List<Throwable> exceptions = new ArrayList<>();
-        final TreeMap<String, Object> variables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        final SqlShowVariables showVariables = (SqlShowVariables) show.getNativeSqlNode();
-        final boolean isGlobal = showVariables.isGlobal();
-
-        Cursor cursor = null;
-        boolean showAllParams = executionContext.getParamManager().getBoolean(ConnectionParams.SHOW_ALL_PARAMS);
-        try {
-            cursor = super.handle(logicalPlan, executionContext);
-            extractVariableFromCursor(variables, cursor, isGlobal, showAllParams);
-            cursor.close(exceptions);
-
-            cursor = repo.getCursorFactory().repoCursor(executionContext, show);
-            extractVariableFromCursor(variables, cursor, isGlobal, showAllParams);
-        } finally {
-            // 关闭cursor
-            if (cursor != null) {
-                cursor.close(exceptions);
+    public void collectDnVariables(
+        LogicalShow show, TreeMap<String, Object> variables, ExecutionContext executionContext) {
+        //extract dn variables from cn
+        if (executionContext.getServerVariables() != null) {
+            for (Map.Entry<String, Object> entry : executionContext.getServerVariables().entrySet()) {
+                variables.put(entry.getKey(), entry.getValue());
+            }
+        }
+        if (executionContext.getExtraServerVariables() != null) {
+            for (Map.Entry<String, Object> entry : executionContext.getExtraServerVariables().entrySet()) {
+                variables.put(entry.getKey(), entry.getValue());
             }
         }
 
+        //extract dn variables from mysql
+
+        Cursor cursor = null;
+        try {
+            cursor = repo.getCursorFactory().repoCursor(executionContext, show);
+            extractVariableFromCursor(variables, cursor);
+        } finally {
+            if (cursor != null) {
+                cursor.close(new ArrayList<>());
+            }
+        }
+    }
+
+    public void collectCnVariables(TreeMap<String, Object> variables, ExecutionContext executionContext) {
+        boolean showAllParams = executionContext.getParamManager().getBoolean(
+            ConnectionParams.SHOW_ALL_PARAMS);
+        if (showAllParams) {
+            //show all cn params
+            for (Map.Entry<String, ConfigParam> entry : ConnectionParams.SUPPORTED_PARAMS.entrySet()) {
+                variables.put(entry.getKey().toLowerCase(Locale.ROOT),
+                    executionContext.getParamManager().get(entry.getKey()));
+            }
+        }
+        //show the cn params which is set in current session.
+        if (executionContext.getConnection() != null) {
+            Map<String, Object> objectMap = executionContext.getConnection().getConnectionVariables();
+            if (objectMap != null) {
+                for (Map.Entry<String, Object> entry : objectMap.entrySet()) {
+                    variables.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
+                }
+            }
+        }
+
+        //show the cn params which must be show.
+        variables.put(
+            ConnectionProperties.GROUP_CONCAT_MAX_LEN.toLowerCase(Locale.ROOT),
+            executionContext.getParamManager().getInt(ConnectionParams.GROUP_CONCAT_MAX_LEN));
+
+        variables.put(
+            ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
+            executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
+
+        // DRDS_TRANSACTION_POLICY
+        variables.put(
+            TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
+            executionContext.getConnection().getTrxPolicy().toString());
+
+        // BATCH_INSERT_POLICY
+        variables.put(
+            BatchInsertPolicy.getVariableName().toLowerCase(Locale.ROOT),
+            executionContext.getConnection().getBatchInsertPolicy(executionContext.getExtraCmds()).getName());
+
+        // DRDS_INSTANCE_ROLE
+        variables.put(
+            InstanceRoleManager.INSTANCE_ROLE_VARIABLE.toLowerCase(Locale.ROOT),
+            InstanceRoleManager.INSTANCE.getInstanceRole());
+
+        // SHARE_READ_VIEW
+        variables.put(
+            TransactionAttribute.SHARE_READ_VIEW.toLowerCase(Locale.ROOT),
+            executionContext.isShareReadView());
+    }
+
+    public void updateReturnVariables(TreeMap<String, Object> variables, ExecutionContext executionContext) {
         // For ssl configurations
         SSLVariables.fill(variables);
 
@@ -141,25 +188,44 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
             }
         }
 
-        if (variables.containsKey("auto_increment_increment") && !SequenceManagerProxy.getInstance()
-            .areAllSequencesSameType(executionContext.getSchemaName(), SequenceAttribute.Type.SIMPLE)) {
+        boolean allSequencesGroupOrTime = SequenceManagerProxy.getInstance()
+            .areAllSequencesSameType(executionContext.getSchemaName(), new Type[] {Type.GROUP, Type.TIME});
+
+        if (variables.containsKey("auto_increment_increment") && allSequencesGroupOrTime) {
             // Since the steps of Group and Time-based Sequence are fixed to 1,
             // so we have to override auto_increment_increment set on RDS for
-            // correct behavior of generated keys, unless all sequence types
-            // are SIMPLE which allows custom step/increment.
+            // correct behavior of generated keys.
             variables.put("auto_increment_increment", 1);
         }
 
         // fill session variable
-        if (!isGlobal) {
-            if (variables.containsKey(ConnectionProperties.SQL_SELECT_LIMIT)) {
-                variables.put(ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
-                    executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
-            }
-            for (LongConfigParam procedureConf : PROCEDURE_PARAMS) {
-                variables.put(procedureConf.getName(), executionContext.getParamManager().getLong(procedureConf));
+        if (variables.containsKey(ConnectionProperties.SQL_SELECT_LIMIT)) {
+            variables.put(ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
+                executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
+        }
+
+        // server_id , use values from session or inst_config, to override values from dn
+        if (variables.containsKey("server_id")) {
+            String key = ConnectionProperties.SERVER_ID.toLowerCase(Locale.ROOT);
+            variables.put(key, executionContext.getParamManager().getLong(ConnectionParams.SERVER_ID));
+            if (executionContext.getExtraServerVariables().containsKey(key)) {
+                variables.put(key, executionContext.getExtraServerVariables().get(key));
             }
         }
+    }
+
+    @Override
+    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+
+        final LogicalShow show = (LogicalShow) logicalPlan;
+        final TreeMap<String, Object> variables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        //extract dn variables
+        collectDnVariables(show, variables, executionContext);
+        //extract cn variables
+        collectCnVariables(variables, executionContext);
+        //modify the variables
+        updateReturnVariables(variables, executionContext);
 
         ArrayResultCursor result = new ArrayResultCursor("Show Variables");
         result.addColumn("Variable_name", DataTypes.StringType);
@@ -169,7 +235,7 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
         for (Map.Entry<String, Object> entry : variables.entrySet()) {
             result.addRow(new Object[] {entry.getKey(), entry.getValue()});
         }
-
+        final SqlShowVariables showVariables = (SqlShowVariables) show.getNativeSqlNode();
         if (showVariables.like != null) {
             final String pattern = RelUtils.stringValue(showVariables.like);
             RexBuilder rexBuilder = new RexBuilder(new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance()));
@@ -185,66 +251,15 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
                     result, executionContext, Long.MAX_VALUE), expression, null, executionContext);
             return new ExecutorCursor(filterExec, result.getMeta());
         }
-
         return result;
     }
 
-    private void extractVariableFromCursor(TreeMap<String, Object> variables,
-                                           Cursor cursor, boolean isGlobal, boolean showAllParams) {
+    private void extractVariableFromCursor(TreeMap<String, Object> variables, Cursor cursor) {
         Row row;
         while ((row = cursor.next()) != null) {
             String variableName = row.getString(0);
             String variableValue = row.getString(1);
-            if (CN_VARIABLES_REPLACE_DN_VARIABLES.contains(variableName)) {
-                variables.putIfAbsent(variableName, variableValue);
-            } else {
-                variables.put(variableName, variableValue);
-            }
-        }
-
-        Properties cnVariableConfigMap = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
-        Map<String, Object> dnVariableConfigMap =
-            MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
-        if (isGlobal) {
-            if (showAllParams) {
-                Set<String> connectionProperties = SystemPropertiesHelper.getConnectionProperties();
-                for (String variableName : connectionProperties) {
-                    if (cnVariableConfigMap.containsKey(variableName)) {
-                        variables.put(MetaDbInstConfigManager.getOriginalName(variableName),
-                            cnVariableConfigMap.getProperty(variableName));
-
-                    }
-                }
-            }
-            // Add all supported "set-global" variables into result if they are absent.
-            final ParamManager paramManager = new ParamManager(cnVariableConfigMap);
-            SUPPORT_SHOW_CN_GLOBAL_VARIABLES.forEach((paramName) -> {
-                final String cnParamName = paramName.toUpperCase();
-                if (null != variables.get(cnParamName)) {
-                    // Already exists in result set, return.
-                    return;
-                }
-                String val = cnVariableConfigMap.getProperty(cnParamName);
-                if (null == val) {
-                    // Try to get the default value.
-                    try {
-                        val = paramManager.get(cnParamName);
-                    } catch (Throwable t) {
-                        // Ignore.
-                        logger.error("Error getting " + cnParamName + ", cause: ", t);
-                    }
-                }
-                if (null != val) {
-                    String displayName = CN_VARIABLES_REPLACE_DN_VARIABLES.contains(cnParamName) ?
-                        cnParamName.toLowerCase(Locale.ROOT) : cnParamName;
-                    variables.put(displayName, val);
-                }
-            });
-
-            for (String variableName : dnVariableConfigMap.keySet()) {
-                variables.put(variableName, dnVariableConfigMap.get(variableName));
-            }
-
+            variables.put(variableName, variableValue);
         }
     }
 }

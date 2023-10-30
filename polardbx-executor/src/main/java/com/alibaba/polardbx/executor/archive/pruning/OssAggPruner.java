@@ -17,10 +17,9 @@
 package com.alibaba.polardbx.executor.archive.pruning;
 
 import com.alibaba.polardbx.executor.archive.columns.ColumnProvider;
-import com.alibaba.polardbx.executor.archive.columns.ColumnProviders;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import org.apache.orc.DoubleColumnStatistics;
 import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.StringColumnStatistics;
@@ -37,17 +36,19 @@ import java.util.Map;
 public class OssAggPruner {
     private OSSOrcFileMeta ossOrcFileMeta;
     private SearchArgument searchArgument;
-    private PruningResult pruningResult;
+    private AggPruningResult pruningResult;
+
+    private TableMeta tableMeta;
 
     public OssAggPruner(OSSOrcFileMeta ossOrcFileMeta, SearchArgument searchArgument,
-                            PruningResult pruningResult) {
+                        AggPruningResult pruningResult, TableMeta tableMeta) {
         this.ossOrcFileMeta = ossOrcFileMeta;
         this.searchArgument = searchArgument;
         this.pruningResult = pruningResult;
+        this.tableMeta = tableMeta;
     }
 
     public void prune() {
-        pruningResult.initAgg();
         prune(searchArgument.getExpression());
     }
 
@@ -58,13 +59,9 @@ public class OssAggPruner {
     }
 
     private void pruneLeaf(PredicateLeaf predicateLeaf) {
-        ColumnMeta columnMeta = ossOrcFileMeta.getColumnMetaMap().get(predicateLeaf.getColumnName());
+        ColumnProvider columnProvider = OssOrcFilePruner.buildColumnProvider(predicateLeaf, tableMeta, ossOrcFileMeta);
 
-        ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
-
-        Map<Long, StripeColumnMeta> stripeColumnMetaMap = pruningResult.getStripeMap();
-
-        columnProvider.pruneAgg(predicateLeaf, stripeColumnMetaMap, this);
+        columnProvider.pruneAgg(predicateLeaf, pruningResult.getStripeMap(), this);
     }
 
     public void addAll(Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
@@ -169,14 +166,15 @@ public class OssAggPruner {
                 if (columnStatistics.getMaximum() == null || columnStatistics.getMaximum() == null) {
                     continue;
                 }
-                if (min.compareTo(columnStatistics.getMinimum()) < 0 && max.compareTo(columnStatistics.getMaximum()) > 0) {
+                if (min.compareTo(columnStatistics.getMinimum()) < 0
+                    && max.compareTo(columnStatistics.getMaximum()) > 0) {
                     continue;
                 }
                 pruningResult.addNotAgg(entry.getKey());
             }
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.LESS_THAN ||
             predicateLeaf.getOperator() == PredicateLeaf.Operator.LESS_THAN_EQUALS) {
-            String max = (String)predicateLeaf.getLiteral();
+            String max = (String) predicateLeaf.getLiteral();
 
             for (Map.Entry<Long, StripeColumnMeta> entry : stripeColumnMetaMap.entrySet()) {
                 StringColumnStatistics columnStatistics = (StringColumnStatistics) entry.getValue()
@@ -191,7 +189,7 @@ public class OssAggPruner {
             }
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.GREATER_THAN ||
             predicateLeaf.getOperator() == PredicateLeaf.Operator.GREATER_THAN_EQUALS) {
-            String min = (String)predicateLeaf.getLiteral();
+            String min = (String) predicateLeaf.getLiteral();
             for (Map.Entry<Long, StripeColumnMeta> entry : stripeColumnMetaMap.entrySet()) {
                 StringColumnStatistics columnStatistics = (StringColumnStatistics) entry.getValue()
                     .getColumnStatistics();

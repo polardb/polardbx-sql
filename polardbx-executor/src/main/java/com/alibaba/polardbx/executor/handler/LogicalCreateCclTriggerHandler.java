@@ -140,13 +140,13 @@ public class LogicalCreateCclTriggerHandler extends HandlerCommon {
             List<CclTriggerRecord> existTriggers = cclTriggerAccessor.queryByIds(Lists.newArrayList(triggerName));
             if (CollectionUtils.isNotEmpty(existTriggers)) {
                 if (createCclTrigger.isIfNotExits()) {
-                    if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FailedMessage)) {
+                    if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FAILED_MESSAGE)) {
                         executionContext.getExtraDatas()
-                            .put(ExecutionContext.FailedMessage, Lists.newArrayListWithCapacity(1));
+                            .put(ExecutionContext.FAILED_MESSAGE, Lists.newArrayListWithCapacity(1));
                     }
                     List<ExecutionContext.ErrorMessage> errorMessages =
                         (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas()
-                            .get(ExecutionContext.FailedMessage);
+                            .get(ExecutionContext.FAILED_MESSAGE);
                     errorMessages.add(new ExecutionContext.ErrorMessage(ErrorCode.ERR_CCL.getCode(), null,
                         "The ccl trigger has been existing"));
                     return new AffectRowCursor(new int[] {0});

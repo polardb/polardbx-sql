@@ -1,0 +1,184 @@
+CREATE TABLE `s1` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,1))
+PARTITIONS 16;
+show create table s1;
+insert into s1 values ('abc');
+explain select id from s1 where id='abc';
+explain select id from s1 where id>'abc';
+
+CREATE TABLE `s3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,3))
+PARTITIONS 16;
+insert into s1 values ('12abc'),('34abc');
+explain select id from s3 where id in ('12abc');
+explain select id from s3 where id in ('34abc');
+explain select id from s3 where id>'12abc';
+explain select id from s3 where id<='34abc';
+select id from s3 where id='12abc';
+select id from s3 where id='34abc';
+
+CREATE TABLE `s5` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,5))
+PARTITIONS 16;
+show create table s5;
+insert into s5 values ('Quadratically');
+select id from s5 where id='Quadratically';
+select id from s5 where id>'Quadratically';
+select part_route('','s5', 'Quadratically') as rs;
+select part_route('','s1', 'ratically') as s1_rs;
+
+
+CREATE TABLE `sf4` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id` from 4))
+PARTITIONS 16;
+show create table sf4;
+insert into sf4 values ('foobarbar');
+select id from sf4 where id='foobarbar';
+select id from sf4 where id>'foobarbar';
+select part_route('','sf4', 'foobarbar') as rs;
+select part_route('','s1', 'barbar') as s1_rs;
+
+CREATE TABLE `s56` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,5,6))
+PARTITIONS 16;
+show create table s56;
+insert into s56 values ('Quadratically');
+select id from s56 where id='Quadratically';
+select id from s56 where id>'Quadratically';
+select part_route('','s56', 'Quadratically') as rs;
+select part_route('','s1', 'ratica') as s1_rs;
+
+CREATE TABLE `s_m3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id` ,-3))
+PARTITIONS 16;
+show create table s_m3;
+insert into s_m3 values ('Sakila');
+select id from s_m3 where id='Sakila';
+select id from s_m3 where id>'Sakila';
+select part_route('','s_m3', 'Sakila') as rs;
+select part_route('','s1', 'ila') as s1_rs;
+
+CREATE TABLE `s_m5_3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id` , -5, 3))
+PARTITIONS 16;
+show create table s_m5_3;
+insert into s_m5_3 values ('Sakila');
+select id from s_m5_3 where id='Sakila';
+select id from s_m5_3 where id>'Sakila';
+select part_route('','s_m5_3', 'Sakila') as rs;
+select part_route('','s1', 'aki') as s1_rs;
+
+CREATE TABLE `s_fm4_f2` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id` FROM -4 FOR 2))
+PARTITIONS 16;
+show create table s_fm4_f2;
+insert into s_fm4_f2 values ('Sakila');
+select id from s_fm4_f2 where id='Sakila';
+select id from s_fm4_f2 where id>'Sakila';
+select part_route('','s_fm4_f2', 'Sakila') as rs;
+select part_route('','s1', 'ki') as s1_rs;
+
+CREATE TABLE `r_f1` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTR(`id`,1))
+(PARTITION p1 VALUES LESS THAN ('zzz'),
+PARTITION p2 VALUES LESS THAN (MAXVALUE));
+show create table r_f1;
+insert into r_f1 values ('Sakila');
+select id from r_f1 where id='Sakila';
+select id from r_f1 where id>'Sakila';
+
+CREATE TABLE `r_fm4_f2` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTR(`id` FROM -4 FOR 2))
+(PARTITION p1 VALUES LESS THAN ('zzz'),
+PARTITION p2 VALUES LESS THAN (MAXVALUE));
+show create table r_fm4_f2;
+insert into r_fm4_f2 values ('Sakila');
+select id from r_fm4_f2 where id='Sakila';
+select id from r_fm4_f2 where id>'Sakila';
+select part_route('','r_fm4_f2', 'Sakila') as rs;
+select part_route('','r_f1', 'ki') as s1_rs;
+
+CREATE TABLE `l_f1` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTR(`id`,1))
+(PARTITION p1 VALUES IN ('abc','efg'),
+PARTITION p2 VALUES IN ('123','456'));
+show create table l_f1;
+insert into l_f1 values ('abc'),('123');
+select id from l_f1 where id='abc';
+select id from l_f1 where id>'abc';
+
+CREATE TABLE `l_f3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTR(`id`,3))
+(PARTITION p1 VALUES IN ('abc','efg'),
+PARTITION p2 VALUES IN ('123','456'));
+show create table l_f3;
+insert into l_f3 values ('12abc'),('ab123');
+select id from l_f3 where id='12abc';
+select id from l_f3 where id>'12abc';
+select part_route('','l_f3', '12abc') as rs;
+select part_route('','l_f1', 'abc') as s1_rs;
+select part_route('','l_f3', 'ab123') as rs;
+select part_route('','l_f1', '123') as s1_rs;
+
+
+CREATE TABLE `str3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTRING(`id`,3))
+PARTITIONS 16;
+SHOW CREATE TABLE str3;
+
+CREATE TABLE `rstr_fm4_f2` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(SUBSTRING(`id` FROM -4 FOR 2))
+(PARTITION p1 VALUES LESS THAN ('zzz'),
+PARTITION p2 VALUES LESS THAN (MAXVALUE));
+SHOW CREATE TABLE rstr_fm4_f2;
+
+CREATE TABLE `lstr_f3` (
+`id` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY LIST(SUBSTRING(`id`,3))
+(PARTITION p1 VALUES IN ('abc','efg'),
+PARTITION p2 VALUES IN ('123','456'));
+SHOW CREATE TABLE lstr_f3;

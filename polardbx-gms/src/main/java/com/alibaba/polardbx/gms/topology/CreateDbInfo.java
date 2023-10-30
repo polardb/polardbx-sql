@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.gms.topology;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
+
 import java.util.List;
 import java.util.Map;
 
@@ -27,8 +29,10 @@ public class CreateDbInfo {
     protected boolean isCreateIfNotExists = false;
     protected String charset = "";
     protected String collation = "";
+    protected Boolean encryption;
+    protected Boolean defaultSingle;
     protected String dbName;
-    protected String locality = "";
+    protected LocalityDesc locality = new LocalityDesc();
     protected long shardDbCountEachInst = -1;
     protected long socketTimeout = -1;
 
@@ -65,6 +69,9 @@ public class CreateDbInfo {
      */
     protected GroupLocator groupLocator;
 
+    public CreateDbInfo() {
+    }
+
     public int getDbType() {
         return dbType;
     }
@@ -89,11 +96,19 @@ public class CreateDbInfo {
         this.collation = collation;
     }
 
-    public String getLocality() {
+    public Boolean isEncryption() {
+        return encryption;
+    }
+
+    public void setEncryption(Boolean encryption) {
+        this.encryption = encryption;
+    }
+
+    public LocalityDesc getLocality() {
         return locality;
     }
 
-    public void setLocality(String locality) {
+    public void setLocality(LocalityDesc locality) {
         this.locality = locality;
     }
 
@@ -167,5 +182,17 @@ public class CreateDbInfo {
 
     public void setDefaultDbIndex(String defaultDbIndex) {
         this.defaultDbIndex = defaultDbIndex;
+    }
+
+    public Boolean getEncryption() {
+        return encryption;
+    }
+
+    public Boolean getDefaultSingle() {
+        return defaultSingle;
+    }
+
+    public void setDefaultSingle(Boolean defaultSingle) {
+        this.defaultSingle = defaultSingle;
     }
 }

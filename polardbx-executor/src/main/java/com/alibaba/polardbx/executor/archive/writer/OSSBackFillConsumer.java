@@ -40,11 +40,17 @@ public class OSSBackFillConsumer implements BatchConsumer {
     }
 
     @Override
-    public void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context, List<Map<Integer, ParameterContext>> mockResult) {
+    public void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context,
+                        List<Map<Integer, ParameterContext>> mockResult) {
         OSSBackFillWriterTask task = tasks.get(Pair.of(sourcePhySchema, sourcePhyTable));
-
-        task.consume(cursor, mockResult, context);
-
+        try {
+            task.consume(cursor, mockResult, context);
+        } finally {
+            // consume all results
+            while (cursor.next() != null) {
+                ;
+            }
+        }
         try {
             // Commit and close extract statement
             context.getTransaction().commit();

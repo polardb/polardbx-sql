@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;

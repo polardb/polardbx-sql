@@ -31,7 +31,6 @@ import com.alibaba.polardbx.optimizer.json.exception.JsonPathNotFoundException;
 import com.mysql.cj.x.protobuf.PolarxDatatypes;
 
 import java.util.Arrays;
-
 import java.util.List;
 
 /**

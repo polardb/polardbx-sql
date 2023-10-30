@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -171,10 +172,7 @@ public class XATransaction extends ShareReadViewTransaction {
      */
     @Override
     protected void commitMultiShardTrx() {
-        if (!otherSchemas.isEmpty()) {
-            updateExtraAppNames();
-        }
-
+        long prepareStartTime = System.nanoTime();
         // Whether the local transaction on primary group succeeded or not, or may be unknown
         TransactionCommitState commitState = TransactionCommitState.FAILURE;
 
@@ -183,12 +181,15 @@ public class XATransaction extends ShareReadViewTransaction {
             /*
              * Step 1. XA PREPARE non-primary groups，若抛出异常则中止
              */
-            prepareConnections();
+            prepareConnections(false);
+            stat.prepareTime = System.nanoTime() - prepareStartTime;
             this.prepared = true;
+            this.state = State.PREPARED;
 
             /*
              * Step 2. XA COMMIT ONE PHASE 提交 primary group 来更新事务状态（标志着事务的成功）
              */
+            long logStartTime = System.nanoTime();
             try (Statement stmt = primaryConnection.createStatement()) {
                 beforePrimaryCommit();
                 commitState = TransactionCommitState.UNKNOWN;
@@ -202,7 +203,7 @@ public class XATransaction extends ShareReadViewTransaction {
                         primaryGroup, ex.getMessage(), getTraceId());
                 throw new TddlRuntimeException(ErrorCode.ERR_TRANS_COMMIT, ex, message);
             }
-
+            stat.trxLogTime = System.nanoTime() - logStartTime;
         } catch (RuntimeException ex) {
             exception = ex;
         }
@@ -256,17 +257,18 @@ public class XATransaction extends ShareReadViewTransaction {
      * Prepare on all XA connections and write global_tx_log on primary group
      */
     @Override
-    protected void prepareConnections() {
+    protected void prepareConnections(boolean asyncCommit) {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
 
             @Override
-            public void execute(String group, IConnection conn,
-                                TransactionConnectionHolder.ParticipatedState participated) {
+            public void execute(TransactionConnectionHolder.HeldConnection heldConn) {
+                final IConnection conn = heldConn.getRawConnection();
+                final String group = heldConn.getGroup();
                 if (conn == primaryConnection) {
                     writeCommitLog(conn);
                     return;
                 }
-                switch (participated) {
+                switch (heldConn.getParticipated()) {
                 case NONE:
                     rollbackNonParticipantSync(group, conn);
                     return;
@@ -295,21 +297,22 @@ public class XATransaction extends ShareReadViewTransaction {
     protected void commitConnections() {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
             @Override
-            public boolean condition(String group, IConnection conn,
-                                     TransactionConnectionHolder.ParticipatedState participated) {
-                return conn != primaryConnection && participated.participatedTrx();
+            public boolean condition(TransactionConnectionHolder.HeldConnection heldConn) {
+                // Commit non-primary and write connections.
+                return heldConn.getRawConnection() != primaryConnection && heldConn.isParticipated();
             }
 
             @Override
-            public void execute(String group, IConnection conn,
-                                TransactionConnectionHolder.ParticipatedState participated) {
+            public void execute(TransactionConnectionHolder.HeldConnection heldConn) {
+                final IConnection conn = heldConn.getRawConnection();
+                final String group = heldConn.getGroup();
                 // XA transaction must be 'PREPARED' state here.
                 String xid = getXid(group, conn);
                 try (Statement stmt = conn.createStatement()) {
                     try {
                         stmt.execute("XA COMMIT " + xid);
                     } catch (SQLException ex) {
-                        if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_NOTA) {
+                        if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
                             logger.warn("XA COMMIT got ER_XAER_NOTA: " + xid, ex);
                         } else {
                             throw GeneralUtil.nestedException(ex);
@@ -324,7 +327,7 @@ public class XATransaction extends ShareReadViewTransaction {
                     // Retry XA COMMIT in asynchronous task.
                     AsyncTaskQueue asyncQueue = getManager().getTransactionExecutor().getAsyncQueue();
                     asyncQueue.submit(
-                        () -> XAUtils.commitUntilSucceed(id, primaryGroupUid, group, dataSourceCache.get(group)));
+                        () -> XAUtils.commitUntilSucceed(id, xid, dataSourceCache.get(group)));
                 }
             }
         });

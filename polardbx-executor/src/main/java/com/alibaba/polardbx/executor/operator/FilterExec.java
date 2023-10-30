@@ -63,9 +63,6 @@ public class FilterExec extends AbstractExecutor {
             this.bloomFilterExpressionFilter = null;
         }
         this.condition = condition;
-        if (condition instanceof ScalarFunctionExpression) {
-            ((ScalarFunctionExpression) condition).setInFilter();
-        }
         bloomFilterResult = null;
     }
 

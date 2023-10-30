@@ -29,6 +29,7 @@ import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.util.ControlFlowException;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.ImmutableNullableList;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
@@ -490,7 +491,7 @@ public class SqlWindow extends SqlCall {
    *
    * @return boolean true if all nodes in the subtree are equal
    */
-  @Override public boolean equalsDeep(SqlNode node, Litmus litmus) {
+  @Override public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
     // This is the difference over super.equalsDeep.  It skips
     // operands[0] the declared name fo this window.  We only want
     // to check the window components.
@@ -498,7 +499,7 @@ public class SqlWindow extends SqlCall {
         || node instanceof SqlWindow
         && SqlNode.equalDeep(
             Util.skip(getOperandList()),
-            Util.skip(((SqlWindow) node).getOperandList()), litmus);
+            Util.skip(((SqlWindow) node).getOperandList()), litmus, context);
   }
 
   /**

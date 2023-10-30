@@ -18,11 +18,13 @@ package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -46,6 +48,7 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
@@ -221,7 +224,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
     public RelNode visit(RelNode other) {
         if (other instanceof LogicalInsert) {
             LogicalInsert logicalInsert = (LogicalInsert) other;
-            if (logicalInsert.isInsert()) {
+            if (logicalInsert.isInsert() || logicalInsert.isReplace()) {
                 return buildNewPlanForInsert((LogicalInsert) other, pc.getExecutionContext());
             }
         }
@@ -229,28 +232,29 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
     }
 
     private RelNode buildNewPlanForInsert(LogicalInsert logicalInsert, ExecutionContext ec) {
-        String tableName = logicalInsert.getLogicalTableName();
-        String schemaName = logicalInsert.getSchemaName();
-        final TableMeta table = ec.getSchemaManager(schemaName).getTable(tableName);
-        if (GlobalIndexMeta.hasIndex(tableName, schemaName, ec)) {
-            return buildLogicalModifyGsi(logicalInsert);
-        }
-
-        // in delete_only status, the insert/insert ignore could push down
-        final boolean canPushDownScaleOutPlan =
-            !ComplexTaskPlanUtils.canWrite(table) || ComplexTaskPlanUtils.isDeleteOnly(table) && logicalInsert
-                .isSimpleInsert(true);
-        if (!canPushDownScaleOutPlan) {
-            return buildLogicalModify(logicalInsert);
-        }
-
-        // insert select?
+        // insert select 或者 insert values(select id from ...) values里面包含子查询，有一些复杂数据来源可能无法转换为sqlNode
+        // 主要问题：logicalInsert.getSqlTemplate(),这是提前生成sql语句，但是子查询LogicalCorrelate无法转换成sql，
         if (logicalInsert.isSourceSelect()) {
             // Some part of select node may not be able to convert to SqlNode
             // Like LogicalExpand or SemiJoin
             logicalInsert.initLiteralColumnIndex(this.buildPlanForScaleOut);
             logicalInsert.initAutoIncrementColumn();
             return logicalInsert;
+        }
+
+        String tableName = logicalInsert.getLogicalTableName();
+        String schemaName = logicalInsert.getSchemaName();
+        final TableMeta table = ec.getSchemaManager(schemaName).getTable(tableName);
+        if (GlobalIndexMeta.hasIndex(tableName, schemaName, ec)) {
+            return buildLogicalModify(logicalInsert);
+        }
+
+        // in delete_only status, the insert/insert ignore could push down
+        final boolean canPushDownScaleOutPlan =
+            !ComplexTaskPlanUtils.canWrite(table) || ComplexTaskPlanUtils.isDeleteOnly(table) && (
+                logicalInsert.isSimpleInsert(true) && !logicalInsert.isReplace());
+        if (!canPushDownScaleOutPlan) {
+            return buildLogicalModify(logicalInsert);
         }
 
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
@@ -265,15 +269,25 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         }
 
         LogicalDynamicValues values = (LogicalDynamicValues) logicalInsert.getInput();
-        // batch?
-        if (logicalInsert.getBatchSize() > 1 || values.getTuples().size() > 1) {
+        if (logicalInsert.getBatchSize() > 1 || values.getTuples().size() > 1 || ec.isBatchPrepare()) {
+            return buildLogicalModify(logicalInsert);
+        }
+
+        TableMeta tableMeta = pc.getExecutionContext().getSchemaManager(schemaName).getTable(tableName);
+
+        // foreign key?
+        if (ec.foreignKeyChecks() && !GeneralUtil.isEmpty(tableMeta.getForeignKeys())) {
+            return buildLogicalModify(logicalInsert);
+        }
+
+        // generated column?
+        if (table.getPhysicalColumns().stream().anyMatch(ColumnMeta::isLogicalGeneratedColumn)) {
             return buildLogicalModify(logicalInsert);
         }
 
         // all values can be pushed down?
         TreeSet<String> specialColumns = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         specialColumns.addAll(or.getSharedColumns(tableName));
-        TableMeta tableMeta = pc.getExecutionContext().getSchemaManager(schemaName).getTable(tableName);
         specialColumns.addAll(tableMeta.getAutoIncrementColumns());
         List<String> fieldNames = values.getRowType().getFieldNames();
         List<RexNode> row = values.getTuples().get(0);
@@ -318,13 +332,16 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         // We only rewrites INSERT / UPSERT here, so we only need to check whether UPSERT will modify partition key.
         // If UPSERT does modify partition key, then we need to use LogicalInsert, which has converted this UPSERT to
         // SELECT + DELETE + INSERT.
-        // However, If all sharding columns in update list referencing same column in after value, we can pushdown this
-        // upsert since even if it does upsert, it will still be in the same shard
         if (logicalInsert instanceof LogicalUpsert) {
             LogicalUpsert logicalUpsert = (LogicalUpsert) logicalInsert;
-            if (logicalUpsert.isModifyPartitionKey() && !logicalUpsert.isAllUpdatedSkRefValue()) {
+            if (logicalUpsert.isModifyPartitionKey()) {
                 return buildLogicalModify(logicalInsert);
             }
+        }
+
+        final boolean primaryKeyCheck = ec.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK);
+        if (primaryKeyCheck && !logicalInsert.isPushablePrimaryKeyCheck()) {
+            return buildLogicalModify(logicalInsert);
         }
 
         boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
@@ -370,7 +387,8 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
                     }
                 }
             }
-
+        } else if (rexNode instanceof RexCallParam) {
+            return canBePushDown(((RexCallParam) rexNode).getRexCall(), withScaleOut);
         }
 
         return true;
@@ -387,6 +405,10 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return logicalModifyView;
         }
 
+        if (ec.isBatchPrepare()) {
+            return logicalModifyView;
+        }
+
         boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
         if (logicalModifyView.isSingleGroup() && !buildPlanForScaleOut && !isColumnMultiWrite) {
             OptimizerContext context = OptimizerContext.getContext(schemaName);
@@ -398,14 +420,6 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         }
 
         return logicalModifyView;
-    }
-
-    private RelNode buildLogicalModifyGsi(LogicalInsert logicalInsert) {
-        // build once and for all
-        logicalInsert.getSqlTemplate();
-        logicalInsert.initLiteralColumnIndex(this.buildPlanForScaleOut);
-        logicalInsert.initAutoIncrementColumn();
-        return logicalInsert;
     }
 
     private RelNode buildLogicalModifyViewGsi(LogicalModifyView logicalModifyView) {

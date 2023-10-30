@@ -389,6 +389,7 @@ public class RelJsonReader {
   public RelNode getLastRel() {
     return lastRel;
   }
+
   public void setLastRel(RelNode lastRel) {
     this.lastRel = lastRel;
   }

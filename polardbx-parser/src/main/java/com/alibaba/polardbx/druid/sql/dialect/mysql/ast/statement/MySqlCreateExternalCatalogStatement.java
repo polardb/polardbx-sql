@@ -24,12 +24,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class MySqlCreateExternalCatalogStatement extends MySqlStatementImpl implements SQLAlterStatement {
-    private SQLName            name;
+    private SQLName name;
 
-    private boolean            ifNotExists;
+    private boolean ifNotExists;
 
     private Map<SQLName, SQLName> properties = new HashMap<SQLName, SQLName>();
-    private SQLName            comment;
+    private SQLName comment;
 
     public MySqlCreateExternalCatalogStatement() {
         setDbType(DbType.mysql);

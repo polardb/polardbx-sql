@@ -18,9 +18,11 @@ package com.alibaba.polardbx.gms.scheduler;
 
 import com.alibaba.polardbx.gms.module.Module;
 
+import static com.alibaba.polardbx.gms.module.Module.OPTIMIZER;
 import static com.alibaba.polardbx.gms.module.Module.OSS;
 import static com.alibaba.polardbx.gms.module.Module.SPM;
 import static com.alibaba.polardbx.gms.module.Module.STATISTICS;
+import static com.alibaba.polardbx.gms.module.Module.TRX;
 import static com.alibaba.polardbx.gms.module.Module.UNKNOWN;
 
 public enum ScheduledJobExecutorType {
@@ -28,11 +30,19 @@ public enum ScheduledJobExecutorType {
     LOCAL_PARTITION(UNKNOWN),
     REBALANCE(UNKNOWN),
     PARTITION_VISUALIZER(UNKNOWN),
+    REFRESH_MATERIALIZED_VIEW(UNKNOWN),
     BASELINE_SYNC(SPM),
     STATISTIC_SAMPLE_SKETCH(STATISTICS),
+    STATISTIC_CHECK(STATISTICS),
+    STATISTIC_HLL_SKETCH(STATISTICS),
     STATISTIC_ROWCOUNT_COLLECTION(STATISTICS),
+    STATISTIC_RELOAD(STATISTICS),
     PURGE_OSS_FILE(OSS),
-    AUTO_SPLIT_TABLE_GROUP(UNKNOWN);
+
+    OPTIMIZER_ALERT(OPTIMIZER),
+    AUTO_SPLIT_TABLE_GROUP(UNKNOWN),
+    PERSIST_GSI_STATISTICS(UNKNOWN),
+    CLEAN_LOG_TABLE(TRX);
 
     ScheduledJobExecutorType(Module module) {
         m = module;

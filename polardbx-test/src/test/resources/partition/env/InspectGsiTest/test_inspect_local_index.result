@@ -1,0 +1,92 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_lsi_auto;
+create database inspect_lsi_auto mode=auto;
+use inspect_lsi_auto;
+# has same effect as primary key
+create table tb1(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(id, name)
+) partition by hash(id);
+inspect full index from tb1;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb1,idx1,LOCAL INDEX,name,null,null,null,null,index idx1 has the same effect as primary key,None,alter table `tb1` drop index `idx1`;
+alter table `tb1` add local index `idx1` (`name`);
+# duplicate key
+create table tb2 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  local index idx2(name)
+) partition by key(id);
+inspect full index from tb2;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb2,idx1,LOCAL INDEX,name,null,null,null,null,found duplicate local indexes: idx1, idx2;,None,alter table `tb2` drop index `idx1`;
+create table tb3 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  local index idx2(name, id)
+) partition by key(id);
+inspect full index from tb3;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb3,idx1,LOCAL INDEX,name,null,null,null,null,found duplicate local indexes: idx1, idx2;,None,alter table `tb3` drop index `idx1`;
+create table tb4 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  unique local index idx2(name, id)
+) partition by key(id);
+inspect full index from tb4;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb4,idx1,LOCAL INDEX,name,null,null,null,null,found duplicate local indexes: idx1, idx2;,None,alter table `tb4` drop index `idx1`;
+# shared index column
+create table tb5 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  pad1 varchar(10),
+  primary key(id),
+  local index idx1(name, addr, pad1),
+  local index idx2(name, addr),
+  local index idx3(name)
+) partition by key(id);
+inspect full index from tb5;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb5,idx2,LOCAL INDEX,name,addr,null,null,null,null,found duplicate local indexes: idx2, idx1,None,alter table `tb5` drop index `idx2`;
+inspect_lsi_auto,tb5,idx3,LOCAL INDEX,name,null,null,null,null,found duplicate local indexes: idx3, idx1,None,alter table `tb5` drop index `idx3`;
+create table tb6 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  pad1 varchar(10),
+  pad2 varchar(10),
+  primary key(id),
+  local index idx1(name, addr, pad1),
+  unique local index idx2(name, addr),
+  local index idx3(name)
+) partition by key(id);
+inspect full index from tb6;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb6,idx3,LOCAL INDEX,name,null,null,null,null,found duplicate local indexes: idx3, idx1,None,alter table `tb6` drop index `idx3`;
+CREATE TABLE `tb7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `addr` varchar(20) DEFAULT NULL,
+  `pad1` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  LOCAL KEY `idx1` (`name`, `addr`, `pad1`),
+  UNIQUE LOCAL KEY `idx2` (`name`, `addr`),
+  UNIQUE LOCAL KEY `idx3` (`name`)
+) PARTITION BY KEY(`id`);
+inspect full index from tb7;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb7,idx2,LOCAL INDEX,name,addr,null,null,null,null,found duplicate local indexes: idx2, idx1,None,alter table `tb7` drop index `idx2`;

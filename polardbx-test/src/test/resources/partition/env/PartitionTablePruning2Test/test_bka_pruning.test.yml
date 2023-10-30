@@ -1,0 +1,50 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table if not exists tb1 (
+  pk int not null,
+  sk_c3 varchar(32) not null,
+  c5 int not null,
+  sk_c4 int not null,
+  c6 int not null,
+  primary key(pk)
+)
+partition by key(sk_c3,sk_c4);
+
+create table if not exists tb3 (
+  pk int not null,
+  c3 int not null,
+  c4 int not null,
+  sk_c1 bigint not null,
+  sk_c2 int not null,
+  sk_c3 int not null,
+  primary key(pk),
+  index idx(sk_c1,sk_c2,sk_c3)
+);
+
+
+insert into tb1 values (1,'a',1,1,1);
+insert into tb1 values (2,'a',1,1,1);
+insert into tb1 values (3,'a',1,1,1);
+insert into tb1 values (4,'a',1,1,1);
+
+
+insert into tb3 values (1,1,1,1,1,1);
+insert into tb3 values (2,2,1,1,1,1);
+insert into tb3 values (3,3,1,1,1,1);
+insert into tb3 values (4,4,1,1,1,1);
+
+explain
+/*+TDDL: BKA_JOIN(tb1,(idx_$ae2e, tb3))*/
+select
+  tb3.pk,
+  tb3.c4
+from
+  tb3 force index(idx)
+left join
+  tb1
+on
+  tb1.pk=tb3.sk_c1
+where
+  tb1.sk_c3='a'
+  and
+  tb1.sk_c4=1;

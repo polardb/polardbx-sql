@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -26,31 +27,31 @@ import java.util.List;
 
 public class SQLTruncateStatement extends SQLStatementImpl {
 
-    protected List<SQLExprTableSource> tableSources               = new ArrayList<SQLExprTableSource>(2);
-    private boolean                    purgeSnapshotLog           = false;
-    private boolean                    only;
-    private Boolean                    restartIdentity;
-    private Boolean                    cascade;
+    protected List<SQLExprTableSource> tableSources = new ArrayList<SQLExprTableSource>(2);
+    private boolean purgeSnapshotLog = false;
+    private boolean only;
+    private Boolean restartIdentity;
+    private Boolean cascade;
 
     // db2
-    private boolean                    dropStorage                = false;
-    private boolean                    reuseStorage               = false;
-    private boolean                    immediate                  = false;
-    private boolean                    ignoreDeleteTriggers       = false;
-    private boolean                    restrictWhenDeleteTriggers = false;
-    private boolean                    continueIdentity           = false;
-    protected boolean                  ifExists                   = false;
-    protected List<SQLAssignItem>      partitions                 = new ArrayList<SQLAssignItem>();
+    private boolean dropStorage = false;
+    private boolean reuseStorage = false;
+    private boolean immediate = false;
+    private boolean ignoreDeleteTriggers = false;
+    private boolean restrictWhenDeleteTriggers = false;
+    private boolean continueIdentity = false;
+    protected boolean ifExists = false;
+    protected List<SQLAssignItem> partitions = new ArrayList<SQLAssignItem>();
 
     // adb
     protected boolean partitionAll = false;
     protected List<SQLIntegerExpr> partitionsForADB = new ArrayList<SQLIntegerExpr>();
 
-    public SQLTruncateStatement(){
+    public SQLTruncateStatement() {
 
     }
 
-    public SQLTruncateStatement(DbType dbType){
+    public SQLTruncateStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -185,4 +186,8 @@ public class SQLTruncateStatement extends SQLStatementImpl {
         return partitionsForADB;
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.TRUNCATE;
+    }
 }

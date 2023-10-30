@@ -34,26 +34,26 @@ import java.util.List;
 public class SQLSelect extends SQLObjectImpl implements SQLDbTypedObject {
 
     protected SQLWithSubqueryClause withSubQuery;
-    protected SQLSelectQuery        query;
-    protected SQLOrderBy            orderBy;
-    protected SQLLimit              limit;
+    protected SQLSelectQuery query;
+    protected SQLOrderBy orderBy;
+    protected SQLLimit limit;
 
-    protected List<SQLHint>         hints;
+    protected List<SQLHint> hints;
 
-    protected SQLObject             restriction;
+    protected SQLObject restriction;
 
-    protected boolean               forBrowse;
-    protected List<String>          forXmlOptions = null;
-    protected SQLExpr               xmlPath;
+    protected boolean forBrowse;
+    protected List<String> forXmlOptions = null;
+    protected SQLExpr xmlPath;
 
-    protected SQLExpr                rowCount;
-    protected SQLExpr                offset;
+    protected SQLExpr rowCount;
+    protected SQLExpr offset;
 
     protected SQLExpr asOfTimestamp;
 
     private SQLHint headHint;
 
-    public SQLSelect(){
+    public SQLSelect() {
 
     }
 
@@ -71,7 +71,7 @@ public class SQLSelect extends SQLObjectImpl implements SQLDbTypedObject {
         return hints.size();
     }
 
-    public SQLSelect(SQLSelectQuery query){
+    public SQLSelect(SQLSelectQuery query) {
         this.setQuery(query);
     }
 
@@ -219,13 +219,13 @@ public class SQLSelect extends SQLObjectImpl implements SQLDbTypedObject {
 
     public boolean isSimple() {
         return withSubQuery == null
-                && (hints == null || hints.size() == 0)
-                && restriction == null
-                && (!forBrowse)
-                && (forXmlOptions == null || forXmlOptions.size() == 0)
-                && xmlPath == null
-                && rowCount == null
-                && offset == null;
+            && (hints == null || hints.size() == 0)
+            && restriction == null
+            && (!forBrowse)
+            && (forXmlOptions == null || forXmlOptions.size() == 0)
+            && xmlPath == null
+            && rowCount == null
+            && offset == null;
     }
 
     public SQLObject getRestriction() {
@@ -331,27 +331,48 @@ public class SQLSelect extends SQLObjectImpl implements SQLDbTypedObject {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLSelect sqlSelect = (SQLSelect) o;
 
-        if (forBrowse != sqlSelect.forBrowse) return false;
-        if (withSubQuery != null ? !withSubQuery.equals(sqlSelect.withSubQuery) : sqlSelect.withSubQuery != null)
+        if (forBrowse != sqlSelect.forBrowse) {
             return false;
+        }
+        if (withSubQuery != null ? !withSubQuery.equals(sqlSelect.withSubQuery) : sqlSelect.withSubQuery != null) {
+            return false;
+        }
         if (query != null ? !query.equals(sqlSelect.query) : sqlSelect.query != null) {
             return false;
         }
-        if (orderBy != null ? !orderBy.equals(sqlSelect.orderBy) : sqlSelect.orderBy != null) return false;
-        if (limit != null ? !limit.equals(sqlSelect.limit) : sqlSelect.limit != null) return false;
-        if (hints != null ? !hints.equals(sqlSelect.hints) : sqlSelect.hints != null) return false;
-        if (restriction != null ? !restriction.equals(sqlSelect.restriction) : sqlSelect.restriction != null)
+        if (orderBy != null ? !orderBy.equals(sqlSelect.orderBy) : sqlSelect.orderBy != null) {
             return false;
-        if (forXmlOptions != null ? !forXmlOptions.equals(sqlSelect.forXmlOptions) : sqlSelect.forXmlOptions != null)
+        }
+        if (limit != null ? !limit.equals(sqlSelect.limit) : sqlSelect.limit != null) {
             return false;
-        if (xmlPath != null ? !xmlPath.equals(sqlSelect.xmlPath) : sqlSelect.xmlPath != null) return false;
-        if (rowCount != null ? !rowCount.equals(sqlSelect.rowCount) : sqlSelect.rowCount != null) return false;
-        if (offset != null ? !offset.equals(sqlSelect.offset) : sqlSelect.offset != null) return false;
+        }
+        if (hints != null ? !hints.equals(sqlSelect.hints) : sqlSelect.hints != null) {
+            return false;
+        }
+        if (restriction != null ? !restriction.equals(sqlSelect.restriction) : sqlSelect.restriction != null) {
+            return false;
+        }
+        if (forXmlOptions != null ? !forXmlOptions.equals(sqlSelect.forXmlOptions) : sqlSelect.forXmlOptions != null) {
+            return false;
+        }
+        if (xmlPath != null ? !xmlPath.equals(sqlSelect.xmlPath) : sqlSelect.xmlPath != null) {
+            return false;
+        }
+        if (rowCount != null ? !rowCount.equals(sqlSelect.rowCount) : sqlSelect.rowCount != null) {
+            return false;
+        }
+        if (offset != null ? !offset.equals(sqlSelect.offset) : sqlSelect.offset != null) {
+            return false;
+        }
         return headHint != null ? headHint.equals(sqlSelect.headHint) : sqlSelect.headHint == null;
     }
 

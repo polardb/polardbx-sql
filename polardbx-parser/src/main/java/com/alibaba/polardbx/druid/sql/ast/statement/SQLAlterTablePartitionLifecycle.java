@@ -23,7 +23,7 @@ public class SQLAlterTablePartitionLifecycle extends SQLObjectImpl implements SQ
 
     private SQLIntegerExpr lifecycle;
 
-    public SQLAlterTablePartitionLifecycle(){
+    public SQLAlterTablePartitionLifecycle() {
 
     }
 

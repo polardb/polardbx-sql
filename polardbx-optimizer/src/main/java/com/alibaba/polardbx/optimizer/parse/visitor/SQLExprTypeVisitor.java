@@ -58,9 +58,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableConstrain
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableImportPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableOptimizePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReOrganizePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRebuildPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRename;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRepairPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetOption;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
@@ -462,7 +462,7 @@ public class SQLExprTypeVisitor extends MySqlASTVisitorAdapter {
     }
 
     @Override
-    public boolean visit(SQLAlterTableReOrganizePartition x) {
+    public boolean visit(SQLAlterTableReorgPartition x) {
         return false;
     }
 

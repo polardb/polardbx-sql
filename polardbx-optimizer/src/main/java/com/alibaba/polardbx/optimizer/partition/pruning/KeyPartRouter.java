@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 
@@ -54,22 +54,27 @@ public class KeyPartRouter extends RangePartRouter {
             }
             rs = super.routePartitions(ec, searchCmp, hashVals[0]);
         } else {
-            SearchDatumInfo hashValDatum = buildHashSearchDatumInfoInner(queryValDatum, hashVals, partColInt, this.boundValDataType);
+            SearchDatumInfo hashValDatum =
+                buildHashSearchDatumInfoInner(queryValDatum, hashVals, partColInt, this.boundValDataType);
             rs = super.routePartitions(ec, comp, hashValDatum);
         }
         rs.strategy = PartitionStrategy.KEY;
         return rs;
     }
 
-    public SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum, ExecutionContext ec) {
+    public static SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum,
+                                                           SearchDatumHasher hasher,
+                                                           ExecutionContext ec) {
         Long[] hashVals = hasher.calcHashCodeForKeyStrategy(queryValDatum);
-        return buildHashSearchDatumInfoInner(queryValDatum, hashVals, queryValDatum.datumInfo.length, this.boundValDataType);
+        return buildHashSearchDatumInfoInner(queryValDatum, hashVals, queryValDatum.datumInfo.length,
+            hasher.getHashBndValDataType());
     }
 
-    protected SearchDatumInfo buildHashSearchDatumInfoInner(SearchDatumInfo queryValDatum,
-                                                            Long[] hashVals,
-                                                            int partColInt,
-                                                            RelDataType hashBoundValType) {
+    private static SearchDatumInfo buildHashSearchDatumInfoInner(SearchDatumInfo queryValDatum,
+                                                                 Long[] hashVals,
+                                                                 int partColInt,
+                                                                 RelDataType hashBoundValType) {
+
         PartitionBoundVal[] boundValArr = new PartitionBoundVal[partColInt];
         for (int i = 0; i < partColInt; i++) {
             PartitionBoundVal queryValOfOneFld = queryValDatum.datumInfo[i];

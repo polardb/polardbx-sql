@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.metadb.misc;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
@@ -34,6 +35,7 @@ public class DdlEngineRecord implements SystemTableRecord {
 
     public static final long FLAG_SUPPORT_CONTINUE = 0x1;
     public static final long FLAG_SUPPORT_CANCEL = 0x2;
+    public static final long FLAG_SKIP_SUBJOB = 0x4;
 
     public static final String SubJobPrefix = "subjob_";
 
@@ -116,6 +118,10 @@ public class DdlEngineRecord implements SystemTableRecord {
         return StringUtils.startsWith(responseNode, SubJobPrefix);
     }
 
+    public boolean isRollBackToReady() {
+        return DdlState.ROLLBACK_TO_READY.name().equalsIgnoreCase(this.state);
+    }
+
     public boolean isSupportContinue() {
         return (supportedCommands & FLAG_SUPPORT_CONTINUE) != 0L;
     }
@@ -146,6 +152,18 @@ public class DdlEngineRecord implements SystemTableRecord {
 
     public static boolean isSupportCancel(int flag) {
         return (flag & FLAG_SUPPORT_CANCEL) != 0L;
+    }
+
+    public boolean isSkipSubjob() {
+        return (supportedCommands & FLAG_SKIP_SUBJOB) != 0L;
+    }
+
+    public void setSkipSubjob() {
+        supportedCommands |= FLAG_SKIP_SUBJOB;
+    }
+
+    public void clearSkipSubjob() {
+        supportedCommands &= FLAG_SKIP_SUBJOB;
     }
 
     @Override

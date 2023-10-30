@@ -112,9 +112,9 @@ public class SpillableAggHashMap implements AggHashMap {
     }
 
     @Override
-    public void putChunk(Chunk keyChunk, Chunk inputChunk) {
+    public int[] putChunk(Chunk keyChunk, Chunk inputChunk) {
         checkState(spillInProgress.isDone());
-        aggHashMap.putChunk(keyChunk, inputChunk);
+        return aggHashMap.putChunk(keyChunk, inputChunk);
     }
 
     @Override

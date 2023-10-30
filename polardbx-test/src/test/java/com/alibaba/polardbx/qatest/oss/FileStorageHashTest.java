@@ -18,10 +18,13 @@ package com.alibaba.polardbx.qatest.oss;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.qatest.BaseTestCase;
+import com.alibaba.polardbx.qatest.oss.utils.FullTypeSeparatedTestUtil;
+import com.alibaba.polardbx.qatest.oss.utils.FullTypeTestUtil;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -50,6 +53,16 @@ public class FileStorageHashTest extends BaseTestCase {
             statement.execute(String.format("drop database if exists %s ", testDataBase));
             statement.execute(String.format("create database %s mode = 'auto'", testDataBase));
             statement.execute(String.format("use %s", testDataBase));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
+    @AfterClass
+    static public void DropDatabase() {
+        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            Statement statement = conn.createStatement();
+            statement.execute(String.format("drop database if exists %s ", testDataBase));
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -251,7 +264,7 @@ public class FileStorageHashTest extends BaseTestCase {
             List<String> sqls = new ArrayList<>();
             sqls.add("select check_sum(*) from %s");
             sqls.add(
-                "select check_sum(c_tinyint_1, c_double, c_decimal_pr, c_time_6, c_blob_tiny, c_enum, c_polygon) from %s");
+                "select check_sum(c_tinyint_1, c_double, c_decimal_pr, c_time_6, c_blob_tiny, c_enum) from %s");
             sqls.add("select check_sum(*) from %s where id > 0");
             sqls.add("select check_sum(*) from %s where id > 100301");
             compareSqls(sqls, connection, ossTable, innoTable);

@@ -39,9 +39,12 @@ public class BroadcastTableModifyHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        // Need auto-savepoint only when auto-commit = 0.
+        executionContext.setNeedAutoSavepoint(!executionContext.isAutoCommit());
+
         BroadcastTableModify broadcastTableModify = (BroadcastTableModify) logicalPlan;
         ExecutionContext ec = executionContext.copy();
-        PhyTableOperationUtil.enableIntraGroupParallelism(broadcastTableModify.getSchemaName(),ec);
+        PhyTableOperationUtil.enableIntraGroupParallelism(broadcastTableModify.getSchemaName(), ec);
         List<RelNode> inputs = broadcastTableModify.getInputs(ec);
         List<Cursor> inputCursors = new ArrayList<>(inputs.size());
         boolean partialFinished = false;
@@ -58,7 +61,7 @@ public class BroadcastTableModifyHandler extends HandlerCommon {
             return new AffectRowCursor(affectRows);
         } catch (Exception e) {
             if (partialFinished) {
-                ec.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL);
+                ec.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL, e.getMessage());
             }
             throw new TddlNestableRuntimeException(e);
         }

@@ -34,13 +34,15 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.executor.workqueue.PriorityFIFOTask;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.gms.partition.BackfillExtraFieldJSON;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.partition.BackfillExtraFieldJSON;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -90,13 +92,12 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_WAIT_TIMEOUT;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_DEADLOCK;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_WAIT_TIMEOUT;
 import static com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillStatus.UNFINISHED;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_COUNT;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
@@ -166,6 +167,7 @@ public class Extractor extends PhyOperationBuilderCommon {
      * ) T1
      * </pre>
      */
+
     protected final PhyTableOperation planSelectMaxPk;
 
     private final PhyTableOperation planSelectSample;
@@ -175,7 +177,6 @@ public class Extractor extends PhyOperationBuilderCommon {
     private boolean needBuildSubBoundList = true;
 
     private Map<String, List<Map<Integer, ParameterContext>>> backfillSubBoundList = new HashMap<>();
-
     protected final List<Integer> primaryKeysId;
     /**
      * map the column id to primary key order
@@ -239,11 +240,13 @@ public class Extractor extends PhyOperationBuilderCommon {
         final String positionMarkHint = ec.getParamManager().getString(ConnectionParams.GSI_BACKFILL_POSITION_MARK);
 
         if (TStringUtil.isEmpty(positionMarkHint)) {
-            // Init position mark with upper bound
-            final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId);
+            if (!backfillManager.allReadyHasBackfillObject(backfillId, sourceTableName, targetTableName)) {
+                // Init position mark with upper bound
+                final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId);
 
-            // Insert ignore
-            backfillManager.initBackfillMeta(ec, initBfoList);
+                // Insert ignore
+                backfillManager.initBackfillMeta(ec, initBfoList);
+            }
         } else {
             // Load position mark from HINT
             final List<GsiBackfillManager.BackfillObjectRecord> backfillObjects = JSON
@@ -514,6 +517,10 @@ public class Extractor extends PhyOperationBuilderCommon {
             // step must not less than zero
             int step = sampleResult.size() / splitCount;
             if (step <= 0) {
+                SQLRecorderLogger.ddlLogger.warn(
+                    MessageFormat.format("sample result error, sql is {0}, param is {1}",
+                        plan.getBytesSql(),
+                        plan.getParam()));
                 return null;
             }
 
@@ -725,6 +732,12 @@ public class Extractor extends PhyOperationBuilderCommon {
         // For each physical table there is a backfill object which represents a row in
         // system table
 
+        // set KILL_CLOSE_STREAM = true
+        ec.getExtraCmds().put(ConnectionParams.KILL_CLOSE_STREAM.toString(), true);
+
+        // interrupted
+        AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
+
         List<Future> futures = new ArrayList<>(16);
 
         // Re-balance by physicalDb.
@@ -741,13 +754,14 @@ public class Extractor extends PhyOperationBuilderCommon {
         }
 
         AtomicReference<Exception> excep = new AtomicReference<>(null);
-        if (parallelism <= 0 || parallelism >= PriorityWorkQueue.getInstance().getCorePoolSize()) {
+        if (parallelism <= 0 || parallelism >= BackFillThreadPool.getInstance().getCorePoolSize()) {
             // Full queued.
             tasks.forEach(v -> {
                 FutureTask<Void> task = new FutureTask<>(
-                    () -> foreachPhyTableBatch(v.get(0).physicalDb, v.get(0).physicalTable, v, ec, consumer), null);
+                    () -> foreachPhyTableBatch(v.get(0).physicalDb, v.get(0).physicalTable, v, ec, consumer,
+                        interrupted), null);
                 futures.add(task);
-                PriorityWorkQueue.getInstance()
+                BackFillThreadPool.getInstance()
                     .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_BACKFILL_TASK);
             });
         } else {
@@ -763,7 +777,8 @@ public class Extractor extends PhyOperationBuilderCommon {
                 if (null == excep.get()) {
                     FutureTask<Void> task = new FutureTask<>(() -> {
                         try {
-                            foreachPhyTableBatch(v.get(0).physicalDb, v.get(0).physicalTable, v, ec, consumer);
+                            foreachPhyTableBatch(v.get(0).physicalDb, v.get(0).physicalTable, v, ec, consumer,
+                                interrupted);
                         } finally {
                             // Poll in finally to prevent dead lock on putting blockingQueue.
                             blockingQueue.poll();
@@ -771,7 +786,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                         return null;
                     });
                     futures.add(task);
-                    PriorityWorkQueue.getInstance()
+                    BackFillThreadPool.getInstance()
                         .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_BACKFILL_TASK);
                 }
             });
@@ -791,15 +806,12 @@ public class Extractor extends PhyOperationBuilderCommon {
             try {
                 future.get();
             } catch (Exception e) {
-                futures.forEach(f -> {
-                    try {
-                        f.cancel(true);
-                    } catch (Throwable ignore) {
-                    }
-                });
                 if (null == excep.get()) {
                     excep.set(e);
                 }
+
+                // set interrupt
+                interrupted.set(true);
             }
         }
 
@@ -829,7 +841,8 @@ public class Extractor extends PhyOperationBuilderCommon {
     protected void foreachPhyTableBatch(String dbIndex, String phyTable,
                                         List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
                                         ExecutionContext ec,
-                                        BatchConsumer loader) {
+                                        BatchConsumer loader,
+                                        AtomicReference<Boolean> interrupted) {
         String physicalTableName = TddlSqlToRelConverter.unwrapPhysicalTableName(phyTable);
         // Load upper bound
         List<ParameterContext> upperBoundParam =
@@ -906,7 +919,8 @@ public class Extractor extends PhyOperationBuilderCommon {
                 }
 
                 // Check DDL is ongoing.
-                if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()) {
+                if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()
+                    || interrupted.get()) {
                     long jobId = ec.getDdlJobId();
                     throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                         "The job '" + jobId + "' has been cancelled");
@@ -915,9 +929,10 @@ public class Extractor extends PhyOperationBuilderCommon {
                     actualBatchSize = Math.min(actualBatchSize * 2, batchSize);
                 }
             } catch (TddlRuntimeException e) {
-                boolean retry = (e.getErrorCode() == ErrorCode.ERR_X_PROTOCOL_BAD_PACKET.getCode()) ||
+                boolean retry = (e.getErrorCode() == ErrorCode.ERR_X_PROTOCOL_BAD_PACKET.getCode() ||
+                    (e.getErrorCode() == 1153 && e.getMessage().toLowerCase().contains("max_allowed_packet")) ||
                     (e.getSQLState() != null && e.getSQLState().equalsIgnoreCase("S1000") && e.getMessage()
-                        .toLowerCase().contains("max_allowed_packet")) && actualBatchSize > 1;
+                        .toLowerCase().contains("max_allowed_packet"))) && actualBatchSize > 1;
                 if (retry) {
                     actualBatchSize = Math.max(actualBatchSize / 8, 1);
                 } else {
@@ -926,8 +941,8 @@ public class Extractor extends PhyOperationBuilderCommon {
             }
 
             // for sliding window of split
-            checkAndSplitBackfillObject(dbIndex, phyTable, successRowCount, ec, rangeBackfillStartTime, lastBatch,
-                backfillObjects);
+            checkAndSplitBackfillObject(
+                dbIndex, phyTable, successRowCount, ec, rangeBackfillStartTime, lastBatch, backfillObjects);
         } while (!finished);
 
         DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
@@ -944,10 +959,10 @@ public class Extractor extends PhyOperationBuilderCommon {
     /**
      * for split backfill range
      */
-    private void checkAndSplitBackfillObject(String dbIndex, String phyTable, long successRowCount,
-                                             ExecutionContext ec, long rangeBackfillStartTime,
-                                             List<Map<Integer, ParameterContext>> lastBatch,
-                                             List<GsiBackfillManager.BackfillObjectBean> backfillObjects) {
+    protected void checkAndSplitBackfillObject(String dbIndex, String phyTable, long successRowCount,
+                                               ExecutionContext ec, long rangeBackfillStartTime,
+                                               List<Map<Integer, ParameterContext>> lastBatch,
+                                               List<GsiBackfillManager.BackfillObjectBean> backfillObjects) {
         ParamManager pm = OptimizerContext.getContext(schemaName).getParamManager();
         ParamManager ecPm = ec.getParamManager();
         boolean enableSlideWindowBackfill = pm.getBoolean(ConnectionParams.ENABLE_SLIDE_WINDOW_BACKFILL);
@@ -961,8 +976,8 @@ public class Extractor extends PhyOperationBuilderCommon {
 
         if (enableSample && enablePhyTblParallelBackfill && enableSlideWindowBackfill && splitCount > 1
             && System.currentTimeMillis() - rangeBackfillStartTime > randomInterval
-            && PriorityWorkQueue.getInstance().getActiveCount()
-            < PriorityWorkQueue.getInstance().getCorePoolSize() * 0.75
+            && BackFillThreadPool.getInstance().getActiveCount()
+            < BackFillThreadPool.getInstance().getCorePoolSize() * 0.75
             && isNotEmpty(backfillObjects.get(0).extra)) {
             // 估算一下剩余的行数，行数大于多少时，才能分裂
             long rowCount = Long.parseLong(backfillObjects.get(0).extra.getApproximateRowCount());
@@ -1004,7 +1019,6 @@ public class Extractor extends PhyOperationBuilderCommon {
             }
         }
     }
-
     /**
      * Print log for deadlock found
      *
@@ -1189,8 +1203,6 @@ public class Extractor extends PhyOperationBuilderCommon {
         buildParams.setGroupName(dbIndex);
         buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
         buildParams.setDynamicParams(planParams);
-        PhyTableOperation plan =
-            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         return PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
     }
@@ -1221,11 +1233,10 @@ public class Extractor extends PhyOperationBuilderCommon {
         }
 
         PhyTableOperation phyTableOperation = withLowerBound ? planSelectMinAndMaxSample : planSelectSample;
-        SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode();
+        SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode().clone();
         OptimizerHint optimizerHint = new OptimizerHint();
         optimizerHint.addHint("+sample_percentage(" + calSamplePercentage + ")");
         sqlSelect.setOptimizerHint(optimizerHint);
-
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
         buildParams.setGroupName(dbIndex);
         buildParams.setBytesSql(RelUtils.toNativeBytesSql(sqlSelect));
@@ -1299,36 +1310,62 @@ public class Extractor extends PhyOperationBuilderCommon {
         public List<Integer> getPrimaryKeysId() {
             return primaryKeysId;
         }
+
+        public void setTargetTableColumns(List<String> targetTableColumns) {
+            this.targetTableColumns = targetTableColumns;
+        }
     }
 
     public static ExtractorInfo buildExtractorInfo(ExecutionContext ec,
                                                    String schemaName,
                                                    String sourceTableName,
-                                                   String targetTableName) {
+                                                   String targetTableName,
+                                                   boolean skipGeneratedColumn) {
+        return buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, skipGeneratedColumn, false);
+    }
+
+    public static ExtractorInfo buildExtractorInfo(ExecutionContext ec,
+                                                   String schemaName,
+                                                   String sourceTableName,
+                                                   String targetTableName,
+                                                   boolean skipGeneratedColumn,
+                                                   boolean onlyReadColumns) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta sourceTableMeta = sm.getTable(sourceTableName);
         final TableMeta targetTableMeta = sm.getTable(targetTableName);
-        final List<String> targetTableColumns = targetTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
+        final List<String> targetTableColumns;
+        if (onlyReadColumns) {
+            targetTableColumns = targetTableMeta.getReadColumns()
+                .stream()
+                .filter(columnMeta -> !skipGeneratedColumn || !columnMeta.isGeneratedColumn())
+                .map(ColumnMeta::getName)
+                .collect(Collectors.toList());
+        } else {
+            targetTableColumns = targetTableMeta.getWriteColumns()
+                .stream()
+                .filter(columnMeta -> !skipGeneratedColumn || !columnMeta.isGeneratedColumn())
+                .map(ColumnMeta::getName)
+                .collect(Collectors.toList());
+        }
 
         Map<String, Integer> targetColumnMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (int i = 0; i < targetTableColumns.size(); i++) {
             targetColumnMap.put(targetTableColumns.get(i), i);
         }
+
         // order reserved primary keys
         List<String> primaryKeys = getPrimaryKeys(sourceTableMeta, ec);
-        // primary keys appeared in select list with reserved order
-        List<String> appearedKeys = new ArrayList<>();
         List<Integer> appearedKeysId = new ArrayList<>();
         for (String primaryKey : primaryKeys) {
             if (targetColumnMap.containsKey(primaryKey)) {
-                appearedKeys.add(primaryKey);
                 appearedKeysId.add(targetColumnMap.get(primaryKey));
+            } else {
+                // 正常情况 target 一定会包含 主表的主键，drop primary key, add primary key 时，可能会不存在
+                targetTableColumns.add(primaryKey);
+                appearedKeysId.add(targetTableColumns.size() - 1);
             }
         }
 
-        return new ExtractorInfo(sourceTableMeta, targetTableColumns, appearedKeys, appearedKeysId);
+        return new ExtractorInfo(sourceTableMeta, targetTableColumns, primaryKeys, appearedKeysId);
     }
 }

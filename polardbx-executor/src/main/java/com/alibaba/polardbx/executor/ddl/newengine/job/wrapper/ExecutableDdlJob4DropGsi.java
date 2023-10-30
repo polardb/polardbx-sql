@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
@@ -48,6 +49,6 @@ public class ExecutableDdlJob4DropGsi extends ExecutableDdlJob {
     /**
      * last task in Drop GSI
      */
-    private TableSyncTask finalSyncTask;
+    private TablesSyncTask finalSyncTask;
 
 }

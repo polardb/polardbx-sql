@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -50,8 +50,8 @@ public final class ShowErrors {
     private static final int FIELD_COUNT = 3;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
     private static final String cmd = "Show Errors";
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -66,38 +66,34 @@ public final class ShowErrors {
 
         fields[i] = PacketUtil.getField("Message", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c, boolean hasMore) {
+    public static boolean execute(ServerConnection c, boolean hasMore) {
         String db = c.getSchema();
         if (db == null) {
             c.writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
-            return;
+            return false;
         }
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + db + "'");
-            return;
+            return false;
         }
 
         TConnection conn = c.getTddlConnection();
         if (conn == null || conn.getExecutionContext() == null) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
         Map<String, Object> extraDatas = conn.getExecutionContext().getExtraDatas();
         if (extraDatas == null) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
-        List<ErrorMessage> messages = (List<ErrorMessage>) extraDatas.get(ExecutionContext.FailedMessage);
+        List<ErrorMessage> messages = (List<ErrorMessage>) extraDatas.get(ExecutionContext.FAILED_MESSAGE);
         if (messages == null || messages.size() == 0) {
-            c.execute(cmd, hasMore);
-            return;
+            return c.execute(cmd, hasMore);
         }
 
         ByteBufferHolder buffer = c.allocate();
@@ -108,26 +104,24 @@ public final class ShowErrors {
         // write header
         proxy = header.write(proxy);
 
-        // write fields
-        for (FieldPacket field : fields) {
-            proxy = field.write(proxy);
+        byte tmpPacketId = packetId;
+        // write eof
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
         }
 
-        // write eof
-        proxy = eof.write(proxy);
-
         // write rows
-        byte packetId = eof.packetId;
-
         for (ErrorMessage msg : messages) {
             RowDataPacket row = getRow(msg, c.getCharset());
-            row.packetId = ++packetId;
+            row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -135,6 +129,7 @@ public final class ShowErrors {
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 
     private static RowDataPacket getRow(ErrorMessage msg, String charset) {

@@ -236,7 +236,7 @@ select
     'sql' as dsagjk,
     NOW() as daldag
 from dsagldsaklga dsagldsaklga
-         left join dsagllsdnsd qwqe on qwqe.c1 = dsagldsaklga.Attr5
+left join dsagllsdnsd qwqe on qwqe.c1 = dsagldsaklga.Attr5
     left join dsagldsaklgaStructure dsaklgastru on dsaklgastru.dsagldsaklgac1 = dsagldsaklga.c1
     left join dsaglOrgStructure orgstru on orgstru.dsaglStructurec1 = dsaklgastru.dsaglStructurec1
     left join dsaglOrganization tywqy on tywqy.c1 = orgstru.adgalag

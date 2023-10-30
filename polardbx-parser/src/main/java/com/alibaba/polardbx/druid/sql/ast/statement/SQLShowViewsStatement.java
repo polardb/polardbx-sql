@@ -25,7 +25,6 @@ public class SQLShowViewsStatement extends SQLStatementImpl implements SQLShowSt
 
     protected SQLName database;
     protected SQLExpr like;
-    
 
     public SQLName getDatabase() {
         return database;

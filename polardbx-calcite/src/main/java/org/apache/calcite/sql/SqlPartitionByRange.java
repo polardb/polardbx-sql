@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 
 /**
@@ -109,13 +110,13 @@ public class SqlPartitionByRange extends SqlPartitionBy {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
-        if (!super.equalsDeep(node, litmus)) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
+        if (!super.equalsDeep(node, litmus, context)) {
             return false;
         }
         SqlPartitionByRange objPartBy = (SqlPartitionByRange) node;
 
-        return isColumns == objPartBy.isColumns && equalDeep(interval, objPartBy.interval, litmus);
+        return isColumns == objPartBy.isColumns && equalDeep(interval, objPartBy.interval, litmus, context);
     }
 
     public boolean isDisableSchedule() {

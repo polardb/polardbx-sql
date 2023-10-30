@@ -38,8 +38,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author chenhui
  * @since 5.1.9
  */
-@RunWith(CommonCaseRunner.class)
-@FileStoreIgnore
+
 public class KeyWordTest extends AutoCrudBasedLockTestCase {
 
     public KeyWordTest(String baseOneTableName) {

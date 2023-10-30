@@ -21,56 +21,56 @@ import net.jcip.annotations.NotThreadSafe;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
+import java.sql.SQLException;
 
 @NotThreadSafe
-public class LocalityTestCaseForMultipleNodes extends LocalityTestBase{
-    public void runTestCase(String resourceFile) throws FileNotFoundException {
+public class LocalityTestCaseForMultipleNodes extends LocalityTestBase {
+    public void runTestCase(String resourceFile) throws FileNotFoundException, InterruptedException, SQLException {
         String resourceDir = "partition/env/LocalityTest/multipleNode/" + resourceFile;
         String fileDir = getClass().getClassLoader().getResource(resourceDir).getPath();
         LocalityTestCaseTask localityTestCaseTask = new LocalityTestCaseTask(fileDir);
         localityTestCaseTask.execute(tddlConnection);
     }
-/*
- * for create partition table.
- * (hash_partition, range_partition, list_partition)
- * (full_part_spec, non_full_part_spec)
- * (int_partition_key, string_partition_key)
- * (with_gsi, without_gsi)
- * (table_level_locality, partition_level_localiy, table_and_partition_level_locality, no_locality)
- *
- * for create other table
- * (broadcast_table, single_table)
- * (with_gsi, without_gsi)
- *
- * for repartition
- * (broad->single, broad->partition, partition->single, partiton->broadcast, single->broad, single->partition)
- *
- * for modify partition
- * (move, add, split, merge, split_by_hot_value, extract)
- *
- * for set locality
- *
- * for rebalance
- */
-
+    /*
+     * for create partition table.
+     * (hash_partition, range_partition, list_partition)
+     * (full_part_spec, non_full_part_spec)
+     * (int_partition_key, string_partition_key)
+     * (with_gsi, without_gsi)
+     * (table_level_locality, partition_level_localiy, table_and_partition_level_locality, no_locality)
+     *
+     * for create other table
+     * (broadcast_table, single_table)
+     * (with_gsi, without_gsi)
+     *
+     * for repartition
+     * (broad->single, broad->partition, partition->single, partiton->broadcast, single->broad, single->partition)
+     *
+     * for modify partition
+     * (move, add, split, merge, split_by_hot_value, extract)
+     *
+     * for set locality
+     *
+     * for rebalance
+     */
 
     @Test
-    public void testAlterLocalityMultipleNode() throws FileNotFoundException {
+    public void testAlterLocalityMultipleNode() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_locality_multiple_node.test.yml");
     }
 
     @Test
-    public void testRebalanceMultipleNode() throws FileNotFoundException {
+    public void testRebalanceMultipleNode() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("rebalance_multiple_node.test.yml");
     }
 
     @Test
-    public void testAlterTableGroupMultipleNode() throws FileNotFoundException {
+    public void testAlterTableGroupMultipleNode() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_tablegroup_multiple_node.test.yml");
     }
 
     @Test
-    public void testTruncateMultipleNode() throws FileNotFoundException {
+    public void testTruncateMultipleNode() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("truncate_multiple_node.test.yml");
     }
 }

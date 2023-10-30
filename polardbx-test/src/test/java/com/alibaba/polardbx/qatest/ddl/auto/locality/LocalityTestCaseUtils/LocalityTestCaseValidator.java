@@ -127,8 +127,17 @@ public class LocalityTestCaseValidator {
         public boolean check(LocalityTestUtils.LocalityBean localityBean) {
             LocalityDesc localityDesc = LocalityDesc.parse(localityBean.locality);
             LocalityDesc compareLocalityDesc = LocalityDesc.parse("dn=" + localitySql);
-            return localityDesc.compactiableWith(compareLocalityDesc) && compareLocalityDesc.compactiableWith(
-                localityDesc);
+            if (localitySql.startsWith(LocalityDesc.BALANCE_PREFIX)) {
+                compareLocalityDesc = LocalityDesc.parse(localitySql);
+            }
+            if (localityDesc.getBalanceSingleTable()) {
+                return compareLocalityDesc.getBalanceSingleTable();
+            }
+            if (localityDesc.holdEmptyDnList() && compareLocalityDesc.holdEmptyDnList()) {
+                return true;
+            } else {
+                return localityDesc.toString().equalsIgnoreCase(compareLocalityDesc.toString());
+            }
         }
     }
 
@@ -248,7 +257,7 @@ public class LocalityTestCaseValidator {
     }
 
     public static List<LocalityTestUtils.LocalityBean> getLocalityInfo(Connection tddlConnection) {
-        final String sql = "show locality";
+        final String sql = "/*TDDL:CMD_EXTRA(SHOW_FULL_LOCALITY=true)*/ show locality";
 
         List<LocalityTestUtils.LocalityBean> res = new ArrayList<>();
         try (ResultSet result = JdbcUtil.executeQuerySuccess(tddlConnection, sql)) {

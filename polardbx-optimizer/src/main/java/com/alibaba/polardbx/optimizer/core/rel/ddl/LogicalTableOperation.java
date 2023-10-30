@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
@@ -26,12 +28,13 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlNode;
 
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -39,6 +42,16 @@ public class LogicalTableOperation extends BaseDdlOperation {
 
     public LogicalTableOperation(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     protected CreateTablePreparedData prepareCreateTableData(TableMeta tableMeta,
@@ -55,7 +68,9 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                              SqlNode joinGroupName,
                                                              String locality,
                                                              Map<SqlNode, RexNode> partBoundExprInfo,
-                                                             String sourceSql) {
+                                                             String sourceSql,
+                                                             List<String> referencedTables,
+                                                             List<ForeignKeyData> addedForeignKeys) {
         CreateTablePreparedData preparedData = new CreateTablePreparedData();
 
         preparedData.setSchemaName(schemaName);
@@ -79,6 +94,8 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setPartBoundExprInfo(partBoundExprInfo);
         preparedData.setLocality(LocalityDesc.parse(locality));
         preparedData.setSourceSql(sourceSql);
+        preparedData.setAddedForeignKeys(addedForeignKeys);
+        preparedData.setReferencedTables(referencedTables);
 
         return preparedData;
     }
@@ -138,18 +155,29 @@ public class LogicalTableOperation extends BaseDdlOperation {
             prepareCreateTableData(tableMeta, isShadow, autoPartition,
                 isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
                 tbParititons, partitionings, localPartitionDefinitionInfo, tableGroupName,
-                null, locality, partBoundExprInfo, sourceSql);
+                null, locality, partBoundExprInfo, sourceSql, null, null);
 
         // Add all columns in primary table whose default value is binary, so binaryColumnDefaultValues may include
         // columns that do not exist in GSI
-        Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, String> specialDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, Long> specialDefaultValueFlags = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
         for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
             if (columnMeta.isBinaryDefault()) {
-                binaryColumnDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
+                specialDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
+                specialDefaultValueFlags.put(columnMeta.getName(), ColumnsRecord.FLAG_BINARY_DEFAULT);
             }
         }
-        indexTablePreparedData.setBinaryColumnDefaultValues(binaryColumnDefaultValues);
 
+        // Add all generated column expressions
+        for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+            if (columnMeta.isLogicalGeneratedColumn()) {
+                specialDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
+                specialDefaultValueFlags.put(columnMeta.getName(), ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN);
+            }
+        }
+        indexTablePreparedData.setSpecialDefaultValues(specialDefaultValues);
+        indexTablePreparedData.setSpecialDefaultValueFlags(specialDefaultValueFlags);
         preparedData.setIndexTablePreparedData(indexTablePreparedData);
 
         preparedData.setUnique(isUnique);

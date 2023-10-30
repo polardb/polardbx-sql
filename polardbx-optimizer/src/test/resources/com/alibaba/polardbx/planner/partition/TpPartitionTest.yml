@@ -144,8 +144,8 @@
     select * from supplier a join supplier b on a.s_suppkey = b.s_suppkey join X c on b.s_suppkey=c.id where c.b = 1;
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="supplier[p1,p2,p3,p4],supplier[p1,p2,p3,p4],X[p1,p2,p3,p4]", shardCount=4, sql="SELECT `supplier`.`s_suppkey`, `supplier`.`s_name`, `supplier`.`s_address`, `supplier`.`s_nationkey`, `supplier`.`s_phone`, `supplier`.`s_acctbal`, `supplier`.`s_comment`, `supplier0`.`s_suppkey` AS `s_suppkey0`, `supplier0`.`s_name` AS `s_name0`, `supplier0`.`s_address` AS `s_address0`, `supplier0`.`s_nationkey` AS `s_nationkey0`, `supplier0`.`s_phone` AS `s_phone0`, `supplier0`.`s_acctbal` AS `s_acctbal0`, `supplier0`.`s_comment` AS `s_comment0`, `X`.`b`, `X`.`id` FROM `supplier` AS `supplier` INNER JOIN `supplier` AS `supplier0` ON (`supplier`.`s_suppkey` = `supplier0`.`s_suppkey`) INNER JOIN `X` AS `X` ON (((`X`.`b` = 1) AND (`supplier0`.`s_suppkey` = `X`.`id`)) AND (`supplier`.`s_suppkey` = `X`.`id`))")
+    gather(concurrent=true)
+      logicalview(tables="supplier[p1,p2,p3,p4],supplier[p1,p2,p3,p4],x[p1,p2,p3,p4]", shardcount=4, sql="select `supplier`.`s_suppkey`, `supplier`.`s_name`, `supplier`.`s_address`, `supplier`.`s_nationkey`, `supplier`.`s_phone`, `supplier`.`s_acctbal`, `supplier`.`s_comment`, `supplier0`.`s_suppkey` as `s_suppkey0`, `supplier0`.`s_name` as `s_name0`, `supplier0`.`s_address` as `s_address0`, `supplier0`.`s_nationkey` as `s_nationkey0`, `supplier0`.`s_phone` as `s_phone0`, `supplier0`.`s_acctbal` as `s_acctbal0`, `supplier0`.`s_comment` as `s_comment0`, `x`.`b`, `x`.`id` from `supplier` as `supplier` inner join `supplier` as `supplier0` on (`supplier`.`s_suppkey` = `supplier0`.`s_suppkey`) inner join `x` as `x` on ((`x`.`b` = 1) and (`supplier0`.`s_suppkey` = `x`.`id`) and (`supplier`.`s_suppkey` = `x`.`id`))")
 
 - sql: |
     select * from lineitem  limit 2;
@@ -212,7 +212,7 @@
     project(pad="pad")
       bkajoin(condition="id = id", type="inner")
         indexscan(tables="gig[p2]", sql="select `id` from `gig` as `gig` where ((`id` = 1) and (`g` = 79733308))")
-        logicalview(tables="sbtest1[p4]", sql="select `id`, `pad` from `sbtest1` as `sbtest1` where (((`id` = 1) and (`g` = 79733308)) and (`id` in (...)))")
+        logicalview(tables="sbtest1[p4]", sql="select `id`, `pad` from `sbtest1` as `sbtest1` where ((`id` = 1) and (`g` = 79733308) and (`id` in (...)))")
 
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_PUSH_JOIN=false,ENABLE_CBO_PUSH_JOIN=false)*/

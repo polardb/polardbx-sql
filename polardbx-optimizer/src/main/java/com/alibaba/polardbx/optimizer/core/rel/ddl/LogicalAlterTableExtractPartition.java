@@ -24,6 +24,7 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableExtractPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupExtractPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -50,8 +52,11 @@ import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
 
@@ -64,6 +69,18 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
     public LogicalAlterTableExtractPartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        String logicalTableName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + logicalTableName);
     }
 
     public void preparedData(ExecutionContext executionContext) {
@@ -100,8 +117,8 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         splitPartitions.add(extractPartitionName);
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
-
+            LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName,
+                tableGroupConfig.getTableGroupRecord().tg_name);
         preparedData = new AlterTableExtractPartitionPreparedData();
 
         preparedData.setSchemaName(schemaName);
@@ -110,6 +127,9 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
 
         preparedData.setTableGroupName(tableGroupConfig.getTableGroupRecord().getTg_name());
         preparedData.setSplitPartitions(splitPartitions);
+        if (sqlAlterTableExtractPartitionByHotValue.getLocality() != null) {
+
+        }
         preparedData.setNewPartitions(sqlAlterTableExtractPartitionByHotValue.getNewPartitions());
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.setPartBoundExprInfo(alterTable.getAllRexExprInfo());
@@ -123,32 +143,39 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
         List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        List<Pair<String, String>> mockOrderedTargetTableLocations = new ArrayList<>(newPartitionGroups.size());
+        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
 
         int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
         if (ignoreNameAndLocality) {
             for (int j = 0; j < newPartitionGroups.size(); j++) {
                 Pair<String, String> pair = new Pair<>("", "");
-                mockOrderedTargetTableLocations.add(pair);
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
             }
             flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
         } else {
             int i = 0;
             for (int j = 0; j < newPartitionGroups.size(); j++) {
-                GroupDetailInfoExRecord groupDetailInfoExRecord =
-                    preparedData.getTargetGroupDetailInfoExRecords().get(i++);
 
                 String mockTableName = "";
-                mockOrderedTargetTableLocations.add(new Pair<>(mockTableName, groupDetailInfoExRecord.getGroupName()));
-                if (i >= preparedData.getTargetGroupDetailInfoExRecords().size()) {
-                    i = 0;
-                }
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
+                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
             }
         }
 
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForExtractType(curPartitionInfo, preparedData,
-                mockOrderedTargetTableLocations, executionContext);
+            .getNewPartitionInfo(
+                preparedData,
+                partitionInfo,
+                false,
+                sqlAlterTableExtractPartitionByHotValue,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                preparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                mockOrderedTargetTableLocations,
+                executionContext);
+
         preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
             null, flag, executionContext);
     }
@@ -183,8 +210,9 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         assert splitPartitionGroupRecord != null;
 
         sqlAlterTableExtractPartition.setExtractPartitionName(splitPartitionGroupRecord.partition_name);
-        Long[] atVal = PartitionTupleRouteInfoBuilder
+        List<Long[]> atVals = PartitionTupleRouteInfoBuilder
             .computeExprValuesHashCode(partitionInfo, rexNodes, executionContext);
+        Long[] atVal = atVals.get(0);
         int flag = PartitionPrunerUtils.getExtractPosition(partitionSpec, prevPartitionSpec, atVal);
         if (flag == -2) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
@@ -204,7 +232,9 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         }
 
         if (StringUtils.isEmpty(hotKeyPartitioName)) {
-            List<String> newPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 3);
+            List<String> newPartNames =
+                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 3,
+                    new TreeSet<>(String::compareToIgnoreCase), false);
             SqlIdentifier name1 = new SqlIdentifier(newPartNames.get(0), SqlParserPos.ZERO);
             SqlPartition sqlPartition1 = new SqlPartition(name1, null, SqlParserPos.ZERO);
             sqlAlterTableExtractPartition.getNewPartitions().add(sqlPartition1);
@@ -221,14 +251,20 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
             List<String> newPartNames = new ArrayList<>();
             if (flag == -1) {
                 newPartNames.add(hotKeyPartitioName);
-                newPartNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1));
+                newPartNames.addAll(
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                        new TreeSet<>(String::compareToIgnoreCase), false));
             } else if (flag == 0) {
-                List<String> boundPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2);
+                List<String> boundPartNames =
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2,
+                        new TreeSet<>(String::compareToIgnoreCase), false);
                 newPartNames.add(boundPartNames.get(0));
                 newPartNames.add(hotKeyPartitioName);
                 newPartNames.add(boundPartNames.get(1));
             } else if (flag == 1) {
-                newPartNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1));
+                newPartNames.addAll(
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                        new TreeSet<>(String::compareToIgnoreCase), false));
                 newPartNames.add(hotKeyPartitioName);
             } else {
                 assert false;

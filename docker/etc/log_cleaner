@@ -1,2 +1,0 @@
-*/1 * * * * root /home/admin/bin/log_cleaner.sh 90 >/dev/null 2>&1
-

@@ -44,7 +44,25 @@ public class CharsetTestUtils {
         {0x0040, 0x00A0},
         {0x0040, 0x00A0}
     };
-    final static int[] GBK_UNICODE_RANGE = {0x4E00, 0x9000};
+    final static int[] GBK_UNICODE_RANGE = {0x4E00, 0x9FA5};
+    /* reference: https://openstd.samr.gov.cn/bzgk/gb/newGbInfo?hcno=C344D8D120B341A8DD328954A9B27A99 */
+    final static int[] GB18030_UNICODE_RANGE = {0x0000, 0xFFFF};
+    final static int[][][] GB18030_2_BYTES_RANGE = {
+        {
+            {0x81, 0xFE},
+            {0x40, 0x7E},
+        },
+        {
+            {0x81, 0xFE},
+            {0x80, 0xFE},
+        }
+    };
+    final static int[][] GB18030_4_BYTES_RANGE = {
+        {0x81, 0xFE},
+        {0x30, 0x39},
+        {0x81, 0xFE},
+        {0x30, 0x39}
+    };
     final static int[] UTF16_UNICODE_RANGE = {0x0000, 0xFFFF};
     final static int[] UTF8MB4_UNICODE_RANGE = {0x0000, 0x10FFFF};
     final static int[] UTF8MB3_UNICODE_RANGE = {0x0000, 0xFFFF};
@@ -106,6 +124,11 @@ public class CharsetTestUtils {
             for (int j = 0; j < characters; j++) {
                 // we have 1/3 probability to get a supplementary character.
                 int codepoint = R.nextInt() % 3 == 0 ? R.nextInt(0x10ffff) : R.nextInt(0x7f);
+                // ban space and invalid codepoint
+                if (codepoint == 0x20 || (codepoint >= 0xd800 && codepoint <= 0xdfff)) {
+                    j--;
+                    continue;
+                }
                 byte[] bytes = codePointsToBytes(codepoint, "UTF-8");
                 buff.put(bytes);
             }
@@ -246,8 +269,71 @@ public class CharsetTestUtils {
         return bytesList;
     }
 
+    /**
+     * Generate random gb18030 code.
+     */
+    public static List<byte[]> generateGB18030Code(int size, int maxChars, boolean trailingSpace) {
+        Random random = new Random();
+        List<byte[]> bytesList = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            // 1-8 characters for one string
+            int characters = (Math.abs(random.nextInt()) % maxChars) + 1;
+
+            // GB18030 use 1 ~ 4 bytes to represent a character.
+            ByteBuffer gb18030Buffer = ByteBuffer.allocate(characters * 4);
+            for (int j = 0; j < characters; j++) {
+                int n = random.nextInt(4);
+                if (n == 3) {
+                    // 1 byte
+                    int code = (int) (Math.random() * (ONE_BYTE[1] - ONE_BYTE[0]) + ONE_BYTE[0]);
+                    gb18030Buffer.put((byte) code);
+                } else if (n == 2) {
+                    // 4 bytes
+                    for (int k = 0; k < 4; k++) {
+                        int codeMin = GB18030_4_BYTES_RANGE[k][0];
+                        int codeMax = GB18030_4_BYTES_RANGE[k][1];
+                        int code = (int) (Math.random() * (codeMax - codeMin) + codeMin);
+                        Preconditions.checkArgument(codeMin <= code && code <= codeMax);
+                        gb18030Buffer.put((byte) code);
+                    }
+                } else {
+                    // 2 bytes
+                    for (int k = 0; k < 2; k++) {
+                        int codeMin = GB18030_2_BYTES_RANGE[n][k][0];
+                        int codeMax = GB18030_2_BYTES_RANGE[n][k][1];
+                        int code = (int) (Math.random() * (codeMax - codeMin) + codeMin);
+                        Preconditions.checkArgument(codeMin <= code && code <= codeMax);
+                        gb18030Buffer.put((byte) code);
+                    }
+                }
+            }
+
+            gb18030Buffer.flip();
+            byte[] bytes = new byte[gb18030Buffer.remaining()];
+            gb18030Buffer.get(bytes);
+            bytesList.add(bytes);
+
+            // we have 1/3 probability to append trailing space
+            while (trailingSpace && random.nextInt() % 3 == 0 && i < size) {
+                int trailingSpaces = random.nextInt(5);
+                byte[] newStr = new byte[bytes.length + trailingSpaces];
+                // fill with spaces
+                Arrays.fill(newStr, (byte) 0x20);
+                // copy old str
+                System.arraycopy(bytes, 0, newStr, 0, bytes.length);
+                bytesList.add(newStr);
+                i++;
+            }
+        }
+        return bytesList;
+    }
+
     public static List<byte[]> generateGBKUnicode(int size, int maxChars, boolean trailingSpace) {
         return generateUnicode(GBK_UNICODE_RANGE[0], GBK_UNICODE_RANGE[1], size, maxChars, trailingSpace);
+    }
+
+    public static List<byte[]> generateGB18030Unicode(int size, int maxChars, boolean trailingSpace) {
+        return generateUnicode(GB18030_UNICODE_RANGE[0], GB18030_UNICODE_RANGE[1], size, maxChars, trailingSpace);
     }
 
     public static byte[] hexStringToByteArray(String s) {

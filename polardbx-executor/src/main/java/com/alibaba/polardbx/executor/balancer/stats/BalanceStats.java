@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.executor.balancer.stats;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
@@ -75,9 +77,18 @@ public class BalanceStats {
     }
 
     public List<PartitionGroupStat> getPartitionGroupStats() {
-        return this.tableGroupStats.stream()
-            .flatMap(x -> x.getPartitionGroups().stream())
-            .collect(Collectors.toList());
+        List<PartitionGroupStat> partitionGroupStats = new ArrayList<>();
+        for (TableGroupStat tableGroupStat : tableGroupStats) {
+            for (int i = 0; i < tableGroupStat.getPartitionGroups().size(); i++) {
+                PartitionGroupStat partitionGroupStat = tableGroupStat.getPartitionGroups().get(i);
+                partitionGroupStat.pg = tableGroupStat.getTableGroupConfig().getPartitionGroup(
+                    partitionGroupStat.getFirstPartition().getPartitionGroupId()
+                );
+                partitionGroupStat.tgName = tableGroupStat.getTableGroupConfig().getTableGroupRecord().getTg_name();
+                partitionGroupStats.add(partitionGroupStat);
+            }
+        }
+        return partitionGroupStats;
     }
 
     public Optional<TableGroupStat> filterTableGroupStat(final String tgName) {
@@ -96,6 +107,13 @@ public class BalanceStats {
     public List<PartitionStat> filterPartitionStat(final String tableGroupName, final Set<String> partitionNameSet) {
         return getPartitionStats().stream().filter(e ->
             StringUtils.equalsIgnoreCase(e.getTableGroupName(), tableGroupName)
+                && partitionNameSet.contains(e.getPartitionName())
+        ).collect(Collectors.toList());
+    }
+
+    public List<PartitionStat> filterTablePartitionStat(final String tableName, final Set<String> partitionNameSet) {
+        return getPartitionStats().stream().filter(e ->
+            StringUtils.equalsIgnoreCase(e.getPartitionRecord().tableName, tableName)
                 && partitionNameSet.contains(e.getPartitionName())
         ).collect(Collectors.toList());
     }

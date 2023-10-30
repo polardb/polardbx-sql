@@ -20,8 +20,11 @@ import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.node.StorageStatus;
 import com.alibaba.polardbx.gms.node.StorageStatusManager;
+import com.google.common.base.Joiner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +32,8 @@ import java.util.Map;
 import java.util.Random;
 
 public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
+
+    private static final Logger logger = LoggerFactory.getLogger(MasterSlaveGroupDataSourceHolder.class);
 
     private final TAtomDataSource masterDataSource;
 
@@ -65,6 +70,10 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
         this.existLearner = slaveOtherFollowerDataSources.size() > 0;
         this.slaveDataSources = existLearner ? slaveOtherFollowerDataSources : followerDataSources;
         this.slaveStorageIds = existLearner ? slaveOtherFollowerIds : followerIds;
+        logger.info(String.format("finish init the datasourceHolder with %s slave datasource on [%s], %s "
+                + "follower datasource on [%s]", slaveOtherFollowerDataSources.size(),
+            Joiner.on(",").join(slaveOtherFollowerIds),
+            followerDataSources.size(), Joiner.on(",").join(followerIds)));
     }
 
     @Override
@@ -87,7 +96,9 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
             }
             return selectLowDelaySlaveDataSource(true);
         case SLAVE_ONLY:
-            //FIXME 只有一个备库的时候，则直接选择(即便不允许备库读的DN也会被强制路由)
+            if (GeneralUtil.isEmpty(slaveDataSources)) {
+                return masterDataSource;
+            }
             if (slaveDataSources.size() == 1) {
                 return slaveDataSources.get(0);
             }
@@ -99,7 +110,7 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
     }
 
     private TAtomDataSource selectSlaveDataSource() {
-        Map<String, StorageStatus> statusMap = StorageStatusManager.getInstance().getStorageStatus();
+        Map<String, StorageStatus> statusMap = getAllowRouteStorages();
         int startIndex = random.nextInt(slaveDataSources.size());
         //基于延迟和负载均衡策略，选择符合要求的备库路由
         for (int i = 0; i < slaveStorageIds.size(); i++) {
@@ -126,13 +137,11 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
                 startIndex = 0;
             }
         }
-
-        //FIXME 若都不满足要求，则选择第一个路由(即便不允许备库读的DN也会被强制路由)
         return slaveDataSources.get(startIndex);
     }
 
     private TAtomDataSource selectLowDelaySlaveDataSource(boolean forceMaster) {
-        Map<String, StorageStatus> statusMap = StorageStatusManager.getInstance().getAllowReadLearnerStorageMap();
+        Map<String, StorageStatus> statusMap = getAllowRouteStorages();
 
         int startIndex = random.nextInt(slaveDataSources.size());
         List<Pair<String, Integer>> lowDelayIds = new ArrayList<>();
@@ -167,5 +176,9 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
             //如果负载低的备库，则选择第一个路由
             return slaveDataSources.get(lowDelayIds.get(0).getValue());
         }
+    }
+
+    public Map<String, StorageStatus> getAllowRouteStorages() {
+        return StorageStatusManager.getInstance().getStorageStatus();
     }
 }

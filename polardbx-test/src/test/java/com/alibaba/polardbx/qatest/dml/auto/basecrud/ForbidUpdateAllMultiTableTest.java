@@ -38,6 +38,7 @@ import static org.hamcrest.CoreMatchers.is;
  * @author arnkore 2017-04-18 20:55
  */
 
+
 public class ForbidUpdateAllMultiTableTest extends AutoCrudBasedLockTestCase {
     private final String tddlHint =
         "/*+TDDL:cmd_extra(FORBID_EXECUTE_DML_ALL=true,ENABLE_COMPLEX_DML_CROSS_DB=true,COMPLEX_DML_WITH_TRX=false)*/";

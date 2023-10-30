@@ -176,6 +176,24 @@ public class SqlFunction extends SqlOperator {
             && (returnTypeInference == null));
     }
 
+    // TODO whether we should remove this
+    public SqlFunction(
+        SqlIdentifier identifier,
+        String name,
+        SqlKind kind,
+        SqlReturnTypeInference returnTypeInference,
+        SqlOperandTypeInference operandTypeInference,
+        SqlOperandTypeChecker operandTypeChecker,
+        SqlFunctionCategory category) {
+        // We leave sqlIdentifier as null to indicate
+        // that this is a builtin.  Same for paramTypes.
+        this(name, identifier, kind, returnTypeInference, operandTypeInference,
+            operandTypeChecker, null, category);
+
+        assert !((category == SqlFunctionCategory.USER_DEFINED_CONSTRUCTOR)
+            && (returnTypeInference == null));
+    }
+
     /**
      * Creates a placeholder SqlFunction for an invocation of a function with a
      * possibly qualified name. This name must be resolved into either a builtin
@@ -447,6 +465,9 @@ public class SqlFunction extends SqlOperator {
 
     @Override
     public boolean canPushDown(boolean withScaleOut) {
+        if (withScaleOut && this instanceof SqlUserDefinedFunction) {
+            return false;
+        }
         return canPushDown();
     }
 

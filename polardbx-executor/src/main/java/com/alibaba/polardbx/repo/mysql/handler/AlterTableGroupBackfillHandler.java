@@ -35,6 +35,7 @@ import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGro
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupReporter;
 import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.AlterTableGroupFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -88,16 +89,20 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
         Map<String, Set<String>> sourcePhyTables = backfill.getSourcePhyTables();
         Map<String, Set<String>> targetPhyTables = backfill.getTargetPhyTables();
 
+        boolean useChangeSet = backfill.isUseChangeSet();
+
         int affectRows = 0;
         if (!sourcePhyTables.isEmpty()) {
             affectRows = backfillExecutor
-                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables, targetPhyTables, backfill.getMovePartitions());
+                .backfill(schemaName, logicalTable, executionContext, sourcePhyTables, targetPhyTables,
+                    backfill.getMovePartitions(), useChangeSet);
         }
 
         // Check target table immediately after backfill by default.
         assert !targetPhyTables.isEmpty();
         final boolean check =
-            executionContext.getParamManager().getBoolean(ConnectionParams.TABLEGROUP_REORG_CHECK_AFTER_BACKFILL);
+            executionContext.getParamManager().getBoolean(ConnectionParams.TABLEGROUP_REORG_CHECK_AFTER_BACKFILL)
+                && !useChangeSet;
         if (check) {
             final boolean useFastChecker =
                 FastChecker.isSupported(schemaName) &&
@@ -116,9 +121,10 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
     protected boolean fastCheckWithCatchEx(AlterTableGroupBackfill backfill, ExecutionContext executionContext) {
         boolean fastCheckSucc = false;
         try {
-            if(!backfill.getBroadcast()) {
+            if (!backfill.getBroadcast()) {
                 //if is not broadcast table, we execute fastcheck normally.
-                fastCheckSucc = fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(), backfill.getSourcePhyTables(), backfill.getTargetPhyTables());
+                fastCheckSucc = fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(),
+                    backfill.getSourcePhyTables(), backfill.getTargetPhyTables());
             } else {
                 /**
                  * FastChecker only allows checking one logic table each time.
@@ -126,9 +132,10 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
                  * */
                 Map<String, Set<String>> srcPhyDbAndTables = backfill.getSourcePhyTables();
                 int succeedCnt = 0;
-                for(Map.Entry<String, Set<String>> entry : backfill.getTargetPhyTables().entrySet()) {
+                for (Map.Entry<String, Set<String>> entry : backfill.getTargetPhyTables().entrySet()) {
                     Map<String, Set<String>> targetPhyTables = ImmutableMap.of(entry.getKey(), entry.getValue());
-                    if(!fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(), srcPhyDbAndTables, targetPhyTables)) {
+                    if (!fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(),
+                        srcPhyDbAndTables, targetPhyTables)) {
                         break;
                     } else {
                         succeedCnt++;
@@ -139,7 +146,7 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
         } catch (Throwable ex) {
             fastCheckSucc = false;
             String msg = String.format(
-                    "Failed to use fastChecker to check alter tablegroup backFill because of throwing exceptions,  so use old checker instead");
+                "Failed to use fastChecker to check alter tablegroup backFill because of throwing exceptions,  so use old checker instead");
             SQLRecorderLogger.ddlLogger.warn(msg, ex);
         }
         return fastCheckSucc;

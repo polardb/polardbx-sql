@@ -17,16 +17,14 @@
 package com.alibaba.polardbx.rpc;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamAccessor;
-import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamRecord;
-import com.alibaba.polardbx.gms.metadb.cdc.CdcDataAccessor;
-import com.alibaba.polardbx.gms.metadb.cdc.CdcDumperRecord;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.net.util.CdcTargetUtil;
 import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc;
 import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceBlockingStub;
 import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceStub;
@@ -35,18 +33,16 @@ import com.alibaba.polardbx.rpc.cdc.DumpStream;
 import io.grpc.Context;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Optional;
+import java.sql.Statement;
 import java.util.concurrent.TimeUnit;
 
-/**
- *
- */
 public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
     protected static final Logger logger = LoggerFactory.getLogger(CdcRpcClient.class);
 
@@ -56,49 +52,13 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
     }
 
     public static void buildCdcRpcClient() {
-        cdcRpcClient = null;
         cdcRpcClient = new CdcRpcClient();
         cdcRpcClient.init();
     }
 
-    private static String getCdcTargetFromMetaDb() {
-        CdcDataAccessor cdcDataAccessor = new CdcDataAccessor();
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            cdcDataAccessor.setConnection(metaDbConn);
-            List<CdcDumperRecord> dumpers = cdcDataAccessor.getAllCdcDumpers();
-            if (dumpers == null) {
-                return null;
-            }
-            Optional<CdcDumperRecord> master = dumpers.stream().findFirst();
-            if (master.isPresent()) {
-                CdcDumperRecord cdr = master.get();
-                return cdr.getIp() + ":" + cdr.getPort();
-            }
-        } catch (Exception e) {
-            logger.error("get cdc records fail", e);
-        }
-        return StringUtils.EMPTY;
-    }
-
-    private static String getCdcTargetFromMetaDb(String streamName) {
-        BinlogStreamAccessor cdcDataAccessor = new BinlogStreamAccessor();
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            cdcDataAccessor.setConnection(metaDbConn);
-            List<BinlogStreamRecord> dumpers = cdcDataAccessor.getStream(streamName);
-            if (dumpers == null || dumpers.size() == 0) {
-                throw new TddlNestableRuntimeException("can not find target cdc endpoint for stream: " + streamName);
-            }
-            BinlogStreamRecord cdr = dumpers.get(0);
-            return cdr.getHost() + ":" + cdr.getPort();
-        } catch (SQLException e) {
-            logger.error("get cdc records fail", e);
-            throw new TddlNestableRuntimeException("get cdc records fail for stream: " + streamName);
-        }
-    }
-
     public CdcServiceBlockingStub getCdcServiceBlockingStub() {
         ManagedChannel channel = ManagedChannelBuilder
-            .forTarget(getCdcTargetFromMetaDb())
+            .forTarget(CdcTargetUtil.getDumperMasterTarget())
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
             .build();
@@ -107,7 +67,7 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
 
     public CdcServiceBlockingStub getCdcServiceBlockingStub(String streamName) {
         ManagedChannel channel = ManagedChannelBuilder
-            .forTarget(getCdcTargetFromMetaDb(streamName))
+            .forTarget(CdcTargetUtil.getDumperTarget(streamName))
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
             .build();
@@ -116,9 +76,10 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
 
     public CdcServiceStub getCdcServiceStub() {
 
-        ManagedChannel channel = ManagedChannelBuilder
-            .forTarget(getCdcTargetFromMetaDb())
+        ManagedChannel channel = NettyChannelBuilder
+            .forTarget(CdcTargetUtil.getDumperMasterTarget())
             .usePlaintext()
+            .flowControlWindow(1048576 * 500)
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
             .build();
         return CdcServiceGrpc.newStub(channel);
@@ -128,10 +89,11 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
         if (StringUtils.isEmpty(streamName)) {
             return getCdcServiceStub();
         }
-        ManagedChannel channel = ManagedChannelBuilder
-            .forTarget(getCdcTargetFromMetaDb(streamName))
+        ManagedChannel channel = NettyChannelBuilder
+            .forTarget(CdcTargetUtil.getDumperTarget(streamName))
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
+            .flowControlWindow(1048576 * 500)
             .build();
         return CdcServiceGrpc.newStub(channel);
     }
@@ -147,7 +109,18 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
      */
     public static boolean useCdc() {
         if (ConfigDataMode.isPolarDbX()) {
-            return getCdcTargetFromMetaDb() != null;
+            try (Connection connection = MetaDbDataSource.getInstance().getConnection();
+                Statement stmt = connection.createStatement()) {
+                try (ResultSet ignored = stmt.executeQuery("SHOW COLUMNS FROM BINLOG_NODE_INFO")) {
+                    return true;
+                }
+            } catch (SQLException e) {
+                if (e.getErrorCode() == ErrorCode.ER_NO_SUCH_TABLE.getCode()) {
+                    return false;
+                } else {
+                    throw new TddlNestableRuntimeException("", e);
+                }
+            }
         } else {
             return false;
         }

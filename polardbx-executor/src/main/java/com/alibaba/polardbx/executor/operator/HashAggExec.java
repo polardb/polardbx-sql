@@ -25,12 +25,14 @@ import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.operator.spill.MemoryRevoker;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.AggOpenHashMap;
+import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.executor.operator.util.SpillableAggHashMap;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 
@@ -55,7 +57,8 @@ public class HashAggExec extends AbstractHashAggExec implements ConsumerExecutor
         int expectedGroups,
         ExecutionContext context) {
         this(inputDataTypes, groups, aggregators, outputColumns,
-            collectDataTypes(outputColumns, groups.length, outputColumns.size()), expectedGroups, null, context);
+            AggregateUtils.collectDataTypes(outputColumns, groups.length, outputColumns.size()), expectedGroups, null,
+            context);
     }
 
     public HashAggExec(
@@ -67,7 +70,8 @@ public class HashAggExec extends AbstractHashAggExec implements ConsumerExecutor
         SpillerFactory spillerFactory,
         ExecutionContext context) {
         this(inputDataTypes, groups, aggregators, outputColumns,
-            collectDataTypes(outputColumns, groups.length, outputColumns.size()), expectedGroups, spillerFactory,
+            AggregateUtils.collectDataTypes(outputColumns, groups.length, outputColumns.size()), expectedGroups,
+            spillerFactory,
             context);
     }
 
@@ -83,9 +87,9 @@ public class HashAggExec extends AbstractHashAggExec implements ConsumerExecutor
         super(groups, aggregators, outputColumns, context);
         this.expectedGroups = expectedGroups;
         this.spillerFactory = spillerFactory;
-        this.groupKeyType = collectDataTypes(inputDataTypes, groups);
+        this.groupKeyType = AggregateUtils.collectDataTypes(inputDataTypes, groups);
         this.aggValueType = aggValueType;
-        this.inputType = collectDataTypes(inputDataTypes);
+        this.inputType = AggregateUtils.collectDataTypes(inputDataTypes);
         this.inputKeyChunkGetter = Converters.createChunkConverter(inputDataTypes, groups, groupKeyType, context);
 
     }
@@ -109,7 +113,6 @@ public class HashAggExec extends AbstractHashAggExec implements ConsumerExecutor
         } else {
             hashTable = new SpillableAggHashMap(groupKeyType, aggregators, aggValueType, outputColumnMeta, inputType,
                 expectedGroups, chunkLimit, context, memoryAllocator, spillerFactory);
-
         }
         //FIXME The allocate memory for the initial hashMap can't be release in fact!
         //memoryAllocator.allocateReservedMemory(hashTable.estimateSize());

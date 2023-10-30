@@ -39,7 +39,7 @@ public class SelectLiteralNumber {
         header.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore, long value) {
+    public static boolean response(ServerConnection c, boolean hasMore, long value) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -54,9 +54,11 @@ public class SelectLiteralNumber {
         proxy = field.write(proxy);
 
         // write eof
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = ++packetId;
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++packetId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
@@ -74,6 +76,7 @@ public class SelectLiteralNumber {
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 
 }

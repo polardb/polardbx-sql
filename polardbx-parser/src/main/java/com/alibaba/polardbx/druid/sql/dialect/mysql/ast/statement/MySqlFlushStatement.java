@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
@@ -54,7 +55,6 @@ public class MySqlFlushStatement extends MySqlStatementImpl {
     private boolean userResources;
     private boolean tableOption;
     private SQLIntegerExpr version; // for ads
-
 
     public boolean isNoWriteToBinlog() {
         return noWriteToBinlog;
@@ -257,5 +257,10 @@ public class MySqlFlushStatement extends MySqlStatementImpl {
 
     public void setMaster(boolean master) {
         this.master = master;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

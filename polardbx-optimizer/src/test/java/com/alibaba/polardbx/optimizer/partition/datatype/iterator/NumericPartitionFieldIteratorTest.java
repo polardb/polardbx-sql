@@ -124,15 +124,6 @@ public class NumericPartitionFieldIteratorTest {
         }
     }
 
-    public static void main(String[] args) {
-        for (Int64Range range : Int64Range.values()) {
-            System.out.println("=======");
-            System.out.println(range.name());
-            System.out.println(range.generator.get());
-            System.out.println();
-        }
-    }
-
     @Test
     public void test() {
         testInterval(true, false, false);
@@ -150,7 +141,7 @@ public class NumericPartitionFieldIteratorTest {
 
         // normal:
         Int64Range[] int64Ranges = Int64Range.values();
-        for(int i = 0; i < int64Ranges.length; i++) {
+        for (int i = 0; i < int64Ranges.length; i++) {
             for (int j = i + 1; j < int64Ranges.length; j++) {
                 f1.reset();
                 f2.reset();

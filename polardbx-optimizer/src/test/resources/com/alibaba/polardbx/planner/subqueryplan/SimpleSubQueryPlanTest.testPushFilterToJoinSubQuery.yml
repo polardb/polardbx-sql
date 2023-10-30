@@ -72,7 +72,7 @@
       bkajoin(condition="name = name", type="inner")
         logicalview(tables="optest_0002.test_hash_tb2", sql="select `name` from `test_hash_tb2` as `test_hash_tb2` where ((`id` = 2) and (`name` = 'abc'))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (((`int_col3` = 5) and (`name` = 'abc')) and (`name` in (...)))")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where ((`int_col3` = 5) and (`name` = 'abc') and (`name` in (...)))")
 
 - sql: |
     select a.id, a.name
@@ -92,4 +92,4 @@
 
 
   plan: |
-    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb4_0]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` where (`test_hash_tb`.`int_col3` = 5)) as `a` inner join (select `test_hash_tb4`.`id`, `test_hash_tb4`.`name`, `test_hash_tb4`.`create_time`, `test_hash_tb4`.`int_col1`, `test_hash_tb4`.`int_col2`, `test_hash_tb4`.`int_col3`, `test_hash_tb4`.`int_col4`, `test_hash_tb4`.`int_col5`, `test_hash_tb4`.`int_col6` from ? as `test_hash_tb4` where (`test_hash_tb4`.`id` = 2)) as `b` on (`b`.`name` = `a`.`name`) where ((((`a`.`id` = `b`.`id`) and (`b`.`name` = 'xx')) and (`a`.`int_col1` = `b`.`int_col2`)) and (`a`.`int_col3` = `a`.`int_col1`))")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb4_0]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` where (`test_hash_tb`.`int_col3` = 5)) as `a` inner join (select `test_hash_tb4`.`id`, `test_hash_tb4`.`name`, `test_hash_tb4`.`create_time`, `test_hash_tb4`.`int_col1`, `test_hash_tb4`.`int_col2`, `test_hash_tb4`.`int_col3`, `test_hash_tb4`.`int_col4`, `test_hash_tb4`.`int_col5`, `test_hash_tb4`.`int_col6` from ? as `test_hash_tb4` where (`test_hash_tb4`.`id` = 2)) as `b` on (`b`.`name` = `a`.`name`) where ((`a`.`id` = `b`.`id`) and (`b`.`name` = 'xx') and (`a`.`int_col1` = `b`.`int_col2`) and (`a`.`int_col3` = `a`.`int_col1`))")

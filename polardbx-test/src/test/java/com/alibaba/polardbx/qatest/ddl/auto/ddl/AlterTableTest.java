@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.collections.MapUtils;
@@ -53,7 +53,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 @NotThreadSafe
 @RunWith(Parameterized.class)
-public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
+public class AlterTableTest extends DDLBaseNewDBTestCase {
 
     final static Log log = LogFactory.getLog(AlterTableTest.class);
     private String tableName = "";
@@ -153,7 +153,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column id int not null comment 'new comment'", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "not supported", "can't modify shard column");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(
             "/*TDDL:ENABLE_ALTER_SHARD_KEY=TRUE*/alter table %s modify column id int not null comment 'new comment'",
@@ -445,7 +445,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column a char", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
     }
@@ -460,7 +460,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column id  varchar(100)", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
     }
@@ -752,7 +752,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            isMySQL80() ? "optimize error by Referenced identifier" :
+                "Not all physical DDLs have been executed successfully"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -817,7 +818,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         String sql = "create table %s(c1 int not null primary key, c2 int, c3 int) partition by hash(c1)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
-        sql = "select * from %s where c1 > 10";
+        sql = "analyze table %s";
         JdbcUtil.executeSuccess(tddlConnection, String.format(sql, tableName));
         checkVirtualStatistics(simpleTableName, new String[] {"c1", "c2", "c3"});
 
@@ -839,7 +840,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAlterTableAddColumnWithKeys() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
@@ -1342,8 +1342,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<Integer, String> columnPositions = new HashMap<>();
         String sql = "select ordinal_position, column_name from information_schema.columns "
             + "where table_schema='%s' and table_name='%s' order by ordinal_position";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlConn = getMysqlConnection(phyDbName);
+            Statement stmt = mysqlConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 columnPositions.put(rs.getInt(1), rs.getString(2));
@@ -1379,7 +1379,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAlterTableAddIndex() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = randomTableName("test_add_index", 4);
@@ -1573,8 +1572,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<String, Map<Integer, String>> indexColumnInfo = new HashMap<>();
         String sql = "select index_name,seq_in_index,column_name from information_schema.statistics "
             + "where table_schema='%s' and table_name='%s' order by index_name,seq_in_index";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlConn = getMysqlDirectConnection(phyDbName);
+            Statement stmt = mysqlConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 String indexName = rs.getString(1);
@@ -1590,52 +1589,22 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     private Pair<String, String> fetchPhyDbAndTableNames(String schemaName, String tableName)
         throws SQLException {
-        String storageIP, storageId, phyDbName, phyTableName, dnId;
-        storageIP = storageId = phyDbName = phyTableName = dnId = "N/A";
+        String phyDbName, phyTableName;
+        phyDbName = phyTableName = "N/A";
 
-        String sql =
-            "select ip from storage_info "
-                + "where storage_inst_id like '%-gms%' or storage_inst_id like '%-meta%' limit 1";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
-            ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) {
-                storageIP = rs.getString(1);
-            }
-        }
-
-        // Returned ip may be real ip or storage instance id, so we have to query again.
-        sql = "select storage_inst_id from storage_info "
-            + "where (storage_inst_id like '%-dn%' or storage_inst_id like '%-master')and (storage_inst_id=? or ip=?)";
-        try (Connection metaDbConn = getMetaConnection();
-            PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
-
-            ps.setString(1, storageIP);
-            ps.setString(2, storageIP);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    storageId = rs.getString(1);
-                }
-            }
-        }
-
-        sql = "show topology from " + tableName;
+        String sql = "show topology from " + tableName + " order by group_name limit 1";
         try (Connection cnConn = getPolardbxConnection();
             Statement stmt = cnConn.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                dnId = rs.getString("DN_ID");
-                if (TStringUtil.equalsIgnoreCase(storageId, dnId)) {
-                    phyTableName = rs.getString("TABLE_NAME");
-                    phyDbName = rs.getString("PHY_DB_NAME");
-                    break;
-                }
+                phyTableName = rs.getString("TABLE_NAME");
+                phyDbName = rs.getString("PHY_DB_NAME");
+                break;
             }
         }
 
-        if (dnId.equals("N/A") || phyDbName.equals("N/A") || phyTableName.equals("N/A")) {
-            Assert.fail("Didn't find a DN that resides in the same storage instance as MetaDB");
+        if (phyDbName.equals("N/A") || phyTableName.equals("N/A")) {
+            Assert.fail("Didn't find physical db and tb");
         }
 
         String message = "Physical DB and Table chosen:\n" + phyDbName + ", " + phyTableName;
@@ -2756,61 +2725,30 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testGeneratedColumnsForbidden() {
-        final String tableName = "test_generated_columns";
-        final String createTable = "create table " + tableName + " (c1 int, c2 int, c3 int, c4 int, c5 int)";
-        final String alterTable = "alter table " + tableName + " %s";
-        final String expectedErrMsg = "Do not support generated columns";
+    public void testAlterTableDefaultCharset() {
+        String mytable = tableName;
+        dropTableIfExists(mytable);
+        String sql =
+            String.format("create table " + createOption + " %s(a int,b char) DEFAULT CHARSET = utf8mb4", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        dropTableIfExists(tableName);
-        JdbcUtil.executeSuccess(tddlConnection, createTable);
+        sql = String.format("alter table %s DEFAULT CHARACTER SET utf8mb4 collate utf8mb4_bin", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        String sql = String.format(alterTable, "modify c2 bigint as (c1+1)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+        try {
+            sql = String.format(
+                "select TABLE_COLLATION from information_schema.tables where table_schema = '%s' and table_name = '%s';",
+                tddlDatabase1, mytable);
 
-        sql = String.format(alterTable, "modify c2 bigint generated always as (c1+1)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            org.junit.Assert.assertTrue(rs.next());
+            org.junit.Assert.assertEquals(rs.getString(1), "utf8mb4_bin");
+        } catch (Exception e) {
+            e.printStackTrace();
+            org.junit.Assert.fail(e.getMessage());
+        }
 
-        sql = String.format(alterTable, "modify c2 bigint generated always as (c1+2) virtual");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "modify c2 bigint as (c1+3) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "modify c3 bigint generated always as (c1+3) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "change c4 c4 bigint as (c1+1)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "change c4 c4 bigint generated always as (c1+1)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "change c4 c4 bigint generated always as (c1+2) virtual");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "change c4 c4 bigint as (c1+3) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "change c5 c5 bigint generated always as (c1+3) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "add c6 int as (c1+4)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "add c7 int generated always as (c1+4)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "add c8 int generated always as (c1+5) virtual");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "add c9 int as (c1+6) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        sql = String.format(alterTable, "add cx int generated always as (c1+6) stored");
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, expectedErrMsg);
-
-        dropTableIfExists(tableName);
+        dropTableIfExists(mytable);
     }
 
     @Override

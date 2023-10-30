@@ -56,8 +56,8 @@ public class RebalanceDdlPlanManager {
     public RebalanceDdlPlanManager() {
     }
 
-    public void process(final DdlPlanRecord ddlPlanRecord){
-        switch (DdlPlanState.valueOf(ddlPlanRecord.getState())){
+    public void process(final DdlPlanRecord ddlPlanRecord) {
+        switch (DdlPlanState.valueOf(ddlPlanRecord.getState())) {
         case INIT:
             onInit(ddlPlanRecord);
             break;
@@ -73,26 +73,27 @@ public class RebalanceDdlPlanManager {
         }
     }
 
-    protected void onInit(final DdlPlanRecord ddlPlanRecord){
+    protected void onInit(final DdlPlanRecord ddlPlanRecord) {
         ddlPlanManager.submitNewRebalanceJobIfAssertTrue(ddlPlanRecord.getPlanId(), record -> {
-            if(record.getJobId() > 0){
+            if (record.getJobId() > 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already exist executing rebalance DDL");
             }
             String clusterLock = ActionUtils.genRebalanceClusterName();
-            boolean ok = ddlJobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(clusterLock));
+            boolean ok =
+                ddlJobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(clusterLock));
             if (!ok) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already exist executing rebalance DDL");
             }
         });
     }
 
-    protected void onExecuting(final DdlPlanRecord ddlPlanRecord){
+    protected void onExecuting(final DdlPlanRecord ddlPlanRecord) {
         final long jobId = ddlPlanRecord.getJobId();
         DdlEngineRecord ddlEngineRecord = ddlJobManager.fetchRecordByJobId(jobId);
-        if(ddlEngineRecord == null){
+        if (ddlEngineRecord == null) {
             ddlEngineRecord = ddlJobManager.fetchArchiveRecordByJobId(jobId);
         }
-        switch (DdlState.valueOf(ddlEngineRecord.state)){
+        switch (DdlState.valueOf(ddlEngineRecord.state)) {
         case QUEUED:
         case RUNNING:
         case ROLLBACK_RUNNING:
@@ -113,11 +114,11 @@ public class RebalanceDdlPlanManager {
         }
     }
 
-    protected void onSuccess(final DdlPlanRecord ddlPlanRecord){
+    protected void onSuccess(final DdlPlanRecord ddlPlanRecord) {
         //do nothing
     }
 
-    protected void onTerminated(final DdlPlanRecord ddlPlanRecord){
+    protected void onTerminated(final DdlPlanRecord ddlPlanRecord) {
         //do nothing
     }
 
@@ -125,18 +126,17 @@ public class RebalanceDdlPlanManager {
 
     /**
      * submit a new rebalance DDL JOB
-     * @param ddlPlanId
-     * @param originJobId
      */
-    protected void onDdlJobRollbackCompleted(long ddlPlanId, long originJobId){
+    protected void onDdlJobRollbackCompleted(long ddlPlanId, long originJobId) {
         ddlPlanManager.submitNewRebalanceJobIfAssertTrue(ddlPlanId, record -> {
             long jobId = record.getJobId();
-            if(jobId != originJobId){
+            if (jobId != originJobId) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already rescheduled rebalance DDL");
             }
 
             String clusterLock = ActionUtils.genRebalanceClusterName();
-            boolean ok = ddlJobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(clusterLock));
+            boolean ok =
+                ddlJobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(clusterLock));
             if (!ok) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already exist executing rebalance DDL");
             }
@@ -145,20 +145,23 @@ public class RebalanceDdlPlanManager {
             try {
                 Pair<Long, Long> pair = getBackFillCount(jobId, true);
                 CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
-                CostEstimableDdlTask.CostInfo costInfo = CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
-                CostEstimableDdlTask.CostInfo newCostInfo = CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
+                CostEstimableDdlTask.CostInfo costInfo =
+                    CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                CostEstimableDdlTask.CostInfo newCostInfo =
+                    CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
                 ddlPlanManager.updateCostInfo(ddlPlanId, newCostInfo);
-            }catch (Exception e){
+            } catch (Exception e) {
                 LOGGER.error("update cost info for ddl_plan error", e);
             }
         });
     }
 
-    protected void onDdlJobPaused(DdlPlanRecord ddlPlanRecord, DdlEngineRecord ddlEngineRecord){
-        if(needRetry(ddlPlanRecord.getRetryCount(), ddlPlanRecord.getGmtModified())){
+    protected void onDdlJobPaused(DdlPlanRecord ddlPlanRecord, DdlEngineRecord ddlEngineRecord) {
+        if (needRetry(ddlPlanRecord.getRetryCount(), ddlPlanRecord.getGmtModified())) {
             DdlState newState = DdlState.tryParse(ddlEngineRecord.pausedPolicy, DdlState.PAUSED);
-            if(newState == ddlJobManager.compareAndSetDdlState(ddlEngineRecord.jobId, DdlState.PAUSED, newState)){
-                LOGGER.info(String.format("update DDL JOB state:[%s] from PAUSED to %s", ddlEngineRecord.jobId, newState.name()));
+            if (newState == ddlJobManager.compareAndSetDdlState(ddlEngineRecord.jobId, DdlState.PAUSED, newState)) {
+                LOGGER.info(String.format("update DDL JOB state:[%s] from PAUSED to %s", ddlEngineRecord.jobId,
+                    newState.name()));
                 EventLogger.log(EventType.DDL_WARN,
                     String.format("FAILED TO CONTINUE DDL PLAN:[%s]", ddlPlanRecord.getPlanId()));
                 ddlPlanManager.incrementRetryCount(ddlPlanRecord.getPlanId());
@@ -166,12 +169,14 @@ public class RebalanceDdlPlanManager {
         }
     }
 
-    protected void onDdlJobRollbackPaused(DdlPlanRecord ddlPlanRecord, DdlEngineRecord ddlEngineRecord){
-        if(needRetry(ddlPlanRecord.getRetryCount(), ddlPlanRecord.getGmtModified())) {
+    protected void onDdlJobRollbackPaused(DdlPlanRecord ddlPlanRecord, DdlEngineRecord ddlEngineRecord) {
+        if (needRetry(ddlPlanRecord.getRetryCount(), ddlPlanRecord.getGmtModified())) {
             DdlState newState = DdlState.tryParse(ddlEngineRecord.rollbackPausedPolicy, DdlState.ROLLBACK_PAUSED);
-            if(newState == ddlJobManager.compareAndSetDdlState(ddlEngineRecord.jobId, DdlState.ROLLBACK_PAUSED, newState)){
+            if (newState == ddlJobManager.compareAndSetDdlState(ddlEngineRecord.jobId, DdlState.ROLLBACK_PAUSED,
+                newState)) {
                 LOGGER.info(
-                    String.format("update DDL JOB state:[%s] from ROLLBACK_PAUSED to %s", ddlEngineRecord.jobId, newState.name()));
+                    String.format("update DDL JOB state:[%s] from ROLLBACK_PAUSED to %s", ddlEngineRecord.jobId,
+                        newState.name()));
                 EventLogger.log(EventType.DDL_WARN,
                     String.format("FAILED TO CONTINUE DDL PLAN:[%s]", ddlPlanRecord.getPlanId()));
                 ddlPlanManager.incrementRetryCount(ddlPlanRecord.getPlanId());
@@ -179,8 +184,8 @@ public class RebalanceDdlPlanManager {
         }
     }
 
-    protected void onDdlJobCompleted(long ddlPlanId, long jobId){
-        new DdlPlanAccessorDelegate<Boolean>(){
+    protected void onDdlJobCompleted(long ddlPlanId, long jobId) {
+        new DdlPlanAccessorDelegate<Boolean>() {
             @Override
             protected Boolean invoke() {
                 DdlPlanRecord record = ddlPlanAccessor.queryForUpdate(ddlPlanId);
@@ -189,10 +194,12 @@ public class RebalanceDdlPlanManager {
                 try {
                     Pair<Long, Long> pair = getBackFillCount(jobId, true);
                     CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
-                    CostEstimableDdlTask.CostInfo costInfo = CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
-                    CostEstimableDdlTask.CostInfo newCostInfo = CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
+                    CostEstimableDdlTask.CostInfo costInfo =
+                        CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                    CostEstimableDdlTask.CostInfo newCostInfo =
+                        CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
                     ddlPlanAccessor.updateExtra(ddlPlanId, TaskHelper.encodeCostInfo(newCostInfo));
-                }catch (Exception e){
+                } catch (Exception e) {
                     LOGGER.error("update cost info for ddl_plan error", e);
                 }
 
@@ -207,14 +214,28 @@ public class RebalanceDdlPlanManager {
         LOGGER.info(String.format("schedule ddl_plan:[%s] SUCCESS", ddlPlanId));
     }
 
+    public void updateRebalanceScheduleState(long jobId, DdlPlanState ddlPlanState, String result) {
+        new DdlPlanAccessorDelegate<Boolean>() {
+            @Override
+            protected Boolean invoke() {
+                return ddlPlanAccessor.updateStateByJobId(
+                    ddlPlanState,
+                    result,
+                    jobId
+                );
+            }
+        }.execute();
+        LOGGER.info(String.format("update schedule by job_id:[%s] %s", jobId, ddlPlanState));
+    }
+
     /*****************************************************************************************/
 
-    private boolean needRetry(int retryCount, Date gmtModified){
-        if(retryCount == 0){
+    private boolean needRetry(int retryCount, Date gmtModified) {
+        if (retryCount == 0) {
             return true;
         }
         int minutes;
-        switch (retryCount){
+        switch (retryCount) {
         case 1:
             minutes = 5;
             break;
@@ -238,7 +259,7 @@ public class RebalanceDdlPlanManager {
             break;
         }
         LocalDateTime lastModified = LocalDateTime.ofInstant(gmtModified.toInstant(), ZoneId.systemDefault());
-        if(lastModified.plusMinutes(minutes).isBefore(LocalDateTime.now())){
+        if (lastModified.plusMinutes(minutes).isBefore(LocalDateTime.now())) {
             return true;
         }
         return false;
@@ -247,22 +268,19 @@ public class RebalanceDdlPlanManager {
     /**
      * left: finished Rows
      * right: total Rows
-     *
-     * @param jobId
-     * @return
      */
     private Pair<Long, Long> getBackFillCount(long jobId, boolean archive) {
         long successRowCount = 0L;
         long totalRowCount = 0L;
 
-        List<DdlEngineTaskRecord> allTasks = archive?
-                ddlJobManager.fetchAllSuccessiveTaskByJobIdInArchive(jobId):
-                ddlJobManager.fetchAllSuccessiveTaskByJobId(jobId);
+        List<DdlEngineTaskRecord> allTasks = archive ?
+            ddlJobManager.fetchAllSuccessiveTaskByJobIdInArchive(jobId) :
+            ddlJobManager.fetchAllSuccessiveTaskByJobId(jobId);
         List<DdlEngineTaskRecord> rootDdlJobTaskList =
-                allTasks.stream().filter(e->e.getJobId()==jobId).collect(Collectors.toList());
+            allTasks.stream().filter(e -> e.getJobId() == jobId).collect(Collectors.toList());
         //1. calculate total row count
-        for(DdlEngineTaskRecord record: rootDdlJobTaskList){
-            if(StringUtils.isEmpty(record.getCost())){
+        for (DdlEngineTaskRecord record : rootDdlJobTaskList) {
+            if (StringUtils.isEmpty(record.getCost())) {
                 continue;
             }
             CostEstimableDdlTask.CostInfo costInfo = TaskHelper.decodeCostInfo(record.getCost());
@@ -271,19 +289,17 @@ public class RebalanceDdlPlanManager {
 
         //2. calculate finished row count
         List<DdlEngineTaskRecord> backFillTaskList =
-                allTasks.stream().filter(e->StringUtils.containsIgnoreCase(e.getName(), "BackFill"))
-                        .collect(Collectors.toList());
-        List<Long> backFillIdList = backFillTaskList.stream().map(e->e.taskId).collect(Collectors.toList());
-        List<GsiBackfillManager.BackFillAggInfo> backFillAggInfoList = gsiBackfillManager.queryBackFillAggInfoById(backFillIdList);
+            allTasks.stream().filter(e -> StringUtils.containsIgnoreCase(e.getName(), "BackFill"))
+                .collect(Collectors.toList());
+        List<Long> backFillIdList = backFillTaskList.stream().map(e -> e.taskId).collect(Collectors.toList());
+        List<GsiBackfillManager.BackFillAggInfo> backFillAggInfoList =
+            gsiBackfillManager.queryBackFillAggInfoById(backFillIdList);
 
-        for(GsiBackfillManager.BackFillAggInfo aggInfo: backFillAggInfoList){
+        for (GsiBackfillManager.BackFillAggInfo aggInfo : backFillAggInfoList) {
             successRowCount += aggInfo.getSuccessRowCount();
         }
 
         return Pair.of(successRowCount, totalRowCount);
     }
-
-
-
 
 }

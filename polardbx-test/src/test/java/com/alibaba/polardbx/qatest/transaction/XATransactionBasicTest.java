@@ -19,6 +19,7 @@ package com.alibaba.polardbx.qatest.transaction;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -40,18 +41,27 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 public class XATransactionBasicTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 20;
+    private final String asyncCommit;
 
     private static final String SELECT_FROM = "SELECT pk, varchar_test, integer_test, char_test, blob_test, " +
         "tinyint_test, tinyint_1bit_test, smallint_test, mediumint_test, bit_test, bigint_test, float_test, " +
         "double_test, decimal_test, date_test, time_test, datetime_test, year_test FROM ";
 
-    @Parameters(name = "{index}:table={0}")
+    @Parameters(name = "{index}:table={0},asyncCommit={1}")
     public static List<String[]> prepare() {
-        return Arrays.asList(ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));
+        List<String[]> ret = new ArrayList<>();
+        String[] asyncCommit = {"TRUE", "FALSE"};
+        for (String ac : asyncCommit) {
+            for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
+                ret.add(new String[] {tables[0], ac});
+            }
+        }
+        return ret;
     }
 
-    public XATransactionBasicTest(String baseOneTableName) {
+    public XATransactionBasicTest(String baseOneTableName, String asyncCommit) {
         this.baseOneTableName = baseOneTableName;
+        this.asyncCommit = asyncCommit;
     }
 
     @Before
@@ -69,6 +79,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
             TableColumnGenerator.getBaseMinColum(), PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
 
@@ -82,6 +93,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         mysqlConnection.commit();
         tddlConnection.setAutoCommit(true);
         mysqlConnection.setAutoCommit(true);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     /**
@@ -89,6 +101,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
      */
     @Test
     public void testInsertMultiGroup() throws Exception {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
 
@@ -129,6 +142,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         mysqlConnection.commit();
         tddlConnection.setAutoCommit(true);
         mysqlConnection.setAutoCommit(true);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     /**
@@ -136,6 +150,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
      */
     @Test
     public void testUpdateWithAutoCommitTrue() throws Exception {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         String sql = "insert into " + baseOneTableName
             + "(pk, integer_test, date_test, timestamp_test, datetime_test, varchar_test, float_test)  values(?,?,?,?,?,?,?)";
         List<Object> param = new ArrayList<>();
@@ -162,6 +177,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
 
         sql = SELECT_FROM + baseOneTableName + " where pk=" + RANDOM_ID;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     /**
@@ -179,6 +195,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         param.add(columnDataGenerator.date_testValue);
         param.add(columnDataGenerator.float_testValue);
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
 
@@ -197,6 +214,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
 
         sql = SELECT_FROM + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     /**
@@ -213,6 +231,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         param.add(columnDataGenerator.date_testValue);
         param.add(columnDataGenerator.float_testValue);
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
 
@@ -237,6 +256,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
 
         sql = SELECT_FROM + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     @Test
@@ -245,6 +265,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
             TableColumnGenerator.getBaseMinColum(), PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
         tddlConnection.setAutoCommit(false);
         mysqlConnection.setAutoCommit(false);
 
@@ -275,6 +296,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         mysqlConnection.commit();
         tddlConnection.setAutoCommit(true);
         mysqlConnection.setAutoCommit(true);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
     }
 
     /**
@@ -292,6 +314,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
             "[\\s\\S]*" + "CorrelateApply" + "[\\s\\S]*");
 
         try {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = " + asyncCommit);
             tddlConnection.setAutoCommit(false);
             selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
         } catch (Exception e) {
@@ -299,6 +322,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
         } finally {
             tddlConnection.commit();
             tddlConnection.setAutoCommit(true);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_ASYNC_COMMIT = FALSE");
         }
     }
 }

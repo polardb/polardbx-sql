@@ -83,6 +83,10 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
         new String[] {"gbk", "gbk_chinese_ci"},
         new String[] {"gbk", "gbk_bin"},
 
+        new String[] {"gb18030", "gb18030_chinese_ci"},
+        new String[] {"gb18030", "gb18030_bin"},
+        new String[] {"gb18030", "gb18030_unicode_520_ci"},
+
         new String[] {"utf8", "utf8_general_ci"},
         new String[] {"utf8", "utf8_bin"},
         new String[] {"utf8", "utf8_unicode_ci"},
@@ -107,7 +111,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC ";
     private static final String OMC_FORCE_TYPE_CONVERSION = "OMC_FORCE_TYPE_CONVERSION=TRUE";
-    private static final String DISABLE_OMC_CHECKER = "OMC_CHECK_AFTER_BACK_FILL=FALSE";
+    private static final String DISABLE_OMC_CHECKER = "COL_CHECK_AFTER_BACK_FILL=FALSE";
     private static final String SELECT_COLUMN_TYPE = "select COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, "
         + "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, "
         + "CHARACTER_SET_NAME, COLLATION_NAME, COLUMN_TYPE "

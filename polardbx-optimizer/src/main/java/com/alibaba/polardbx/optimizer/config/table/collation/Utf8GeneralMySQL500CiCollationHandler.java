@@ -16,9 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.config.table.collation;
 
-import com.alibaba.polardbx.common.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.common.charset.CollationName;
-import com.alibaba.polardbx.common.collation.Utf8GeneralCiCollationHandler;
 
 public class Utf8GeneralMySQL500CiCollationHandler extends Utf8GeneralCiCollationHandler {
     public Utf8GeneralMySQL500CiCollationHandler(

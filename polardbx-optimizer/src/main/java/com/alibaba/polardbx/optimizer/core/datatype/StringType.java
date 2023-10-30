@@ -21,9 +21,9 @@ import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 
 import java.sql.ResultSet;

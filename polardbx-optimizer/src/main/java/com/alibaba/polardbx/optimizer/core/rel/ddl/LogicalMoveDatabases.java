@@ -35,6 +35,16 @@ public class LogicalMoveDatabases extends BaseDdlOperation {
         super(ddl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void preparedData() {
         MoveDatabase moveDatabase = (MoveDatabase) relDdl;
         SqlMoveDatabase sqlMoveDatabase = (SqlMoveDatabase) moveDatabase.sqlNode;

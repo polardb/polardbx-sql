@@ -26,13 +26,13 @@ public class MySqlAlterTableTest30 extends TestCase {
 
     public void test_alter_add_key() throws Exception {
         String sql = "ALTER TABLE test_table_normal\n" +
-                "ADD FOREIGN KEY (stuID)\n" +
-                "REFERENCES Persons(stuID);";
+            "ADD FOREIGN KEY (stuID)\n" +
+            "REFERENCES Persons(stuID);";
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         SQLStatement stmt = parser.parseStatementList().get(0);
         parser.match(Token.EOF);
         String output = SQLUtils.toMySqlString(stmt);
         Assert.assertEquals("ALTER TABLE test_table_normal\n" +
-                "\tADD FOREIGN KEY (stuID) REFERENCES Persons (stuID);", output);
+            "\tADD CONSTRAINT FOREIGN KEY (stuID) REFERENCES Persons (stuID);", output);
     }
 }

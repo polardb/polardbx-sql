@@ -34,7 +34,7 @@ public class SQLDropMaterializedViewStatement extends SQLStatementImpl implement
     }
 
     public SQLDropMaterializedViewStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

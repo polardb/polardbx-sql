@@ -21,10 +21,9 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepOp;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfoBuilder;
@@ -60,15 +59,12 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
     }
 
     protected PartitionTupleRouteInfo tryConvertPruneStepToTupleRouteIfNeed() {
-        if (this.pruneStepInfo != null && this.pruneStepInfo instanceof PartitionPruneStepOp) {
-            try {
-                PartitionTupleRouteInfo tupleRouteInfo =
-                    PartitionTupleRouteInfoBuilder.generateTupleRoutingInfoFromPruneStepOp(
-                        (PartitionPruneStepOp) pruneStepInfo);
-                return tupleRouteInfo;
-            } catch (Throwable ex) {
-                logger.warn("Failed to convert point query to tuple route, exception is " + ex.getMessage(), ex);
-            }
+        try {
+            PartitionTupleRouteInfo tupleRouteInfo =
+                PartitionTupleRouteInfoBuilder.genTupleRoutingInfoFromPruneStep(pruneStepInfo);
+            return tupleRouteInfo;
+        } catch (Throwable ex) {
+            logger.warn("Failed to convert point query to tuple route, exception is " + ex.getMessage(), ex);
         }
         return null;
     }
@@ -80,10 +76,10 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
         PartPrunedResult prunedResult = null;
         if (tupleRouteInfo != null) {
             prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
-            phyPartInfos = prunedResult.getPrunedPartitions();
+            phyPartInfos = prunedResult.getPrunedParttions();
         } else {
             prunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, executionContext);
-            phyPartInfos = prunedResult.getPrunedPartitions();
+            phyPartInfos = prunedResult.getPrunedParttions();
         }
 
         String grpKey = null;
@@ -93,9 +89,9 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
              * When no found any partitions in SingleTableOperation, use last partition as default.
              * It can be optimized to zero scan later
              */
-            int partCnt = prunedResult.getPartInfo().getPartitionBy().getPartitions().size();
+            int partCnt = prunedResult.getPartInfo().getPartitionBy().getPhysicalPartitions().size();
             PartitionLocation location =
-                prunedResult.getPartInfo().getPartitionBy().getPartitions().get(partCnt - 1).getLocation();
+                prunedResult.getPartInfo().getPartitionBy().getPhysicalPartitions().get(partCnt - 1).getLocation();
             grpKey = location.getGroupKey();
             phyTbl = location.getPhyTableName();
         } else if (phyPartInfos.size() == 1) {

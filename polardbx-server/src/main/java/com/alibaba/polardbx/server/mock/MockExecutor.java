@@ -100,6 +100,7 @@ import org.apache.commons.lang.StringUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -327,6 +328,11 @@ public class MockExecutor {
                     this.hashCode());
                 throw new RuntimeException(error);
             }
+        }
+
+        @Override
+        public Collection<TableMeta> getAllTables() {
+            return tableMetaMap.values();
         }
 
         public TableMeta buildDualTable() {

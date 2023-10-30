@@ -160,4 +160,5 @@ public class BigIntegerBlock extends AbstractCommonBlock {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data);
         elementUsedBytes = Byte.BYTES * positionCount + LENGTH * positionCount;
     }
+
 }

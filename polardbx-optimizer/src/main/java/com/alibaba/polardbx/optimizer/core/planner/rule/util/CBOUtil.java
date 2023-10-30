@@ -17,24 +17,24 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
-import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.OrcTableScanRule;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
-import com.google.common.base.Predicate;
-import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.metadb.table.TablesExtAccessor;
+import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -44,6 +44,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlAggRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlCorrelateRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlJoinRule;
@@ -51,12 +52,15 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlMultiJoinToLogicalJ
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlSortRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.MysqlTableScanRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.OrcTableScanRule;
 import com.alibaba.polardbx.optimizer.core.rel.CheckBkaJoinRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.view.DrdsViewTable;
 import com.google.common.base.Predicate;
@@ -116,7 +120,9 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.util.mapping.MappingType;
 import org.apache.calcite.util.mapping.Mappings;
+import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -125,6 +131,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_TABLE;
 
 public class CBOUtil {
 
@@ -147,11 +155,9 @@ public class CBOUtil {
 
         LogicalSort sort;
         if (traitSetSatisfyCollation(logicalView.getTraitSet(), relCollation)) {
-            sort = LogicalSort
-                .create(logicalView.getPushedRelNode(), RelCollations.EMPTY, offset, originalSort.fetch);
+            sort = LogicalSort.create(logicalView.getPushedRelNode(), RelCollations.EMPTY, offset, originalSort.fetch);
         } else {
-            sort = LogicalSort
-                .create(logicalView.getPushedRelNode(), relCollation, offset, originalSort.fetch);
+            sort = LogicalSort.create(logicalView.getPushedRelNode(), relCollation, offset, originalSort.fetch);
         }
 
         LogicalView newLogicalView = logicalView.copy(originalSort.getTraitSet().replace(relCollation));
@@ -177,8 +183,8 @@ public class CBOUtil {
             sort = LogicalSort.create(logicalView.getPushedRelNode(), relCollation, null, fetch);
         }
 
-        LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet().replace(relCollation).replace(
-            DrdsConvention.INSTANCE));
+        LogicalView newLogicalView =
+            logicalView.copy(logicalView.getTraitSet().replace(relCollation).replace(DrdsConvention.INSTANCE));
         newLogicalView.push(sort);
         return newLogicalView;
     }
@@ -187,8 +193,8 @@ public class CBOUtil {
         RexBuilder builder = originalSort.getCluster().getRexBuilder();
         RexNode fetch = originalSort.fetch;
         if (originalSort.offset != null && originalSort.fetch != null) {
-            Map<Integer, ParameterContext> parameterContextMap = PlannerContext.getPlannerContext(
-                originalSort).getParams().getCurrentParameter();
+            Map<Integer, ParameterContext> parameterContextMap =
+                PlannerContext.getPlannerContext(originalSort).getParams().getCurrentParameter();
 
             if (originalSort.fetch instanceof RexDynamicParam || originalSort.offset instanceof RexDynamicParam) {
                 /**
@@ -220,9 +226,9 @@ public class CBOUtil {
         return false;
     }
 
-    public static boolean checkHashJoinCondition(
-        Join join, RexNode condition, int leftBound,
-        RexNodeHolder equalConditionHolder, RexNodeHolder otherConditionHolder) {
+    public static boolean checkHashJoinCondition(Join join, RexNode condition, int leftBound,
+                                                 RexNodeHolder equalConditionHolder,
+                                                 RexNodeHolder otherConditionHolder) {
         boolean canHashJoin = false;
 
         if (condition == null) {
@@ -279,8 +285,7 @@ public class CBOUtil {
                         if (otherCondition == null) {
                             otherCondition = otherConditionHolder.getRexNode();
                         } else {
-                            otherCondition = join.getCluster().getRexBuilder().makeCall(
-                                SqlStdOperatorTable.AND,
+                            otherCondition = join.getCluster().getRexBuilder().makeCall(SqlStdOperatorTable.AND,
                                 Arrays.asList(otherCondition, otherConditionHolder.getRexNode()));
                         }
                         otherConditionHolder.setRexNode(null);
@@ -290,8 +295,7 @@ public class CBOUtil {
                         if (equalCondition == null) {
                             equalCondition = equalConditionHolder.getRexNode();
                         } else {
-                            equalCondition = join.getCluster().getRexBuilder().makeCall(
-                                SqlStdOperatorTable.AND,
+                            equalCondition = join.getCluster().getRexBuilder().makeCall(SqlStdOperatorTable.AND,
                                 Arrays.asList(equalCondition, equalConditionHolder.getRexNode()));
                         }
                         equalConditionHolder.setRexNode(null);
@@ -326,8 +330,8 @@ public class CBOUtil {
 
         if (DataTypeUtil.equalsSemantically(dt1, dt2)) {
             return true;
-        } else if ((DataTypeUtil.isNumberSqlType(dt1) || DataTypeUtil.isStringSqlType(dt1)) &&
-            (DataTypeUtil.isNumberSqlType(dt2) || DataTypeUtil.isStringSqlType(dt2))) {
+        } else if ((DataTypeUtil.isNumberSqlType(dt1) || DataTypeUtil.isStringSqlType(dt1)) && (
+            DataTypeUtil.isNumberSqlType(dt2) || DataTypeUtil.isStringSqlType(dt2))) {
             return true;
         } else {
             return false;
@@ -356,8 +360,7 @@ public class CBOUtil {
             }
         } else if (DataTypeUtil.equalsSemantically(dt1, DataTypes.BooleanType)) {
             // BooleanType may come from tinyint(1) which will mis-match
-            if (!DataTypeUtil.isStringSqlType(dt2)
-                && !DataTypeUtil.isNumberSqlType(dt2)
+            if (!DataTypeUtil.isStringSqlType(dt2) && !DataTypeUtil.isNumberSqlType(dt2)
                 && !DataTypeUtil.equalsSemantically(dt2, DataTypes.BooleanType)) {
                 return false;
             } else {
@@ -450,6 +453,7 @@ public class CBOUtil {
         HepPlanner planner = new HepPlanner(builder.build());
         planner.stopOptimizerTrace();
         planner.setRoot(plan);
+
         return planner.findBestExp();
     }
 
@@ -473,9 +477,9 @@ public class CBOUtil {
     public static RelCollation createRelCollation(List<Integer> sortColumns, List<RelFieldCollation> other) {
         List<RelFieldCollation> toAdd = new ArrayList<>();
         for (Integer index : sortColumns) {
-            RelFieldCollation relFieldCollationTemp = new RelFieldCollation(index,
-                RelFieldCollation.Direction.ASCENDING,
-                RelFieldCollation.NullDirection.FIRST);
+            RelFieldCollation relFieldCollationTemp =
+                new RelFieldCollation(index, RelFieldCollation.Direction.ASCENDING,
+                    RelFieldCollation.NullDirection.FIRST);
             toAdd.add(relFieldCollationTemp);
         }
         if (other != null) {
@@ -546,13 +550,13 @@ public class CBOUtil {
                         } else if (indexOp1 < leftBound) {
                             relColumnOrigin1 =
                                 relMetadataQuery.getColumnOrigin(join.getLeft(), ((RexInputRef) operand1).getIndex());
-                            relColumnOrigin2 = relMetadataQuery
-                                .getColumnOrigin(join.getRight(), ((RexInputRef) operand2).getIndex() - leftBound);
+                            relColumnOrigin2 = relMetadataQuery.getColumnOrigin(join.getRight(),
+                                ((RexInputRef) operand2).getIndex() - leftBound);
                         } else {
                             relColumnOrigin2 =
                                 relMetadataQuery.getColumnOrigin(join.getLeft(), ((RexInputRef) operand2).getIndex());
-                            relColumnOrigin1 = relMetadataQuery
-                                .getColumnOrigin(join.getRight(), ((RexInputRef) operand1).getIndex() - leftBound);
+                            relColumnOrigin1 = relMetadataQuery.getColumnOrigin(join.getRight(),
+                                ((RexInputRef) operand1).getIndex() - leftBound);
                         }
 
                         if (relColumnOrigin1 != null && relColumnOrigin2 != null) {
@@ -600,8 +604,7 @@ public class CBOUtil {
                         if (otherCondition == null) {
                             otherCondition = otherConditionHolder.getRexNode();
                         } else {
-                            otherCondition = join.getCluster().getRexBuilder().makeCall(
-                                SqlStdOperatorTable.AND,
+                            otherCondition = join.getCluster().getRexBuilder().makeCall(SqlStdOperatorTable.AND,
                                 Arrays.asList(otherCondition, otherConditionHolder.getRexNode()));
                         }
                         otherConditionHolder.setRexNode(null);
@@ -734,8 +737,7 @@ public class CBOUtil {
         int ascCount = 0;
         int descCount = 0;
         for (RelFieldCollation relFieldCollation : sort.getCollation().getFieldCollations()) {
-            RelColumnOrigin relColumnOrigin = mq.getColumnOrigin(sort.getInput(),
-                relFieldCollation.getFieldIndex());
+            RelColumnOrigin relColumnOrigin = mq.getColumnOrigin(sort.getInput(), relFieldCollation.getFieldIndex());
             if (relColumnOrigin == null) {
                 return null;
             }
@@ -848,6 +850,7 @@ public class CBOUtil {
         HepPlanner planner = new HepPlanner(builder.build());
         planner.stopOptimizerTrace();
         planner.setRoot(rel);
+
         RelNode output = planner.findBestExp();
         return output;
     }
@@ -910,8 +913,7 @@ public class CBOUtil {
     }
 
     public static org.apache.calcite.util.Pair<RelTraitSet, List<RelTraitSet>> passThroughTraitsForJoin(
-        RelTraitSet required, Join join, JoinRelType joinType,
-        int leftInputFieldCount, RelTraitSet joinTraitSet) {
+        RelTraitSet required, Join join, JoinRelType joinType, int leftInputFieldCount, RelTraitSet joinTraitSet) {
 
         if (required.getConvention() != joinTraitSet.getConvention()) {
             return null;
@@ -925,9 +927,7 @@ public class CBOUtil {
         final RelDistribution rightDistribution = RelDistributions.ANY;
 
         RelCollation collation = required.getCollation();
-        if (collation == null
-            || collation == RelCollations.EMPTY
-            || joinType == JoinRelType.FULL
+        if (collation == null || collation == RelCollations.EMPTY || joinType == JoinRelType.FULL
             || joinType == JoinRelType.RIGHT) {
             return null;
         }
@@ -942,36 +942,28 @@ public class CBOUtil {
         RelTraitSet passthroughTraitSet =
             joinTraitSet.replace(collation).replace(required.getTrait(RelDistributionTraitDef.INSTANCE));
         return org.apache.calcite.util.Pair.of(passthroughTraitSet,
-            ImmutableList.of(
-                passthroughTraitSet.replace(leftDistribution),
+            ImmutableList.of(passthroughTraitSet.replace(leftDistribution),
                 passthroughTraitSet.replace(RelCollations.EMPTY).replace(rightDistribution)));
     }
 
     public static org.apache.calcite.util.Pair<RelTraitSet, List<RelTraitSet>> deriveTraitsForJoin(
-        RelTraitSet childTraits, int childId, JoinRelType joinType,
-        RelTraitSet joinTraitSet, RelTraitSet rightTraitSet) {
+        RelTraitSet childTraits, int childId, JoinRelType joinType, RelTraitSet joinTraitSet,
+        RelTraitSet rightTraitSet) {
         // should only derive traits (limited to collation for now) from left join input.
         assert childId == 0;
 
         RelCollation collation = childTraits.getCollation();
-        if (collation == null
-            || collation == RelCollations.EMPTY
-            || joinType == JoinRelType.FULL
+        if (collation == null || collation == RelCollations.EMPTY || joinType == JoinRelType.FULL
             || joinType == JoinRelType.RIGHT) {
             return null;
         }
 
         RelTraitSet derivedTraits = joinTraitSet.replace(collation);
-        return org.apache.calcite.util.Pair.of(
-            derivedTraits,
-            ImmutableList.of(derivedTraits, rightTraitSet));
+        return org.apache.calcite.util.Pair.of(derivedTraits, ImmutableList.of(derivedTraits, rightTraitSet));
     }
 
     public static org.apache.calcite.util.Pair<RelTraitSet, List<RelTraitSet>> passThroughTraitsForProject(
-        RelTraitSet required,
-        List<RexNode> exps,
-        RelDataType inputRowType,
-        RelDataTypeFactory typeFactory,
+        RelTraitSet required, List<RexNode> exps, RelDataType inputRowType, RelDataTypeFactory typeFactory,
         RelTraitSet currentTraits) {
         final RelCollation collation = required.getCollation();
         final RelDistribution distribution = required.getDistribution();
@@ -986,19 +978,15 @@ public class CBOUtil {
             }
         }
 
-        final Mappings.TargetMapping map =
-            RelOptUtil.permutationIgnoreCast(
-                exps, inputRowType);
+        final Mappings.TargetMapping map = RelOptUtil.permutationIgnoreCast(exps, inputRowType);
 
-        if (collation.getFieldCollations().stream().anyMatch(
-            rc -> !isCollationOnTrivialExpr(exps, typeFactory,
-                map, rc, true))) {
+        if (collation.getFieldCollations().stream()
+            .anyMatch(rc -> !isCollationOnTrivialExpr(exps, typeFactory, map, rc, true))) {
             return null;
         }
 
-        if (distribution.getKeys().stream().anyMatch(
-            key -> !isDistributionKeyOnTrivialExpr(exps, typeFactory,
-                map, key, true))) {
+        if (distribution.getKeys().stream()
+            .anyMatch(key -> !isDistributionKeyOnTrivialExpr(exps, typeFactory, map, key, true))) {
             return null;
         }
 
@@ -1010,8 +998,8 @@ public class CBOUtil {
     }
 
     public static org.apache.calcite.util.Pair<RelTraitSet, List<RelTraitSet>> deriveTraitsForProject(
-        RelTraitSet childTraits, int childId, List<RexNode> exps,
-        RelDataType inputRowType, RelDataTypeFactory typeFactory, RelTraitSet currentTraits) {
+        RelTraitSet childTraits, int childId, List<RexNode> exps, RelDataType inputRowType,
+        RelDataTypeFactory typeFactory, RelTraitSet currentTraits) {
         final RelCollation collation = childTraits.getCollation();
         final RelDistribution distribution = childTraits.getDistribution();
         final Convention convention = childTraits.getConvention();
@@ -1025,10 +1013,8 @@ public class CBOUtil {
             }
         }
 
-        final int maxField = Math.max(exps.size(),
-            inputRowType.getFieldCount());
-        Mappings.TargetMapping mapping = Mappings
-            .create(MappingType.FUNCTION, maxField, maxField);
+        final int maxField = Math.max(exps.size(), inputRowType.getFieldCount());
+        Mappings.TargetMapping mapping = Mappings.create(MappingType.FUNCTION, maxField, maxField);
         for (Ord<RexNode> node : Ord.zip(exps)) {
             if (node.e instanceof RexInputRef) {
                 mapping.set(((RexInputRef) node.e).getIndex(), node.i);
@@ -1049,15 +1035,13 @@ public class CBOUtil {
             }
         }
 
-        if (distribution.getKeys().stream().anyMatch(
-            key -> !isDistributionKeyOnTrivialExpr(exps, typeFactory,
-                mapping, key, false))) {
+        if (distribution.getKeys().stream()
+            .anyMatch(key -> !isDistributionKeyOnTrivialExpr(exps, typeFactory, mapping, key, false))) {
             return null;
         }
 
         if (collationFieldsToDerive.size() > 0 || !distribution.isTop()) {
-            final RelCollation newCollation = RelCollations
-                .of(collationFieldsToDerive).apply(mapping);
+            final RelCollation newCollation = RelCollations.of(collationFieldsToDerive).apply(mapping);
             final RelDistribution newDistribution = distribution.apply(mapping);
             return org.apache.calcite.util.Pair.of(currentTraits.replace(newCollation).replace(newDistribution),
                 ImmutableList.of(currentTraits.replace(collation).replace(distribution)));
@@ -1066,9 +1050,9 @@ public class CBOUtil {
         }
     }
 
-    private static boolean isCollationOnTrivialExpr(
-        List<RexNode> projects, RelDataTypeFactory typeFactory,
-        Mappings.TargetMapping map, RelFieldCollation fc, boolean passDown) {
+    private static boolean isCollationOnTrivialExpr(List<RexNode> projects, RelDataTypeFactory typeFactory,
+                                                    Mappings.TargetMapping map, RelFieldCollation fc,
+                                                    boolean passDown) {
         final int index = fc.getFieldIndex();
         int target = map.getTargetOpt(index);
         if (target < 0) {
@@ -1081,10 +1065,8 @@ public class CBOUtil {
             final RexCall cast = (RexCall) node;
             RelFieldCollation newFieldCollation = Objects.requireNonNull(RexUtil.apply(map, fc));
             final RexCallBinding binding =
-                RexCallBinding.create(typeFactory, cast,
-                    ImmutableList.of(RelCollations.of(newFieldCollation)));
-            if (cast.getOperator().getMonotonicity(binding)
-                == SqlMonotonicity.NOT_MONOTONIC) {
+                RexCallBinding.create(typeFactory, cast, ImmutableList.of(RelCollations.of(newFieldCollation)));
+            if (cast.getOperator().getMonotonicity(binding) == SqlMonotonicity.NOT_MONOTONIC) {
                 return false;
             }
         }
@@ -1127,8 +1109,37 @@ public class CBOUtil {
     };
 
     public static boolean isOss(ExecutionContext ec, String table) {
-        TableMeta tm = ec.getSchemaManager().getTable(table);
+        TableMeta tm = ec.getSchemaManager().getTableWithNull(table);
         return tm != null && Engine.isFileStore(tm.getEngine());
+    }
+
+    public static boolean isOss(String schema, String table) {
+        TableMeta tm = OptimizerContext.getContext(schema).getLatestSchemaManager().getTableWithNull(table);
+        return tm != null && Engine.isFileStore(tm.getEngine());
+    }
+
+    public static boolean isGsi(String schemaName, String tableName) {
+        if (StringUtils.isNotBlank(schemaName) && StringUtils.isNotBlank(tableName)) {
+            try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+                if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                    TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
+                    tablePartitionAccessor.setConnection(metaDbConn);
+                    List<TablePartitionRecord> partitionRecords =
+                        tablePartitionAccessor.getTablePartitionsByDbNameTbName(schemaName, tableName, false);
+                    return !partitionRecords.isEmpty()
+                        && partitionRecords.get(0).tblType == PARTITION_TABLE_TYPE_GSI_TABLE;
+                } else {
+                    TablesExtAccessor tablesExtAccessor = new TablesExtAccessor();
+                    tablesExtAccessor.setConnection(metaDbConn);
+                    TablesExtRecord tablesExtRecord = tablesExtAccessor.query(schemaName, tableName, false);
+                    return tablesExtRecord != null && tablesExtRecord.tableType == GsiMetaManager.TableType.GSI
+                        .getValue();
+                }
+            } catch (Exception e) {
+                throw new TddlNestableRuntimeException("check table is gsi failed!", e);
+            }
+        }
+        return false;
     }
 
     /**
@@ -1155,8 +1166,8 @@ public class CBOUtil {
                 }
                 int cnt = 0;
                 for (int i = 0; i < aggCall.getArgList().size(); i++) {
-                    RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
-                        ossTableScan.getPushedRelNode(), aggCall.getArgList().get(i));
+                    RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery()
+                        .getColumnOrigin(ossTableScan.getPushedRelNode(), aggCall.getArgList().get(i));
                     if (columnOrigin == null) {
                         return false;
                     }
@@ -1170,8 +1181,8 @@ public class CBOUtil {
         }
         for (AggregateCall aggCall : aggregate.getAggCallList()) {
             SqlKind kind = aggCall.getAggregation().getKind();
-            if (kind != SqlKind.SUM && kind != SqlKind.SUM0
-                && kind != SqlKind.COUNT && kind != SqlKind.MIN && kind != SqlKind.MAX) {
+            if (kind != SqlKind.SUM && kind != SqlKind.SUM0 && kind != SqlKind.COUNT && kind != SqlKind.MIN
+                && kind != SqlKind.MAX) {
                 return false;
             }
             if (aggCall.getArgList().size() == 0) {
@@ -1181,15 +1192,17 @@ public class CBOUtil {
                 return false;
             }
             // now we have only one column in the agg call
-            if (ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
-                ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0)) == null) {
+            if (ossTableScan.getCluster().getMetadataQuery()
+                .getColumnOrigin(ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0)) == null) {
                 return false;
             }
-            RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
-                ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0));
-            DataType type = CBOUtil.getTableMeta(columnOrigin.getOriginTable()).
-                getColumn(columnOrigin.getColumnName()).getDataType();
+
+            RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery()
+                .getColumnOrigin(ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0));
+            DataType type = CBOUtil.getTableMeta(columnOrigin.getOriginTable()).getColumn(columnOrigin.getColumnName())
+                .getDataType();
             final MySQLStandardFieldType fieldType = type.fieldType();
+
             switch (kind) {
             case SUM:
             case SUM0: {

@@ -27,7 +27,6 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
     private String tableGroupName;
     private String sourceSql;
     private String originalTableGroup;
-    private Long tableVersion;
     private String primaryTableName;
     private String originalJoinGroup;
     private boolean alignPartitionNameFirst = false;
@@ -65,14 +64,6 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
-    }
-
-    public Long getTableVersion() {
-        return tableVersion;
-    }
-
-    public void setTableVersion(Long tableVersion) {
-        this.tableVersion = tableVersion;
     }
 
     public String getPrimaryTableName() {

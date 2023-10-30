@@ -38,7 +38,6 @@ public class ValidateTableVersionTask extends BaseValidateTask {
     public ValidateTableVersionTask(String schemaName, Map<String, Long> tableVersions) {
         super(schemaName);
         this.tableVersions = tableVersions;
-
     }
 
     @Override
@@ -57,5 +56,13 @@ public class ValidateTableVersionTask extends BaseValidateTask {
                 }
             }
         }
+    }
+
+    @Override
+    protected String remark() {
+        StringBuilder sb = new StringBuilder("|");
+        sb.append("schema: ").append(schemaName);
+        sb.append(" tableNames: [").append(String.join(",", tableVersions.keySet())).append("]");
+        return sb.toString();
     }
 }

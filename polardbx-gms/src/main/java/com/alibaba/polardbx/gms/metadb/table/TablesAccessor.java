@@ -98,6 +98,8 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_TABLES_ROW_FORMAT = UPDATE_TABLES + "`row_format` = ?" + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_TABLES_COLLATION = UPDATE_TABLES + "`table_collation` = ?" + WHERE_SCHEMA_TABLE;
+
     private static final String UPDATE_TABLES_STATISTIC =
         UPDATE_TABLES
             + "`table_rows` = ?, `avg_row_length` = ?, `data_length` = ?, `max_data_length` = ?, `index_length` = ?, "
@@ -243,6 +245,10 @@ public class TablesAccessor extends AbstractAccessor {
 
     public int updateRowFormat(String tableSchema, String tableName, String rowFormat) {
         return update(UPDATE_TABLES_ROW_FORMAT, TABLES_TABLE, tableSchema, tableName, rowFormat);
+    }
+
+    public int updateCollation(String tableSchema, String tableName, String collation) {
+        return update(UPDATE_TABLES_COLLATION, TABLES_TABLE, tableSchema, tableName, collation);
     }
 
     public int updateStatistic(String tableSchema, String tableName, Long tableRows, Long avgRowLength, Long dataLength,

@@ -354,8 +354,6 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
             localDruidDataSource.setDriverClassLoader(localDruidDataSource.getClass().getClassLoader());
             localDruidDataSource.setUseUnfairLock(true);
 
-            localDruidDataSource.setDefaultTransactionIsolation(ConfigDataMode.getTxIsolation());
-
             return localDruidDataSource;
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);

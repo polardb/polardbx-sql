@@ -1,0 +1,799 @@
+## DISABLE_FAST_SQL_PARSER
+##======== key-key ===========
+## key-key-tp, use tp
+drop table if exists k_k_tp;
+create table if not exists k_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+partitions 4
+subpartition by key (a,b)
+subpartitions 4;
+show create table k_k_tp;
+Table,Create Table
+k_k_tp,CREATE TABLE `k_k_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 4
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+## key-key-tp, use st
+drop table if exists k_k_tpst;
+create table if not exists k_k_tpst (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4
+subpartition template;
+show create table k_k_tpst;
+Table,Create Table
+k_k_tpst,CREATE TABLE `k_k_tpst` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 4
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+## key-key-tp2
+drop table if exists k_k_tp2;
+create table if not exists k_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b) subpartitions 4
+(
+partition p0,
+partition p1,
+partition p2
+);
+show create table k_k_tp2;
+Table,Create Table
+k_k_tp2,CREATE TABLE `k_k_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+## key-key-tp2
+drop table if exists k_k_tp2st;
+create table if not exists k_k_tp2st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+partition p0,
+partition p1,
+partition p2
+);
+show create table k_k_tp2st;
+Table,Create Table
+k_k_tp2st,CREATE TABLE `k_k_tp2st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+## key-key-tp5
+drop table if exists k_k_tp5;
+create table if not exists k_k_tp5 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+partitions 3
+subpartition by key (a,b)
+subpartitions 4
+(
+subpartition sp0,
+subpartition sp1,
+subpartition sp2,
+subpartition sp3
+)
+(
+partition p0,
+partition p1,
+partition p2
+);
+show create table k_k_tp5;
+Table,Create Table
+k_k_tp5,CREATE TABLE `k_k_tp5` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+drop table if exists k_k_tp5st;
+create table if not exists k_k_tp5st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+subpartition sp0,
+subpartition sp1,
+subpartition sp2,
+subpartition sp3
+)
+(
+partition p0,
+partition p1,
+partition p2
+);
+show create table k_k_tp5st;
+Table,Create Table
+k_k_tp5st,CREATE TABLE `k_k_tp5st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+## key-key-tp3, use subpartition template
+drop table if exists k_k_tp3;
+create table if not exists k_k_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+partitions 3
+subpartition by key (a,b)
+subpartitions 4
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp3;
+Table,Create Table
+k_k_tp3,CREATE TABLE `k_k_tp3` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (-4611686018427387899,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+## key-key-tp4, use subpartition template
+drop table if exists k_k_tp4;
+create table if not exists k_k_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+partitions 3
+subpartition by key (a,b)
+subpartitions 4
+(
+subpartition sp1 values less than (0,9223372036854775807),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp4;
+Table,Create Table
+k_k_tp4,CREATE TABLE `k_k_tp4` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+## key-key-tp4, use st
+drop table if exists k_k_tp4st;
+create table if not exists k_k_tp4st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+partitions 3
+subpartition by key (a,b)
+subpartitions 4
+subpartition template
+(
+subpartition sp1 values less than (0,9223372036854775807),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp4st;
+Table,Create Table
+k_k_tp4st,CREATE TABLE `k_k_tp4st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+## key-key-tp5, use subpartition template
+drop table if exists k_k_tp5;
+create table if not exists k_k_tp5 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by key (a,b)
+(
+subpartition sp1 values less than (0,9223372036854775807),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp5;
+Table,Create Table
+k_k_tp5,CREATE TABLE `k_k_tp5` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+## key-key-tp6, use subpartition template
+drop table if exists k_k_tp6;
+create table if not exists k_k_tp6 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b)
+(
+subpartition sp1 values less than (0,9223372036854775807),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp6;
+Table,Create Table
+k_k_tp6,CREATE TABLE `k_k_tp6` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+## key-key-tp7, use subpartition template
+drop table if exists k_k_tp7;
+create table if not exists k_k_tp7 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+subpartition sp1 values less than (0,9223372036854775807),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p1 values less than (3,9223372036854775807),
+partition p2 values less than (4611686018427387905,9223372036854775807),
+partition p3 values less than (9223372036854775807,9223372036854775807)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_tp7;
+Table,Create Table
+k_k_tp7,CREATE TABLE `k_k_tp7` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp2 VALUES LESS THAN (3,9223372036854775807),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (3,9223372036854775807),
+ PARTITION p2 VALUES LESS THAN (4611686018427387905,9223372036854775807),
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807))
+###################
+## key-key-ntp1
+drop table if exists k_k_ntp1;
+create table if not exists k_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by key (a,b)
+(
+partition p0 subpartitions 2,
+partition p1 subpartitions 3,
+partition p2 subpartitions 4
+);
+show create table k_k_ntp1;
+Table,Create Table
+k_k_ntp1,CREATE TABLE `k_k_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 3
+## key-key-ntp2
+drop table if exists k_k_ntp2;
+create table if not exists k_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b)
+(
+partition p0 subpartitions 2,
+partition p1 subpartitions 3,
+partition p2 subpartitions 4
+);
+show create table k_k_ntp2;
+Table,Create Table
+k_k_ntp2,CREATE TABLE `k_k_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0
+ (SUBPARTITION p0sp1 ENGINE = InnoDB,
+  SUBPARTITION p0sp2 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB,
+  SUBPARTITION p1sp3 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB,
+  SUBPARTITION p2sp4 ENGINE = InnoDB))
+## key-key-ntp3
+drop table if exists k_k_ntp3;
+create table if not exists k_k_ntp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partition 3
+subpartition by key (a,b)
+(
+partition p0 subpartitions 2 (
+subpartition sp0,
+subpartition sp1
+),
+partition p1 subpartitions 3 (
+subpartition sp2,
+subpartition sp3,
+subpartition sp4
+),
+partition p2 subpartitions 4 (
+subpartition sp5,
+subpartition sp6,
+subpartition sp7,
+subpartition sp8
+)
+);
+show create table k_k_ntp3;
+Table,Create Table
+k_k_ntp3,CREATE TABLE `k_k_ntp3` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0
+ (SUBPARTITION sp0 ENGINE = InnoDB,
+  SUBPARTITION sp1 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION sp2 ENGINE = InnoDB,
+  SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION sp5 ENGINE = InnoDB,
+  SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB))
+## key-key-ntp4
+drop table if exists k_k_ntp4;
+create table if not exists k_k_ntp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partition 3
+subpartition by key (a,b)
+(
+partition p0 (
+subpartition sp0,
+subpartition sp1
+),
+partition p1 (
+subpartition sp2,
+subpartition sp3,
+subpartition sp4
+),
+partition p2 (
+subpartition sp5,
+subpartition sp6,
+subpartition sp7,
+subpartition sp8
+)
+);
+show create table k_k_ntp4;
+Table,Create Table
+k_k_ntp4,CREATE TABLE `k_k_ntp4` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0
+ (SUBPARTITION sp0 ENGINE = InnoDB,
+  SUBPARTITION sp1 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION sp2 ENGINE = InnoDB,
+  SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION sp5 ENGINE = InnoDB,
+  SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB))
+## key-key-ntp5
+drop table if exists k_k_ntp5;
+create table if not exists k_k_ntp5 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by key (a,b)
+(
+partition p0 (
+subpartition sp1 values less than (4611686018427387905,9223372036854775807),
+subpartition sp2 values less than (9223372036854775807,9223372036854775807)
+),
+partition p1 (
+subpartition sp3 values less than (3,9223372036854775807),
+subpartition sp4 values less than (4611686018427387905,9223372036854775807),
+subpartition sp5 values less than (9223372036854775807,9223372036854775807)
+),
+partition p2 (
+subpartition sp6 values less than (0,9223372036854775807),
+subpartition sp7 values less than (3,9223372036854775807),
+subpartition sp8 values less than (4611686018427387905,9223372036854775807),
+subpartition sp9 values less than (9223372036854775807,9223372036854775807)
+)
+);
+show create table k_k_ntp5;
+Table,Create Table
+k_k_ntp5,CREATE TABLE `k_k_ntp5` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0
+ (SUBPARTITION sp1 ENGINE = InnoDB,
+  SUBPARTITION sp2 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB,
+  SUBPARTITION sp5 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB,
+  SUBPARTITION sp9 ENGINE = InnoDB))
+## key-key-ntp6
+drop table if exists k_k_ntp6;
+create table if not exists k_k_ntp6 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b)
+(
+partition p0 subpartitions 2 (
+subpartition sp1 values less than (4611686018427387905,9223372036854775807),
+subpartition sp2 values less than (9223372036854775807,9223372036854775807)
+),
+partition p1 subpartitions 3 (
+subpartition sp3 values less than (3,9223372036854775807),
+subpartition sp4 values less than (4611686018427387905,9223372036854775807),
+subpartition sp5 values less than (9223372036854775807,9223372036854775807)
+),
+partition p2 subpartitions 4 (
+subpartition sp6 values less than (0,9223372036854775807),
+subpartition sp7 values less than (3,9223372036854775807),
+subpartition sp8 values less than (4611686018427387905,9223372036854775807),
+subpartition sp9 values less than (9223372036854775807,9223372036854775807)
+)
+);
+show create table k_k_ntp6;
+Table,Create Table
+k_k_ntp6,CREATE TABLE `k_k_ntp6` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0
+ (SUBPARTITION sp1 ENGINE = InnoDB,
+  SUBPARTITION sp2 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB,
+  SUBPARTITION sp5 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB,
+  SUBPARTITION sp9 ENGINE = InnoDB))
+## key-key-ntp7
+drop table if exists k_k_ntp7;
+create table if not exists k_k_ntp7 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 3
+subpartition by key (a,b)
+(
+partition p0 values less than (3,9223372036854775807) subpartitions 2 (
+subpartition sp1 values less than (4611686018427387905,9223372036854775807),
+subpartition sp2 values less than (9223372036854775807,9223372036854775807)
+),
+partition p1 values less than (4611686018427387905,9223372036854775807) subpartitions 3 (
+subpartition sp3 values less than (3,9223372036854775807),
+subpartition sp4 values less than (4611686018427387905,9223372036854775807),
+subpartition sp5 values less than (9223372036854775807,9223372036854775807)
+),
+partition p2 values less than (9223372036854775807,9223372036854775807) subpartitions 4 (
+subpartition sp6 values less than (0,9223372036854775807),
+subpartition sp7 values less than (3,9223372036854775807),
+subpartition sp8 values less than (4611686018427387905,9223372036854775807),
+subpartition sp9 values less than (9223372036854775807,9223372036854775807)
+)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_ntp7;
+Table,Create Table
+k_k_ntp7,CREATE TABLE `k_k_ntp7` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN (3,9223372036854775807)
+ (SUBPARTITION sp1 VALUES LESS THAN (4611686018427387905,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN (4611686018427387905,9223372036854775807)
+ (SUBPARTITION sp3 VALUES LESS THAN (3,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp4 VALUES LESS THAN (4611686018427387905,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp5 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807)
+ (SUBPARTITION sp6 VALUES LESS THAN (0,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp7 VALUES LESS THAN (3,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp8 VALUES LESS THAN (4611686018427387905,9223372036854775807) ENGINE = InnoDB,
+  SUBPARTITION sp9 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB))

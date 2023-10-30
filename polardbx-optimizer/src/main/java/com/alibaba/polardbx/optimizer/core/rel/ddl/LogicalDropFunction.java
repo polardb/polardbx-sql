@@ -34,4 +34,14 @@ public class LogicalDropFunction extends BaseDdlOperation {
     public SqlDropFunction getSqlDropFunction() {
         return sqlDropFunction;
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

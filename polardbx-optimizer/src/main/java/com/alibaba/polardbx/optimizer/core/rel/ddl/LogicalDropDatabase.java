@@ -30,4 +30,14 @@ public class LogicalDropDatabase extends BaseDdlOperation {
     public static LogicalDropDatabase create(DropDatabase dropDatabase) {
         return new LogicalDropDatabase(dropDatabase);
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

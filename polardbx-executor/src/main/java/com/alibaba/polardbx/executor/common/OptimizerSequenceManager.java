@@ -120,8 +120,9 @@ public class OptimizerSequenceManager extends AbstractLifecycle implements ISequ
     }
 
     @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
-        return ExecutorContext.getContext(schemaName).getSequenceManager().areAllSequencesSameType(schemaName, seqType);
+    public boolean areAllSequencesSameType(String schemaName, Type[] seqTypes) {
+        return ExecutorContext.getContext(schemaName).getSequenceManager()
+            .areAllSequencesSameType(schemaName, seqTypes);
     }
 
     @Override

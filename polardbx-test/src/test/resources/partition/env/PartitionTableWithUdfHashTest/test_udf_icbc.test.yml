@@ -1,0 +1,76 @@
+## DISABLE_FAST_SQL_PARSER
+
+select Mymurmurhash64var('1');
+select Mymurmurhash64bint(1);
+
+drop tablegroup if exists icbc_hash_var_tg;
+create tablegroup if not exists icbc_hash_var_tg
+partition by udf_hash(bigint)
+partition 6
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+)
+locality='hash_range_sequential_placement=on';
+
+create table uh_t1(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(Mymurmurhash64var(c1))
+tablegroup=icbc_hash_var_tg;
+
+create table uh_t2(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(Mymurmurhash64var(c1))
+tablegroup=icbc_hash_var_tg;
+
+insert into uh_t1 values ('1','1'),('2','2'),('3','3'),('4','4');
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=1;
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=2;
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=3;
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=4;
+
+show create table uh_t1;
+
+drop tablegroup if exists icbc_hash_bint_tg;
+create tablegroup if not exists icbc_hash_bint_tg
+partition by udf_hash(bigint)
+partition 6
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+)
+locality='hash_range_sequential_placement=on';
+
+create table uh_t3(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(Mymurmurhash64bint(c1))
+tablegroup=icbc_hash_bint_tg;
+
+create table uh_t4(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(Mymurmurhash64bint(c1))
+tablegroup=icbc_hash_bint_tg;
+
+insert into uh_t3 values ('1','1'),('2','2'),('3','3'),('4','4');
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=1;
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=2;
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=3;
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=4;
+
+show create table uh_t3;

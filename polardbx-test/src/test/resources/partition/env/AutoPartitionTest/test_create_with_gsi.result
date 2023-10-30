@@ -17,10 +17,14 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
-	LOCAL KEY `_local_i_0` (`seller_id`)
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -40,10 +44,14 @@ t_order_1,CREATE PARTITION TABLE `t_order_1` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `x`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
-	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
-	LOCAL KEY `_local_i_0` (`seller_id`)
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -64,8 +72,12 @@ t_order_2,CREATE PARTITION TABLE `t_order_2` (
 	`seller_id` varchar(20) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
-	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) PARTITION BY KEY (`seller_id`, `_drds_implicit_id_`) PARTITIONS #@#,
-	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS #@#,
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`_drds_implicit_id_`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* i_1_$ */ `i_1` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
 	LOCAL KEY `_local_i_0` (`seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

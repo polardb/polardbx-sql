@@ -1,0 +1,178 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+CREATE TABLE `d1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFMONTH(`d`))
+PARTITIONS 16;
+show create table d1;
+## single insert
+insert into d1 values('2022-07-18');
+select d from d1 order by d;
+## multi values insert
+insert into d1 values ('2022-06-18'), ('2022-07-19'), ('2021-07-20');
+## check point select
+select * from d1 where d = '2022-07-18' order by d;
+select * from d1 where d = '2022-06-18' order by d;
+select * from d1 where d = '2022-07-19' order by d;
+select * from d1 where d = '2021-07-20' order by d;
+## explain 
+explain select * from d1 where d = '2022-07-18' order by d;
+explain select * from d1 where d = '2022-06-18' order by d;
+explain select * from d1 where d = '2022-07-19' order by d;
+explain select * from d1 where d = '2021-07-20' order by d;
+## range select 
+select * from d1 where (d < '2022-07-18' and d > '2021-07-20') or d between '2020-07-18' and '2021-07-20' order by d;
+## range select full scan
+select * from d1 where d > '2021-07-21' order by d;
+explain select * from d1 where d > '2021-07-21' order by d;
+select * from d1 where d > '2021-07-18' and d <= '2050-07-18' order by d;
+explain select * from d1 where d > '2021-07-18' and d <= '2050-07-18' order by d;
+## partition enumeration
+select * from d1 where d >= '2022-07-18' and d <= '2022-07-22' order by d;
+explain select * from d1 where d >= '2022-07-18' and d <= '2022-07-22' order by d;
+
+
+## test create table (datetime)
+CREATE TABLE `d2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFMONTH(`dt`))
+PARTITIONS 16;
+show create table d2;
+## prepare data
+insert into d2 values('2022-07-18 23:59:59'),('2022-06-18 23:59:59'),('2022-07-19 00:00:00'),('2021-07-20 00:00:01');
+## range select 
+select * from d2 where (dt < '2022-07-18 21:59:59' and dt > '2021-07-20 00:00:01') or dt between '2020-07-18 00:00:00' and '2021-07-20 00:00:01' order by dt;
+## range select full scan
+select * from d2 where dt > '2021-07-21 00:00:00' order by dt;
+explain select * from d2 where dt > '2021-07-21 00:00:00' order by dt;
+select * from d2 where dt > '2021-07-18 23:59:59' and dt <= '2050-07-18 23:59:59' order by dt;
+explain select * from d2 where dt > '2021-07-18 23:59:59' and dt <= '2050-07-18 23:59:59' order by dt;
+## partition enumeration
+select * from d2 where dt >= '2022-07-18' and dt <= '2022-07-22' order by dt;
+explain select * from d2 where dt >= '2022-07-18' and dt <= '2022-07-22' order by dt;
+
+## test range partition(date)
+CREATE TABLE `d3` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFMONTH(`d`))
+(PARTITION `p0` VALUES LESS THAN (7) ENGINE = InnoDB,
+PARTITION `p1` VALUES LESS THAN (14) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (21) ENGINE = InnoDB,
+PARTITION `pd` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);
+show create table d3;
+## prepare data
+insert into d3 values ('2022-07-01'), ('2022-07-07'), ('2022-07-14'), ('2022-07-21');
+select * from d3 order by d;
+## check point select
+select * from d3 where d = '2022-07-01';
+select * from d3 where d = '2022-07-07';
+select * from d3 where d = '2022-07-14';
+select * from d3 where d = '2022-07-21';
+## explain p0, p1, p2, pd is expected
+explain select * from d3 where d = '2022-07-01';
+explain select * from d3 where d = '2022-07-07';
+explain select * from d3 where d = '2022-07-14';
+explain select * from d3 where d = '2022-07-21';
+## range select
+select * from d3 where (d < '2022-07-21' and d > '2022-07-07') or d between '2022-07-01' and '2022-07-07' order by d;
+## range select full scan
+select * from d3 where d < '2022-07-07' order by d;
+explain select * from d3 where d < '2022-07-07' order by d;
+select * from d3 where d < '2022-07-07' and d >= '2022-05-01' order by d;
+explain select * from d3 where d < '2022-07-07' and d >= '2022-05-01' order by d;
+## partition enumeration
+select * from d3 where d < '2022-07-07' and d >= '2022-07-01' order by d;
+explain select * from d3 where d < '2022-07-07' and d >= '2022-07-01' order by d;
+  
+## test range partition(datetime)
+CREATE TABLE `d4` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFMONTH(`dt`))
+(PARTITION `p0` VALUES LESS THAN (7) ENGINE = InnoDB,
+PARTITION `p1` VALUES LESS THAN (14) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (21) ENGINE = InnoDB,
+PARTITION `pd` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);
+show create table d4;
+## prepare data
+insert into d4 values ('2022-07-01 00:00:00'), ('2022-07-07 00:00:00'), ('2022-07-14 00:00:00'), ('2022-07-21 00:00:00');
+select * from d4 order by dt;
+## check point select
+select * from d4 where dt = '2022-07-01 00:00:00';
+select * from d4 where dt = '2022-07-07 00:00:00';
+select * from d4 where dt = '2022-07-14 00:00:00';
+select * from d4 where dt = '2022-07-21 00:00:00';
+## explain p0, p1, p2, pd is expected
+explain select * from d4 where dt = '2022-07-01 00:00:00';
+explain select * from d4 where dt = '2022-07-07 00:00:00';
+explain select * from d4 where dt = '2022-07-14 00:00:00';
+explain select * from d4 where dt = '2022-07-21 00:00:00';
+## range select
+select * from d4 where (dt < '2022-07-21 00:00:00' and dt > '2022-07-07 00:00:00') or dt between '2022-07-01 00:00:00' and '2022-07-07 00:00:00' order by dt;
+## range select full scan
+select * from d4 where dt < '2022-07-07' order by dt;
+explain select * from d4 where dt < '2022-07-07' order by dt;
+select * from d4 where dt < '2022-07-07' and dt >= '2022-05-01' order by dt;
+explain select * from d4 where dt < '2022-07-07' and dt >= '2022-05-01' order by dt;
+## partition enumeration
+select * from d4 where dt < '2022-07-07' and dt >= '2022-07-01' order by dt;
+explain select * from d4 where dt < '2022-07-07' and dt >= '2022-07-01' order by dt;
+
+## test list
+CREATE TABLE `d5` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(DAYOFMONTH(`d`))
+(PARTITION `p0` VALUES IN (1,2,3,4,5,6,7) ENGINE = InnoDB,
+PARTITION `p1` VALUES IN (8,9,10,11,12,13,14) ENGINE = InnoDB,
+PARTITION `p2` VALUES IN (15,16,17,18,19,20,21) ENGINE = InnoDB,
+PARTITION `pd` VALUES IN (DEFAULT) ENGINE = InnoDB);
+show create table d5;
+## prepare data
+insert into d5 values ('2022-07-07'), ('2022-07-14'), ('2022-07-21'), ('2022-07-22');
+select * from d5 order by d;
+## check point select
+select * from d5 where d = '2022-07-07';
+select * from d5 where d = '2022-07-14';
+select * from d5 where d = '2022-07-21';
+select * from d5 where d = '2022-07-22';
+## explain point select
+explain select * from d5 where d = '2022-07-07';
+explain select * from d5 where d = '2022-07-14';
+explain select * from d5 where d = '2022-07-21';
+explain select * from d5 where d = '2022-07-22';
+## range select
+select * from d5 where (d < '2022-07-21' and d > '2022-07-07') or d between '2022-07-21' and '2022-07-22' order by d;
+## range select full scan
+select * from d5 where d < '2022-07-07' order by d;
+explain select * from d5 where d < '2022-07-07' order by d;
+select * from d5 where d < '2022-07-08' and d >= '2022-05-01' order by d;
+explain select * from d5 where d < '2022-07-08' and d >= '2022-05-01' order by d;
+## partition enumeration
+select * from d5 where d < '2022-07-08' and d >= '2022-07-01' order by d;
+explain select * from d5 where d < '2022-07-08' and d >= '2022-07-01' order by d;
+
+
+## test range select on leap year
+CREATE TABLE `d6` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFMONTH(`d`))
+PARTITIONS 16;
+## prepare data
+insert into d6 values ('2020-02-27'), ('2020-02-28'),('2020-02-29'),('2022-02-28'),('2022-03-26');
+## range select
+select * from d6 where d > '2020-02-26' and d < '2022-03-01' order by d;
+select * from d6 where d >= '2020-02-28' and d <= '2022-03-26' order by d;
+select * from d6 where d >= '2021-12-31' order by d;
+## partition enumeration
+# leap year
+select * from d6 where d >= '2020-02-27' and d <= '2020-03-01' order by d;
+explain select * from d6 where d >= '2020-02-27' and d <= '2020-03-01' order by d;
+# non-leap year
+select * from d6 where d >= '2021-02-27' and d <= '2021-03-01' order by d;
+explain select * from d6 where d >= '2021-02-27' and d <= '2021-03-01' order by d;
+

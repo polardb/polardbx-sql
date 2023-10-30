@@ -47,12 +47,12 @@ public class PartTableInsertShardProcessor extends ShardProcessor {
     @Override
     Pair<String, String> shard(Map<Integer, ParameterContext> param,
                                ExecutionContext executionContext) {
-        PartPrunedResult prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0,  executionContext);
+        PartPrunedResult prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
         if (prunedResult.isEmpty()) {
             throw new NoFoundPartitionsException();
         }
 
-        List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedPartitions();
+        List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedParttions();
         assert phyPartInfos.size() == 1;
         String grpKey = phyPartInfos.get(0).getGroupKey();
         String phyTbl = phyPartInfos.get(0).getPhyTable();

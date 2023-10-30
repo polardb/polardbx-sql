@@ -18,11 +18,13 @@ tb2,CREATE PARTITION TABLE `tb2` (
 	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
 	PRIMARY KEY (`id`),
-	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`id`) PARTITION BY KEY (`id`) PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`id`)
+		PARTITION BY KEY(`id`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_id_index` (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
@@ -32,7 +34,7 @@ id_index_$,CREATE TABLE `id_index_$` (
 	KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
-PARTITIONS 3
+PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
@@ -41,7 +43,7 @@ id_index_$,CREATE TABLE `id_index_$` (
 	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 DROP TABLE IF EXISTS `tb2`;
 CREATE TABLE tb2 (
@@ -65,12 +67,14 @@ tb2,CREATE PARTITION TABLE `tb2` (
 	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
 	PRIMARY KEY (`id`),
-	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_id_index` (`a`),
 	LOCAL KEY `lidx` (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
@@ -81,7 +85,7 @@ id_index_$,CREATE TABLE `id_index_$` (
 	KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
@@ -91,7 +95,7 @@ id_index_$,CREATE TABLE `id_index_$` (
 	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 DROP TABLE IF EXISTS `tb2`;
 CREATE TABLE tb2 (
@@ -115,12 +119,14 @@ tb2,CREATE PARTITION TABLE `tb2` (
 	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
 	PRIMARY KEY (`id`),
-	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`) PARTITION BY KEY (`a`) PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* id_index_$ */ `id_index` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `luidx` (`id`),
 	UNIQUE LOCAL KEY `_local_id_index` (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
@@ -131,7 +137,7 @@ id_index_$,CREATE TABLE `id_index_$` (
 	KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
@@ -141,6 +147,6 @@ id_index_$,CREATE TABLE `id_index_$` (
 	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 DROP TABLE IF EXISTS `tb2`;

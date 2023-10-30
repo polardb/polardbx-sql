@@ -16,18 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -68,8 +68,8 @@ public class CBOPushAggRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
-        final LogicalView logicalView = (LogicalView)call.rels[1];
-        if (logicalView instanceof OSSTableScan && !((OSSTableScan)logicalView).canPushAgg()) {
+        final LogicalView logicalView = (LogicalView) call.rels[1];
+        if (logicalView instanceof OSSTableScan && !((OSSTableScan) logicalView).canPushAgg()) {
             return false;
         }
         return PlannerContext.getPlannerContext(call).getParamManager()
@@ -80,8 +80,12 @@ public class CBOPushAggRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         final LogicalAggregate logicalAggregate = (LogicalAggregate) call.rels[0];
         final LogicalView logicalView = (LogicalView) call.rels[1];
-        if(logicalView instanceof OSSTableScan) {
-            if (!CBOUtil.canPushAggToOss(logicalAggregate, (OSSTableScan)logicalView)) {
+        if (logicalView instanceof OSSTableScan) {
+            if (!CBOUtil.canPushAggToOss(logicalAggregate, (OSSTableScan) logicalView)) {
+                return;
+            }
+            if (PlannerContext.getPlannerContext(call).getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_OSS_BUFFER_POOL)) {
                 return;
             }
         }
@@ -151,7 +155,6 @@ public class CBOPushAggRule extends RelOptRule {
             .create(newLogicalView.getPushedRelNode(), partialAggGroupSet, logicalAggregate.getGroupSets(),
                 partialAggCalls);
         newLogicalView.push(partialAgg);
-
         LogicalAggregate globalAgg = logicalAggregate.copy(logicalAggregate.getTraitSet(), newLogicalView,
             logicalAggregate.indicator,
             globalAggGroupSet,

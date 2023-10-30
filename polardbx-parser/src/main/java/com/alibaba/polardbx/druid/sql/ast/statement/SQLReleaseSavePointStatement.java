@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -27,13 +28,13 @@ import java.util.List;
 public class SQLReleaseSavePointStatement extends SQLStatementImpl {
 
     private SQLName name;
-    
+
     public SQLReleaseSavePointStatement() {
-        
+
     }
-    
+
     public SQLReleaseSavePointStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public SQLName getName() {
@@ -59,5 +60,10 @@ public class SQLReleaseSavePointStatement extends SQLStatementImpl {
             children.add(name);
         }
         return children;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

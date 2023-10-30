@@ -24,13 +24,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;
-import com.alibaba.polardbx.optimizer.core.rel.Gather;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rex.RexCall;
@@ -39,13 +36,13 @@ import org.apache.calcite.rex.RexNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils.existLookupGsiSide;
 
 public class LookupJoinExecFactory extends ExecutorFactory {
 
     private Join join;
     private List<EquiJoinKey> allJoinKeys; // including null-safe equal (`<=>`)
-    private List<EquiJoinKey> joinKeys;
     private boolean maxOneRow;
 
     public LookupJoinExecFactory(Join join, ExecutorFactory outerFactory, ExecutorFactory innerFactory) {
@@ -56,8 +53,7 @@ public class LookupJoinExecFactory extends ExecutorFactory {
         }
         this.join = join;
         this.allJoinKeys = EquiJoinUtils.buildEquiJoinKeys(join, join.getOuter(), join.getInner(),
-            (RexCall) join.getCondition(), join.getJoinType(), true);
-        this.joinKeys = allJoinKeys.stream().filter(k -> !k.isNullSafeEqual()).collect(Collectors.toList());
+            (RexCall) join.getCondition(), join.getJoinType());
         addInput(innerFactory);
         addInput(outerFactory);
     }
@@ -87,23 +83,16 @@ public class LookupJoinExecFactory extends ExecutorFactory {
             parallelism = innerLvExecFactory.getParallelism();
         }
 
-        boolean isLookUpGsi = false;
-        RelNode node = join.getOuter();
-        if (node instanceof Gather) {
-            node = ((Gather) node).getInput();
-        }
-        if (node instanceof LogicalIndexScan) {
-            isLookUpGsi = ((LogicalIndexScan) node).getJoin() != null;
-        }
+        boolean isLookUpGsi = existLookupGsiSide(join);
 
         inner = getInputs().get(0).createExecutor(context, index);
         IExpression otherCondition = convertExpression(join.getCondition(), context);
 
         if (!isLookUpGsi) {
-            ret = new LookupJoinExec(outer, inner, join.getJoinType(), maxOneRow, joinKeys, allJoinKeys,
+            ret = new LookupJoinExec(outer, inner, join.getJoinType(), maxOneRow, allJoinKeys, allJoinKeys,
                 otherCondition, context, shardCount, parallelism, allowMultiReadConn);
         } else {
-            ret = new LookupJoinGsiExec(outer, inner, join.getJoinType(), maxOneRow, joinKeys, allJoinKeys,
+            ret = new LookupJoinGsiExec(outer, inner, join.getJoinType(), maxOneRow, allJoinKeys, allJoinKeys,
                 otherCondition, context, shardCount, parallelism, allowMultiReadConn);
         }
 

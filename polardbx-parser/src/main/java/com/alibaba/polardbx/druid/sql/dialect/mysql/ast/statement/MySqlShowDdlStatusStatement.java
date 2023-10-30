@@ -26,8 +26,8 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 public class MySqlShowDdlStatusStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
     private SQLOrderBy orderBy;
-    private SQLExpr    where;
-    private SQLLimit   limit;
+    private SQLExpr where;
+    private SQLLimit limit;
 
     public SQLLimit getLimit() {
         return limit;
@@ -52,7 +52,6 @@ public class MySqlShowDdlStatusStatement extends MySqlStatementImpl implements M
     public void setWhere(SQLExpr where) {
         this.where = where;
     }
-
 
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {

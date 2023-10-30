@@ -16,24 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import org.apache.calcite.rel.ddl.AlterTableRemovePartitioning;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
-import org.apache.calcite.sql.SqlIndexDefinition;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableRemovePartitioning extends LogicalAlterTableRepartition {
@@ -49,6 +40,12 @@ public class LogicalAlterTableRemovePartitioning extends LogicalAlterTableRepart
     public static LogicalAlterTableRemovePartitioning create(
         AlterTableRemovePartitioning alterTableRemovePartitioning) {
         return new LogicalAlterTableRemovePartitioning(alterTableRemovePartitioning);
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + tableName);
     }
 
     public void prepareData() {

@@ -52,7 +52,8 @@ public class CacheKeyLenTest extends PlanTestCommon {
         SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
             ByteString.from(testSql), currentParameter, executionContext, false);
 
-        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(appName, sqlParameterized, null, null, true, true);
+        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(appName, sqlParameterized, null, null, true, true,
+            true);
         if (cacheKey.getParameters() == null) {
             return "not record";
         } else {

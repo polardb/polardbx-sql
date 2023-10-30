@@ -28,6 +28,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class MatchAgainstTest extends CrudBasedLockTestCase {
     private String suffix;
     private static final String TABLE_PREFIX = "articles";

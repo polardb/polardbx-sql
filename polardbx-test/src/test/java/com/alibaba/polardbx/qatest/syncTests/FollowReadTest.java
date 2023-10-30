@@ -69,6 +69,11 @@ public class FollowReadTest extends BaseTestCase {
 
     @Before
     public void before() throws SQLException {
+
+        try (Connection connection = getPolardbxConnection()) {
+            JdbcUtil.executeUpdate(connection, "set global ENABLE_FOLLOWER_READ=true");
+        }
+
         try (Connection connection = getPolardbxConnection()) {
             JdbcUtil.createPartDatabase(connection, database);
         }
@@ -78,6 +83,9 @@ public class FollowReadTest extends BaseTestCase {
 
     @After
     public void after() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            JdbcUtil.executeUpdate(connection, "set global ENABLE_FOLLOWER_READ=false");
+        }
         finish = true;
         try (Connection connection = getPolardbxConnection()) {
             JdbcUtil.dropDatabase(connection, database);

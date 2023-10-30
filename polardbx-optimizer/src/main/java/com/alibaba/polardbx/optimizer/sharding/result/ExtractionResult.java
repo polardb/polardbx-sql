@@ -16,6 +16,25 @@
 
 package com.alibaba.polardbx.optimizer.sharding.result;
 
+import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
+import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
+import com.alibaba.polardbx.optimizer.sharding.label.Label;
+import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResultVisitor.ResultBean;
+import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.Util;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,27 +42,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import com.alibaba.polardbx.common.DefaultSchema;
-import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
-import org.apache.calcite.plan.RelOptTable;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.util.Pair;
-import org.apache.calcite.util.Util;
-
-import com.alibaba.polardbx.common.model.sqljep.Comparative;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
-import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
-import com.alibaba.polardbx.optimizer.sharding.label.Label;
-import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResultVisitor.ResultBean;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 
 /**
  * @author chenmo.cm
@@ -65,6 +66,19 @@ public class ExtractionResult {
         this.tableLabelMap = extractor.getTableLabelMap();
     }
 
+    public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec) {
+        return allPartPruneSteps(ec, (t) -> conditionOf(t).intersect());
+    }
+
+    public Map<String, PartitionPruneStep> allPartPruneStepsWithScalarFunctionReplaced(AtomicInteger maxParamIndex,
+                                                                                       ExecutionContext ec) {
+        return allPartPruneSteps(
+            ec,
+            (t) -> conditionOf(t)
+                .intersect()
+                .convertScalarFunction2RexCallParam(maxParamIndex, ec));
+    }
+
     /**
      * <pre>
      *     key: logical table name
@@ -72,11 +86,12 @@ public class ExtractionResult {
      *     Notice: a logical view may has multi logical table when join is pushed.
      * </pre>
      */
-    public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec) {
+    public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec,
+                                                             Function<RelOptTable, ConditionResult> conditionBuilder) {
         Map<String, PartitionPruneStep> allTblPruneStepInfo = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
         for (RelOptTable t : getLogicalTables()) {
-            ConditionResult condRs = conditionOf(t).intersect();
+            ConditionResult condRs = conditionBuilder.apply(t);
             List<String> qualifiedName = t.getQualifiedName();
             String schema = qualifiedName.size() > 1 ? qualifiedName.get(qualifiedName.size() - 2) : null;
             if (schema == null) {
@@ -91,8 +106,7 @@ public class ExtractionResult {
                 }
             } else if (condRs instanceof EmptyConditionResult) {
                 PartitionInfo partInfo =
-                    ec.getSchemaManager(schema).getTddlRuleManager().getPartitionInfoManager()
-                        .getPartitionInfo(tableName);
+                    ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo();
                 allTblPruneStepInfo
                     .put(tableName, PartitionPruner.generatePartitionPrueStepInfo(partInfo, null, null, ec));
             }
@@ -102,19 +116,46 @@ public class ExtractionResult {
     }
 
     public void allCondition(Map<String, Map<String, Comparative>> allComps,
-                             Map<String, Map<String, Comparative>> allFullComps, ExecutionContext ec) {
+                             Map<String, Map<String, Comparative>> allFullComps,
+                             ExecutionContext ec) {
+        allCondition(
+            allComps,
+            allFullComps,
+            ec,
+            (t) -> conditionOf(t)
+                .intersect());
+    }
+
+    public void allConditionWithScalarFunctionReplaced(Map<String, Map<String, Comparative>> allComps,
+                                                       Map<String, Map<String, Comparative>> allFullComps,
+                                                       AtomicInteger maxParamIndex,
+                                                       ExecutionContext ec) {
+        allCondition(
+            allComps,
+            allFullComps,
+            ec,
+            (t) -> conditionOf(t)
+                .intersect()
+                .convertScalarFunction2RexCallParam(maxParamIndex, ec));
+    }
+
+    private void allCondition(Map<String, Map<String, Comparative>> allComps,
+                              Map<String, Map<String, Comparative>> allFullComps,
+                              ExecutionContext ec,
+                              Function<RelOptTable, ConditionResult> conditionBuilder) {
         if (null == allComps && null == allFullComps) {
             return;
         }
 
         for (RelOptTable t : getLogicalTables()) {
-            final Map<String, Comparative> comps = conditionOf(t).intersect().toPartitionCondition(ec);
-            final Map<String, Comparative> fullComps = conditionOf(t).intersect().toFullPartitionCondition(ec);
+            final ConditionResult conditions = conditionBuilder.apply(t);
 
             if (null != allComps) {
+                final Map<String, Comparative> comps = conditions.toPartitionCondition(ec);
                 allComps.put(Util.last(t.getQualifiedName()), comps);
             }
             if (null != allFullComps) {
+                final Map<String, Comparative> fullComps = conditions.toFullPartitionCondition(ec);
                 allFullComps.put(Util.last(t.getQualifiedName()), fullComps);
             }
         }
@@ -136,8 +177,7 @@ public class ExtractionResult {
             PartitionInfo partInfo = null;
             if (isNewPartitionDb) {
                 partInfo =
-                    ec.getSchemaManager(schema).getTddlRuleManager().getPartitionInfoManager()
-                        .getPartitionInfo(tableName);
+                    ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo();
                 if (partInfo != null) {
                     usePartTable = true;
                 }

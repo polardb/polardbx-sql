@@ -16,18 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
@@ -67,7 +66,6 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
 
@@ -152,6 +150,19 @@ public class LogicalInsert extends TableModify {
     //默认单线程执行
     protected InsertSelectMode insertSelectMode = InsertSelectMode.SINGLE;
 
+    protected boolean pushablePrimaryKeyCheck = false;
+    protected boolean pushableForeignConstraintCheck = true;
+
+    // Following variables used by generated columns
+    // evalRow is built to eval generated columns
+    protected List<ColumnMeta> evalRowColMetas = null;
+    protected List<RexNode> genColRexNodes = null;
+    protected List<Integer> inputToEvalFieldsMapping = null;
+
+    protected List<ColumnMeta> defaultExprColMetas = null;
+    protected List<RexNode> defaultExprColRexNodes = null;
+    protected List<Integer> defaultExprEvalFieldsMapping = null;
+
     public LogicalInsert(TableModify modify) {
         this(modify.getCluster(),
             modify.getTraitSet(),
@@ -200,7 +211,11 @@ public class LogicalInsert extends TableModify {
                          int batchSize, Set<Integer> appendedColumnIndex, SqlNodeList hints, TableInfo tableInfo,
                          InsertWriter primaryInsertWriter, List<InsertWriter> gsiInsertWriters,
                          List<Integer> autoIncParamIndex, LogicalDynamicValues unOptimizedLogicalDynamicValues,
-                         List<RexNode> unOptimizedDuplicateKeyUpdateList) {
+                         List<RexNode> unOptimizedDuplicateKeyUpdateList, List<ColumnMeta> evalRowColMetas,
+                         List<RexNode> genColRexNodes, List<Integer> inputToEvalFieldsMapping,
+                         List<ColumnMeta> defaultExprColMetas, List<RexNode> defaultExprColRexNodes,
+                         List<Integer> defaultExprEvalFieldsMapping, boolean pushablePrimaryKeyCheck,
+                         boolean pushableForeignConstraintCheck) {
         super(cluster, traitSet, table, catalogReader, input, operation, null, null, flattened, keywords, batchSize,
             appendedColumnIndex, hints, tableInfo);
         this.duplicateKeyUpdateList = duplicateKeyUpdateList;
@@ -212,6 +227,14 @@ public class LogicalInsert extends TableModify {
         this.gsiInsertWriters = gsiInsertWriters;
         this.unOptimizedLogicalDynamicValues = unOptimizedLogicalDynamicValues;
         this.unOptimizedDuplicateKeyUpdateList = unOptimizedDuplicateKeyUpdateList;
+        this.evalRowColMetas = evalRowColMetas;
+        this.genColRexNodes = genColRexNodes;
+        this.inputToEvalFieldsMapping = inputToEvalFieldsMapping;
+        this.defaultExprColMetas = defaultExprColMetas;
+        this.defaultExprEvalFieldsMapping = defaultExprEvalFieldsMapping;
+        this.defaultExprColRexNodes = defaultExprColRexNodes;
+        this.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
+        this.pushableForeignConstraintCheck = pushableForeignConstraintCheck;
     }
 
     /**
@@ -634,6 +657,10 @@ public class LogicalInsert extends TableModify {
                 .forEach(columnMeta -> columnNames.add(columnMeta.getName().toUpperCase())));
         }
 
+        // Generated columns and all their referencing columns must be literal
+        columnNames.addAll(baseTableMeta.getLogicalGeneratedColumnNames());
+        GeneratedColumnUtil.getAllLogicalReferencedColumnsByGen(baseTableMeta).values().forEach(columnNames::addAll);
+
         // Convert column names to column indexes
         List<RelDataTypeField> fieldList = RelUtils.getRelInput(this).getRowType().getFieldList();
 
@@ -812,7 +839,15 @@ public class LogicalInsert extends TableModify {
             getGsiInsertWriters(),
             getAutoIncParamIndex(),
             getUnOptimizedLogicalDynamicValues(),
-            getUnOptimizedDuplicateKeyUpdateList());
+            getUnOptimizedDuplicateKeyUpdateList(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck());
         newLogicalInsert.sqlTemplate = sqlTemplate;
         newLogicalInsert.literalColumnIndex = literalColumnIndex;
         newLogicalInsert.seqColumnIndex = seqColumnIndex;
@@ -1130,5 +1165,69 @@ public class LogicalInsert extends TableModify {
 
     public InsertSelectMode getInsertSelectMode() {
         return insertSelectMode;
+    }
+
+    public List<RexNode> getGenColRexNodes() {
+        return genColRexNodes;
+    }
+
+    public void setGenColRexNodes(List<RexNode> genColRexNodes) {
+        this.genColRexNodes = genColRexNodes;
+    }
+
+    public List<ColumnMeta> getEvalRowColMetas() {
+        return evalRowColMetas;
+    }
+
+    public void setEvalRowColMetas(List<ColumnMeta> evalRowColMetas) {
+        this.evalRowColMetas = evalRowColMetas;
+    }
+
+    public List<Integer> getInputToEvalFieldsMapping() {
+        return inputToEvalFieldsMapping;
+    }
+
+    public void setInputToEvalFieldsMapping(List<Integer> inputToEvalFieldsMapping) {
+        this.inputToEvalFieldsMapping = inputToEvalFieldsMapping;
+    }
+
+    public List<ColumnMeta> getDefaultExprColMetas() {
+        return defaultExprColMetas;
+    }
+
+    public void setDefaultExprColMetas(List<ColumnMeta> defaultExprColMetas) {
+        this.defaultExprColMetas = defaultExprColMetas;
+    }
+
+    public List<Integer> getDefaultExprEvalFieldsMapping() {
+        return defaultExprEvalFieldsMapping;
+    }
+
+    public void setDefaultExprEvalFieldsMapping(List<Integer> defaultExprEvalFieldsMapping) {
+        this.defaultExprEvalFieldsMapping = defaultExprEvalFieldsMapping;
+    }
+
+    public List<RexNode> getDefaultExprColRexNodes() {
+        return defaultExprColRexNodes;
+    }
+
+    public void setDefaultExprColRexNodes(List<RexNode> defaultExprColRexNodes) {
+        this.defaultExprColRexNodes = defaultExprColRexNodes;
+    }
+
+    public boolean isPushablePrimaryKeyCheck() {
+        return pushablePrimaryKeyCheck;
+    }
+
+    public void setPushablePrimaryKeyCheck(boolean pushablePrimaryKeyCheck) {
+        this.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
+    }
+
+    public boolean isPushableForeignConstraintCheck() {
+        return pushableForeignConstraintCheck;
+    }
+
+    public void setPushableForeignConstraintCheck(boolean pushableForeignConstraintCheck) {
+        this.pushableForeignConstraintCheck = pushableForeignConstraintCheck;
     }
 }

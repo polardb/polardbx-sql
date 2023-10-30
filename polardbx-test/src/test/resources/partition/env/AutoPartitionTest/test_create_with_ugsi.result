@@ -11,7 +11,9 @@ ugsi_pk,CREATE PARTITION TABLE `ugsi_pk` (
 	`b` int(11) NOT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
-	UNIQUE GLOBAL INDEX /* ugsi_b_$ */ `ugsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* ugsi_b_$ */ `ugsi_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_ugsi_b` (`b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)

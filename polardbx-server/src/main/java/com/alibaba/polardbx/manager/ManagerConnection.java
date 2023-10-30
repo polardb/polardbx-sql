@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.manager;
 
+import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.net.util.TimeUtil;
 import com.alibaba.druid.pool.GetConnectionTimeoutException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -45,6 +45,16 @@ public final class ManagerConnection extends FrontendConnection {
         super(channel);
 
         instanceId = CobarServer.getInstance().getConfig().getSystem().getInstanceId();
+    }
+
+    /**
+     * keep eof in ManagerConnection
+     */
+    @Override
+    protected int getServerCapabilities() {
+        int capabilities = super.getServerCapabilities();
+        capabilities &= (~Capabilities.CLIENT_DEPRECATE_EOF);
+        return capabilities;
     }
 
     @Override
@@ -73,7 +83,7 @@ public final class ManagerConnection extends FrontendConnection {
     }
 
     @Override
-    public void handleError(int errCode, Throwable t) {
+    public void handleError(ErrorCode errCode, Throwable t) {
         Throwable ex = t;
         String message = null;
         List<Throwable> ths = ExceptionUtils.getThrowableList(t);
@@ -112,7 +122,7 @@ public final class ManagerConnection extends FrontendConnection {
             logger.warn(ex);
         }
         switch (errCode) {
-        case ErrorCode.ERR_HANDLE_DATA:
+        case ERR_HANDLE_DATA:
             String msg = t.getMessage();
             writeErrMessage(ErrorCode.ER_YES, msg == null ? t.getClass().getSimpleName() : msg);
             break;
@@ -122,9 +132,9 @@ public final class ManagerConnection extends FrontendConnection {
     }
 
     @Override
-    public LoadDataHandler prepareLoadInfile(String sql) {
+    public boolean prepareLoadInfile(String sql) {
         writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "handle load file is not supported in ManagerConnection");
-        return null;
+        return false;
     }
 
     @Override

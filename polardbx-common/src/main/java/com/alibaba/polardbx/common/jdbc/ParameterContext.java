@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 
 import java.io.Serializable;
 import java.util.List;

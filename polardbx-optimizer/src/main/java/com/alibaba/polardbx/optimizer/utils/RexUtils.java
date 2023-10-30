@@ -16,45 +16,94 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeVisitor;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprVisitor;
 import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
+import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.function.SqlSequenceFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlValuesFunction;
+import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
+import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartClauseInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepCombine;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepOp;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.primitives.UnsignedLongs;
 import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.hep.HepRelVertex;
+import org.apache.calcite.plan.volcano.RelSubset;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttle;
+import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Window;
+import org.apache.calcite.rel.core.TableFunctionScan;
+import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.logical.LogicalAggregate;
+import org.apache.calcite.rel.logical.LogicalCorrelate;
+import org.apache.calcite.rel.logical.LogicalExchange;
+import org.apache.calcite.rel.logical.LogicalExpand;
+import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalIntersect;
+import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.calcite.rel.logical.LogicalMatch;
+import org.apache.calcite.rel.logical.LogicalMinus;
+import org.apache.calcite.rel.logical.LogicalOutFile;
+import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
+import org.apache.calcite.rel.logical.LogicalSort;
 import org.apache.calcite.rel.logical.LogicalTableLookup;
+import org.apache.calcite.rel.logical.LogicalUnion;
+import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.rules.MultiJoin;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
@@ -78,19 +127,28 @@ import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
 
+import java.math.BigInteger;
+import java.sql.Types;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static org.apache.calcite.sql.SqlKind.ALL;
+import static org.apache.calcite.sql.SqlKind.IS_NOT_DISTINCT_FROM;
 import static org.apache.calcite.sql.SqlKind.LITERAL;
 import static org.apache.calcite.sql.SqlKind.ROW;
 import static org.apache.calcite.sql.SqlKind.SOME;
@@ -100,6 +158,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
  * Created by chuanqin on 17/8/7.
  */
 public class RexUtils {
+    public static final Logger logger = LoggerFactory.getLogger(RexUtils.class);
     private final static RelDataTypeFactory FACTORY = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     private final static RexBuilder REX_BUILDER = new RexBuilder(FACTORY);
 
@@ -211,12 +270,129 @@ public class RexUtils {
             replaceExpressionForDuplicateKeyUpdate(insert, ec);
         }
 
+        final String schemaName = insert.getSchemaName();
+        final String tableName = insert.getLogicalTableName();
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+
+        // Handle default expr
+        if (tableMeta.hasDefaultExprColumn() && InstanceVersion.isMYSQL80()) {
+            final Function<RexNode, Object> evalFunc = getEvalFunc(ec);
+            for (int i = 0; i < insert.getDefaultExprColRexNodes().size(); i++) {
+                ColumnMeta columnMeta = insert.getDefaultExprColMetas().get(i);
+                RexNode rexNode = insert.getDefaultExprColRexNodes().get(i);
+                Object value = evalFunc.apply(rexNode);
+                if (value instanceof Slice) {
+                    if (isBinaryReturnType(rexNode)) {
+                        value = ((Slice) value).getBytes();
+                    } else {
+                        value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                    }
+                } else if (value instanceof ByteString) {
+                    value = ((ByteString) value).getBytes();
+                }
+                if (!columnMeta.isNullable() && value == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        String.format("Column `%s` cannot be null", columnMeta.getName()));
+                }
+            }
+        }
+
+        // Handle generated column
+        if (tableMeta.hasLogicalGeneratedColumn()) {
+            boolean strict = SQLMode.isStrictMode(ec.getSqlModeFlags()) && !insert.isInsertIgnore();
+            final LogicalDynamicValues input = RelUtils.getRelInput(insert);
+            List<Integer> inputToEvalFieldsMapping = insert.getInputToEvalFieldsMapping();
+            List<ColumnMeta> evalColumnMetas = insert.getEvalRowColMetas();
+            CursorMeta cursorMeta = CursorMeta.build(evalColumnMetas);
+
+            int batchSize =
+                ec.getParams().isBatch() ? ec.getParams().getBatchParameters().size() : input.getTuples().size();
+            List<List<Object>> rows = new ArrayList<>(batchSize);
+            for (int i = 0; i < batchSize; i++) {
+                List<RexNode> tuple;
+                Map<Integer, ParameterContext> param;
+
+                if (ec.getParams().isBatch()) {
+                    tuple = input.getTuples().get(0);
+                    param = ec.getParams().getBatchParameters().get(i);
+                } else {
+                    tuple = input.getTuples().get(i);
+                    param = ec.getParams().getFirstParameter();
+                }
+
+                List<Object> row = new ArrayList<>();
+                for (int j = 0; j < inputToEvalFieldsMapping.size(); j++) {
+                    RexNode rexNode = tuple.get(inputToEvalFieldsMapping.get(j));
+                    if (rexNode instanceof RexDynamicParam) {
+                        // Should all be converted here
+                        final int valueIndex = ((RexDynamicParam) rexNode).getIndex() + 1;
+                        row.add(param.get(valueIndex).getValue());
+                    } else {
+                        throw new UnsupportedOperationException(
+                            "Get value from " + rexNode.getClass() + " is not supported");
+                    }
+                }
+                rows.add(row);
+            }
+
+            // Convert row type
+            List<RexNode> rexNodes = insert.getGenColRexNodes();
+            int refColCnt = inputToEvalFieldsMapping.size() - rexNodes.size();
+            for (int i = 0; i < rows.size(); i++) {
+                List<Object> row = rows.get(i);
+                List<RexNode> tuple = input.getTuples().get(ec.getParams().isBatch() ? 0 : i);
+                for (int j = 0; j < refColCnt; j++) {
+                    row.set(j, convertValue(row.get(j), tuple.get(inputToEvalFieldsMapping.get(j)), strict,
+                        evalColumnMetas.get(j), ec));
+                }
+            }
+
+            // Eval generated columns
+            for (List<Object> row : rows) {
+                Row r = new ArrayRow(cursorMeta, row.toArray());
+                for (int i = 0; i < rexNodes.size(); i++) {
+                    Object value =
+                        RexUtils.convertValue(RexUtils.getValueFromRexNode(rexNodes.get(i), r, ec), rexNodes.get(i),
+                            strict, r.getParentCursorMeta().getColumnMeta(refColCnt + i), ec);
+                    r.setObject(i + refColCnt, value);
+                    row.set(i + refColCnt, value);
+                }
+            }
+
+            // Finally we update Params
+            for (int i = 0; i < batchSize; i++) {
+                List<Object> row = rows.get(i);
+                List<RexNode> tuple;
+                Map<Integer, ParameterContext> param;
+
+                if (ec.getParams().isBatch()) {
+                    tuple = input.getTuples().get(0);
+                    param = ec.getParams().getBatchParameters().get(i);
+                } else {
+                    tuple = input.getTuples().get(i);
+                    param = ec.getParams().getFirstParameter();
+                }
+
+                for (int j = refColCnt; j < inputToEvalFieldsMapping.size(); j++) {
+                    RexDynamicParam rexNode = (RexDynamicParam) tuple.get(inputToEvalFieldsMapping.get(j));
+                    final int paramIndex = rexNode.getIndex();
+                    Object value = row.get(j);
+                    if (value instanceof Slice) {
+                        value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                    } else if (value instanceof ByteString) {
+                        value = ((ByteString) value).getBytes();
+                    }
+                    final ParameterContext newPc =
+                        new ParameterContext(ParameterMethod.setObject1, new Object[] {paramIndex + 1, value});
+                    param.put(paramIndex + 1, newPc);
+                }
+            }
+        }
+
         // Handle sequence
         final int seqColumnIndex = insert.getSeqColumnIndex();
         final boolean usingSequence = seqColumnIndex >= 0;
 
-        final String schemaName = insert.getSchemaName();
-        final String tableName = insert.getLogicalTableName();
         final boolean autoValueOnZero = SequenceAttribute.getAutoValueOnZero(ec.getSqlMode());
 
         if (null != handlerParams) {
@@ -258,6 +434,74 @@ public class RexUtils {
         }
     }
 
+    public static Object convertValue(Object value, DataType dataType, boolean strict, ColumnMeta columnMeta,
+                                      ExecutionContext ec) {
+        if (value == null) {
+            if (!columnMeta.isNullable()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    String.format("Can not store null value in column `%s`", columnMeta.getName()));
+            }
+            return null;
+        }
+
+        // If data is out of range, DN will throw error, so we ignore data truncation here
+        PartFieldAccessType accessType = strict ? PartFieldAccessType.DDL_EXECUTION : PartFieldAccessType.DML_PRUNING;
+        PartitionField partitionField =
+            PartitionPrunerUtils.buildPartField(value, dataType, columnMeta.getDataType(), null, ec, accessType);
+        SessionProperties sessionProperties = SessionProperties.fromExecutionContext(ec);
+        switch (partitionField.dataType().fieldType()) {
+        case MYSQL_TYPE_LONGLONG:
+            if (partitionField.dataType().isUnsigned()) {
+                return new BigInteger(UnsignedLongs.toString(partitionField.longValue()));
+            } else {
+                return partitionField.longValue();
+            }
+        case MYSQL_TYPE_LONG:
+        case MYSQL_TYPE_INT24:
+        case MYSQL_TYPE_SHORT:
+        case MYSQL_TYPE_TINY:
+            return partitionField.longValue(sessionProperties);
+        case MYSQL_TYPE_NEWDECIMAL:
+            return Decimal.fromString(partitionField.stringValue().toStringUtf8());
+        case MYSQL_TYPE_STRING:
+        case MYSQL_TYPE_VAR_STRING:
+            return partitionField.stringValue(sessionProperties).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+        case MYSQL_TYPE_TIMESTAMP:
+        case MYSQL_TYPE_TIMESTAMP2:
+            MySQLTimeVal mySQLTimeVal = partitionField.timestampValue(0, sessionProperties);
+            boolean zeroTimestamp = mySQLTimeVal.getSeconds() == 0 && mySQLTimeVal.getNano() == 0;
+            MysqlDateTime mysqlDateTime = zeroTimestamp ? new MysqlDateTime() :
+                MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
+            mysqlDateTime.setSqlType(Types.TIMESTAMP);
+            return new OriginalTimestamp(mysqlDateTime);
+        case MYSQL_TYPE_DATETIME:
+        case MYSQL_TYPE_DATETIME2:
+            return new OriginalTimestamp(
+                partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, sessionProperties));
+        case MYSQL_TYPE_DATE:
+        case MYSQL_TYPE_NEWDATE:
+            return new OriginalDate(
+                partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, sessionProperties));
+        default:
+            throw new UnsupportedOperationException("Value cast is not supported");
+        }
+    }
+
+    public static Object convertValue(Object value, RexNode rex, boolean strict, ColumnMeta columnMeta,
+                                      ExecutionContext ec) {
+        return convertValue(value, getTypeFromRexNode(rex, value), strict, columnMeta, ec);
+    }
+
+    public static DataType getTypeFromRexNode(RexNode rex, Object value) {
+        DataType type = DataTypeUtil.calciteToDrdsType(rex.getType());
+        ExprContextProvider exprCxtProvider = new ExprContextProvider();
+        IExpression evalFuncExec = RexUtils.getEvalFuncExec(rex, exprCxtProvider);
+        if (evalFuncExec instanceof DynamicParamExpression) {
+            type = DataTypeUtil.getTypeOfObject(value);
+        }
+        return type;
+    }
+
     public static void replaceExpressionWithLiteralParam(LogicalDynamicValues values, ExecutionContext ec) {
         for (List<RexNode> tuple : values.tuples) {
             for (RexNode rex : tuple) {
@@ -267,6 +511,18 @@ public class RexUtils {
 
                 evalRexCallParam((RexCallParam) rex, ec, RexCallParam::getRexCall);
             }
+        }
+    }
+
+    public static boolean paramExists(int paramIndex, ExecutionContext ec) {
+        final Parameters params = ec.getParams();
+        final boolean isBatch = params.isBatch();
+        if (isBatch) {
+            final List<Map<Integer, ParameterContext>> batchParams = params.getBatchParameters();
+
+            return batchParams.stream().anyMatch(m -> m.containsKey(paramIndex));
+        } else {
+            return params.getCurrentParameter().containsKey(paramIndex);
         }
     }
 
@@ -286,9 +542,14 @@ public class RexUtils {
                 final int paramIndex = callParam.getIndex();
 
                 // RexCallParams ->  RexCall (the real expr call) -> IExpr.eval() -> obj
-                Object value = evalFunc.apply(getRexCall.apply(callParam));
+                RexNode rexNode = getRexCall.apply(callParam);
+                Object value = evalFunc.apply(rexNode);
                 if (value instanceof Slice) {
-                    value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                    if (isBinaryReturnType(rexNode)) {
+                        value = ((Slice) value).getBytes();
+                    } else {
+                        value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                    }
                 } else if (value instanceof ByteString) {
                     value = ((ByteString) value).getBytes();
                 }
@@ -303,9 +564,14 @@ public class RexUtils {
             final Map<Integer, ParameterContext> param = params.getCurrentParameter();
 
             final int paramIndex = callParam.getIndex();
-            Object value = evalFunc.apply(getRexCall.apply(callParam));
+            RexNode rexNode = getRexCall.apply(callParam);
+            Object value = evalFunc.apply(rexNode);
             if (value instanceof Slice) {
-                value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                if (isBinaryReturnType(rexNode)) {
+                    value = ((Slice) value).getBytes();
+                } else {
+                    value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                }
             } else if (value instanceof ByteString) {
                 value = ((ByteString) value).getBytes();
             }
@@ -314,6 +580,17 @@ public class RexUtils {
 
             param.put(paramIndex + 1, newPc);
         }
+    }
+
+    private static boolean isBinaryReturnType(RexNode rexNode) {
+        try {
+            if ("BINARY".equalsIgnoreCase(rexNode.getType().getCharset().name())) {
+                return true;
+            }
+        } catch (Throwable e) {
+            // Ignore
+        }
+        return false;
     }
 
     public static Collection<RexDynamicParam> getDynamicParams(RexNode target) {
@@ -443,7 +720,11 @@ public class RexUtils {
             if (value instanceof Decimal) {
                 value = ((Decimal) value).toBigDecimal();
             } else if (value instanceof Slice) {
-                value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                if (isBinaryReturnType(rexNode)) {
+                    value = ((Slice) value).getBytes();
+                } else {
+                    value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                }
             }
         } else {
             throw new UnsupportedOperationException("Get value from " + rexNode.getClass() + " is not supported");
@@ -465,7 +746,11 @@ public class RexUtils {
             if (value instanceof Decimal) {
                 result = ((Decimal) value).toBigDecimal();
             } else if (value instanceof Slice) {
-                result = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                if (isBinaryReturnType(rexNode)) {
+                    result = ((Slice) value).getBytes();
+                } else {
+                    result = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                }
             } else {
                 result = value;
             }
@@ -481,14 +766,20 @@ public class RexUtils {
      * @param param Insert parameter row
      * @return Value list foreach RexNode
      */
-    public static List<Object> buildRowValue(List<RexNode> rexRow, Row row, Map<Integer, ParameterContext> param) {
-        final ExecutionContext tmpEc = new ExecutionContext();
+    public static List<Object> buildRowValue(List<RexNode> rexRow, Row row, Map<Integer, ParameterContext> param,
+                                             ExecutionContext ec) {
+        final ExecutionContext tmpEc = ec.copy();
         tmpEc.setParams(new Parameters(param));
 
         final List<Object> result = new ArrayList<>();
         for (RexNode rex : rexRow) {
-            final Object value = getValueFromRexNode(rex, row, tmpEc);
-            result.add(value);
+            try {
+                final Object value = getValueFromRexNode(rex, row, tmpEc);
+                result.add(value);
+            } catch (Exception e) {
+                throw new UnsupportedOperationException(
+                    "Get value from " + rex.getClass() + " is not supported");
+            }
         }
 
         return result;
@@ -521,6 +812,7 @@ public class RexUtils {
         }
         final RexCall currentCondition = (RexCall) condition;
         switch (currentCondition.getKind()) {
+        case IS_NOT_DISTINCT_FROM:
         case EQUALS: {
             if (currentCondition.getOperands().size() != 2) {
                 return false;
@@ -572,6 +864,11 @@ public class RexUtils {
                 return false;
             }
 
+            // For "<=>", nullable data type is not allowed for BKA join
+            if (currentCondition.getKind() == IS_NOT_DISTINCT_FROM &&
+                (relDataTypeLeft.isNullable() || relDataTypeRight.isNullable())) {
+                return false;
+            }
             if ((restrictType == RestrictType.LEFT && relColumnOriginLeft != null)
                 || (restrictType == RestrictType.RIGHT && relColumnOriginRight != null)
                 || (restrictType == RestrictType.BOTH && relColumnOriginLeft != null && relColumnOriginRight != null)
@@ -881,6 +1178,7 @@ public class RexUtils {
         }
     }
 
+
     public static void calculateAndUpdateAllRexCallParams(LogicalInsert relNode, ExecutionContext executionContext) {
         final LogicalDynamicValues oldInput = relNode.getUnOptimizedLogicalDynamicValues();
         final boolean noBatchParam = executionContext.getParams() == null || (executionContext.getParams().isBatch()
@@ -994,6 +1292,39 @@ public class RexUtils {
 
     public static boolean isSeqCall(RexNode value) {
         return value instanceof RexCall && ((RexCall) value).getOperator() instanceof SqlSequenceFunction;
+    }
+
+    public static void updateParam(Comparative comparative, ExecutionContext executionContext,
+                                   Predicate<RexCallParam> before, Consumer<RexCallParam> after) {
+        RexDynamicParamComparativeVisitor.analyze(
+            comparative,
+            (rexCallParam) -> {
+                if (before.test(rexCallParam)) {
+                    evalRexCallParam(rexCallParam, executionContext, RexCallParam::getRexCall);
+                    after.accept(rexCallParam);
+                }
+
+                // Visit all RexCallParam
+                return false;
+            },
+            RexCallParam.class);
+    }
+
+    public static void updateParam(PartitionPruneStep pruneStep, ExecutionContext executionContext,
+                                   Predicate<RexCallParam> before, Consumer<RexCallParam> after) {
+        RexNodePartitionPruneStepVisitor.analyze(
+            pruneStep,
+            (rexCallParam) -> {
+                if (before.test(rexCallParam)) {
+                    evalRexCallParam(rexCallParam, executionContext, RexCallParam::getRexCall);
+                    after.accept(rexCallParam);
+                }
+
+                // Visit all RexCallParam
+                return false;
+            },
+            RexCallParam.class
+        );
     }
 
     public static class ParamFinder extends RexVisitorImpl {
@@ -1186,7 +1517,7 @@ public class RexUtils {
         }
 
         RexNode rex = ((RexCall) rexNode).getOperands().get(0);
-        if (!(rex instanceof RexDynamicParam)) {
+        if (!(rex instanceof RexDynamicParam && ((RexDynamicParam) rex).literal())) {
             return false;
         }
 
@@ -1198,5 +1529,526 @@ public class RexUtils {
 
     public static String buildRexExprStringWithContext(RexNode expr, ExecutionContext ec) {
         return null;
+    }
+
+    public static class ColumnRefFinder extends RexVisitorImpl<Boolean> {
+
+        public ColumnRefFinder() {
+            super(true);
+        }
+
+        public boolean analyze(RexNode rex) {
+            return Boolean.TRUE.equals(rex.accept(this));
+        }
+
+        @Override
+        public Boolean visitInputRef(RexInputRef inputRef) {
+            return true;
+        }
+
+        @Override
+        public Boolean visitCall(RexCall call) {
+            if ("VALUES".equalsIgnoreCase(call.getOperator().getName())) {
+                return false;
+            }
+
+            Boolean r = null;
+            for (RexNode operand : call.operands) {
+                r = operand.accept(this);
+
+                if (Boolean.TRUE.equals(r)) {
+                    return true;
+                }
+            }
+            return r;
+        }
+    }
+
+    public static class RexDynamicParamShuttle extends RexShuttle {
+
+        private final Predicate<RexDynamicParam> predicate;
+        private RelShuttle relShuttle;
+        private boolean found = false;
+
+        public RexDynamicParamShuttle(Predicate<RexDynamicParam> predicate) {
+            this.predicate = predicate;
+        }
+
+        /**
+         * @return true if RexNode contains at least one RexCallParam
+         */
+        public static boolean analyze(RexNode rex, Predicate<RexDynamicParam> predicate) {
+            final RexDynamicParamShuttle finder = new RexDynamicParamShuttle(predicate);
+
+            rex.accept(finder);
+            return finder.found;
+        }
+
+        /**
+         * @return true if RelNode contains at least one RexCallParam
+         */
+        public static boolean analyze(RelNode rel, Predicate<RexDynamicParam> predicate) {
+            final RexDynamicParamShuttle rexShuttle = new RexDynamicParamShuttle(predicate);
+            final RexNodeRelShuttle relShuttle = new RexNodeRelShuttle(rexShuttle);
+            rexShuttle.setRelShuttle(relShuttle);
+
+            rel.accept(rexShuttle);
+            return rexShuttle.found;
+        }
+
+        public RexDynamicParamShuttle setRelShuttle(RelShuttle relShuttle) {
+            this.relShuttle = relShuttle;
+            return this;
+        }
+
+        @Override
+        public RexNode visitDynamicParam(RexDynamicParam dynamicParam) {
+            if (predicate.test(dynamicParam)) {
+                found = true;
+                return dynamicParam;
+            }
+            return super.visitDynamicParam(dynamicParam);
+        }
+
+        @Override
+        public RexNode visitCall(RexCall call) {
+            for (RexNode operand : call.operands) {
+                operand.accept(this);
+
+                if (found) {
+                    break;
+                }
+            }
+            return call;
+        }
+
+        @Override
+        public RexNode visitSubQuery(RexSubQuery subQuery) {
+            if (found) {
+                return subQuery;
+            }
+
+            if (null != relShuttle) {
+                final RelNode newRel = subQuery.rel.accept(relShuttle);
+                if (newRel != subQuery.rel) {
+                    subQuery = subQuery.clone(newRel);
+                }
+            }
+            return super.visitSubQuery(subQuery);
+        }
+    }
+
+    /**
+     * Traverse all RexDynamicParam in RexNode
+     */
+    public static class RexDynamicParamVisitor extends RexVisitorImpl<Boolean> {
+
+        private final Predicate<RexDynamicParam> stopper;
+
+        public RexDynamicParamVisitor(Predicate<RexDynamicParam> stopper) {
+            super(true);
+            this.stopper = stopper;
+        }
+
+        /**
+         * @return true if stopper returns true
+         */
+        public static boolean analyze(RexNode rex, Predicate<RexDynamicParam> stopper) {
+            final RexDynamicParamVisitor finder = new RexDynamicParamVisitor(stopper);
+            return Boolean.TRUE.equals(rex.accept(finder));
+        }
+
+        @Override
+        public Boolean visitDynamicParam(RexDynamicParam dynamicParam) {
+            return stopper.test(dynamicParam);
+        }
+
+        @Override
+        public Boolean visitCall(RexCall call) {
+            Boolean stopped = null;
+            for (RexNode operand : call.operands) {
+                stopped = operand.accept(this);
+
+                if (Boolean.TRUE.equals(stopped)) {
+                    return true;
+                }
+            }
+            return stopped;
+        }
+    }
+
+    /**
+     * Visit all RexNode int PartitionPruneStep
+     *
+     * @param <T> actual subclass of RexNode that we are looking for
+     */
+    public static class RexNodePartitionPruneStepVisitor<T extends RexNode> {
+
+        private final AtomicBoolean found = new AtomicBoolean(false);
+        private final Predicate<T> stopper;
+        private final Class<T> paramType;
+
+        public static <R extends RexNode> boolean analyze(PartitionPruneStep partitionPruneStep,
+                                                          Predicate<R> predicate,
+                                                          Class<R> paramType) {
+            final RexNodePartitionPruneStepVisitor<R> visitor =
+                new RexNodePartitionPruneStepVisitor<>(predicate, paramType);
+            visitor.visit(partitionPruneStep);
+            return visitor.found.get();
+        }
+
+        public RexNodePartitionPruneStepVisitor(Predicate<T> stopper, Class<T> paramType) {
+            this.stopper = stopper;
+            this.paramType = paramType;
+        }
+
+        public boolean visit(PartitionPruneStep partitionPruneStep) {
+            if (partitionPruneStep instanceof PartitionPruneStepOp) {
+                return visit((PartitionPruneStepOp) partitionPruneStep);
+            } else if (partitionPruneStep instanceof PartitionPruneStepCombine) {
+                return ((PartitionPruneStepCombine) partitionPruneStep)
+                    .getSubSteps()
+                    .stream()
+                    .anyMatch(p -> visit((PartitionPruneStepOp) p));
+            } else {
+                return false;
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        public boolean visit(PartitionPruneStepOp partitionPruneStepOp) {
+            try {
+                return partitionPruneStepOp
+                    .getPartColToPredExprInfo()
+                    .getPartPredExprList()
+                    .stream()
+                    .map(PartClauseInfo::getOriginalPredicate)
+                    .anyMatch(rex -> RexDynamicParamVisitor.analyze(
+                        rex,
+                        (r) -> {
+                            if (paramType.isAssignableFrom(r.getClass())) {
+                                found.compareAndSet(false, true);
+                                return stopper.test((T) r);
+                            }
+                            return false;
+                        })
+                    );
+            } catch (Exception e) {
+                logger.error("Visit PartitionPruneStepOp failed!", e);
+            }
+
+            return false;
+        }
+    }
+
+    public static class ReplaceScalarFunctionWithRexCallParamVisitor extends RexShuttle {
+        private final AtomicInteger currentParamIndex;
+        private final Deque<Boolean> topStack = new ArrayDeque<>();
+        private final Deque<Boolean> computableStack = new ArrayDeque<>();
+
+        private Predicate<RexNode> computable;
+        private Consumer<RexNode> trigger;
+
+        private RexNodeRelShuttle relShuttle;
+
+        public ReplaceScalarFunctionWithRexCallParamVisitor(AtomicInteger currentParamIndex,
+                                                            Predicate<RexNode> computable,
+                                                            Consumer<RexNode> trigger) {
+            this.currentParamIndex = currentParamIndex;
+            this.topStack.push(true);
+            this.computable = computable;
+            this.trigger = trigger;
+        }
+
+        public ReplaceScalarFunctionWithRexCallParamVisitor setRelShuttle(RexNodeRelShuttle relShuttle) {
+            this.relShuttle = relShuttle;
+            return this;
+        }
+
+        @Override
+        public RexNode visitSubQuery(RexSubQuery subQuery) {
+            if (null != relShuttle) {
+                final RelNode newRel = subQuery.rel.accept(relShuttle);
+                if (newRel != subQuery.rel) {
+                    subQuery = subQuery.clone(newRel);
+                }
+            }
+            return super.visitSubQuery(subQuery);
+        }
+
+        @Override
+        public RexNode visitCall(final RexCall call) {
+            RexNode visited = null;
+
+            boolean outterOperatorIsScalarFunction = Optional.ofNullable(this.computableStack.peek()).orElse(false);
+            if (!outterOperatorIsScalarFunction) {
+                outterOperatorIsScalarFunction = this.computable.test(call);
+            }
+
+            if (outterOperatorIsScalarFunction) {
+                // Check operands
+                this.topStack.push(false);
+                try {
+                    visited = super.visitCall(call);
+                } finally {
+                    this.topStack.pop();
+                }
+
+                final boolean replaceCall = Optional.ofNullable(topStack.peek()).orElse(false);
+                if (replaceCall) {
+                    trigger.accept(call);
+                    // Replace top RexNode with RexCallParam
+                    return new RexCallParam(call.getType(), currentParamIndex.incrementAndGet(), call);
+                }
+
+                if (call.getOperator() == TddlOperatorTable.NEXTVAL) {
+                    // If it's a nested seq.nextVal, we can't compute.
+                    throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION, "'" + call + "'");
+                }
+
+                return visited;
+            } else {
+                // Operands of logical operator (e.g. OR) might be computable,
+                // and we still can use them for partitioning
+                this.computableStack.push(false);
+                try {
+                    return super.visitCall(call);
+                } finally {
+                    this.computableStack.pop();
+                }
+            }
+        }
+    }
+
+    /**
+     * Traverse RelNode, visit each RelNode with {@link RexNodeRelShuttle#rexShuttle}
+     */
+    public static class RexNodeRelShuttle extends RelShuttleImpl {
+
+        private final RexShuttle rexShuttle;
+
+        public RexNodeRelShuttle(RexShuttle rexShuttle) {
+            this.rexShuttle = rexShuttle;
+        }
+
+        @Override
+        public RelNode visit(LogicalAggregate aggregate) {
+            return super.visit(aggregate).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalMatch match) {
+            return super.visit(match).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(TableScan scan) {
+            return super.visit(scan).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(TableFunctionScan scan) {
+            return super.visit(scan).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalValues values) {
+            return super.visit(values).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalFilter filter) {
+            return super.visit(filter).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalProject project) {
+            return super.visit(project).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalOutFile outFile) {
+            return super.visit(outFile).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalJoin join) {
+            return super.visit(join).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalSemiJoin semiJoin) {
+            return super.visit(semiJoin).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalCorrelate correlate) {
+            return super.visit(correlate).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(MultiJoin mjoin) {
+            return super.visit(mjoin).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalUnion union) {
+            return super.visit(union).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalIntersect intersect) {
+            return super.visit(intersect).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalMinus minus) {
+            return super.visit(minus).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalSort sort) {
+            return super.visit(sort).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalExchange exchange) {
+            return super.visit(exchange).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalTableLookup tableLookup) {
+            return super.visit(tableLookup).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(LogicalExpand expand) {
+            return super.visit(expand).accept(rexShuttle);
+        }
+
+        @Override
+        public RelNode visit(RelNode other) {
+            if (other instanceof HepRelVertex) {
+                RelNode relNode = ((HepRelVertex) other).getCurrentRel();
+                return relNode.accept(this);
+            }
+            if (other instanceof RelSubset) {
+                RelNode relNode = Util.first(((RelSubset) other).getBest(), ((RelSubset) other).getOriginal());
+                return relNode.accept(this);
+            }
+
+            if (other instanceof LogicalJoin) {
+                return visit((LogicalJoin) other);
+            }
+            if (other instanceof LogicalAggregate) {
+                return visit((LogicalAggregate) other);
+            }
+            if (other instanceof LogicalProject) {
+                return visit((LogicalProject) other);
+            }
+            if (other instanceof TableScan) {
+                return visit((TableScan) other);
+            }
+            if (other instanceof TableFunctionScan) {
+                return visit((TableFunctionScan) other);
+            }
+            if (other instanceof LogicalValues) {
+                return visit((LogicalValues) other);
+            }
+            if (other instanceof LogicalFilter) {
+                return visit((LogicalFilter) other);
+            }
+            if (other instanceof LogicalCorrelate) {
+                return visit((LogicalCorrelate) other);
+            }
+            if (other instanceof LogicalUnion) {
+                return visit((LogicalUnion) other);
+            }
+            if (other instanceof LogicalIntersect) {
+                return visit((LogicalIntersect) other);
+            }
+            if (other instanceof LogicalMinus) {
+                return visit((LogicalMinus) other);
+            }
+            if (other instanceof LogicalMatch) {
+                return visit((LogicalMatch) other);
+            }
+            if (other instanceof LogicalSort) {
+                return visit((LogicalSort) other);
+            }
+            if (other instanceof LogicalExchange) {
+                return visit((LogicalExchange) other);
+            }
+            if (other instanceof LogicalTableLookup) {
+                return visit((LogicalTableLookup) other);
+            }
+            if (other instanceof LogicalExpand) {
+                return visit((LogicalExpand) other);
+            }
+            if (other instanceof BroadcastTableModify) {
+                return other;
+            }
+            if (other instanceof VirtualView) {
+                return other;
+            }
+            if (other instanceof LogicalOutFile) {
+                return visit((LogicalOutFile) other);
+            }
+
+            return super.visit(other).accept(rexShuttle);
+        }
+    }
+
+    /**
+     * Visit all {@link RexDynamicParam} in a {@link Comparative}
+     */
+    public static class RexDynamicParamComparativeVisitor<T extends RexDynamicParam> extends ComparativeVisitor {
+
+        private final AtomicBoolean found = new AtomicBoolean(false);
+        /**
+         * Process RexDynamicParam as needed in this Predicate,
+         * return true when your visit is finished
+         */
+        private final Predicate<T> stopper;
+        /**
+         * Acceptable param type of {@link RexDynamicParamComparativeVisitor#stopper}
+         */
+        private final Class<T> paramType;
+
+        public RexDynamicParamComparativeVisitor(Predicate<T> stopper, Class<T> paramType) {
+            this.stopper = stopper;
+            this.paramType = paramType;
+        }
+
+        /**
+         * @return true if {@link RexDynamicParamComparativeVisitor#paramType} is found
+         */
+        public static <R extends RexDynamicParam> boolean analyze(Comparative comparative, Predicate<R> stopper,
+                                                                  Class<R> paramType) {
+            final RexDynamicParamComparativeVisitor<R> visitor =
+                new RexDynamicParamComparativeVisitor<>(stopper, paramType);
+            visitor.go(comparative);
+            return visitor.found.get();
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public void visit(Comparative comp, int ordinal, Comparative parent) {
+            if (comp.getValue() instanceof RexNode) {
+                RexDynamicParamVisitor.analyze(
+                    (RexNode) comp.getValue(),
+                    (r) -> {
+                        if (paramType.isAssignableFrom(r.getClass())) {
+                            found.compareAndSet(false, true);
+                            return stopper.test((T) r);
+                        }
+
+                        // find out all RexDynamicParam
+                        return false;
+                    });
+            }
+
+            super.visit(comp, ordinal, parent);
+        }
     }
 }

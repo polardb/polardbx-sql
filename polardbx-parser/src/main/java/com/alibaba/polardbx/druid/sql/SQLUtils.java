@@ -85,6 +85,12 @@ public class SQLUtils {
         SQLParserFeature.EnableSQLBinaryOpExprGroup
     };
 
+    public final static SQLParserFeature[] parserFeatures = {
+        SQLParserFeature.EnableSQLBinaryOpExprGroup, SQLParserFeature.OptimizedForParameterized,
+        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
+        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
+    };
+
     public static FormatOption DEFAULT_FORMAT_OPTION = new FormatOption(true, true);
     public static FormatOption DEFAULT_LCASE_FORMAT_OPTION
         = new FormatOption(false, true);
@@ -370,7 +376,6 @@ public class SQLUtils {
 
 
             return new MySqlOutputVisitor(out);
-
     }
 
     @Deprecated
@@ -406,7 +411,18 @@ public class SQLUtils {
         }
     }
 
+    public static List<SQLStatement> parseStatementsWithDefaultFeatures(String sql, DbType dbType) {
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, dbType, parserFeatures);
+        List<SQLStatement> stmtList = new ArrayList<SQLStatement>();
+        parser.parseStatementList(stmtList, -1, null);
+        if (parser.getLexer().token() != Token.EOF) {
+            throw new ParserException("syntax error : " + sql);
+        }
+        return stmtList;
+    }
+
     public static List<SQLStatement> parseStatements(String sql, DbType dbType, SQLParserFeature... features) {
+        // using default parserFeatures
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, dbType, features);
         List<SQLStatement> stmtList = new ArrayList<SQLStatement>();
         parser.parseStatementList(stmtList, -1, null);
@@ -1144,10 +1160,6 @@ public class SQLUtils {
 
     }
 
-    public static boolean enclosedByBackTick(String str) {
-        return str != null && str.length() > 0 && str.charAt(0) == '`';
-    }
-
     public static SQLPropertyExpr rewriteUdfName(SQLName name) {
         return new SQLPropertyExpr("mysql", SQLUtils.normalize(name.getSimpleName()));
     }
@@ -1167,6 +1179,18 @@ public class SQLUtils {
             ((MySqlUserName) name).setHost(normalize(((MySqlUserName) name).getHost()));
         }
         return name;
+    }
+
+    public static boolean enclosedByBackTick(String str) {
+        return str != null && str.length() > 0 && str.charAt(0) == '`';
+    }
+
+    public static String encloseWithUnquote(String str) {
+        if (str == null) {
+            return null;
+        } else {
+            return "`" + normalize(str) + "`";
+        }
     }
 }
 

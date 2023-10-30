@@ -44,7 +44,7 @@ select * from t1;
 select * from t2;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
 
-## error_msg: $# ERR_PARTITION_INVALID_PARAMS #$
+## error_msg: $# ERR_PARTITION_MANAGEMENT #$
 alter table t1 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc', 100),
   PARTITION p2_2 VALUES LESS THAN ('efg', maxvalue)

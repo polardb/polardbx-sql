@@ -66,3 +66,31 @@ t_composite_pk_shard_id:
   PRIMARY KEY (`id`,`id1`),
   KEY `auto_shard_key_ID` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_null_safe1:
+  CREATE TABLE `t_null_safe1` (
+  `id` int(11) NOT NULL,
+  `id_nullable` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_null_safe2:
+  CREATE TABLE `t_null_safe2` (
+  `id` int(11) NOT NULL,
+  `id_nullable` int(11) DEFAULT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+tt:
+  CREATE TABLE `tt` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c1`);

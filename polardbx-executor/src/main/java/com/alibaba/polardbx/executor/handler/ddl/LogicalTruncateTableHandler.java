@@ -64,6 +64,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPr
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.TruncateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.TruncateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
@@ -127,7 +128,7 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         String logicalTableName = logicalDdlPlan.getTableName();
         TableValidator.validateTableName(logicalTableName);
         TableValidator.validateTableExistence(logicalDdlPlan.getSchemaName(), logicalTableName, executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
     private DdlJob buildTruncateTableJob(LogicalTruncateTable logicalTruncateTable, ExecutionContext executionContext) {
@@ -208,9 +209,12 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         return new CreateTableJobFactory(
             createTablePreparedData.isAutoPartition(),
             createTablePreparedData.isTimestampColumnDefault(),
-            createTablePreparedData.getBinaryColumnDefaultValues(),
+            createTablePreparedData.getSpecialDefaultValues(),
+            createTablePreparedData.getSpecialDefaultValueFlags(),
+            createTablePreparedData.getAddedForeignKeys(),
             physicalPlanData,
-            executionContext
+            executionContext,
+            true
         ).create();
     }
 
@@ -381,7 +385,7 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         if (partitionInfo == null) {
             return null;
         } else {
-            return LocalityDesc.parse(partitionInfo.getLocality());
+            return LocalityInfoUtils.parse(partitionInfo.getLocality());
         }
     }
 
@@ -412,7 +416,9 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
                 MySqlCreateTableParser createParser = new MySqlCreateTableParser(
                     new MySqlExprParser(partitionInfo.showCreateTablePartitionDefInfo(true)));
                 SQLPartitionBy partitionBy = createParser.parsePartitionBy();
-                SqlNode partitioning = FastSqlConstructUtils.convertPartitionBy(partitionBy, new ContextParameters(false), executionContext);
+                SqlNode partitioning =
+                    FastSqlConstructUtils.convertPartitionBy(partitionBy, new ContextParameters(false),
+                        executionContext);
                 key.getValue().setPartitioning(partitioning);
             }
         }

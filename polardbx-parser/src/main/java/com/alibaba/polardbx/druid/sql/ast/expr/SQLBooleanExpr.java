@@ -31,11 +31,11 @@ public final class SQLBooleanExpr extends SQLExprImpl implements SQLExpr, SQLLit
 
     private boolean value;
 
-    public SQLBooleanExpr(){
+    public SQLBooleanExpr() {
 
     }
 
-    public SQLBooleanExpr(boolean value){
+    public SQLBooleanExpr(boolean value) {
         this.value = value;
     }
 

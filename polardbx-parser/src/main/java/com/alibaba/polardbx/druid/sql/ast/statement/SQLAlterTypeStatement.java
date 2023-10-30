@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.Collections;
@@ -84,5 +85,10 @@ public class SQLAlterTypeStatement extends SQLStatementImpl {
     @Override
     public List<SQLObject> getChildren() {
         return Collections.<SQLObject>singletonList(this.name);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.ALTER;
     }
 }

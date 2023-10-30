@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.group.jdbc;
 
+import com.alibaba.druid.pool.DruidConnectionHolder;
+import com.alibaba.druid.pool.DruidPooledConnection;
 import com.alibaba.polardbx.atom.TAtomConnectionProxy;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.utils.EncodingUtils;
@@ -30,10 +32,10 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.biv.MockConnection;
 import com.alibaba.polardbx.rpc.pool.XConnection;
-import com.mysql.jdbc.ConnectionImpl;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Array;
@@ -534,9 +536,19 @@ public class TGroupDirectConnection implements IConnection {
         } else {
             throw new NotSupportException("xproto required");
         }
-        Map<String, Object> globalServerVariables =
-            MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
-        setGlobalServerVariables(globalServerVariables);
+
+        String groupName = this.getGroupDataSource().getDbGroupKey();
+        if (groupName.equalsIgnoreCase(MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME) ||
+            SystemDbHelper.INFO_SCHEMA_DB_GROUP_NAME.equalsIgnoreCase(groupName)) {
+            // prevent setting global on GMS
+            return;
+        }
+
+        if (ConfigDataMode.isPolarDbX()) {
+            Map<String, Object> globalServerVariables =
+                MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
+            setGlobalServerVariables(globalServerVariables);
+        }
     }
 
     @Override
@@ -589,5 +601,29 @@ public class TGroupDirectConnection implements IConnection {
 
     public String getDbKey() {
         return dbKey;
+    }
+
+    @Override
+    public void discard(Throwable error) {
+        if (ConfigDataMode.isFastMock()) {
+            return;
+        }
+        try {
+            if (conn.isWrapperFor(XConnection.class)) {
+                conn.unwrap(XConnection.class).setLastException(new Exception("discard"));
+            } else {
+                // Discard pooled connection.
+                DruidPooledConnection druidConn = conn.unwrap(DruidPooledConnection.class);
+                // If druidConn is null, NPE is expected.
+                DruidConnectionHolder holder = druidConn.getConnectionHolder();
+                // Ignore if connection is already discard.
+                if (holder != null && !holder.isDiscard() && !druidConn.isDisable()) {
+                    holder.getDataSource().discardConnection(holder);
+                    druidConn.disable(error);
+                }
+            }
+        } catch (Throwable ex) {
+            log.error("Failed to discard connection on group " + groupDataSource.getDbGroupKey(), ex);
+        }
     }
 }

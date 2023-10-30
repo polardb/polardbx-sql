@@ -18,6 +18,8 @@ package com.alibaba.polardbx.planner.bindtype;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
@@ -54,28 +56,33 @@ public class BindTypePlanTest extends BasePlannerTest {
 
     @Override
     protected String getPlan(String testSql) {
-        Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-        ExecutionContext executionContext = new ExecutionContext();
-        executionContext.setServerVariables(new HashMap<>());
-        executionContext.setAppName(appName);
-        executionContext.setParams(new Parameters());
-        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
-            ByteString.from(testSql), currentParameter, executionContext, true);
+        try {
+            DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENBALE_BIND_COLLATE, "TRUE");
+            Map<Integer, ParameterContext> currentParameter = new HashMap<>();
+            ExecutionContext executionContext = new ExecutionContext();
+            executionContext.setServerVariables(new HashMap<>());
+            executionContext.setAppName(appName);
+            executionContext.setParams(new Parameters());
+            SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
+                ByteString.from(testSql), currentParameter, executionContext, true);
 
-        Planner.processParameters(sqlParameterized.getParameters(), executionContext);
+            Planner.processParameters(sqlParameterized.getParameters(), executionContext);
 
-        List<SQLStatement> stmtList = FastsqlUtils.parseSql(sqlParameterized.getSql());
-        SchemaRepository repository = new SchemaRepository(JdbcConstants.MYSQL);
+            List<SQLStatement> stmtList = FastsqlUtils.parseSql(sqlParameterized.getSql());
+            SchemaRepository repository = new SchemaRepository(JdbcConstants.MYSQL);
 
-        repository.resolve(stmtList.get(0), SchemaResolveVisitor.Option.ResolveAllColumn,
-            SchemaResolveVisitor.Option.ResolveIdentifierAlias);
+            repository.resolve(stmtList.get(0), SchemaResolveVisitor.Option.ResolveAllColumn,
+                SchemaResolveVisitor.Option.ResolveIdentifierAlias);
 
-        ContextParameters parserParameters = new ContextParameters(false);
-        parserParameters.setParameterNlsStrings(executionContext.getParameterNlsStrings());
+            ContextParameters parserParameters = new ContextParameters(false);
+            parserParameters.setParameterNlsStrings(executionContext.getParameterNlsStrings());
 
-        SqlNode converted = FastsqlParser.convertStatementToSqlNode(
-            stmtList.get(0), sqlParameterized.getParameters(), parserParameters, ec);
-        return converted.toString();
+            SqlNode converted = FastsqlParser.convertStatementToSqlNode(
+                stmtList.get(0), sqlParameterized.getParameters(), parserParameters, ec);
+            return converted.toString();
+        } finally {
+            DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENBALE_BIND_COLLATE, "FALSE");
+        }
     }
 }
 

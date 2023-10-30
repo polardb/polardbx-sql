@@ -18,12 +18,13 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class DrdsClearSeqCacheStatement extends MySqlStatementImpl implements SQLStatement {
 
-    private SQLName    name;
-    private boolean    all = false;
+    private SQLName name;
+    private boolean all = false;
 
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
@@ -44,5 +45,10 @@ public class DrdsClearSeqCacheStatement extends MySqlStatementImpl implements SQ
 
     public void setAll(boolean all) {
         this.all = all;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

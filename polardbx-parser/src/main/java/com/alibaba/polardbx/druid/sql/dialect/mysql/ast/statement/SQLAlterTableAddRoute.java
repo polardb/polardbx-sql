@@ -70,5 +70,4 @@ public class SQLAlterTableAddRoute extends SQLObjectImpl implements SQLAlterTabl
         this.effectiveAfterSeconds = x;
     }
 
-
 }

@@ -16,12 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelTraitSet;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTableGroupPreparedData;
+import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCreateTableGroup;
-import org.apache.calcite.sql.SqlDdl;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Created by luoyanxin.
@@ -29,23 +31,68 @@ import org.apache.calcite.sql.SqlDdl;
  * @author luoyanxin
  */
 public class LogicalCreateTableGroup extends BaseDdlOperation {
-    public LogicalCreateTableGroup(RelOptCluster cluster,
-                                   RelTraitSet traitSet,
-                                   SqlDdl sqlDdl, RelDataType rowType) {
-        super(cluster, traitSet, sqlDdl, rowType);
+
+    protected CreateTableGroupPreparedData preparedData;
+
+    public LogicalCreateTableGroup(DDL ddl) {
+        super(ddl);
     }
 
     @Override
-    public String getSchemaName() {
-        return ((SqlCreateTableGroup)nativeSqlNode).getSchemaName();
+    public boolean isSupportedByFileStorage() {
+        return false;
     }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public String getTableGroupName() {
-        return ((SqlCreateTableGroup)nativeSqlNode).getTableGroupName();
+        return ((SqlCreateTableGroup) nativeSqlNode).getTableGroupName();
     }
+
     public boolean isIfNotExists() {
-        return ((SqlCreateTableGroup)nativeSqlNode).isIfNotExists();
+        return ((SqlCreateTableGroup) nativeSqlNode).isIfNotExists();
     }
+
+    public String getLocality() {
+        return ((SqlCreateTableGroup) nativeSqlNode).getLocality();
+    }
+
+    public String getPartitionBy() {
+        SqlNode sqlPartition = ((SqlCreateTableGroup) nativeSqlNode).getSqlPartition();
+        if (sqlPartition != null) {
+            return sqlPartition.toString();
+        } else {
+            return StringUtils.EMPTY;
+        }
+    }
+
     public static LogicalCreateTableGroup create(CreateTableGroup input) {
-        return new LogicalCreateTableGroup(input.getCluster(), input.getTraitSet(), input.getAst(), input.getRowType());
+        return new LogicalCreateTableGroup(input);
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        // prevent creating table group like 'oss_%'
+        return TableGroupNameUtil.isOssTg(getTableGroupName());
+    }
+
+    public CreateTableGroupPreparedData getPreparedData() {
+        if (preparedData == null) {
+            preparedData();
+        }
+        return preparedData;
+    }
+
+    public void preparedData() {
+        preparedData = new CreateTableGroupPreparedData();
+        preparedData.setTableGroupName(getTableGroupName());
+        preparedData.setSourceSql("");
+        preparedData.setIfNotExists(isIfNotExists());
+        preparedData.setSchemaName(getSchemaName());
+        preparedData.setLocality(getLocality());
+        preparedData.setPartitionBy(getPartitionBy());
     }
 }

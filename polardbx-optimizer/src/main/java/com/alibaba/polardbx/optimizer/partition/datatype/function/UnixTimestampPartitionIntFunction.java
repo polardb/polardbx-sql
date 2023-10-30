@@ -19,9 +19,11 @@ package com.alibaba.polardbx.optimizer.partition.datatype.function;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import org.apache.calcite.sql.SqlOperator;
 
 import java.sql.Types;
 import java.util.List;
@@ -67,5 +69,10 @@ public class UnixTimestampPartitionIntFunction extends PartitionIntFunction {
     @Override
     public String[] getFunctionNames() {
         return new String[] {"UnixTimestampPartitionInt"};
+    }
+
+    @Override
+    public SqlOperator getSqlOperator() {
+        return TddlOperatorTable.UNIX_TIMESTAMP;
     }
 }

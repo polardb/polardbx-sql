@@ -31,6 +31,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectErrorAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
+
 public class SpillSelectGroupByTest extends AutoReadBaseTestCase {
 
     String hint = " /*+TDDL:cmd_extra(ENABLE_SPILL=true)*/";

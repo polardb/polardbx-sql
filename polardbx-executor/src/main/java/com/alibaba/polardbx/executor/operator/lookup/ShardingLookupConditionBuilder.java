@@ -57,6 +57,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -87,8 +88,8 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
     }
 
     private PartLookupPruningCache initLookupPruningCache() {
-        TddlRuleManager ruleManager = ec.getSchemaManager(v.getSchemaName()).getTddlRuleManager();
-        PartitionInfo partitionInfo = ruleManager.getPartitionInfoManager().getPartitionInfo(v.getLogicalTableName());
+        PartitionInfo partitionInfo =
+            ec.getSchemaManager(v.getSchemaName()).getTable(v.getLogicalTableName()).getPartitionInfo();
         boolean enableBkaInValuesPruning =
             ec.getParamManager().getBoolean(ConnectionParams.ENABLE_BKA_IN_VALUES_PRUNING);
         PartLookupPruningCache cache =
@@ -301,7 +302,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
                 val.set(0, tarVal);
                 PartPrunedResult rs = cache.doLookupPruning(val);
                 if (allowPerformInValuesPruning && rs != null) {
-                    List<PhysicalPartitionInfo> phyPartInfos = rs.getPrunedPartitions();
+                    List<PhysicalPartitionInfo> phyPartInfos = rs.getPrunedParttions();
                     for (int j = 0; j < phyPartInfos.size(); j++) {
                         String grpKey = phyPartInfos.get(j).getGroupKey();
                         String phyTb = phyPartInfos.get(j).getPhyTable();
@@ -375,8 +376,10 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         TableRule rule, TddlRuleManager tddlRuleManager, PartitionInfoManager partitionInfoManager,
         ExecutionContext context,
         PartLookupPruningCache cache) {
-        Partitioner partitioner = OptimizerContext.getContext(context.getSchemaName()).getPartitioner();
-        PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(v.getLogicalTableName());
+        String schema = Optional.ofNullable(v.getSchemaName()).orElseGet(() -> tddlRuleManager.getSchemaName());
+        Partitioner partitioner = OptimizerContext.getContext(schema).getPartitioner();
+        PartitionInfo partitionInfo =
+            context.getSchemaManager(schema).getTable(v.getLogicalTableName()).getPartitionInfo();
         final boolean shardByTable;
         if (!v.isNewPartDbTbl()) {
             // ensured by `canShard()`

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConfigParam;
@@ -28,14 +28,15 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptTable;
@@ -52,18 +53,19 @@ import org.apache.calcite.util.mapping.Mappings;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_MODIFY_SHARD_COLUMN;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_MODIFY_SHARD_COLUMN_ON_TABLE_WITHOUT_PK;
-import static org.apache.calcite.util.Static.RESOURCE;
 
 public class CheckModifyLimitation {
 
@@ -139,19 +141,6 @@ public class CheckModifyLimitation {
         }
     }
 
-    public static void check(LogicalModifyView logicalModifyView, ExecutionContext ec) {
-        // update / delete join
-//        List<String> tableNames = logicalModifyView.getTableNames();
-//        String schemaName = logicalModifyView.getSchemaName();
-//        if (tableNames.size() > 1) {
-//            for (String tableName : tableNames) {
-//                if (GlobalIndexMeta.hasIndex(tableName, schemaName)) {
-//                    throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UPDATE_DELETE_MULTI_TABLE);
-//                }
-//            }
-//        }
-    }
-
     public static void check(LogicalTableModify modify, PlannerContext pc) {
         TableModify.Operation operation = modify.getOperation();
         if (operation == Operation.UPDATE || operation == Operation.DELETE) {
@@ -171,7 +160,6 @@ public class CheckModifyLimitation {
             if (targetTableSet.size() > 1 || !enableModifyShardingColumn) {
                 /*
                   DO NOT allow multi-table update to modify shardColumns.
-                  DO NOT allow single-table update to modify shardColumns by default.
                  */
                 checkModifyShardingColumn(updateColumnList, tables, (c, t) -> {
                     throw new TddlRuntimeException(ERR_MODIFY_SHARD_COLUMN, c, Util.last(t.getQualifiedName()));
@@ -330,18 +318,6 @@ public class CheckModifyLimitation {
         return Boolean.parseBoolean(extraCmds.get(param.getName()).toString());
     }
 
-    public static void checkModifyBroadcastWithMultiUpdate(TableModify tableModify) {
-        checkModifyBroadcast(tableModify, () -> {
-            throw new TddlNestableRuntimeException("multi update not support broadcast");
-        });
-    }
-
-    public static void checkModifyBroadcastWithMultiDelete(TableModify tableModify) {
-        checkModifyBroadcast(tableModify, () -> {
-            throw new TddlNestableRuntimeException("multi delete not support broadcast");
-        });
-    }
-
     public static boolean checkModifyBroadcast(TableModify tableModify, Runnable handler) {
         return checkModifyBroadcast(tableModify.getTargetTables(), handler);
     }
@@ -356,6 +332,139 @@ public class CheckModifyLimitation {
             }
             return false;
         });
+    }
+
+    public static boolean checkModifyFkReferenced(TableModify tableModify, ExecutionContext ec) {
+        final boolean foreignKeyChecks = ec.foreignKeyChecks();
+        final boolean foreignKeyChecksForUpdateDelete =
+            ec.getParamManager().getBoolean(ConnectionParams.FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE);
+
+        if (foreignKeyChecks && foreignKeyChecksForUpdateDelete) {
+            final List<RelOptTable> targetTables = tableModify.getTargetTables();
+
+            final boolean isUpdate = tableModify.isUpdate();
+            final Map<RelOptTable, Set<String>> tableReferencedColumns = new HashMap<>();
+
+            if (isUpdate) {
+                // is update
+                final List<String> updateColumnList = tableModify.getUpdateColumnList();
+
+                for (Ord<RelOptTable> o : Ord.zip(targetTables)) {
+                    final Integer key = o.getKey();
+                    final RelOptTable targetTable = o.getValue();
+                    final Set<String> referencedCols = tableReferencedColumns.computeIfAbsent(targetTable, (k) -> {
+                        final Map<String, ForeignKeyData> referencedForeignKeys =
+                            getReferencedForeignKeys(ec, targetTable);
+                        final TreeSet<String> referencedFkCols = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        referencedForeignKeys.values().forEach(fkData -> referencedFkCols.addAll(fkData.refColumns));
+                        return referencedFkCols;
+                    });
+
+                    final String updateColumnName = updateColumnList.get(key);
+                    if (referencedCols.contains(updateColumnName)) {
+                        return true;
+                    }
+                }
+            } else {
+                // is delete
+                for (RelOptTable targetTable : targetTables) {
+                    final Set<String> referencedCols = tableReferencedColumns.computeIfAbsent(targetTable, (k) -> {
+                        final Map<String, ForeignKeyData> referencedForeignKeys =
+                            getReferencedForeignKeys(ec, targetTable);
+                        final TreeSet<String> referencedFkCols = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        referencedForeignKeys.values().forEach(fkData -> referencedFkCols.addAll(fkData.refColumns));
+                        return referencedFkCols;
+                    });
+                    if (GeneralUtil.isNotEmpty(referencedCols)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public static boolean checkModifyFkReferencing(TableModify tableModify, ExecutionContext ec) {
+        final boolean foreignKeyChecks = ec.foreignKeyChecks();
+        final boolean foreignKeyChecksForUpdateDelete =
+            ec.getParamManager().getBoolean(ConnectionParams.FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE);
+
+        if (foreignKeyChecks && foreignKeyChecksForUpdateDelete) {
+            final List<RelOptTable> targetTables = tableModify.getTargetTables();
+
+            final boolean isUpdate = tableModify.isUpdate();
+            final Map<RelOptTable, Set<String>> tableReferencedColumns = new HashMap<>();
+
+            if (isUpdate) {
+                // is update
+                final List<String> updateColumnList = tableModify.getUpdateColumnList();
+
+                for (Ord<RelOptTable> o : Ord.zip(targetTables)) {
+                    final Integer key = o.getKey();
+                    final RelOptTable targetTable = o.getValue();
+                    final Set<String> referencingCols = tableReferencedColumns.computeIfAbsent(targetTable, (k) -> {
+                        final Map<String, ForeignKeyData> referencingForeignKeys =
+                            getReferencingForeignKeys(ec, targetTable);
+                        final TreeSet<String> referencingFkCols = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        referencingForeignKeys.values().forEach(fkData -> referencingFkCols.addAll(fkData.columns));
+                        return referencingFkCols;
+                    });
+
+                    final String updateColumnName = updateColumnList.get(key);
+                    if (referencingCols.contains(updateColumnName)) {
+                        return true;
+                    }
+                }
+            } else {
+                // is delete
+                for (RelOptTable targetTable : targetTables) {
+                    final Set<String> referencingCols = tableReferencedColumns.computeIfAbsent(targetTable, (k) -> {
+                        final Map<String, ForeignKeyData> referencingForeignKeys =
+                            getReferencingForeignKeys(ec, targetTable);
+                        final TreeSet<String> referencingFkCols = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        referencingForeignKeys.values().forEach(fkData -> referencingFkCols.addAll(fkData.columns));
+                        return referencingFkCols;
+                    });
+                    if (GeneralUtil.isNotEmpty(referencingCols)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * If it's an UPDATE, and we modify foreign key
+     */
+    public static boolean checkModifyForeignKeyConstraint(TableModify tableModify, ExecutionContext ec) {
+        final List<String> targetColumns = tableModify.getUpdateColumnList();
+        final List<RelOptTable> targetTables = tableModify.getTargetTables();
+        return Ord.zip(targetTables).stream().anyMatch(o -> {
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(o.getValue());
+            final TableMeta tm = ec.getSchemaManager(qn.left).getTable(qn.right);
+            for (ForeignKeyData foreignKeyData : tm.getForeignKeys().values()) {
+                return foreignKeyData.columns.stream()
+                    .anyMatch(cn -> cn.equalsIgnoreCase(targetColumns.get(o.getKey())));
+            }
+            return false;
+        });
+    }
+
+    private static Map<String, ForeignKeyData> getReferencedForeignKeys(ExecutionContext ec,
+                                                                        RelOptTable targetTable) {
+        final Pair<String, String> schemaTable = RelUtils.getQualifiedTableName(targetTable);
+        final TableMeta tableMeta = ec.getSchemaManager(schemaTable.left).getTable(schemaTable.right);
+        return tableMeta.getReferencedForeignKeys();
+    }
+
+    private static Map<String, ForeignKeyData> getReferencingForeignKeys(ExecutionContext ec,
+                                                                         RelOptTable targetTable) {
+        final Pair<String, String> schemaTable = RelUtils.getQualifiedTableName(targetTable);
+        final TableMeta tableMeta = ec.getSchemaManager(schemaTable.left).getTable(schemaTable.right);
+        return tableMeta.getForeignKeys();
     }
 
     //for the table which is in scaleout writable phase, we could not push down it directly
@@ -419,6 +528,10 @@ public class CheckModifyLimitation {
 
     public static boolean checkGsiHasAutoUpdateColumns(List<TableModify.TableInfoNode> srcTables, ExecutionContext ec) {
         return srcTables.stream().anyMatch(t -> {
+            // For a dummy table like dual or a view, no need to check auto update columns
+            if (t.getRefTables().isEmpty() || null != CBOUtil.getDrdsViewTable(t.getRefTable())) {
+                return false;
+            }
             RelOptTable targetTable = t.getRefTable();
             final List<TableMeta> indexMeta = GlobalIndexMeta.getIndex(targetTable, ec);
             if (indexMeta.isEmpty()) {
@@ -435,7 +548,7 @@ public class CheckModifyLimitation {
     }
 
     public static boolean checkOnlineModifyColumnDdl(List<RelOptTable> targetTables, ExecutionContext ec) {
-        for (RelOptTable targetTable: targetTables) {
+        for (RelOptTable targetTable : targetTables) {
             if (TableColumnUtils.isModifying(targetTable, ec)) {
                 return true;
             }
@@ -467,15 +580,33 @@ public class CheckModifyLimitation {
         });
     }
 
-    public static boolean checkModifyShardingColumnWithGsi(LogicalModify modify, ExecutionContext ec) {
-        if (!modify.isUpdate()) {
-            return false;
-        }
+    /**
+     * If it's an UPDATE, and we modify primary key, then we should make sure that primary key contains all the sharding
+     * key, otherwise we may violate the constraint
+     */
+    public static boolean checkPushablePrimaryKeyConstraint(TableModify tableModify, ExecutionContext ec) {
+        final List<String> targetColumns = tableModify.getUpdateColumnList();
+        final List<RelOptTable> targetTables = tableModify.getTargetTables();
 
-        final List<RelOptTable> tables = modify.getTargetTables();
-        final List<String> updateColumnList = modify.getUpdateColumnList();
+        return Ord.zip(targetTables).stream().allMatch(o -> {
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(o.getValue());
+            final TableMeta tm = ec.getSchemaManager(qn.left).getTable(qn.right);
+            final Set<String> pkSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            pkSet.addAll(GlobalIndexMeta.getPrimaryKeys(tm));
 
-        return checkModifyShardingColumnWithGsi(tables, updateColumnList, ec);
+            if (pkSet.contains(targetColumns.get(o.getKey()))) {
+                final TddlRuleManager rm = OptimizerContext.getContext(qn.left).getRuleManager();
+                final boolean isBroadcast = rm.isBroadCast(qn.right);
+                final boolean isSingleTable = rm.isTableInSingleDb(qn.right);
+                if (isBroadcast || isSingleTable) {
+                    return true;
+                }
+
+                final List<String> partitionKey = rm.getSharedColumns(qn.right);
+                return pkSet.containsAll(partitionKey);
+            }
+            return true;
+        });
     }
 
     public static boolean checkModifyShardingColumnWithGsi(List<RelOptTable> targetTables, List<String> targetColumns,
@@ -518,5 +649,72 @@ public class CheckModifyLimitation {
             }
         }
         return false;
+    }
+
+    // return generated columns that need to be added for each table
+    public static Map<Integer, List<String>> getModifiedGeneratedColumns(List<TableModify.TableInfoNode> srcTables,
+                                                                         List<Integer> targetTableIndexes,
+                                                                         List<String> targetColumns,
+                                                                         List<Integer> outExtraTargetTableIndexes,
+                                                                         List<String> outExtraTargetColumns,
+                                                                         ExecutionContext ec) {
+        Map<Integer, List<String>> result = new HashMap<>();
+        Set<Integer> targetTableIndexesSet = new HashSet<>(targetTableIndexes);
+        for (Integer i : targetTableIndexesSet) {
+            RelOptTable targetTable = srcTables.get(i).getRefTable();
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
+            final TableMeta tableMeta = ec.getSchemaManager(qn.left).getTable(qn.right);
+            List<String> modifiedColumns = new ArrayList<>();
+
+            for (int j = 0; j < targetTableIndexes.size(); j++) {
+                if (targetTableIndexes.get(j).equals(i)) {
+                    modifiedColumns.add(targetColumns.get(j));
+                }
+            }
+
+            for (int j = 0; j < outExtraTargetTableIndexes.size(); j++) {
+                if (outExtraTargetTableIndexes.get(j).equals(i)) {
+                    modifiedColumns.add(outExtraTargetColumns.get(j));
+                }
+            }
+
+            List<String> modifiedGenColList =
+                GeneratedColumnUtil.getModifiedGeneratedColumn(tableMeta, modifiedColumns);
+            if (!modifiedGenColList.isEmpty()) {
+                result.put(i, modifiedGenColList);
+            }
+        }
+
+        return result;
+    }
+
+    public static boolean checkHasLogicalGeneratedColumns(List<RelOptTable> targetTables, ExecutionContext ec) {
+        for (RelOptTable targetTable : targetTables) {
+            if (GeneratedColumnUtil.containLogicalGeneratedColumn(targetTable, ec)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean checkHasLogicalGeneratedColumns(TableModify tableModify, ExecutionContext ec) {
+        final List<RelOptTable> targetTables = tableModify.getTargetTables();
+        return checkHasLogicalGeneratedColumns(targetTables, ec);
+    }
+
+    public static boolean checkTargetTableUpdatable(List<RelOptTable> targetTables, Consumer<RelOptTable> consumer) {
+        if (null == targetTables) {
+            return false;
+        }
+
+        for (RelOptTable targetTable : targetTables) {
+            if (null != CBOUtil.getDrdsViewTable(targetTable)) {
+                // View is not updatable
+                consumer.accept(targetTable);
+                return false;
+            }
+        }
+
+        return true;
     }
 }

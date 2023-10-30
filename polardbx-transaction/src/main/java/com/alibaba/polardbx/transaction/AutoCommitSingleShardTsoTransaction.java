@@ -22,8 +22,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
@@ -34,6 +33,7 @@ import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 
 import java.sql.SQLException;
 import java.sql.Statement;
+
 
 public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction implements ITsoTransaction {
 
@@ -66,6 +66,11 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
     @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        if (!begun) {
+            statisticSchema = schemaName;
+            recordTransaction();
+            begun = true;
+        }
 
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
             false, rw.equals(ITransaction.RW.WRITE), executionContext);
@@ -77,6 +82,7 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
 
         conn = sendLsn(conn, schemaName, group, masterSlave, this::getSnapshotSeq);
 
+        // For replica read, get snapshot_seq before getting LSN, and send it to replica to ensure consistency.
         if (omitTso && snapshotSeqIsEmpty()) {
             useCtsTransaction(conn, lizard1PC);
         } else {
@@ -142,4 +148,14 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
     public ITransactionPolicy.TransactionClass getTransactionClass() {
         return ITransactionPolicy.TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
     }
+
+    @Override
+    public TransactionType getType() {
+        return TransactionType.TSO_SSR;
+    }
+
+//    @Override
+//    protected void updateSlowTransaction() {
+//        updateSlowTSOTransaction(statisticSchema);
+//    }
 }

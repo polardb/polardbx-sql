@@ -39,7 +39,7 @@ public class BackgroupRebalanceTask extends BaseDdlTask {
     }
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        DdlHelper.getServerConfigManager().executeBackgroundSql("schedule " + rebalanceSql, schemaName, null);
+        DdlHelper.getServerConfigManager().executeBackgroundSql(rebalanceSql, schemaName, null);
     }
 
     @Override

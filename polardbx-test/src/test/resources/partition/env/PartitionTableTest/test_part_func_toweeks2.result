@@ -1,0 +1,58 @@
+## DISABLE_FAST_SQL_PARSER
+DROP TABLE IF EXISTS `hash_to_weeks`;
+CREATE TABLE IF NOT EXISTS `hash_to_weeks` (
+`dt` date NOT NULL
+) ENGINE = InnoDB
+partition by hash(to_weeks(`dt`))
+partitions 8;
+## one-week
+explain select dt from hash_to_weeks where dt = '2021-12-25';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p8]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 10895681
+## two-week
+explain select dt from hash_to_weeks where dt = '2021-12-26';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p4]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 10895681
+explain select dt from hash_to_weeks where dt = '2021-12-27';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p4]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+explain select dt from hash_to_weeks where dt = '2021-12-31';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p4]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+explain select dt from hash_to_weeks where dt = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p4]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+## three-week
+explain select dt from hash_to_weeks where dt = '2022-01-02';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p7]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 10895681
+explain select dt from hash_to_weeks where dt = '2022-01-03';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p7]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+explain select dt from hash_to_weeks where dt = '2022-01-08';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_weeks[p7]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` = ?)")
+explain select dt from hash_to_weeks where dt between '2022-01-02' and '2022-01-08';
+Logical ExecutionPlan
+PhyTableOperation(tables="hash_to_weeks[p7]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` BETWEEN ? AND ?)", params="2022-01-08,2022-01-02")
+explain select dt from hash_to_weeks where dt between '2022-01-01' and '2022-01-08';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hash_to_weeks[p4,p7]", shardCount=2, sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` BETWEEN ? AND ?)")
+explain select dt from hash_to_weeks where dt >= '2022-01-08' and dt < '2022-01-09';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hash_to_weeks[p3,p7]", shardCount=2, sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE ((`dt` >= ?) AND (`dt` < ?))")
+explain select dt from hash_to_weeks where dt > '2022-01-08' and dt <= '2022-01-09';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hash_to_weeks[p3,p7]", shardCount=2, sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE ((`dt` > ?) AND (`dt` <= ?))")

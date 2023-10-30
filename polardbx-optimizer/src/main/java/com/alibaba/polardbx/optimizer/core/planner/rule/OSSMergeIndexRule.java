@@ -61,6 +61,7 @@ import java.util.stream.Collectors;
  * @author Shi Yuxuan
  */
 public class OSSMergeIndexRule extends RelOptRule {
+
     public static final OSSMergeIndexRule INSTANCE = new OSSMergeIndexRule(
         operand(OSSTableScan.class, null, none()), "OSSMergeIndexRule");
 
@@ -84,11 +85,14 @@ public class OSSMergeIndexRule extends RelOptRule {
             return;
         }
         RelNode plan = ossTableScan.getPushedRelNode();
+
         plan = CBOUtil.OssTableScanFormat(plan);
+
         LogicalProject topProject = null;
         LogicalFilter filter = null;
         LogicalProject bottomProject = null;
         LogicalTableScan tableScan = null;
+
         if (plan instanceof LogicalProject) {
             topProject = (LogicalProject) plan;
             plan = topProject.getInput(0);
@@ -108,21 +112,26 @@ public class OSSMergeIndexRule extends RelOptRule {
             return;
         }
         RelBuilder relBuilder = call.builder();
+
         TableMeta tableMeta = CBOUtil.getTableMeta(tableScan.getTable());
         Map<ColumnMeta, Integer> allColumns = new HashMap<>();
         for (int i = 0; i < tableMeta.getPhysicalColumns().size(); i++) {
             allColumns.put(tableMeta.getPhysicalColumns().get(i), i);
         }
+
         // make sure baseRelNode project includes primary key
         RelNode baseRelNode = buildBaseNode(bottomProject, tableScan, tableMeta, allColumns, relBuilder);
+
         /**
          * get all columns with bloom filter
          */
         GenerateContext context = getIndexColumns(baseRelNode, tableScan.getTable(),
             tableMeta, allColumns, relBuilder);
+
         if (context == null) {
             return;
         }
+
         RelNode root = generateAnd(filter.getCondition(), context);
         if (root == null) {
             return;
@@ -137,6 +146,7 @@ public class OSSMergeIndexRule extends RelOptRule {
                 bottomProject.getRowType().getFieldCount() < root.getRowType().getFieldCount()) {
                 List<RexNode> projects = new ArrayList<>();
                 List<String> names = new ArrayList<>();
+
                 relBuilder.push(root);
                 for (int i = 0; i < bottomProject.getRowType().getFieldCount(); i++) {
                     projects.add(new RexInputRef(i, root.getRowType().getFieldList().get(i).getType()));
@@ -146,11 +156,13 @@ public class OSSMergeIndexRule extends RelOptRule {
                 root = relBuilder.build();
             }
         }
+
         //debugUsage(root, ossTableScan);
         if (root.getCluster().getMetadataQuery().getCumulativeCost(root).isLt(
             ossTableScan.getCluster().getMetadataQuery().getCumulativeCost(ossTableScan))) {
             call.transformTo(root);
         }
+
     }
 
     private RelNode generateAnd(RexNode condition, GenerateContext context) {
@@ -162,6 +174,7 @@ public class OSSMergeIndexRule extends RelOptRule {
         for (int i = 1; i < conditions.size(); i++) {
             context.addAndCondition(conditions.get(i));
         }
+
         for (int i = 0; i < conditions.size(); i++) {
             RexNode andCondition = conditions.get(i);
             List<RexNode> orConditions = RelOptUtil.disjunctions(andCondition);
@@ -217,6 +230,7 @@ public class OSSMergeIndexRule extends RelOptRule {
                         node.rebuildPartRoutingPlanInfo();
                         indexPaths.add(node);
                     }
+
                 }
                 if (indexPaths != null) {
                     //union paths
@@ -231,6 +245,7 @@ public class OSSMergeIndexRule extends RelOptRule {
                 context.setAndCondition(startLoc + i, conditions.get(i));
             }
         }
+
         //remove the and conditions
         for (int i = 1; i < conditions.size(); i++) {
             context.removeAndCondition();
@@ -289,6 +304,7 @@ public class OSSMergeIndexRule extends RelOptRule {
                 RexCall rexCall = (RexCall) predicate;
                 RexNode operand1 = rexCall.getOperands().get(0);
                 RexNode operand2 = rexCall.getOperands().get(1);
+
                 if (operand1 instanceof RexInputRef && !(operand2 instanceof RexInputRef)) {
                     idx = ((RexInputRef) operand1).getIndex();
                 } else if (operand2 instanceof RexInputRef && !(operand1 instanceof RexInputRef)) {
@@ -356,6 +372,7 @@ public class OSSMergeIndexRule extends RelOptRule {
         if (bottomProject != null) {
             Set<Integer> recordedColumns = bottomProject.getProjects().stream().filter(s -> s instanceof RexInputRef).
                 map(ref -> ((RexInputRef) ref).getIndex()).collect(Collectors.toSet());
+
             boolean missed = false;
             for (ColumnMeta column : table.getPrimaryIndex().getKeyColumns()) {
                 if (!recordedColumns.contains(allColumns.get(column))) {
@@ -466,6 +483,7 @@ public class OSSMergeIndexRule extends RelOptRule {
         public int getOriginColumnId(int id) {
             return afterProject.get(id);
         }
+
     }
 
     /**
@@ -503,6 +521,7 @@ public class OSSMergeIndexRule extends RelOptRule {
         }
         Set<Integer> columns = new HashSet<>();
         Set<Integer> orderedColumns = new HashSet<>();
+
         if (!tableMeta.isHasPrimaryKey()) {
             return null;
         }

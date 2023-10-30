@@ -55,10 +55,10 @@ import java.util.TreeSet;
  */
 public class ShowParametric {
 
-    private static int FIELD_COUNT = 14;
+    private static final int FIELD_COUNT = 14;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -106,11 +106,9 @@ public class ShowParametric {
 
         fields[i] = PacketUtil.getField("MIN_ROWS_FEEDBACK", Fields.FIELD_TYPE_DOUBLE);
         fields[i++].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c) {
+    public static boolean response(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -123,12 +121,15 @@ public class ShowParametric {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
-
         String schemaName = c.getSchema();
         if (OptimizerContext.getContext(schemaName) != null) {
             Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schemaName);
@@ -179,7 +180,7 @@ public class ShowParametric {
                         row.add(StringUtil.encode(point.getRowcountExpected() + "", c.getCharset()));
                         row.add(StringUtil.encode(point.getMaxRowcountExpected() + "", c.getCharset()));
                         row.add(StringUtil.encode(point.getMinRowcountExpected() + "", c.getCharset()));
-                        row.packetId = ++packetId;
+                        row.packetId = ++tmpPacketId;
                         proxy = row.write(proxy);
                     }
                 }
@@ -188,11 +189,12 @@ public class ShowParametric {
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 
     public static TreeSet<String> getSchemas(PrivilegeContext pc) {

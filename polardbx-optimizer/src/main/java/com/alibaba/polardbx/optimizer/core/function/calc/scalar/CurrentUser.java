@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 
 import java.util.List;
+import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 
 /**
  * Created by chuanqin on 18/1/23.
@@ -31,10 +32,13 @@ public class CurrentUser extends AbstractScalarFunction {
         super(operandTypes, resultType);
     }
 
-    // fake user, deal with some validation sql from some frameworks
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
-        return ec.getAppName();
+        PrivilegeContext privilegeContext = ec.getPrivilegeContext();
+        if (privilegeContext == null) {
+            return ec.getAppName();
+        }
+        return String.format("%s@%s", privilegeContext.getUser(), privilegeContext.getHost());
     }
 
     @Override

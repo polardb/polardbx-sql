@@ -78,7 +78,7 @@ public class AlterTableGroupSetLocalityChangeMetaTask extends BaseDdlTask {
             targetLocality = this.targetLocality;
         }
 
-        //which seems a little stupid in this way.
+        //we would update the meta data in table_partition, partition_group and table_group.
         List<String> tableNames = new ArrayList<>();
         for (int i = 0; i < toChangeMetaLocalityItems.size(); i++) {
             LocalityDetailInfoRecord localityDetailInfoRecord = toChangeMetaLocalityItems.get(i);

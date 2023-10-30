@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.ddl.job.task.backfill;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
@@ -43,31 +45,42 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
     Map<String, Set<String>> targetPhyTables;
     Map<String, String> sourceTargetGroup;
 
+    boolean useChangeSet;
+
     @JSONCreator
     public MoveTableBackFillTask(String schemaName,
                                  String logicalTableName,
                                  Map<String, Set<String>> sourcePhyTables,
                                  Map<String, Set<String>> targetPhyTables,
-                                 Map<String, String> sourceTargetGroup) {
+                                 Map<String, String> sourceTargetGroup,
+                                 boolean useChangeSet) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
         this.sourceTargetGroup = sourceTargetGroup;
+        this.useChangeSet = useChangeSet;
     }
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
+        updateTaskStateInNewTxn(DdlTaskState.DIRTY);
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
         executionContext.setSchemaName(schemaName);
         MoveTableBackfill backFillPlan =
             MoveTableBackfill
                 .createMoveTableBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
-                    targetPhyTables, sourceTargetGroup);
+                    targetPhyTables, sourceTargetGroup, useChangeSet);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         ExecutorHelper.execute(backFillPlan, executionContext);
+    }
+
+    @Override
+    protected void rollbackImpl(ExecutionContext executionContext) {
+        GsiBackfillManager gsiBackfillManager = new GsiBackfillManager(schemaName);
+        gsiBackfillManager.deleteByBackfillId(getTaskId());
     }
 
     public static String getTaskName() {

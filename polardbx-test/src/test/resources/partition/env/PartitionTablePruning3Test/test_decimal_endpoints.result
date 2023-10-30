@@ -1,0 +1,347 @@
+## DISABLE_FAST_SQL_PARSER
+create table if not exists rc4_decimal_2400 (c1 decimal(24,0) default null )
+partition by range columns(c1) (
+partition p0 values less than ('-123456789012345678901234'),
+partition p1 values less than ('-123456789012345678901233'),
+partition p2 values less than ('-123456789012345678901232'),
+partition p3 values less than ('-123456789012345678901231'),
+partition p4 values less than ('123456789012345678901234'),
+partition p5 values less than ('123456789012345678901235'),
+partition p6 values less than ('123456789012345678901236'),
+partition p7 values less than ('123456789012345678901237'),
+partition p8 values less than ('123456789012345678901238'),
+partition pm values less than (maxvalue)
+);
+##---- positive ----
+### col > const or col >= const for positive ###
+## '123456789012345678901236.2' < c1 ==> '123456789012345678901236' <= c1: p7,p8,pm
+explain select * from rc4_decimal_2400 where c1 > '123456789012345678901236.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p7,p8,pm]", shardCount=3, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` > ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: e14ba130
+explain select * from rc4_decimal_2400 where '123456789012345678901236.2' < c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p7,p8,pm]", shardCount=3, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? < `c1`)")
+## '123456789012345678901236.8' < c1 ==> '123456789012345678901237' <= c1: p8,pm
+explain select * from rc4_decimal_2400 where c1 > '123456789012345678901236.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` > ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: e14ba130
+explain select * from rc4_decimal_2400 where '123456789012345678901236.8' < c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? < `c1`)")
+## '123456789012345678901236.2' <= c1 ==> '123456789012345678901236' <= c1: p7,p8,pm
+explain select * from rc4_decimal_2400 where c1 >= '123456789012345678901236.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p7,p8,pm]", shardCount=3, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` >= ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 4828ee2b
+explain select * from rc4_decimal_2400 where '123456789012345678901236.2' <= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p7,p8,pm]", shardCount=3, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? <= `c1`)")
+## '123456789012345678901236.8' <= c1 ==> '123456789012345678901237' <= c1: p8,pm
+explain select * from rc4_decimal_2400 where c1 >= '123456789012345678901236.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` >= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 4828ee2b
+explain select * from rc4_decimal_2400 where '123456789012345678901236.8' <= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? <= `c1`)")
+## c1 < '123456789012345678901236.2' ==> c1 <= '123456789012345678901236': p0~p7
+explain select * from rc4_decimal_2400 where c1 < '123456789012345678901236.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` < ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: e14b99ae
+explain select * from rc4_decimal_2400 where '123456789012345678901236.2' > c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? > `c1`)")
+## c1 < '123456789012345678901236.8' ==> c1 <= '123456789012345678901237' :p0~p8
+explain select * from rc4_decimal_2400 where c1 < '123456789012345678901236.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` < ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: e14b99ae
+explain select * from rc4_decimal_2400 where '123456789012345678901236.8' > c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? > `c1`)")
+## c1 < 123456789012345678901236.2' ==> c1 <= '123456789012345678901236' : p0~p7
+explain select * from rc4_decimal_2400 where c1 <= '123456789012345678901236.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` <= ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 4828056d
+explain select * from rc4_decimal_2400 where '123456789012345678901236.2' >= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? >= `c1`)")
+## c1 <= '123456789012345678901236.8'==> c1 <= '123456789012345678901237': p0~p8
+explain select * from rc4_decimal_2400 where c1 <= '123456789012345678901236.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` <= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 4828056d
+explain select * from rc4_decimal_2400 where '123456789012345678901236.8' >= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? >= `c1`)")
+##---- negative ----
+##  c1 < '-123456789012345678901232.2'  ==> c1 <= '-123456789012345678901232': p0,p1,p2,p3
+explain select * from rc4_decimal_2400 where c1 < '-123456789012345678901232.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` < ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: e14b99ae
+explain select * from rc4_decimal_2400 where '-123456789012345678901232.2' > c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? > `c1`)")
+## '-123456789012345678901232.8' < c1 ==> '-123456789012345678901233' <= c1: p2~pm
+explain select * from rc4_decimal_2400 where c1 > '-123456789012345678901232.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` > ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: e14ba130
+explain select * from rc4_decimal_2400 where '-123456789012345678901232.8' < c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? < `c1`)")
+## c1 <= '-123456789012345678901232.2'  ==> c1 <= '-123456789012345678901232': p0,p1,p2,p3
+explain select * from rc4_decimal_2400 where c1 <= '-123456789012345678901232.2';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` <= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 4828056d
+explain select * from rc4_decimal_2400 where '-123456789012345678901232.2' >= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? >= `c1`)")
+## '-123456789012345678901232.8' <= c1 ==> '-123456789012345678901233' <= c1: p2~pm
+explain select * from rc4_decimal_2400 where c1 >= '-123456789012345678901232.8';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (`c1` >= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 4828ee2b
+explain select * from rc4_decimal_2400 where '-123456789012345678901232.8' <= c1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc4_decimal_2400[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc4_decimal_2400` AS `rc4_decimal_2400` WHERE (? <= `c1`)")
+create table if not exists rc5_bigint (c1 bigint default null )
+partition by range columns(c1) (
+partition p0 values less than (-10001),
+partition p1 values less than (-10000),
+partition p2 values less than (-9999),
+partition p3 values less than (-9998),
+partition p4 values less than (-9997),
+partition p5 values less than (9997),
+partition p6 values less than (9998),
+partition p7 values less than (9999),
+partition p8 values less than (10000),
+partition pm values less than (maxvalue)
+);
+##---- positive ----
+  ## c1 > 9999.1 ==> c1 >= 9999: p8,pm
+explain select * from rc5_bigint where c1 > 9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` > ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 0c573392
+## c1 > 9999.1 ==> c1 >= 9999: p8,pm
+explain select * from rc5_bigint where c1 >= 9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p8,pm]", shardCount=2, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` >= ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 7e8fa809
+## c1 > 9999.8 ==> c1 >= 10000: pm
+explain select * from rc5_bigint where c1 > 9999.8;
+Logical ExecutionPlan
+PhyTableOperation(tables="rc5_bigint[pm]", sql="SELECT `rc5_bigint`.`c1` FROM ? AS `rc5_bigint` WHERE (`rc5_bigint`.`c1` > ?)", params="9999.8")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c573392
+## c1 > 9999.8 ==> c1 >= 10000: pm
+explain select * from rc5_bigint where c1 >= 9999.8;
+Logical ExecutionPlan
+PhyTableOperation(tables="rc5_bigint[pm]", sql="SELECT `rc5_bigint`.`c1` FROM ? AS `rc5_bigint` WHERE (`rc5_bigint`.`c1` >= ?)", params="9999.8")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8fa809
+## c1 < 9999.1 ==> c1 <= 9999: p0~p8
+explain select * from rc5_bigint where c1 < 9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` < ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 0c572c10
+## c1 <= 9999.1 ==> c1 <= 9999: p0~p8
+explain select * from rc5_bigint where c1 <= 9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=9, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` <= ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 7e8ebf4b
+## c1 < 9999.8 ==> c1 <= 10000: p0~0m
+explain select * from rc5_bigint where c1 < 9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=10, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` < ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c572c10
+## c1 < 9999.8 ==> c1 <= 10000: p0~0m
+explain select * from rc5_bigint where c1 <= 9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=10, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` <= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8ebf4b
+##---- negative ----
+  ## c1 > -9999.1 ==> c1 >= -9999: p3~pm
+explain select * from rc5_bigint where c1 > -9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p3,p4,p5,p6,p7,p8,pm]", shardCount=7, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` > ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c573392
+## c1 > -9999.1 ==> c1 >= 9999: p3~pm
+explain select * from rc5_bigint where c1 >= -9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p3,p4,p5,p6,p7,p8,pm]", shardCount=7, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` >= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8fa809
+## c1 > -9999.8 ==> c1 >= -10000: p2~pm
+explain select * from rc5_bigint where c1 > -9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` > ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c573392
+## c1 > -9999.8 ==> c1 >= -10000: p2~pm
+explain select * from rc5_bigint where c1 >= -9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p2,p3,p4,p5,p6,p7,p8,pm]", shardCount=8, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` >= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8fa809
+## c1 < -9999.1 ==> c1 <= -9999: p0,p1,p2,p3
+explain select * from rc5_bigint where c1 < -9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` < ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c572c10
+## c1 <= 9999.1 ==> c1 <= 9999: p0,p1,p2,p3
+explain select * from rc5_bigint where c1 <= -9999.1;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2,p3]", shardCount=4, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` <= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8ebf4b
+## c1 < 9999.8 ==> c1 <= 10000: p0,p1,p2
+explain select * from rc5_bigint where c1 < -9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2]", shardCount=3, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` < ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 0c572c10
+## c1 < 9999.8 ==> c1 <= 10000: p0,p1,p2
+explain select * from rc5_bigint where c1 <= -9999.8;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc5_bigint[p0,p1,p2]", shardCount=3, sql="SELECT `c1` FROM `rc5_bigint` AS `rc5_bigint` WHERE (`c1` <= ?)")
+HitCache:true
+Source:PLAN_CACHE
+TemplateId: 7e8ebf4b
+create table if not exists rc3_decimal_2400 (c1 decimal(24,0) default null )
+partition by range columns(c1) (
+partition p0 values less than ('-999999999999999999999999'),
+partition p1 values less than ('-123456789012345678901234'),
+partition p2 values less than ('-18446744073709551616'),
+partition p3 values less than ('-18446744073709551615'),
+partition p4 values less than ('-9223372036854775808'),
+partition p5 values less than ('-4294967296'),
+partition p6 values less than ('-2147483648'),
+partition p7 values less than ('-16777216'),
+partition p8 values less than ('-8388608'),
+partition p9 values less than ('-65536'),
+partition p10 values less than ('-32768'),
+partition p11 values less than ('-255'),
+partition p12 values less than ('-128'),
+partition p13 values less than ('0'),
+partition p14 values less than ('127'),
+partition p15 values less than ('255'),
+partition p16 values less than ('32767'),
+partition p17 values less than ('65535'),
+partition p18 values less than ('8388607'),
+partition p19 values less than ('16777215'),
+partition p20 values less than ('2147483647'),
+partition p21 values less than ('4294967295'),
+partition p22 values less than ('9223372036854775807'),
+partition p23 values less than ('18446744073709551615'),
+partition p24 values less than ('18446744073709551616'),
+partition p25 values less than ('123456789012345678901234'),
+partition p26 values less than ('999999999999999999999999'),
+partition p27 values less than (maxvalue)
+);
+set sql_mode='';
+insert into rc3_decimal_2400 values (123456789012345678901234.101);
+insert into rc3_decimal_2400 values (123456789012345678901233.801);
+select * from rc3_decimal_2400 where c1 >= '123456789012345678901233.8' and c1<='123456789012345678901234.5';
+c1
+123456789012345678901234
+123456789012345678901234
+explain select * from rc3_decimal_2400 where c1 >= '123456789012345678901233.8' and c1<='123456789012345678901234.5';
+Logical ExecutionPlan
+PhyTableOperation(tables="rc3_decimal_2400[p26]", sql="SELECT `rc3_decimal_2400`.`c1` FROM ? AS `rc3_decimal_2400` WHERE ((`rc3_decimal_2400`.`c1` >= ?) AND (`rc3_decimal_2400`.`c1` <= ?))", params="123456789012345678901234.5,123456789012345678901233.8")
+explain select * from rc3_decimal_2400 where c1 <= '123456789012345678901233.8' and c1>='123456789012345678901234.5';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc3_decimal_2400[]", shardCount=0, sql="SELECT `c1` FROM `rc3_decimal_2400` AS `rc3_decimal_2400` WHERE ((`c1` <= ?) AND (`c1` >= ?))")

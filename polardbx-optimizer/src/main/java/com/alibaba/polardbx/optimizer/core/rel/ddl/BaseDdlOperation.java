@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -24,6 +25,7 @@ import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -32,8 +34,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
+import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptCluster;
@@ -41,6 +45,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlDdl;
@@ -50,8 +55,9 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.collections.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +66,7 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
 
     public DDL relDdl;
     protected String tableName;
+    protected List<String> tableNameList;
     private String phyTable;
 
     protected Map<String, List<List<String>>> targetTablesHintCache;
@@ -78,18 +85,53 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
 
     public BaseDdlOperation(DDL ddl) {
         this(ddl.getCluster(), ddl.getTraitSet(), ddl);
-        final SqlIdentifier tableName = (SqlIdentifier) ddl.getTableName();
-        if (tableName.isSimple()) {
-            this.tableName = tableName.getSimple();
-            this.schemaName = PlannerContext.getPlannerContext(ddl).getSchemaName();
-        } else {
-            final String schemaName = tableName.names.get(0);
-            if (OptimizerContext.getContext(schemaName) == null) {
-                throw new TddlNestableRuntimeException("Unknown database " + schemaName);
+        if (CollectionUtils.isNotEmpty(ddl.getTableNameList())) {
+            this.tableNameList = new ArrayList<>();
+            for (SqlNode sqlNode : ddl.getTableNameList()) {
+                final SqlIdentifier tableName = (SqlIdentifier) sqlNode;
+
+                if (tableName.isSimple()) {
+                    String dbName = PlannerContext.getPlannerContext(ddl).getSchemaName();
+                    if (this.schemaName == null) {
+                        this.schemaName = dbName;
+                    } else if (!StringUtils.equalsIgnoreCase(dbName, this.schemaName)) {
+                        throw new TddlNestableRuntimeException("DDL across databases are not supported yet.");
+                    }
+                    if (this.tableName == null) {
+                        this.tableName = tableName.getSimple();
+                    }
+                    this.tableNameList.add(tableName.getSimple());
+                } else {
+                    final String dbName = tableName.names.get(0);
+                    if (OptimizerContext.getContext(dbName) == null) {
+                        throw new TddlNestableRuntimeException("Unknown database " + dbName);
+                    }
+                    if (this.schemaName == null) {
+                        this.schemaName = dbName;
+                    } else if (!StringUtils.equalsIgnoreCase(dbName, this.schemaName)) {
+                        throw new TddlNestableRuntimeException("DDL across databases are not supported yet.");
+                    }
+                    if (this.tableName == null) {
+                        this.tableName = Util.last(tableName.names);
+                    }
+                    this.tableNameList.add(Util.last(tableName.names));
+                }
             }
-            this.tableName = Util.last(tableName.names);
-            this.schemaName = schemaName;
+        } else {
+            final SqlIdentifier tableName = (SqlIdentifier) ddl.getTableName();
+            if (tableName.isSimple()) {
+                this.tableName = tableName.getSimple();
+                this.schemaName = PlannerContext.getPlannerContext(ddl).getSchemaName();
+            } else {
+                final String schemaName = tableName.names.get(0);
+                if (OptimizerContext.getContext(schemaName) == null) {
+                    throw new TddlNestableRuntimeException("Unknown database " + schemaName);
+                }
+                this.tableName = Util.last(tableName.names);
+                this.schemaName = schemaName;
+            }
         }
+
         if (TStringUtil.isEmpty(schemaName)) {
             schemaName = DefaultSchema.getSchemaName();
         }
@@ -97,6 +139,19 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
 
     public BaseDdlOperation(DDL ddl, List<SqlIdentifier> objectNames) {
         this(ddl.getCluster(), ddl.getTraitSet(), ddl);
+        if (AlterTablePartitionHelper.checkIfFromAlterIndexPartition(ddl)) {
+            SqlIdentifier gsiFullTblNameId =
+                (SqlIdentifier) AlterTablePartitionHelper.fetchGsiFullTableNameAstForAlterIndexPartition(ddl);
+            if (gsiFullTblNameId != null) {
+                AlterTable alterTbl = (AlterTable) ddl;
+                List<String> gsiFullTblNames = gsiFullTblNameId.names;
+                this.schemaName = gsiFullTblNames.get(0);
+                this.tableName = gsiFullTblNames.get(1);
+                alterTbl.setTableName(gsiFullTblNameId);
+                return;
+            }
+        }
+
         int nameHierarchy = objectNames.size();
         if (nameHierarchy > 3) {
             throw new TddlNestableRuntimeException("Invalid table:" + tableName);
@@ -236,14 +291,26 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return DdlType.DROP_FUNCTION;
         case ALTER_FUNCTION:
             return DdlType.ALTER_FUNCTION;
+        case CREATE_JAVA_FUNCTION:
+            return DdlType.CREATE_JAVA_FUNCTION;
+        case DROP_JAVA_FUNCTION:
+            return DdlType.DROP_JAVA_FUNCTION;
         case CREATE_PROCEDURE:
             return DdlType.CREATE_PROCEDURE;
         case DROP_PROCEDURE:
             return DdlType.DROP_PROCEDURE;
         case ALTER_PROCEDURE:
             return DdlType.ALTER_PROCEDURE;
+        case CREATE_DATABASE:
+            return DdlType.CREATE_DATABASE_LIKE_AS;
         case PUSH_DOWN_UDF:
             return DdlType.PUSH_DOWN_UDF;
+        case ALTER_TABLE_SET_TABLEGROUP:
+            return DdlType.ALTER_TABLE_SET_TABLEGROUP;
+        case ALTER_TABLEGROUP_ADD_TABLE:
+            return DdlType.ALTER_TABLEGROUP_ADD_TABLE;
+        case MERGE_TABLEGROUP:
+            return DdlType.MERGE_TABLEGROUP;
         default:
             return DdlType.UNSUPPORTED;
         }
@@ -292,4 +359,53 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
         return relDdl.getRowType();
     }
 
+    /**
+     * Check if ddl operation involves file storage.
+     * 1. ddl on a file storage table, and the table is bound to an innodb table, reject the ddl
+     * 2. ddl on a file storage table, and the table is not bound to any innodb table,
+     * check whether the ddl is portal to file storage
+     *
+     * @return true if the ddl can be executed
+     */
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    /**
+     * Check if ddl operation involve file storage.
+     * 1. ddl on an innodb table, and the table is NOT binding to a file storage table,
+     * 2. ddl on an innodb table, and the table is binding to a file storage table,
+     * check whether the ddl is portal to file storage
+     *
+     * @return true if the ddl can be executed
+     */
+    public boolean isSupportedByBindFileStorage() {
+        return false;
+    }
+
+    /**
+     * Check if ddl operation on file storage
+     *
+     * @return true if ddl on file storage
+     */
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        String schemaName = getSchemaName();
+        String logicalTableName = getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
+        if (tableMeta == null) {
+            return false;
+        }
+        return Engine.isFileStore(tableMeta.getEngine());
+    }
+
+    /**
+     * Check if ddl operation on innodb binding to file storage
+     *
+     * @return true if ddl on innodb binding to file storage
+     */
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        String schemaName = getSchemaName();
+        String logicalTableName = getTableName();
+        return !CheckOSSArchiveUtil.checkWithoutOSS(schemaName, logicalTableName);
+    }
 }

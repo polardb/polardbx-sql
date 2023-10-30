@@ -69,7 +69,7 @@ public class LogicalAlterTableExtractPartitionHandler extends LogicalCommonDdlHa
         }
         AlterTableGroupUtils.alterTableExtractPartitionCheck(logicalAlterTableExtractPartition.getSchemaName(),
             logicalTableName, alterTable.getAllRexExprInfo(), executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

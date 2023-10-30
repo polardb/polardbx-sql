@@ -35,4 +35,14 @@ public class LogicalCreateFunction extends BaseDdlOperation {
     public SqlCreateFunction getSqlCreateFunction() {
         return sqlCreateFunction;
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

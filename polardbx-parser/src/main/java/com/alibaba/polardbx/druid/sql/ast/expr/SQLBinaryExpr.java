@@ -32,11 +32,11 @@ public class SQLBinaryExpr extends SQLExprImpl implements SQLLiteralExpr, SQLVal
 
     private transient Number val;
 
-    public SQLBinaryExpr(){
+    public SQLBinaryExpr() {
 
     }
 
-    public SQLBinaryExpr(String value){
+    public SQLBinaryExpr(String value) {
         super();
         this.text = value;
     }

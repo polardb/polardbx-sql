@@ -141,7 +141,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     private void sync(List<Pair<GmsNode, List<Map<String, Object>>>> resultsForHandler, GmsNode localNode,
                       List<GmsNode> remoteNodes, IGmsSyncAction action, String schemaName, boolean throwExceptions) {
         // Use thread pool for manager port to avoid conflict with server port.
-        ExecutorTemplate template = new ExecutorTemplate(CobarServer.getInstance().getManagerExecutor());
+        ExecutorTemplate template = new ExecutorTemplate(CobarServer.getInstance().getSyncExecutor());
 
         Map<String, String> nodeExceptions = new HashMap<>();
 
@@ -208,7 +208,8 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
             return ExecUtils.resultSetToList(stmt.getResultSet());
         } catch (SQLException e) {
-            String errMsg = "Failed to SYNC to '" + serverKey + "'. Caused by: " + e.getMessage();
+            String errMsg = "Failed to SYNC to '" + serverKey + "'. Caused by: " + e.getMessage()
+                + ", sql: " + sql;
             logger.error(errMsg, e);
             throw GeneralUtil.nestedException(errMsg, e);
         }

@@ -47,6 +47,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByList;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByUdfHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByValue;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionValue;
 import com.alibaba.polardbx.druid.sql.ast.SQLRecordDataType;
@@ -55,9 +56,11 @@ import com.alibaba.polardbx.druid.sql.ast.SQLSetQuantifier;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStructDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartition;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByList;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByRange;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByUdfHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLUnionDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLWindow;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLAggregateExpr;
@@ -126,9 +129,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsRenamePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
@@ -139,6 +141,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStat
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemGetConfigStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemLeaderStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemRefreshStorageStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemReloadStorageStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSystemSetConfigStatement;
@@ -183,13 +186,13 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableOptimizePartiti
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartitionCount;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartitionSetProperties;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReOrganizePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRebuildPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRecoverPartitions;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRename;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenamePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRepairPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReplaceColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetComment;
@@ -385,7 +388,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLCreateResou
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLListResourceGroupStatement;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.Pair;
-import com.alibaba.polardbx.druid.util.StringUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -395,7 +398,6 @@ import java.math.BigInteger;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.NClob;
-import java.sql.SQLException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -465,6 +467,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     private boolean specialNameWithBacktick = false;
 
     protected boolean isMySQL80 = false;
+
+    protected String timezone = null;
 
     {
         features |= VisitorFeature.OutputPrettyFormat.mask;
@@ -1969,6 +1973,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         return false;
     }
 
+    private boolean isSimpleRefVar(SQLVariantRefExpr item) {
+        return !item.isGlobal() && !item.isSession() && !StringUtils.startsWith(item.getName(), "@");
+    }
+
     public boolean visit(SQLInListExpr x) {
         final SQLExpr expr = x.getExpr();
 
@@ -1999,17 +2007,19 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
             boolean allLiteral = true;
             for (SQLExpr item : targetList) {
-                if (!(item instanceof SQLLiteralExpr || item instanceof SQLVariantRefExpr)) {
+                if (!(item instanceof SQLLiteralExpr ||
+                    (item instanceof SQLVariantRefExpr && isSimpleRefVar((SQLVariantRefExpr) item)))) {
                     if (item instanceof SQLListExpr) {
                         SQLListExpr list = (SQLListExpr) item;
                         for (SQLExpr listItem : list.getItems()) {
                             if (!(listItem instanceof SQLLiteralExpr
-                                || listItem instanceof SQLVariantRefExpr)) {
+                                || (listItem instanceof SQLVariantRefExpr
+                                && isSimpleRefVar((SQLVariantRefExpr) listItem)))) {
                                 allLiteral = false;
                                 break;
                             }
                         }
-                        if (allLiteral) {
+                        if (!allLiteral) {
                             break;
                         }
                         continue;
@@ -4967,6 +4977,12 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             print0(collate);
         }
 
+        final Boolean encryption = x.isEncryption();
+        if (encryption != null) {
+            print0(ucase ? " ENCRYPTION " : " encryption ");
+            print0(ucase ? (encryption ? "Y" : "N") : (encryption ? "y" : "n"));
+        }
+
         final SQLExpr comment = x.getComment();
         if (comment != null) {
             print0(ucase ? " COMMENT " : " comment ");
@@ -4989,6 +5005,12 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         if (partitionMode != null) {
             print0(ucase ? " MODE " : " mode ");
             printExpr(partitionMode, false);
+        }
+
+        final SQLExpr defaultSingle = x.getDefaultSingle();
+        if (defaultSingle != null) {
+            print0(ucase ? " DEFAULT_SINGLE " : " default_single ");
+            printExpr(defaultSingle, false);
         }
 
         if (x.getDbProperties().size() > 0) {
@@ -5073,10 +5095,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
         x.getName().accept(this);
 
-        SQLExpr partitionNum = x.getPartitionNum();
-        if (partitionNum != null) {
-            print0(ucase ? " PARTITION NUM " : " partition num ");
-            printExpr(partitionNum);
+        SQLPartitionBy sqlPartitionBy = x.getSqlPartitionBy();
+        if (sqlPartitionBy != null) {
+            sqlPartitionBy.accept(this);
         }
         String locality = x.getLocality();
         if (locality != null) {
@@ -5107,12 +5128,27 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             }
         }
         print0(ucase ? "ALTER TABLEGROUP " : "alter tablegroup ");
+        boolean alterIndexTg = false;
+        if (x.isAlterByTable()) {
+            if (!x.isAlterIndexTg()) {
+                print0(ucase ? "BY TABLE " : "by table ");
+            } else {
+                alterIndexTg = true;
+                print0(ucase ? "BY INDEX " : "by INDEX ");
+            }
+
+        }
         x.getName().accept(this);
         if (x.getItem() != null) {
             print0(" ");
             x.getItem().accept(this);
         }
         print0(" ");
+        if (alterIndexTg) {
+            print0(ucase ? "ON TABLE" : "on table");
+            x.getTblNameOfIndex().accept(this);
+            print0(" ");
+        }
         printAndAccept(x.getOptions(), " ");
 
         return false;
@@ -5120,27 +5156,60 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(DrdsSplitPartition x) {
-        print0(ucase ? "SPLIT PARTITION " : "split partition ");
+        if (x.isSubPartitionsSplit()) {
+            print0(ucase ? "SPLIT SUBPARTITION " : "split subpartition ");
+        } else {
+            print0(ucase ? "SPLIT PARTITION " : "split partition ");
+        }
         x.getSplitPartitionName().accept(this);
         print0(" ");
         if (x.getAtValue() != null) {
             print0(ucase ? "AT(" : "at(");
             x.getAtValue().accept(this);
             print0(") ");
-        }
-        int i = 0;
-        for (SQLObject object : x.getPartitions()) {
-            if (i > 0) {
-                print0(", ");
-            } else {
-                print0(ucase ? "INTO (" : ") into (");
+            int i = 0;
+            for (SQLObject object : x.getPartitions()) {
+                if (i > 0) {
+                    print0(", ");
+                } else {
+                    print0(ucase ? "INTO (" : ") into (");
 
+                }
+                object.accept(this);
+                i++;
             }
-            object.accept(this);
-            i++;
-        }
-        if (i > 0) {
-            print0(")");
+            if (i > 0) {
+                print0(")");
+            }
+        } else {
+            if (x.getNewPartitionNum() != null) {
+                print0(ucase ? "INTO " : "into ");
+                if (x.getNewPartitionNamePrefix() != null) {
+                    x.getNewPartitionNamePrefix().accept(this);
+                    print0(ucase ? " " : " ");
+                }
+                if (x.isSubPartitionsSplit()) {
+                    print0(ucase ? "SUBPARTITIONS " : "subpartitions ");
+                } else {
+                    print0(ucase ? "PARTITIONS " : "partitions ");
+                }
+                x.getNewPartitionNum().accept(this);
+            } else {
+                int i = 0;
+                for (SQLObject object : x.getPartitions()) {
+                    if (i > 0) {
+                        print0(", ");
+                    } else {
+                        print0(ucase ? "INTO (" : ") into (");
+
+                    }
+                    object.accept(this);
+                    i++;
+                }
+                if (i > 0) {
+                    print0(")");
+                }
+            }
         }
         return false;
     }
@@ -5177,7 +5246,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(DrdsMergePartition x) {
-        print0(ucase ? "MERGE PARTITIONS " : "merge partitions ");
+        if (!x.isSubPartitionsMerge()) {
+            print0(ucase ? "MERGE PARTITIONS " : "merge partitions ");
+        } else {
+            print0(ucase ? "MERGE SUBPARTITIONS " : "merge subpartitions ");
+        }
         int i = 0;
         for (SQLName partition : x.getPartitions()) {
             if (i > 0) {
@@ -5233,8 +5306,17 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
+    public boolean visit(SQLAlterSystemLeaderStatement x) {
+        print0(ucase ? "ALTER SYSTEM LEADER " : "alter system leader  ");
+        SQLExpr hostPort = x.getNodeId();
+        hostPort.accept(this);
+        return false;
+    }
+
+    @Override
     public boolean visit(DrdsMovePartition x) {
-        print0(ucase ? "MOVE PARTITIONS " : "move partitions ");
+        final String clause = "MOVE " + (x.isSubPartitionsMoved() ? "SUBPARTITIONS " : "PARTITIONS ");
+        print0(ucase ? clause : clause.toLowerCase());
         int instCount = 0;
         for (Map.Entry<SQLName, List<SQLName>> entry : x.getInstPartitions().entrySet()) {
             int i = 0;
@@ -5289,12 +5371,21 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(DrdsSplitHotKey x) {
+        if (x.isSubPartitionsSplit() && x.getModifyPartitionName() != null) {
+            print0(ucase ? "MODIFY PARTITION " : "modify partition ");
+            x.getModifyPartitionName().accept(this);
+            print0(" ");
+        }
         print0(ucase ? "SPLIT INTO " : "split into ");
         if (x.getHotKeyPartitionName() != null) {
             x.getHotKeyPartitionName().accept(this);
             print0(" ");
         }
-        print0(ucase ? "PARTITIONS " : " partitions ");
+        if (x.isSubPartitionsSplit()) {
+            print0(ucase ? "SUBPARTITIONS " : "subpartitions ");
+        } else {
+            print0(ucase ? "PARTITIONS " : "partitions ");
+        }
         x.getPartitions().accept(this);
         print0(ucase ? " BY HOT VALUE(" : " by hot value(");
         int i = 0;
@@ -5315,42 +5406,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupReorgPartition x) {
-        print0(ucase ? "REORGANIZE PARTITION " : "reorganize partition ");
-        int i = 0;
-        for (SQLName partition : x.getOldPartitions()) {
-            if (i > 0) {
-                print0(", ");
-            }
-            partition.accept(this);
-            i++;
-        }
-        i = 0;
-        for (SQLObject object : x.getNewPartitions()) {
-            if (i > 0) {
-                print0(", ");
-            } else {
-                print0(ucase ? " INTO (" : " into (");
-
-            }
-            object.accept(this);
-            i++;
-        }
-        if (i > 0) {
-            print0(")");
-        }
-        return false;
-    }
-
-    @Override
-    public void endVisit(DrdsAlterTableGroupReorgPartition x) {
-
-    }
-
-    @Override
     public boolean visit(DrdsRenamePartition x) {
         boolean firstPart = true;
-        print0(ucase ? "RENAME PARTITION " : "rename partition ");
+        if (x.isSubPartitionsRename()) {
+            print0(ucase ? "RENAME SUBPARTITION " : "rename subpartition ");
+        } else {
+            print0(ucase ? "RENAME PARTITION " : "rename partition ");
+        }
         for (Pair<SQLName, SQLName> pair : x.getChangePartitionsPair()) {
             if (!firstPart) {
                 print0(", ");
@@ -5896,7 +5958,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     @Override
     public boolean visit(SQLAlterTableDropForeignKey x) {
         print0(ucase ? "DROP FOREIGN KEY " : "drop foreign key ");
-        x.getIndexName().accept(this);
+        x.getConstraintName().accept(this);
         return false;
     }
 
@@ -5978,7 +6040,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                 print(',');
             } else if (item instanceof SQLAlterTableModifyPartitionValues) {
 //                print0(ucase ? " MODIFY PARTITION " : " modify partition ");
-                if (x.getItems().size() >= 1) {
+                if (x.getItems().size() > 1) {
                     needParentheses = true;
                 }
             }
@@ -6700,7 +6762,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
         SQLPartitionBy sqlPartitionBy = x.getPartitioning();
         if (sqlPartitionBy != null) {
-            print0(ucase ? " PARTITION BY " : " partition by ");
+            if (sqlPartitionBy.getSourceSql() == null) {
+                print0(ucase ? " PARTITION BY " : " partition by ");
+            } else {
+                print0(" \n");
+            }
             sqlPartitionBy.accept(this);
         }
 
@@ -6712,6 +6778,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
         if (x.hasOptions()) {
             x.getOptions().accept(this);
+        }
+
+        if (!x.isVisible()) {
+            print0(ucase ? " INVISIBLE " : " invisible ");
         }
 
         return false;
@@ -6841,6 +6911,17 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                 try {
                     // Change timestamp to GCN.
                     Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(x.getValue());
+
+                    if (null != this.timezone) {
+                        // Convert specified timezone to default timezone.
+                        TimeZone sourceTimeZone = TimeZone.getTimeZone(this.timezone);
+                        TimeZone targetTimeZone = TimeZone.getDefault();
+                        long sourceOffset = sourceTimeZone.getRawOffset();
+                        long targetOffset = targetTimeZone.getRawOffset();
+                        long offset = targetOffset - sourceOffset;
+                        date.setTime(date.getTime() + offset);
+                    }
+
                     gcn = String.valueOf(date.getTime() << 22);
                 } catch (ParseException e) {
                     // ignore
@@ -6877,14 +6958,17 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLBinaryExpr x) {
+
         if (this.parameterized) {
             print('?');
             incrementReplaceCunt();
+
             if (this.parameters != null) {
                 ExportParameterVisitorUtils.exportParameter(this.parameters, x);
             }
             return false;
         }
+
         print0("b'");
         print0(x.getText());
         print('\'');
@@ -6990,9 +7074,18 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             }
         }
 
+        if (x.isSubPartition()) {
+            assert x.getPartitions().size() == 1;
+            SQLPartition partition = (SQLPartition) x.getPartitions().get(0);
+            if (partition.getName() != null) {
+                print0(ucase ? "MODIFY PARTITION " : "modify partition ");
+                partition.getName().accept(this);
+                print0(" ");
+            }
+        }
+
         if (printAdd) {
             print0(ucase ? "ADD " : "add ");
-
             if (x.isIfNotExists()) {
                 print0(ucase ? "IF NOT EXISTS " : "if not exists ");
             }
@@ -7007,8 +7100,14 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         if (x.getPartitions().size() > 0) {
-            print0(ucase ? "PARTITION (" : "partition (");
-            printAndAccept(x.getPartitions(), ", ");
+            if (x.isSubPartition()) {
+                SQLPartition partition = (SQLPartition) x.getPartitions().get(0);
+                print0(ucase ? "SUBPARTITION (" : "subpartition (");
+                printAndAccept(partition.getSubPartitions(), ", ");
+            } else {
+                print0(ucase ? "PARTITION (" : "partition (");
+                printAndAccept(x.getPartitions(), ", ");
+            }
             print(')');
         }
 
@@ -7052,38 +7151,128 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(SQLAlterTableReOrganizePartition x) {
-        if (dbType == DbType.mysql) {
-            print0(ucase ? "REORGANIZE PARTITION " : "reorganize partition ");
-        } else {
-            print0(ucase ? "REORGANIZE " : "reorganize ");
-        }
+    public boolean visit(SQLAlterTableReorgPartition x) {
+//        if (dbType == DbType.mysql) {
+//            String partition = x.isSubPartition() ? " SUBPARTITION " : " PARTITION ";
+//            print0(ucase ? "REORGANIZE" + partition : "reorganize" + partition.toLowerCase());
+//        } else {
+//            //print0(ucase ? "REORGANIZE " : "reorganize ");
+//        }
+        String partition = x.isSubPartition() ? " SUBPARTITION " : " PARTITION ";
+        print0(ucase ? "REORGANIZE" + partition : "reorganize" + partition.toLowerCase());
 
         printAndAccept(x.getNames(), ", ");
 
         print0(ucase ? " INTO (" : " into (");
+
         printAndAccept(x.getPartitions(), ", ");
+
         print(')');
+
         return false;
     }
 
     public boolean visit(SQLAlterTableModifyPartitionValues x) {
 
+        /**
+         * <pre>
+         *     type0:
+         *          ALTER TABLE tbl
+         *          {(Syntax of SQLAlterTableModifyPartitionValues)
+         *
+         *              MODIFY PARTITION/SUBPARTITION
+         *              [(]
+         *              p1 ADD/DROP VALUES (...),
+         *              p2 ADD/DROP VALUES (...),
+         *              ...
+         *              pn ADD/DROP VALUES (...)
+         *              [)]
+         *          }
+         *          ,
+         *
+         *    type1:
+         *          ALTER TABLE tbl
+         *          MODIFY PARTITION p1
+         *          {( Syntax of SQLAlterTableModifyPartitionValues)
+         *              MODIFY SUBPARTITION
+         *              [(]
+         *              sp1 ADD/DROP VALUES (...),
+         *              sp2 ADD/DROP VALUES (...),
+         *              ...
+         *              spn ADD/DROP VALUES (...)
+         *              [)]
+         *          },
+         *          MODIFY PARTITION p2
+         *          {( Syntax of SQLAlterTableModifyPartitionValues)
+         *              MODIFY SUBPARTITION
+         *              [(]
+         *              sp1 ADD/DROP VALUES (...),
+         *              sp2 ADD/DROP VALUES (...),
+         *              ...
+         *              spn ADD/DROP VALUES (...)
+         *              [)]
+         *          }
+         *
+         * </pre>
+         *
+         *
+         */
+        SQLAlterTableModifyPartitionValues itemVal = x;
         SQLPartition sqlPartitionDef = x.getSqlPartition();
         SQLName name = sqlPartitionDef.getName();
-        SQLPartitionValue values = sqlPartitionDef.getValues();
-        boolean isAdd = x.isAdd();
 
-        print0(ucase ? " MODIFY PARTITION " : " modify partition ");
+        boolean isModify = false;
+        if (name != null && !x.isSubPartition()) {
+            // Modify partition
+            SQLPartitionValue values = sqlPartitionDef.getValues();
 
-        name.accept(this);
+            print0(ucase ? "MODIFY " : "modify ");
+            print0(ucase ? "PARTITION " : "partition ");
 
-        if (isAdd) {
-            print0(ucase ? " ADD " : "add ");
-        } else {
-            print0(ucase ? " DROP " : "drop ");
+            name.accept(this);
+
+            if (x.isAdd()) {
+                print0(ucase ? " ADD " : "add ");
+            } else if (x.isDrop()) {
+                print0(ucase ? " DROP " : "drop ");
+            } else {
+                print0(ucase ? " MODIFY " : "modify ");
+                isModify = true;
+            }
+
+            if (!isModify && !x.isSubPartition()) {
+                values.accept(this);
+            }
         }
-        values.accept(this);
+
+        if (x.isSubPartition() || isModify) {
+            print0(ucase ? "MODIFY " : "modify ");
+            print0(ucase ? "SUBPARTITION (" : "subpartition (");
+
+            // Modify subpartition for all partitions
+            List<SQLSubPartition> subPartitions = sqlPartitionDef.getSubPartitions();
+            if (subPartitions != null) {
+                for (int i = 0; i < subPartitions.size(); i++) {
+                    SQLSubPartition subPartition = subPartitions.get(i);
+
+                    if (i != 0) {
+                        print0(", ");
+                    }
+
+                    subPartition.getName().accept(this);
+
+                    if (x.isAdd()) {
+                        print0(ucase ? " ADD " : "add ");
+                    } else {
+                        print0(ucase ? " DROP " : "drop ");
+                    }
+
+                    subPartition.getValues().accept(this);
+                }
+            }
+
+            print0(")");
+        }
 
         return false;
     }
@@ -7100,6 +7289,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         if (printDrop) {
+            SQLName partitionName = x.getPartitionName();
+            if (x.isSubPartition() && partitionName != null) {
+                print0(ucase ? "MODIFY PARTITION " : "modify partition ");
+                partitionName.accept(this);
+                print0(" ");
+            }
+
             print0(ucase ? "DROP " : "drop ");
 
             if (x.isIfExists()) {
@@ -7111,10 +7307,18 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         if (x.getAttribute("SIMPLE") != null) {
-            print0(ucase ? "PARTITION " : "partition ");
-            printAndAccept(x.getPartitions(), ",");
+            if (x.isSubPartition()) {
+                print0(ucase ? "SUBPARTITION " : "subpartition ");
+            } else {
+                print0(ucase ? "PARTITION " : "partition ");
+            }
+            printAndAccept(x.getPartitions(), ", ");
         } else {
-            print0(ucase ? "PARTITION (" : "partition (");
+            if (x.isSubPartition()) {
+                print0(ucase ? "SUBPARTITION (" : "subpartition (");
+            } else {
+                print0(ucase ? "PARTITION (" : "partition (");
+            }
             printAndAccept(x.getPartitions(), ", ");
             print(')');
         }
@@ -7650,6 +7854,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLPartitionByRange x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
         SQLExpr interval = x.getInterval();
         if (x.getColumns().size() == 0
             && (interval instanceof SQLBetweenExpr || interval instanceof SQLMethodInvokeExpr)) {
@@ -7671,7 +7880,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                 } else {
                     print0(" (");
                 }
-                x.getColumns().get(0).accept(this);
+                if (x.isForTableGroup()) {
+                    x.getColumnsDefinition().get(0).accept(this);
+                } else {
+                    x.getColumns().get(0).accept(this);
+                }
                 print(')');
             } else {
                 if (columns) {
@@ -7679,7 +7892,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                 } else {
                     print0(" (");
                 }
-                printAndAccept(x.getColumns(), ", ");
+                if (x.isForTableGroup()) {
+                    printAndAccept(x.getColumnsDefinition(), ", ");
+                } else {
+                    printAndAccept(x.getColumns(), ", ");
+                }
                 print(')');
             }
 
@@ -7712,14 +7929,27 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLPartitionByList x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
         print0(ucase ? "LIST " : "list ");
         if (!x.isColumns()) {
             print('(');
-            x.getColumns().get(0).accept(this);
+            if (x.isForTableGroup()) {
+                x.getColumnsDefinition().get(0).accept(this);
+            } else {
+                x.getColumns().get(0).accept(this);
+            }
             print0(")");
         } else {
             print0(ucase ? "COLUMNS (" : "columns (");
-            printAndAccept(x.getColumns(), ", ");
+            if (x.isForTableGroup()) {
+                printAndAccept(x.getColumnsDefinition(), ", ");
+            } else {
+                printAndAccept(x.getColumns(), ", ");
+            }
             print0(")");
         }
 
@@ -7731,6 +7961,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLPartitionByHash x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
         if (x.isLinear()) {
             print0(ucase ? "LINEAR HASH " : "linear hash ");
         } else {
@@ -7746,13 +7981,63 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         print('(');
-        printAndAccept(x.getColumns(), ", ");
+        if (x.isForTableGroup()) {
+            printAndAccept(x.getColumnsDefinition(), ", ");
+        } else {
+            printAndAccept(x.getColumns(), ", ");
+        }
         print(')');
 
         printPartitionsCountAndSubPartitions(x);
 
-        printSQLPartitions(x.getPartitions());
+        boolean useSubPart = x.getSubPartitionBy() != null;
+        boolean useSubPartTemp = false;
+        if (useSubPart) {
+            useSubPartTemp = x.getSubPartitionBy().getSubPartitionTemplate() != null && !x.getSubPartitionBy()
+                .getSubPartitionTemplate().isEmpty();
+        }
 
+        if (isEnabled(VisitorFeature.OutputHashPartitionsByRange) || (useSubPart && !useSubPartTemp)) {
+            if (x.getPartitions().size() > 0) {
+                printSQLPartitions(x.getPartitions());
+            }
+        }
+//        printSQLPartitions(x.getPartitions());
+
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLPartitionByUdfHash x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
+        print0(ucase ? "UDF_HASH " : "udf_hash ");
+
+        print('(');
+        if (x.isForTableGroup()) {
+            printAndAccept(x.getColumnsDefinition(), ", ");
+        } else {
+            printAndAccept(x.getColumns(), ", ");
+        }
+        print(')');
+
+        printPartitionsCountAndSubPartitions(x);
+
+        boolean useSubPart = x.getSubPartitionBy() != null;
+        boolean useSubPartTemp = false;
+        if (useSubPart) {
+            useSubPartTemp = x.getSubPartitionBy().getSubPartitionTemplate() != null && !x.getSubPartitionBy()
+                .getSubPartitionTemplate().isEmpty();
+        }
+
+        if (isEnabled(VisitorFeature.OutputHashPartitionsByRange) || (useSubPart && !useSubPartTemp)) {
+            if (x.getPartitions().size() > 0) {
+                printSQLPartitions(x.getPartitions());
+            }
+        }
         return false;
     }
 
@@ -7771,7 +8056,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         return false;
     }
 
-    private void printSQLPartitions(List<SQLPartition> partitions) {
+    protected void printSQLPartitions(List<SQLPartition> partitions) {
         int partitionsSize = partitions.size();
         if (partitionsSize > 0) {
             print0(" (");
@@ -7779,6 +8064,24 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             for (int i = 0; i < partitionsSize; ++i) {
                 println();
                 partitions.get(i).accept(this);
+                if (i != partitionsSize - 1) {
+                    print0(", ");
+                }
+            }
+            this.indentCount--;
+            println();
+            print(')');
+        }
+    }
+
+    protected void printSQLSubPartitions(List<SQLSubPartition> subPartitions) {
+        int partitionsSize = subPartitions.size();
+        if (partitionsSize > 0) {
+            print0(" (");
+            this.indentCount++;
+            for (int i = 0; i < partitionsSize; ++i) {
+                println();
+                subPartitions.get(i).accept(this);
                 if (i != partitionsSize - 1) {
                     print0(", ");
                 }
@@ -7835,6 +8138,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLSubPartitionByHash x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
         if (x.isLinear()) {
             print0(ucase ? "SUBPARTITION BY LINEAR HASH " : "subpartition by linear hash ");
         } else {
@@ -7846,12 +8154,75 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         }
 
         print('(');
-        x.getExpr().accept(this);
+        if (x.isForTableGroup()) {
+            printAndAccept(x.getColumnsDefinition(), ", ");
+        } else {
+            printAndAccept(x.getColumns(), ", ");
+        }
         print(')');
 
         if (x.getSubPartitionsCount() != null) {
             print0(ucase ? " SUBPARTITIONS " : " subpartitions ");
             x.getSubPartitionsCount().accept(this);
+        }
+
+        if (isEnabled(VisitorFeature.OutputHashPartitionsByRange)) {
+            List<SQLSubPartition> subPartSpecTemp = x.getSubPartitionTemplate();
+            if (subPartSpecTemp != null && subPartSpecTemp.size() > 0) {
+                printSQLSubPartitions(subPartSpecTemp);
+//                print(" (");
+//                this.indentCount++;
+//                for (int i = 0, size = subPartSpecTemp.size(); i < size; ++i) {
+//                    if (i != 0) {
+//                        print(',');
+//                    }
+//                    println();
+//                    subPartSpecTemp.get(i).accept(this);
+//                }
+//                this.indentCount--;
+//                println();
+//                print(')');
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLSubPartitionByUdfHash x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
+        print0(ucase ? "SUBPARTITION BY UDF_HASH " : "subpartition by udf_hash ");
+
+        print('(');
+        printAndAccept(x.getColumns(), ", ");
+        print(')');
+
+        if (x.getSubPartitionsCount() != null) {
+            print0(ucase ? " SUBPARTITIONS " : " subpartitions ");
+            x.getSubPartitionsCount().accept(this);
+        }
+
+        if (isEnabled(VisitorFeature.OutputHashPartitionsByRange)) {
+            List<SQLSubPartition> subPartSpecTemp = x.getSubPartitionTemplate();
+            if (subPartSpecTemp != null && subPartSpecTemp.size() > 0) {
+                printSQLSubPartitions(subPartSpecTemp);
+//                print(" (");
+//                this.indentCount++;
+//                for (int i = 0, size = subPartSpecTemp.size(); i < size; ++i) {
+//                    if (i != 0) {
+//                        print(',');
+//                    }
+//                    println();
+//                    subPartSpecTemp.get(i).accept(this);
+//                }
+//                this.indentCount--;
+//                println();
+//                print(')');
+            }
         }
 
         return false;
@@ -7859,7 +8230,39 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLSubPartitionByRange x) {
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
         print0(ucase ? "SUBPARTITION BY RANGE " : "subpartition by range ");
+
+        boolean columns = x.isColumns();
+        if (x.getColumns().size() == 1) {
+            if (columns) {
+                print0(ucase ? "COLUMNS (" : "columns (");
+            } else {
+                print0("(");
+            }
+            if (x.isForTableGroup()) {
+                x.getColumnsDefinition().get(0).accept(this);
+            } else {
+                x.getColumns().get(0).accept(this);
+            }
+            print(')');
+        } else {
+            if (columns) {
+                print0(ucase ? "COLUMNS (" : "columns (");
+            } else {
+                print0("(");
+            }
+            if (x.isForTableGroup()) {
+                printAndAccept(x.getColumnsDefinition(), ", ");
+            } else {
+                printAndAccept(x.getColumns(), ", ");
+            }
+            print(')');
+        }
 
         SQLExpr subPartitionsCount = x.getSubPartitionsCount();
         if (subPartitionsCount != null) {
@@ -7867,42 +8270,81 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             subPartitionsCount.accept(this);
         }
 
+        List<SQLSubPartition> subPartSpecTemp = x.getSubPartitionTemplate();
+        if (subPartSpecTemp.size() > 0) {
+            print(" (");
+            this.indentCount++;
+            for (int i = 0, size = subPartSpecTemp.size(); i < size; ++i) {
+                if (i != 0) {
+                    print(',');
+                }
+                println();
+                subPartSpecTemp.get(i).accept(this);
+            }
+            this.indentCount--;
+            println();
+            print(')');
+        }
+
         return false;
     }
 
     @Override
     public boolean visit(SQLSubPartitionByList x) {
-        if (x.isLinear()) {
-            print0(ucase ? "SUBPARTITION BY LINEAR HASH " : "subpartition by linear hash ");
+
+        if (printBySourceSqlIfNeed(x)) {
+            return false;
+        }
+
+        print0(ucase ? "SUBPARTITION BY LIST " : "subpartition by list ");
+
+        boolean columns = x.isColumns();
+        if (x.getColumns().size() == 1) {
+            if (columns) {
+                print0(ucase ? "COLUMNS (" : "columns (");
+            } else {
+                print0("(");
+            }
+            if (x.isForTableGroup()) {
+                x.getColumnsDefinition().get(0).accept(this);
+            } else {
+                x.getColumns().get(0).accept(this);
+            }
+            print(')');
         } else {
-            print0(ucase ? "SUBPARTITION BY HASH " : "subpartition by hash ");
+            if (columns) {
+                print0(ucase ? "COLUMNS (" : "columns (");
+            } else {
+                print0("(");
+            }
+            if (x.isForTableGroup()) {
+                printAndAccept(x.getColumnsDefinition(), ", ");
+            } else {
+                printAndAccept(x.getColumns(), ", ");
+            }
+            print(')');
         }
 
-        print('(');
-        x.getColumn().accept(this);
-        print(')');
-
-        if (x.getSubPartitionsCount() != null) {
+        SQLExpr subPartitionsCount = x.getSubPartitionsCount();
+        if (subPartitionsCount != null) {
             print0(ucase ? " SUBPARTITIONS " : " subpartitions ");
-            x.getSubPartitionsCount().accept(this);
+            subPartitionsCount.accept(this);
         }
 
-        if (x.getSubPartitionTemplate().size() > 0) {
+        List<SQLSubPartition> subPartSpecTemp = x.getSubPartitionTemplate();
+        if (subPartSpecTemp.size() > 0) {
+            print(" (");
             this.indentCount++;
-            println();
-            print0(ucase ? "SUBPARTITION TEMPLATE (" : "subpartition template (");
-            this.indentCount++;
-            println();
-            printlnAndAccept(x.getSubPartitionTemplate(), ",");
+            for (int i = 0, size = subPartSpecTemp.size(); i < size; ++i) {
+                if (i != 0) {
+                    print(',');
+                }
+                println();
+                subPartSpecTemp.get(i).accept(this);
+            }
             this.indentCount--;
             println();
             print(')');
-            this.indentCount--;
-        }
-
-        if (x.getLifecycle() != null) {
-            print0(ucase ? " LIFECYCLE " : " lifecycle ");
-            x.getLifecycle().accept(this);
         }
 
         return false;
@@ -8989,10 +9431,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             this.parameterizedQuesUnMergeValuesList = state;
         } else if (feature == VisitorFeature.OutputNameQuote) {
             this.printNameQuote = state;
-        } else if (feature == VisitorFeature.OutputPlOnlyDefinition) {
-            this.onlyOutputPlDefinition = state;
         } else if (feature == VisitorFeature.OutputParameterizedSpecialNameWithBackTick) {
             this.specialNameWithBacktick = true;
+        } else if (feature == VisitorFeature.OutputPlOnlyDefinition) {
+            this.onlyOutputPlDefinition = state;
         }
     }
 
@@ -9813,6 +10255,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         if (x.getLike() != null) {
             print0(ucase ? " LIKE " : " like ");
             x.getLike().accept(this);
+        }
+
+        if (x.getAsTable() != null) {
+            print0(ucase ? " AS " : " as ");
+            x.getAsTable().accept(this);
         }
 
         printTableElements(x.getTableElementList());
@@ -11304,6 +11751,27 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         if (x.isForce()) {
             print0(ucase ? " FORCE" : " force");
         }
+        return false;
+    }
+
+    protected boolean printBySourceSqlIfNeed(SQLObject x) {
+
+        if (x instanceof SQLPartitionBy) {
+            SQLPartitionBy partBy = (SQLPartitionBy) x;
+            if (partBy.getSourceSql() != null) {
+                String srcSql = partBy.getSourceSql().toString();
+                print0(srcSql);
+                return true;
+            }
+        } else if (x instanceof SQLSubPartitionBy) {
+            SQLSubPartitionBy subpartBy = (SQLSubPartitionBy) x;
+            if (subpartBy.getSourceSql() != null) {
+                String srcSql = subpartBy.getSourceSql().toString();
+                print0(srcSql);
+                return true;
+            }
+        }
+
         return false;
     }
 }

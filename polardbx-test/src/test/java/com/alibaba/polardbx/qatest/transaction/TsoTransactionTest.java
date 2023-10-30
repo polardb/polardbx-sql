@@ -51,29 +51,36 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
      */
     private final boolean shareReadView;
 
-    @Parameterized.Parameters(name = "{index}:table={0},shareReadView={1}")
+    private final String asyncCommit;
+
+    @Parameterized.Parameters(name = "{index}:table={0},shareReadView={1},asyncCommit={2}")
     public static List<Object[]> prepare() throws SQLException {
         boolean supportShareReadView;
         try (Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
             supportShareReadView = JdbcUtil.supportShareReadView(connection);
         }
+        String[] asyncCommit = {"TRUE", "FALSE"};
         List<Object[]> ret = new ArrayList<>();
-        for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
-            ret.add(new Object[] {tables[0], false});
-            if (supportShareReadView) {
-                ret.add(new Object[] {tables[0], true});
+        for (String ac : asyncCommit) {
+            for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
+                ret.add(new Object[] {tables[0], false, ac});
+                if (supportShareReadView) {
+                    ret.add(new Object[] {tables[0], true, ac});
+                }
             }
         }
         return ret;
     }
 
-    public TsoTransactionTest(String baseOneTableName, boolean shareReadView) {
+    public TsoTransactionTest(String baseOneTableName, boolean shareReadView, String asyncCommit) {
         this.baseOneTableName = baseOneTableName;
         this.shareReadView = shareReadView;
+        this.asyncCommit = asyncCommit;
     }
 
     @Before
     public void before() throws Exception {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set ENABLE_ASYNC_COMMIT = " + asyncCommit);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + baseOneTableName, null);
         final String sql = "insert into " + baseOneTableName + "(pk, integer_test, varchar_test) values(?, ?, ?)";
         final List<List<Object>> params = new ArrayList<>();

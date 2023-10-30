@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
@@ -26,10 +27,6 @@ import java.util.Map;
 
 /**
  * @version 1.0
- * @ClassName DrdsMoveDataBase
- * @description
- * @Author luoyanxin
- * @Date 2019-12-17 15:41
  */
 public class DrdsMoveDataBase extends MySqlStatementImpl implements SQLStatement {
 
@@ -52,11 +49,11 @@ public class DrdsMoveDataBase extends MySqlStatementImpl implements SQLStatement
 
     public void put(List<String> groups) {
         assert isCleanUpCommand;
-        storageGroups.put(VIRTUAL_KEY,groups);
+        storageGroups.put(VIRTUAL_KEY, groups);
     }
 
     public void put(String storageId, String group) {
-        if (storageGroups.containsKey(storageId) ){
+        if (storageGroups.containsKey(storageId)) {
             storageGroups.get(storageId).add(group);
         } else {
             List<String> groups = new ArrayList<String>();
@@ -71,5 +68,22 @@ public class DrdsMoveDataBase extends MySqlStatementImpl implements SQLStatement
 
     public boolean isCleanUpCommand() {
         return isCleanUpCommand;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.GENERIC_DDL;
+    }
+
+    public void cloneTo(DrdsMoveDataBase x) {
+        x.setCleanUpCommand(this.isCleanUpCommand);
+        x.setHeadHints(this.headHints);
+        x.storageGroups.putAll(this.getStorageGroups());
+    }
+
+    public DrdsMoveDataBase clone() {
+        DrdsMoveDataBase x = new DrdsMoveDataBase();
+        cloneTo(x);
+        return x;
     }
 }

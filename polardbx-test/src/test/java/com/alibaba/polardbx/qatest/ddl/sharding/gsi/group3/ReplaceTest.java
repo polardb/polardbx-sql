@@ -26,6 +26,7 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.util.Collections;
 import java.util.List;
 
@@ -1455,7 +1456,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             + "  `c7` text,\n"
             + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY(`id`, `c1`, `c2`),\n"
-            + "  UNIQUE CLUSTERED GLOBAL INDEX " + gsiName
+            + "  UNIQUE CLUSTERED INDEX " + gsiName
             + "(`c1`, `c2`) COVERING(`c5`) DBPARTITION BY HASH(`c2`) TBPARTITION BY HASH(`c2`) TBPARTITIONS 3\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
         final String partitionDef = " dbpartition by hash(`c1`) tbpartition by hash(`c1`) tbpartitions 7";
@@ -3191,5 +3192,87 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(allResult.get(0).get(0).equals("1"));
         Assert.assertTrue(allResult.get(0).get(1).equals("2"));
         Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testReplacePushdown() {
+        final String tableName1 = "replace_pushdown_tbl1";
+        final String tableName2 = "replace_pushdown_tbl2";
+        final String tableName3 = "replace_pushdown_tbl3";
+        dropTableIfExists(tableName1);
+        dropTableIfExists(tableName2);
+        dropTableIfExists(tableName3);
+
+        String create = String.format("create table %s(e int primary key) dbpartition by hash(e)", tableName1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        create = String.format("CREATE TABLE %s (\n"
+            + "  a bigint(20) NOT NULL, \n"
+            + "  b bigint(20) NOT NULL, \n"
+            + "  c bigint(20) NOT NULL, \n"
+            + "  d int(11) NOT NULL, \n"
+            + "  PRIMARY KEY (`a`)\n"
+            + ") DBPARTITION BY hash(`d`)", tableName2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        create = String.format("CREATE TABLE %s (\n"
+            + "  b bigint(20) NOT NULL, \n"
+            + "  d int(11) NOT NULL, \n"
+            + "  PRIMARY KEY (`b`)\n"
+            + ") DBPARTITION BY hash(`d`);", tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert = String.format("insert into %s values (1,1,1,1)", tableName2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        insert = String.format("insert into %s values (1,1)", tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        String replace = MessageFormat.format(
+            "REPLACE INTO {0}(e) SELECT 1 FROM {1} INNER JOIN {2} ON {1}.b = {2}.b AND {2}.d = 1 WHERE {1}.d = 1 AND {1}.c = 1;\n",
+            tableName1, tableName2, tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+
+        String select = String.format("select * from %s", tableName1);
+        ResultSet rs = JdbcUtil.executeQuery(select, tddlConnection);
+        List<List<Object>> objects = JdbcUtil.getAllResult(rs);
+
+        Assert.assertEquals(1, objects.size());
+        Assert.assertEquals("1", objects.get(0).get(0).toString());
+    }
+
+    @Test
+    public void testReplaceWithUgsiAndJson() throws SQLException {
+        final String tableName = "test_tb_replace_with_json";
+        dropTableIfExists(tableName);
+
+        final String gsiName = tableName + "_gsi";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `pk` bigint(11) NOT NULL,\n"
+            + "  `c1` bigint(20) DEFAULT NULL,\n"
+            + "  `c2` bigint(20) DEFAULT NULL ,\n"
+            + "  `c3` bigint(20) DEFAULT NULL ,\n"
+            + "  `c4` json DEFAULT NULL ,\n"
+            + "  PRIMARY KEY (`pk`), \n"
+            + "  UNIQUE GLOBAL INDEX " + gsiName + "(`c1`) covering(`c2`) DBPARTITION BY HASH(`c1`), \n"
+            + "  UNIQUE INDEX l1 on g1(`c2`) "
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c3`)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String sql = String.format("insert into %s values (1,1,1,1,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        sql = String.format("replace into %s values (1,2,3,4,'{\"a\":\"b\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        checkGsi(tddlConnection, gsiName);
+
+        final ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        final List<List<Object>> allResult = JdbcUtil.getAllResult(resultSet);
+
+        Assert.assertEquals("2", allResult.get(0).get(1).toString());
+        Assert.assertEquals("3", allResult.get(0).get(2).toString());
+        Assert.assertEquals("4", allResult.get(0).get(3).toString());
+        Assert.assertEquals("{\"a\": \"b\"}", allResult.get(0).get(4).toString());
     }
 }

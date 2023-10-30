@@ -37,7 +37,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author zhuoxue
  * @since 5.0.1
  */
-@RunWith(CommonCaseRunner.class)
+
 public class SelectDateFunctionTest extends AutoReadBaseTestCase {
 
     @Parameters(name = "{index}:table={0}")

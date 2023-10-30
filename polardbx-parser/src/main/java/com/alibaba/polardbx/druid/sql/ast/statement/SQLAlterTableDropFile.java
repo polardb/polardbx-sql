@@ -25,14 +25,19 @@ import java.util.List;
 
 public class SQLAlterTableDropFile extends SQLObjectImpl implements SQLAlterTableItem {
     private final List<SQLExpr> files = new ArrayList<SQLExpr>(4);
+
     public SQLAlterTableDropFile() {
+
     }
+
     public List<SQLExpr> getFiles() {
         return files;
     }
+
     public void addFile(SQLExpr file) {
         this.files.add(file);
     }
+
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {

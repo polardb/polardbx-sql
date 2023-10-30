@@ -16,15 +16,18 @@
 
 package com.alibaba.polardbx.common.utils.time.core;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
 import java.sql.Types;
 import java.util.Calendar;
 import java.util.TimeZone;
+
+import static com.alibaba.polardbx.common.utils.LongUtil.fastGetSmallLongBytesForDate;
 
 public class MysqlDateTime implements Serializable {
 
@@ -72,6 +75,7 @@ public class MysqlDateTime implements Serializable {
         t.secondPart = this.secondPart;
         t.isNeg = this.isNeg;
         t.timezone = this.timezone;
+        t.sqlType = this.sqlType;
         return t;
     }
 
@@ -264,7 +268,7 @@ public class MysqlDateTime implements Serializable {
         String nanosecondString;
         String zeros = "000000000";
         String yearZeros = "0000";
-        StringBuffer timestampBuf;
+        StringBuilder timestampBuf;
 
         if (year < 1000) {
 
@@ -319,7 +323,7 @@ public class MysqlDateTime implements Serializable {
             nanosecondString = new String(nanosChar, 0, truncIndex + 1);
         }
 
-        timestampBuf = new StringBuffer(20 + nanosecondString.length());
+        timestampBuf = new StringBuilder(20 + nanosecondString.length());
         if (isNeg) {
             timestampBuf.append('-');
         }
@@ -355,6 +359,97 @@ public class MysqlDateTime implements Serializable {
         }
 
         return timestampBuf.toString();
+    }
+
+    /**
+     * to YYYY-MM-DD format
+     */
+    public byte[] fastToDateBytes() throws IOException {
+        ByteArrayOutputStream timestampByteBuf = new ByteArrayOutputStream(MySQLTimeTypeUtil.MAX_DATE_WIDTH);
+        byte[] yearBytes = fastGetSmallLongBytesForDate(year, 4);
+        byte[] monthBytes = fastGetSmallLongBytesForDate(month, 2);
+        byte[] dayBytes = fastGetSmallLongBytesForDate(day, 2);
+        if (isNeg) {
+            timestampByteBuf.write('-');
+        }
+        timestampByteBuf.write(yearBytes);
+        timestampByteBuf.write('-');
+        timestampByteBuf.write(monthBytes);
+        timestampByteBuf.write('-');
+        timestampByteBuf.write(dayBytes);
+
+        return timestampByteBuf.toByteArray();
+    }
+
+    public byte[] fastToDatetimeBytes(int scale) throws IOException {
+        ByteArrayOutputStream timestampByteBuf = new ByteArrayOutputStream(20);
+        byte[] yearBytes = fastGetSmallLongBytesForDate(year, 4);
+        byte[] monthBytes = fastGetSmallLongBytesForDate(month, 2);
+        byte[] dayBytes = fastGetSmallLongBytesForDate(day, 2);
+        byte[] hourBytes = fastGetSmallLongBytesForDate(hour, 2);
+        byte[] minuteBytes = fastGetSmallLongBytesForDate(minute, 2);
+        byte[] secondBytes = fastGetSmallLongBytesForDate(second, 2);
+        byte[] nanosecondBytes;
+        String nanosecondString;
+        String zeros = "000000000";
+
+        if (secondPart == 0) {
+            nanosecondBytes = null;
+        } else {
+            nanosecondString = Long.toString(secondPart);
+            if (nanosecondString.length() <= 9) {
+                // Add leading zeros
+                nanosecondString = zeros.substring(0, (9 - nanosecondString.length())) +
+                    nanosecondString;
+            }
+
+            // Truncate trailing zeros
+            char[] nanosChar = new char[nanosecondString.length()];
+            nanosecondString.getChars(0, nanosecondString.length(), nanosChar, 0);
+            int truncIndex = 8;
+            while (nanosChar[truncIndex] == '0') {
+                truncIndex--;
+            }
+
+            nanosecondBytes = new String(nanosChar, 0, truncIndex + 1).getBytes();
+        }
+
+        if (isNeg) {
+            timestampByteBuf.write('-');
+        }
+        timestampByteBuf.write(yearBytes);
+        timestampByteBuf.write('-');
+        timestampByteBuf.write(monthBytes);
+        timestampByteBuf.write('-');
+        timestampByteBuf.write(dayBytes);
+        timestampByteBuf.write(' ');
+        timestampByteBuf.write(hourBytes);
+        timestampByteBuf.write(':');
+        timestampByteBuf.write(minuteBytes);
+        timestampByteBuf.write(':');
+        timestampByteBuf.write(secondBytes);
+
+        if (nanosecondBytes != null) {
+            //  for nanosecond != 0
+            int nanoLen = nanosecondBytes.length;
+            timestampByteBuf.write('.');
+            timestampByteBuf.write(nanosecondBytes);
+
+            // append '0'
+            if (scale > nanoLen) {
+                for (int i = nanoLen; i < scale; i++) {
+                    timestampByteBuf.write('0');
+                }
+            }
+        } else if (scale > 0) {
+            timestampByteBuf.write('.');
+            // for nanosecond = 0 but scale > 0
+            for (int i = 0; i < scale; i++) {
+                timestampByteBuf.write('0');
+            }
+        }
+
+        return timestampByteBuf.toByteArray();
     }
 
     public long toUnsignedLong() {

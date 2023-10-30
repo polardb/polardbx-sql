@@ -268,6 +268,13 @@ public enum CharsetName {
         ImmutableList.of(GBK_CHINESE_CI, GBK_BIN),
         ImmutableList.of(),
         "GBK", "GBK", 2),
+    /*
+     * China National Standard GB18030
+     */
+    GB18030(GB18030_CHINESE_CI,
+        ImmutableList.of(GB18030_CHINESE_CI, GB18030_BIN, GB18030_UNICODE_520_CI),
+        ImmutableList.of(),
+        "GB18030", "GB18030", 4),
 
     /**
      * BIG5 Traditional Chinese
@@ -313,8 +320,6 @@ public enum CharsetName {
     EUCJPMS(EUCJPMS_JAPANESE_CI, ImmutableList.of(EUCJPMS_BIN, EUCJPMS_JAPANESE_CI), 3),
     //EUC-KR_Korean
     EUCKR(EUCKR_KOREAN_CI, ImmutableList.of(EUCKR_KOREAN_CI, EUCKR_BIN), 2),
-    //China_National_Standard_GB18030
-    GB18030(GB18030_CHINESE_CI, ImmutableList.of(GB18030_CHINESE_CI, GB18030_BIN, GB18030_UNICODE_520_CI), 4),
     //GB2312_Simplified_Chinese
     GB2312(GB2312_CHINESE_CI, ImmutableList.of(GB2312_CHINESE_CI, GB2312_BIN), 2),
     //GEOSTD8_Georgian
@@ -366,7 +371,7 @@ public enum CharsetName {
         .collect(Collectors.toMap(Enum::name, Function.identity()));
 
     public static ImmutableList<CharsetName> POLAR_DB_X_IMPLEMENTED_CHARSET_NAMES = ImmutableList.of(
-        UTF8, UTF8MB4, UTF16, UTF16LE, UTF32, LATIN1, GBK, BIG5, BINARY, ASCII
+        UTF8, UTF8MB4, UTF16, UTF16LE, UTF32, LATIN1, GBK, GB18030, BIG5, BINARY, ASCII
     );
 
     static Set<String> POLAR_DB_X_IMPLEMENTED_CHARSET_NAME_STRINGS = new HashSet<>();
@@ -413,6 +418,9 @@ public enum CharsetName {
 
         .put("gbk", GBK)
         .put("GBK", GBK)
+
+        .put("GB18030", GB18030)
+        .put("gb18030", GB18030)
 
         .put("BIG5", BIG5)
         .put("big5", BIG5)

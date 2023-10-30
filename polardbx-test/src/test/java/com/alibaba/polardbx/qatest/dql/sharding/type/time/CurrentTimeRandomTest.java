@@ -26,6 +26,7 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class CurrentTimeRandomTest extends TimeTestBase {
     private String fsp;
 

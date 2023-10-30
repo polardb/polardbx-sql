@@ -40,4 +40,9 @@ public class RexSequenceParam extends RexDynamicParam {
         final RexLiteral seqNameLiteral = (RexLiteral) seqCall.getOperands().get(0);
         return seqNameLiteral.getValueAs(String.class);
     }
+
+    @Override
+    public boolean literal() {
+        return false;
+    }
 }

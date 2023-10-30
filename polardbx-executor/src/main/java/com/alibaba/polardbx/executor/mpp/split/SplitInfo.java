@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  *
@@ -70,6 +71,9 @@ public class SplitInfo {
     }
 
     public int getSplitParallelism() {
+        if (grpConnSet == null || grpConnSet.isEmpty()) {
+            return groups.size();
+        }
         return this.grpConnSet.keySet().size();
     }
 
@@ -98,6 +102,6 @@ public class SplitInfo {
     }
 
     public int totalSplitSize() {
-        return splits.stream().map(t -> t.size()).reduce((a,b) -> a + b).get();
+        return Optional.of(splits.stream().map(t -> t.size()).reduce((a, b) -> a + b)).get().orElse(0);
     }
 }

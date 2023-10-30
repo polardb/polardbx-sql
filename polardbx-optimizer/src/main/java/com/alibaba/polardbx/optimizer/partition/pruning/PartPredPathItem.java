@@ -40,13 +40,21 @@ public class PartPredPathItem {
     }
 
     public String getDigest() {
+        return getDigest(false);
+    }
+
+    public String getDigest(boolean ignoreOp) {
         StringBuilder itemDigestSb = new StringBuilder("");
         if (prefixPath != null) {
-            itemDigestSb.append(prefixPath.getDigest());
+            itemDigestSb.append(prefixPath.getDigest(ignoreOp));
             itemDigestSb.append(",");
         }
-        itemDigestSb.append(partClauseIntervalInfo.getPartClause().getDigest());
+        itemDigestSb.append(partClauseIntervalInfo.getPartClause().getDigest(ignoreOp));
         return itemDigestSb.toString();
+    }
+
+    public PartClauseIntervalInfo getPartClauseIntervalInfo() {
+        return partClauseIntervalInfo;
     }
 
     @Override

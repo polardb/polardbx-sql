@@ -21,15 +21,18 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
-public class DrdsAlterTableAsOfTimeStamp  extends MySqlObjectImpl implements SQLAlterTableItem {
+public class DrdsAlterTableAsOfTimeStamp extends MySqlObjectImpl implements SQLAlterTableItem {
+
     SQLExpr expr;
-    public DrdsAlterTableAsOfTimeStamp(SQLExpr expr){
+
+    public DrdsAlterTableAsOfTimeStamp(SQLExpr expr) {
         this.expr = expr;
     }
 
     public SQLExpr getExpr() {
         return expr;
     }
+
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -37,3 +40,4 @@ public class DrdsAlterTableAsOfTimeStamp  extends MySqlObjectImpl implements SQL
         visitor.endVisit(this);
     }
 }
+

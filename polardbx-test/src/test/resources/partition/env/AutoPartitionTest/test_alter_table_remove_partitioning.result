@@ -42,13 +42,17 @@ tbl,CREATE PARTITION TABLE `tbl` (
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
 	PRIMARY KEY (`a`),
-	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 3,
-	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 3,
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_ugidx` (`c`, `d`),
 	LOCAL KEY `_local_gidx` (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl partition by key(c);
 show create table tbl;
@@ -63,7 +67,7 @@ tbl,CREATE TABLE `tbl` (
 	KEY `gidx` USING BTREE (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`c`)
-PARTITIONS 3
+PARTITIONS #@#
 show full create table tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
@@ -76,7 +80,7 @@ tbl,CREATE TABLE `tbl` (
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`c`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl remove partitioning;
 show create table tbl;
@@ -86,7 +90,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	INDEX `gidx` (`a`, `b`),
 	UNIQUE INDEX `ugidx` (`c`, `d`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
@@ -97,14 +101,18 @@ tbl,CREATE PARTITION TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
-	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 3,
-	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 3,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `_local_gidx` USING BTREE (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl partition by key(d);
 show create table tbl;
@@ -114,13 +122,13 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `gidx` USING BTREE (`a`, `b`),
 	KEY `auto_shard_key_d` USING BTREE (`d`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`d`)
-PARTITIONS 3
+PARTITIONS #@#
 show full create table tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
@@ -128,13 +136,13 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`),
 	LOCAL KEY `auto_shard_key_d` USING BTREE (`d`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`d`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl add local index `idx_c`(c);
 alter table tbl add unique local index `idx_b`(b);
@@ -145,7 +153,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	UNIQUE KEY `idx_b` (`b`),
 	KEY `gidx` USING BTREE (`a`, `b`),
@@ -153,7 +161,7 @@ tbl,CREATE TABLE `tbl` (
 	KEY `idx_c` (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`d`)
-PARTITIONS 3
+PARTITIONS #@#
 show full create table tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
@@ -161,7 +169,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	UNIQUE LOCAL KEY `idx_b` (`b`),
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`),
@@ -169,7 +177,7 @@ tbl,CREATE TABLE `tbl` (
 	LOCAL KEY `idx_c` (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`d`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl remove partitioning;
 show create table tbl;
@@ -179,7 +187,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	INDEX `gidx` (`a`, `b`),
 	UNIQUE INDEX `idx_b` (`b`),
 	INDEX `idx_c` (`c`),
@@ -192,18 +200,26 @@ tbl,CREATE PARTITION TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
-	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 3,
-	UNIQUE GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 3,
-	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`) PARTITION BY KEY (`c`, `a`) PARTITIONS 3,
-	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 3,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_ugidx` USING BTREE (`c`, `d`),
 	UNIQUE LOCAL KEY `_local_idx_b` (`b`),
 	LOCAL KEY `_local_gidx` USING BTREE (`a`, `b`),
 	LOCAL KEY `_local_idx_c` (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 alter table tbl partitions 4;
 show create table tbl;
@@ -213,7 +229,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	INDEX `gidx` (`a`, `b`),
 	UNIQUE INDEX `idx_b` (`b`),
 	INDEX `idx_c` (`c`),
@@ -226,11 +242,19 @@ tbl,CREATE PARTITION TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
-	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 4,
-	UNIQUE GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS 4,
-	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`) PARTITION BY KEY (`c`, `a`) PARTITIONS 4,
-	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 4,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 4,
+	UNIQUE GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 4,
+	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS 4,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`)
+		PARTITIONS 4,
 	UNIQUE LOCAL KEY `_local_ugidx` USING BTREE (`c`, `d`),
 	UNIQUE LOCAL KEY `_local_idx_b` (`b`),
 	LOCAL KEY `_local_gidx` USING BTREE (`a`, `b`),
@@ -255,7 +279,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `idx_b` USING BTREE (`b`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
@@ -269,7 +293,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `idx_b` USING BTREE (`b`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
@@ -287,7 +311,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `idx_b` USING BTREE (`b`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
@@ -301,7 +325,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `idx_b` USING BTREE (`b`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
@@ -317,7 +341,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `idx_b` USING BTREE (`b`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
@@ -331,7 +355,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `idx_b` USING BTREE (`b`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
@@ -349,7 +373,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `idx_b` USING BTREE (`b`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
@@ -363,7 +387,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `idx_b` USING BTREE (`b`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
@@ -379,7 +403,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
 	KEY `gidx` USING BTREE (`a`, `b`)
@@ -392,7 +416,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`)
@@ -413,7 +437,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
 	KEY `gidx` USING BTREE (`a`, `b`)
@@ -430,7 +454,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`)
@@ -451,7 +475,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE KEY `ugidx` USING BTREE (`c`, `d`),
 	KEY `idx_c` USING BTREE (`c`),
 	KEY `gidx` USING BTREE (`a`, `b`)
@@ -468,7 +492,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	UNIQUE LOCAL KEY `ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `idx_c` USING BTREE (`c`),
 	LOCAL KEY `gidx` USING BTREE (`a`, `b`)
@@ -487,7 +511,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
+	PRIMARY KEY (`a`),
 	INDEX `gidx` (`a`, `b`),
 	INDEX `idx_c` (`c`),
 	UNIQUE INDEX `ugidx` (`c`, `d`)
@@ -499,16 +523,22 @@ tbl,CREATE PARTITION TABLE `tbl` (
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	PRIMARY KEY USING BTREE (`a`),
-	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`) PARTITION BY KEY (`a`, `b`) PARTITIONS 3,
-	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`) PARTITION BY KEY (`c`, `a`) PARTITIONS 3,
-	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`) PARTITION BY KEY (`c`, `d`) PARTITIONS 3,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gidx_$ */ `gidx` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
+		PARTITION BY KEY(`c`,`d`)
+		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_ugidx` USING BTREE (`c`, `d`),
 	LOCAL KEY `_local_idx_c` USING BTREE (`c`),
 	LOCAL KEY `_local_gidx` USING BTREE (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 3
+PARTITIONS #@#
 /* tablegroup = `tg` */
 select * from tbl order by a;
 a,b,c,d

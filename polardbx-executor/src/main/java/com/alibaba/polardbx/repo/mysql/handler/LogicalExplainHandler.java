@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -78,7 +79,7 @@ public class LogicalExplainHandler extends LogicalViewHandler {
             }
             ((PhyTableOperation) logicalPlan).setKind(SqlKind.SELECT);
             return repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
-        } else if (logicalPlan instanceof DirectTableOperation) {
+        } else if (logicalPlan instanceof DirectTableOperation || logicalPlan instanceof DirectMultiDBTableOperation) {
             ((DirectTableOperation) logicalPlan).setKind(SqlKind.SELECT);
             return repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
         } else if (logicalPlan instanceof SingleTableOperation) {

@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
@@ -40,7 +41,7 @@ public class MySqlLockTableStatement extends MySqlStatementImpl {
 
         public final String name;
 
-        LockType(String name){
+        LockType(String name) {
             this.name = name;
         }
     }
@@ -57,7 +58,7 @@ public class MySqlLockTableStatement extends MySqlStatementImpl {
 
         private SQLExprTableSource tableSource = new SQLExprTableSource();
 
-        private LockType           lockType;
+        private LockType lockType;
 
         private List<SQLCommentHint> hints;
 
@@ -95,5 +96,10 @@ public class MySqlLockTableStatement extends MySqlStatementImpl {
         public void setHints(List<SQLCommentHint> hints) {
             this.hints = hints;
         }
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

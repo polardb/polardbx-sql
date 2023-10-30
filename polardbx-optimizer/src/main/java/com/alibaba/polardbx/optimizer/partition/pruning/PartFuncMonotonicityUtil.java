@@ -16,42 +16,51 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlOperator;
-
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * @author chenghui.lch
  */
 public class PartFuncMonotonicityUtil {
 
-    protected static Set<SqlOperator> partFuncOp = new HashSet<>();
-
-    static {
-        partFuncOp.add(TddlOperatorTable.YEAR);
-        partFuncOp.add(TddlOperatorTable.MONTH);
-        partFuncOp.add(TddlOperatorTable.TO_DAYS);
-        partFuncOp.add(TddlOperatorTable.TO_SECONDS);
-        partFuncOp.add(TddlOperatorTable.UNIX_TIMESTAMP);
-    }
-
-    public static Monotonicity getPartFuncMonotonicity(SqlOperator op, RelDataType inputDataType) {
-        Monotonicity intFunMonotonicity = PartitionPrunerUtils.getPartitionIntFunction(op.getName())
-            .getMonotonicity(DataTypeUtil.calciteToDrdsType(inputDataType));
+    public static Monotonicity getPartFuncMonotonicity(PartitionIntFunction partFn, RelDataType inputDataType) {
+        Monotonicity intFunMonotonicity = partFn.getMonotonicity(DataTypeUtil.calciteToDrdsType(inputDataType));
         return intFunMonotonicity;
     }
 
     /**
      * build the EndPointInfo
+     * <pre>
+     *     endpoints[0] means cmpDirection:
+     *      if endpoints[0]=false,
+     *          that means constExpr is NOT the leftEndPoint of a range, such as partCol < const or partCol <= const;
+     *     if endpoints[0]=true,
+     *          that means constExpr is the leftEndPoint of a range, such as constExpr < partCol or constExpr <= partCol;
+     *     endpoints[1] means if endpoint is included:
+     *      if endpoints[1]=false,
+     *          that means constExpr should NOT be included, such as partCol < const or  partCol > const;
+     *     if endpoints[1]=true,
+     *          that means constExpr should be included, such as partCol <= const or  partCol >= const;
+     * </pre>
      *
      * @return [0]: cmpDirection, [1]: inclEndpoint
      */
     public static boolean[] buildIntervalEndPointInfo(ComparisonKind cmpKind) {
+
+        /**
+         * <pre>
+         * leftEndPoint=true  <=>  const < col or const <= col, so const is the left end point,
+         * leftEndPoint=false <=>  col < const or col <= const, so const is NOT the left end point,
+         *
+         * includeEndPoint=true <=> const <= col or col <= const
+         * includeEndPoint=false <=> const < col or col < const
+         * </pre>
+         *
+         */
 
         boolean[] endpoints = new boolean[2];
         switch (cmpKind) {
@@ -82,6 +91,15 @@ public class PartFuncMonotonicityUtil {
         return endpoints;
     }
 
+    /**
+     * <pre>
+     * enddpoint[0]=true  <=>  const < col or const <= col, so const is the left end point,
+     * enddpoint[0]=false <=>  col < const or col <= const, so const is NOT the left end point,
+     *
+     * enddpoint[1]=true <=> const <= col or col <= const
+     * enddpoint[1]=false <=> const < col or col < const
+     * </pre>
+     */
     public static ComparisonKind buildComparisonKind(boolean[] enddpoints) {
 
         ComparisonKind finalCmp = null;

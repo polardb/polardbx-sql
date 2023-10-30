@@ -17,10 +17,13 @@
 package com.alibaba.polardbx.transaction;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.SQLException;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * @author zhuangtianyi
@@ -33,8 +36,11 @@ public interface ITsoTransaction extends IMppTsoTransaction {
     TransactionManager getManager();
 
     @Override
-    default long nextTimestamp() {
-        return getManager().getTimestampOracle().nextTimestamp();
+    default long nextTimestamp(Consumer<Long> updateGetTsoTime) {
+        long getTsoStartTime = System.nanoTime();
+        long tso = getManager().getTimestampOracle().nextTimestamp();
+        updateGetTsoTime.accept(System.nanoTime() - getTsoStartTime);
+        return tso;
     }
 
     default void updateSnapshotTimestamp() {
@@ -67,4 +73,5 @@ public interface ITsoTransaction extends IMppTsoTransaction {
             conn.executeLater("SET innodb_snapshot_seq = " + snapshotSeq);
         }
     }
+
 }

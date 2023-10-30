@@ -25,6 +25,8 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.Module;
@@ -68,7 +70,7 @@ import static com.alibaba.polardbx.gms.module.LogPattern.UPDATE_NDV_FOR_CHANGED;
 import static com.alibaba.polardbx.gms.module.LogPattern.UPDATE_NDV_FOR_EXPIRED;
 
 public class NDVShardSketch {
-    private static final Logger logger = LoggerFactory.getLogger("statistics");
+    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
 
     public static final double MAX_DIFF_VALUE_RATIO = 0.2D;
 
@@ -185,6 +187,10 @@ public class NDVShardSketch {
         return true;
     }
 
+    public long lastModifyTime() {
+        return Arrays.stream(gmtUpdate).max().getAsLong();
+    }
+
     /**
      * update all shard parts
      */
@@ -232,25 +238,6 @@ public class NDVShardSketch {
                         LogLevel.NORMAL
                     );
                 needUpdate = true;
-            } else {
-                long currentCardinality = getCurrentCardinality(shardKey, shardParts[i]);
-                if (currentCardinality != -1) {
-                    long dValue = Math.abs(currentCardinality - dnCardinalityArray[i]);
-                    int maxDValue = InstConfUtil.getInt(ConnectionParams.STATISTIC_NDV_SKETCH_MAX_DIFFERENT_VALUE);
-                    if (dValue > maxDValue || ((double) dValue / currentCardinality) > MAX_DIFF_VALUE_RATIO) {
-                        ModuleLogInfo.getInstance()
-                            .logRecord(
-                                Module.STATISTICS,
-                                UPDATE_NDV_FOR_CHANGED,
-                                new String[] {
-                                    shardKey, shardParts[i], maxDValue + "", dValue + "",
-                                    currentCardinality + "", MAX_DIFF_VALUE_RATIO + ""
-                                },
-                                LogLevel.NORMAL
-                            );
-                        needUpdate = true;
-                    }
-                }
             }
             if (needUpdate) {
                 long start = System.currentTimeMillis();
@@ -555,7 +542,7 @@ public class NDVShardSketch {
         // persist
         PolarDbXSystemTableNDVSketchStatistic.getInstance().batchReplace(ndvShardSketch.serialize(sketchArray));
 
-        /** sync other nodes */
+        // sync other nodes
         SyncManagerHelper.syncWithDefaultDB(
             new UpdateStatisticSyncAction(
                 schemaName,
@@ -621,19 +608,6 @@ public class NDVShardSketch {
             for (String physicalTable : physicalTables) {
                 // add time check
                 if (!ifForce) {
-                    if (!LeaderStatusBridge.getInstance().hasLeadership()) {
-                        ModuleLogInfo.getInstance()
-                            .logRecord(
-                                Module.STATISTICS,
-                                INTERRUPTED,
-                                new String[] {
-                                    "ndv sketch " + shardKey,
-                                    "leader changed"
-                                },
-                                LogLevel.WARNING
-                            );
-                        return null;
-                    }
                     Pair<Boolean, String> p = needSketchInterrupted();
                     if (p.getKey()) {
                         // just return
@@ -697,6 +671,10 @@ public class NDVShardSketch {
                     c = ds.getConnection();
                     int queryTimeout = op.getParamManager()
                         .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_QUERY_TIMEOUT);
+                    if (FailPoint.isKeyEnable(FailPointKey.FP_INJECT_STATISTIC_SCHEDULE_JOB_HLL_EXCEPTION)) {
+                        // inject hll exception, set timeout to 1ms
+                        queryTimeout = 1;
+                    }
                     Executor socketTimeoutExecutor = TGroupDirectConnection.socketTimeoutExecutor;
                     c.setNetworkTimeout(socketTimeoutExecutor, queryTimeout);
                     st = c.createStatement();
@@ -709,12 +687,12 @@ public class NDVShardSketch {
                         hllBytes = rs.getBytes("HLL");
                     }
                 } catch (SQLException ex) {
+                    // MySQL Error = 1146 and MySQL SQLState = 42S02 indicate that the target table doesn't exist.
                     if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
                         StatisticManager.getInstance().getSds()
                             .removeLogicalTableList(schemaName, Lists.newArrayList(shardKeys[1]));
                         return null;
                     }
-                    throw ex;
                 } finally {
                     if (rs != null) {
                         try {
@@ -737,7 +715,6 @@ public class NDVShardSketch {
                             e.printStackTrace();
                         }
                     }
-                    FlowControl.getInstance(schemaName).feedback(System.currentTimeMillis() - startTime);
                 }
             }
 

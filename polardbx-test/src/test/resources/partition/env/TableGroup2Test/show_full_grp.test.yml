@@ -1,0 +1,62 @@
+## DISABLE_FAST_SQL_PARSER
+
+create tablegroup if not exists my_test_tg;
+
+CREATE TABLE `s3` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,3))
+PARTITIONS 4
+SUBPARTITION BY HASH(SUBSTR(`c1`,4))
+SUBPARTITIONS 4
+tablegroup = my_test_tg;
+
+CREATE TABLE `my_s3_2` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY HASH(SUBSTR(`id`,3))
+PARTITIONS 4
+SUBPARTITION BY HASH(SUBSTR(`c1`,4))
+SUBPARTITIONS 4
+tablegroup = my_test_tg;
+
+create tablegroup if not exists my_test_tg2;
+CREATE TABLE `my_l_rc_tp` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(TO_DAYS(`c`))
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(SUBPARTITION `sp1` VALUES LESS THAN (1000,10000),
+SUBPARTITION `sp2` VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION `p1` VALUES IN (737790),
+PARTITION `p2` VALUES IN (DEFAULT))
+tablegroup=my_test_tg2;
+
+create tablegroup if not exists my_test_tg3;
+CREATE TABLE `my_r_lc_ntp2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION `p1` VALUES LESS THAN (737790)
+(SUBPARTITION `p1sp1` VALUES IN ((1000,2000)) ENGINE = InnoDB,
+SUBPARTITION `p1sp2` VALUES IN ((3000,4000)) ENGINE = InnoDB),
+PARTITION `p3` VALUES LESS THAN (738156)
+(SUBPARTITION `p2sp4` VALUES IN ((1000,2000),(3000,4000)) ENGINE = InnoDB))
+tablegroup=my_test_tg3;
+
+select table_group_name,part_info from information_schema.full_table_group
+where table_group_name in ('my_test_tg','my_test_tg2','my_test_tg3')
+order by table_group_name;

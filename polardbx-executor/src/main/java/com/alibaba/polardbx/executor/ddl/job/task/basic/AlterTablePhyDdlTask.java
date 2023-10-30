@@ -49,6 +49,8 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.PHYSICAL_DDL_TASK_RETRY;
+
 @Getter
 @TaskName(name = "AlterTablePhyDdlTask")
 public class AlterTablePhyDdlTask extends BasePhyDdlTask {
@@ -81,6 +83,10 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
+        if (!executionContext.getParamManager().getBoolean(PHYSICAL_DDL_TASK_RETRY)) {
+            onExceptionTryRollback();
+        }
+
         try {
             super.executeImpl(executionContext);
         } catch (PhysicalDdlException e) {
@@ -171,5 +177,4 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
         // ALTER TABLE XXX ADD COLUMN (ca INT, cb INT, cc INT)
         return AlterTableRollbacker.reverse(schemaName, logicalTableName, origAlterItem);
     }
-
 }

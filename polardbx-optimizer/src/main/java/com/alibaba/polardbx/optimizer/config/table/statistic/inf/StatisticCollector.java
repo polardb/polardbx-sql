@@ -18,8 +18,7 @@ package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
-import org.apache.calcite.rel.ddl.AlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 
 import java.util.List;
 import java.util.Set;

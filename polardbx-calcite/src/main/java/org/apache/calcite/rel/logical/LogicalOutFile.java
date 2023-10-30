@@ -46,6 +46,10 @@ public class LogicalOutFile extends SingleRel {
         this.rowType = input.getRowType();
     }
 
+    public void setOutFileParams(OutFileParams outFileParams) {
+        this.outFileParams = outFileParams;
+    }
+
     public OutFileParams getOutFileParams() {
         return outFileParams;
     }

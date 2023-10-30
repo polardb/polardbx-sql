@@ -1,0 +1,775 @@
+## DISABLE_FAST_SQL_PARSER
+SET ENABLE_FOREIGN_KEY = true;
+CREATE DATABASE foreign_key_test mode = auto;
+use foreign_key_test;
+create table t1 (f1 int primary key) engine=InnoDB;
+#error ER_FK_DUP_NAME
+## error_msg: $# ERR_DUPLICATE_NAME_FK_CONSTRAINT #$
+create table t2 (f1 int primary key,
+constraint c1 foreign key (f1) references t1(f1),
+constraint c1 foreign key (f1) references t1(f1)) engine=InnoDB;
+ERR_DUPLICATE_NAME_FK_CONSTRAINT
+create table t2 (f1 int primary key,
+constraint c1 foreign key (f1) references t1(f1)) engine=innodb;
+#error ER_FK_DUP_NAME
+## error_msg: $# ERR_DUPLICATE_NAME_FK_CONSTRAINT #$
+alter table t2 add constraint c1 foreign key (f1) references t1(f1);
+ERR_DUPLICATE_NAME_FK_CONSTRAINT
+set foreign_key_checks = 0;
+#error ER_FK_DUP_NAME
+## error_msg: $# ERR_DUPLICATE_NAME_FK_CONSTRAINT #$
+alter table t2 add constraint c1 foreign key (f1) references t1(f1);
+ERR_DUPLICATE_NAME_FK_CONSTRAINT
+drop table t2;
+drop table t1;
+#echo #
+  #echo # Bug #20031243 CREATE TABLE FAILS TO CHECK IF FOREIGN KEY COLUMN
+  #echo # NULL/NOT NULL MISMATCH
+  #echo #
+set foreign_key_checks = 1;
+show variables like 'foreign_key_checks';
+Variable_name,Value
+FOREIGN_KEY_CHECKS,ON
+CREATE TABLE t1
+(a INT NOT NULL,
+b INT NOT NULL,
+INDEX idx(a)) ENGINE=InnoDB;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE CASCADE)
+ENGINE=InnoDB;
+show full create table t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* idx_$ */ `idx` (`a`)
+		PARTITION BY KEY(`a`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_idx` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+show full create table t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+INSERT INTO t1 VALUES (1, 80);
+INSERT INTO t1 VALUES (2, 81);
+INSERT INTO t1 VALUES (3, 82);
+INSERT INTO t1 VALUES (4, 83);
+INSERT INTO t1 VALUES (5, 84);
+INSERT INTO t2 VALUES (51, 1);
+INSERT INTO t2 VALUES (52, 2);
+INSERT INTO t2 VALUES (53, 3);
+INSERT INTO t2 VALUES (54, 4);
+INSERT INTO t2 VALUES (55, 5);
+SELECT a, b FROM t1 ORDER BY a;
+a,b
+1,80
+2,81
+3,82
+4,83
+5,84
+SELECT a, b FROM t2 ORDER BY a;
+a,b
+51,1
+52,2
+53,3
+54,4
+55,5
+#error ER_NO_REFERENCED_ROW_2
+## error_msg: $# ERR_ADD_UPDATE_FK_CONSTRAINT #$
+INSERT INTO t2 VALUES (56, 6);
+ERR_ADD_UPDATE_FK_CONSTRAINT
+#echo NewDD TODO: Runtime Bug#25722221 - RENAME COLUMN DID NOT UPDATE MYSQL.FOREIGN_KEY_COLUMN_USAGE FOR FK CONSTRAINT
+  #ALTER TABLE t1 CHANGE a id INT;
+# SELECT id, b FROM t1 ORDER BY id;
+# SELECT a, b FROM t2 ORDER BY a;
+#echo # Operations on child table
+  #echo TODO: Waiting for Bug#24666169
+  ##error ER_NO_REFERENCED_ROW_2
+  #INSERT INTO t2 VALUES (56, 6);
+##error ER_NO_REFERENCED_ROW_2
+  #UPDATE t2 SET b = 99 WHERE a = 51;
+#DELETE FROM t2 WHERE a = 53;
+#SELECT id, b FROM t1 ORDER BY id;
+#SELECT a, b FROM t2 ORDER BY a;
+##echo # Operations on parent table
+  #DELETE FROM t1 WHERE id = 1;
+#UPDATE t1 SET id = 50 WHERE id = 5;
+#SELECT id, b FROM t1 ORDER BY id;
+#SELECT a, b FROM t2 ORDER BY a;
+DROP TABLE t2;
+DROP TABLE t1;
+#echo # bug#25126722 FOREIGN KEY CONSTRAINT NAME IS NULL AFTER RESTART
+  #echo # base bug#24818604 [GR]
+  #echo #
+CREATE TABLE t1 (c1 INT PRIMARY KEY);
+CREATE TABLE t2 (c1 INT PRIMARY KEY, FOREIGN KEY (c1) REFERENCES t1(c1));
+INSERT INTO t1 VALUES (1);
+INSERT INTO t2 VALUES (1);
+DROP TABLE t2;
+DROP TABLE t1;
+#echo #
+  #echo # BUG#25976199 GROUP_REPLICATION.GR_FOREIGN_CHECKS_DISABLED TEST FAILING
+  #echo # ON PB2
+  #echo #
+SET foreign_key_checks=false;
+CREATE TABLE child_table (c1 INT PRIMARY KEY,
+FOREIGN KEY (c1) REFERENCES parent_table(c1));
+CREATE TABLE parent_table (c1 INT PRIMARY KEY);
+SET foreign_key_checks=true;
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP TABLE parent_table;
+ERR_DROP_TABLE_FK_CONSTRAINT
+DROP TABLE child_table;
+DROP TABLE parent_table;
+#echo #
+  #echo # Bug#26764604 - INNODB: FAILING ASSERTION: COL_NR < TABLE->N_DEF
+  #echo #
+SELECT @@foreign_key_checks;
+@@foreign_key_checks
+1
+CREATE TABLE t1 (
+pk int(11) NOT NULL AUTO_INCREMENT,
+unique1 int(11) DEFAULT NULL,
+unique2 int(11) DEFAULT NULL,
+two int(11) DEFAULT NULL,
+four int(11) DEFAULT NULL,
+ten int(11) DEFAULT NULL,
+twenty int(11) DEFAULT NULL,
+forty int(11) DEFAULT NULL,
+sixty int(11) DEFAULT NULL,
+eighty int(11) DEFAULT NULL,
+tenPercent int(11) DEFAULT NULL,
+twentyPercent int(11) DEFAULT NULL,
+fiftyPercent int(11) DEFAULT NULL,
+PRIMARY KEY (pk),
+KEY allkey(unique1,unique2,two,four,ten,twenty,forty,sixty,eighty,tenPercent,twentyPercent,fiftyPercent)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE t2_fk (
+pk int(11) NOT NULL,
+sixty int(11) DEFAULT NULL,
+PRIMARY KEY (pk),
+CONSTRAINT fk6 FOREIGN KEY (sixty) REFERENCES t1(sixty)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ERR_CREATE_FK_MISSING_INDEX
+DROP TABLE t1;
+#echo #
+  #echo # Bug#27014308 - UPGRADING TO 8.0.3 FAILS IF FOREIGN KEYS OF EXACTLY 64 CHARACTERS ARE PRESENT
+  #echo #
+  #echo # test with FK identifier of length exactly 64 characters;
+CREATE TABLE parent (
+id INT NOT NULL,
+PRIMARY KEY (id)
+) ENGINE=INNODB;
+CREATE TABLE child (
+id INT,
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+INT,
+INDEX par_ind
+(xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx),
+CONSTRAINT
+`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+FOREIGN
+KEY (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+REFERENCES parent(id)
+ON DELETE CASCADE
+) ENGINE=INNODB;
+SHOW FULL CREATE TABLE child;
+Table,Create Table
+child,CREATE PARTITION TABLE `child` (
+	`id` int(11) DEFAULT NULL,
+	`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CONSTRAINT `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` FOREIGN KEY (`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`) REFERENCES `parent` (`id`) ON DELETE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* par_ind_$ */ `par_ind` (`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
+		PARTITION BY KEY(`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_par_ind` (`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE child;
+DROP TABLE parent;
+#echo # test with FK identifier of length exactly 65 characters,
+  #echo # child table creation should fail
+CREATE TABLE parent (
+id INT NOT NULL,
+PRIMARY KEY (id)
+) ENGINE=INNODB;
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE child (
+id INT,
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+INT,
+INDEX par_ind
+(xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx),
+CONSTRAINT
+`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+FOREIGN
+KEY (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+REFERENCES parent(id)
+ON DELETE CASCADE
+) ENGINE=INNODB;
+is too long (max = 64)
+DROP TABLE parent;
+#echo # Test delete/update rules combination.
+CREATE TABLE t1
+(a INT NOT NULL,
+b INT NOT NULL,
+INDEX idx(a)) ENGINE=InnoDB;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a))
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON UPDATE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON UPDATE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON UPDATE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON UPDATE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE ON UPDATE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE RESTRICT)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE CASCADE ON UPDATE RESTRICT /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE SET NULL ON UPDATE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE SET NULL ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE SET NULL ON UPDATE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE SET NULL ON UPDATE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE SET NULL ON UPDATE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE SET NULL ON UPDATE RESTRICT)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE SET NULL ON UPDATE RESTRICT /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE NO ACTION ON UPDATE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE NO ACTION ON UPDATE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON UPDATE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE NO ACTION ON UPDATE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE NO ACTION ON UPDATE RESTRICT)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON UPDATE RESTRICT /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE RESTRICT ON UPDATE CASCADE)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE RESTRICT ON UPDATE CASCADE /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE RESTRICT ON UPDATE SET NULL)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE RESTRICT ON UPDATE SET NULL /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE RESTRICT ON UPDATE NO ACTION)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE RESTRICT /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+CREATE TABLE t2
+(a INT KEY,
+b INT,
+INDEX ind(b),
+FOREIGN KEY (b) REFERENCES t1(a) ON DELETE RESTRICT ON UPDATE RESTRICT)
+ENGINE=InnoDB;
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE RESTRICT ON UPDATE RESTRICT /* TYPE LOGICAL */,
+	GLOBAL INDEX /* ind_$ */ `ind` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_ind` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE t2;
+DROP TABLE t1;
+#echo #
+  #echo # Bug#28581468 - RENAMING PARENT COLUMN IN A FOREIGN KEY FAILS WITH STRANGE ERROR.
+  #echo #
+CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, INDEX idx(a), INDEX idx1(b)) ENGINE=InnoDB PARTITION BY KEY(b);
+CREATE TABLE t2 (a INT KEY, b INT, c INT, INDEX ind(c), FOREIGN KEY (c) REFERENCES t1(a) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB;
+ALTER TABLE t1 CHANGE a id INT NOT NULL;
+CHECK TABLE t1;
+Table,Op,Msg_type,Msg_text
+foreign_key_test.t1:Topology,check,status,OK
+foreign_key_test.t1:Columns,check,status,OK
+t1.idx:Local Index,check,status,OK
+t1.idx1:Local Index,check,status,OK
+CHECK TABLE t2;
+Table,Op,Msg_type,Msg_text
+foreign_key_test.t2:Topology,check,status,OK
+foreign_key_test.t2:Columns,check,status,OK
+t2._local_ind:Local Index,check,status,OK
+t2.t2_ibfk_1:Local Index,check,status,OK
+foreign_key_test.t2.ind_$:Topology,check,status,OK
+foreign_key_test.t2.ind_$:Covering Columns,check,status,OK
+DROP TABLE t2;
+DROP TABLE t1;
+use information_schema;
+drop database foreign_key_test;

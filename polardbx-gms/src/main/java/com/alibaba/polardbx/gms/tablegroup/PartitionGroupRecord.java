@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.gms.tablegroup;
 
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -40,6 +41,9 @@ public class PartitionGroupRecord implements SystemTableRecord {
     public Long meta_version = 1L;
     public int visible = 1;
 
+    public PartitionGroupRecord() {
+    }
+
     @Override
     public PartitionGroupRecord fill(ResultSet rs) throws SQLException {
         this.id = rs.getLong("id");
@@ -49,6 +53,9 @@ public class PartitionGroupRecord implements SystemTableRecord {
         this.gmt_modified = rs.getTimestamp("gmt_modified");
         this.phy_db = rs.getString("phy_db");
         this.locality = rs.getString("locality");
+        if (StringUtils.isEmpty(this.locality)) {
+            this.locality = StringUtils.EMPTY;
+        }
         this.primary_zone = rs.getString("primary_zone");
         this.meta_version = rs.getLong("meta_version");
         this.pax_group_id = rs.getLong("pax_group_id");

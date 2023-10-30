@@ -1,0 +1,59 @@
+## DISABLE_FAST_SQL_PARSER
+## test range col/one col/int
+drop table if exists tbl_rc_key_tp;
+create table if not exists tbl_rc_key_tp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+subpartitions 4
+( partition p0 values less than ('2020-01-01','abc'),
+  partition p1 values less than ('2022-01-01', 'efg'),
+  partition p2 values less than (maxvalue, maxvalue)
+);
+create global index gi_key_nsp on tbl_rc_key_tp(a,d)
+partition by key(a,d)
+partitions 4
+subpartition by key(d)
+subpartitions 4;
+create global index gi_key_nsp2 on tbl_rc_key_tp(a,b,c)
+partition by range(year(c))
+subpartition by key(a,b) subpartitions 4
+(
+partition p1 values less than(2020),
+partition p2 values less than(2021),
+partition p3 values less than(maxvalue)
+);
+show create table tbl_rc_key_tp;
+Table,Create Table
+tbl_rc_key_tp,CREATE TABLE `tbl_rc_key_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	GLOBAL INDEX `gi_key_nsp2` (`a`, `b`, `c`) COVERING (`d`)
+		PARTITION BY RANGE(YEAR(`c`))
+		SUBPARTITION BY KEY(`a`,`b`)
+		SUBPARTITIONS 4
+		(PARTITION p1 VALUES LESS THAN (2020),
+		 PARTITION p2 VALUES LESS THAN (2021),
+		 PARTITION p3 VALUES LESS THAN (MAXVALUE)),
+	GLOBAL INDEX `gi_key_nsp` (`a`, `d`) COVERING (`b`, `c`)
+		PARTITION BY KEY(`a`,`d`)
+		PARTITIONS 4
+		SUBPARTITION BY KEY(`d`)
+		SUBPARTITIONS 4,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))

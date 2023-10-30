@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupRenamePartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableSplitPartitionByHotValueJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
@@ -31,14 +30,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionByHotValuePreparedData;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.util.Util;
 
 public class LogicalAlterTableSplitPartitionByHotValueHandler extends LogicalCommonDdlHandler {
@@ -54,7 +50,6 @@ public class LogicalAlterTableSplitPartitionByHotValueHandler extends LogicalCom
         logicalAlterTableSplitPartitionByHotValue.preparedData(executionContext);
         AlterTableSplitPartitionByHotValuePreparedData preparedData =
             (AlterTableSplitPartitionByHotValuePreparedData) logicalAlterTableSplitPartitionByHotValue.getPreparedData();
-        CheckOSSArchiveUtil.checkWithoutOSS(preparedData);
         ExecutableDdlJob executableDdlJob = AlterTableSplitPartitionByHotValueJobFactory
             .create(logicalAlterTableSplitPartitionByHotValue.relDdl,
                 preparedData,
@@ -93,7 +88,7 @@ public class LogicalAlterTableSplitPartitionByHotValueHandler extends LogicalCom
         AlterTableGroupUtils.alterTableSplitPartitionByHotValueCheck(
             logicalAlterTableSplitPartitionByHotValue.getSchemaName(), logicalTableName,
             sqlAlterTableSplitPartitionByHotValue, alterTable.getAllRexExprInfo(), executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -29,6 +30,7 @@ import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
+import java.util.List;
 import java.util.Map;
 
 @Getter
@@ -43,14 +45,18 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
     private boolean ifNotExists;
     private SqlKind sqlKind;
     private boolean hasTimestampColumnDefault;
-    private Map<String, String> binaryColumnDefaultValues;
+    private List<ForeignKeyData> addedForeignKeys;
+    private Map<String, String> specialDefaultValues;
+    private Map<String, Long> specialDefaultValueFlags;
 
     @JSONCreator
     public CreateTableAddTablesMetaTask(String schemaName, String logicalTableName, String dbIndex, String phyTableName,
                                         SequenceBean sequenceBean, TablesExtRecord tablesExtRecord,
                                         boolean partitioned, boolean ifNotExists, SqlKind sqlKind,
+                                        List<ForeignKeyData> addedForeignKeys,
                                         boolean hasTimestampColumnDefault,
-                                        Map<String, String> binaryColumnDefaultValues) {
+                                        Map<String, String> specialDefaultValues,
+                                        Map<String, Long> specialDefaultValueFlags) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -59,8 +65,10 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
         this.partitioned = partitioned;
         this.ifNotExists = ifNotExists;
         this.sqlKind = sqlKind;
+        this.addedForeignKeys = addedForeignKeys;
         this.hasTimestampColumnDefault = hasTimestampColumnDefault;
-        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
+        this.specialDefaultValues = specialDefaultValues;
+        this.specialDefaultValueFlags = specialDefaultValueFlags;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -68,11 +76,11 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         PhyInfoSchemaContext phyInfoSchemaContext = TableMetaChanger.buildPhyInfoSchemaContext(schemaName,
             logicalTableName, dbIndex, phyTableName, sequenceBean, tablesExtRecord, partitioned, ifNotExists, sqlKind,
-            executionContext);
+            0L, executionContext);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         TableMetaChanger.addTableMeta(metaDbConnection, phyInfoSchemaContext, hasTimestampColumnDefault,
-            executionContext, binaryColumnDefaultValues);
+            executionContext, specialDefaultValues, specialDefaultValueFlags, addedForeignKeys);
     }
 
     @Override

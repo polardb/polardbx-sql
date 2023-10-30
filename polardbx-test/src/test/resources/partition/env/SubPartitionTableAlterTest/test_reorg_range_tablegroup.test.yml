@@ -1,0 +1,176 @@
+## DISABLE_FAST_SQL_PARSER
+
+create tablegroup if not exists reorg_range_tg;
+create tablegroup if not exists reorg_range_tg_n;
+
+drop table if exists sp_range_range_1;
+drop table if exists sp_range_range_2;
+drop table if exists sp_range_range_n;
+
+  ## sp_range_range_1
+create table sp_range_range_1 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) subpartition template (
+subpartition sp1 values less than (1000),
+subpartition sp2 values less than (2000),
+subpartition sp3 values less than (3000),
+subpartition sp4 values less than (4000),
+subpartition sp5 values less than (5000)
+) (
+partition p1 values less than (2011),
+partition p2 values less than (2012),
+partition p3 values less than (2013),
+partition p4 values less than (2014),
+partition p5 values less than (2015)
+) tablegroup=reorg_range_tg;
+
+  ## sp_range_range_2
+create table sp_range_range_2 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) subpartition template (
+subpartition sp1 values less than (1000),
+subpartition sp2 values less than (2000),
+subpartition sp3 values less than (3000),
+subpartition sp4 values less than (4000),
+subpartition sp5 values less than (5000)
+) (
+partition p1 values less than (2011),
+partition p2 values less than (2012),
+partition p3 values less than (2013),
+partition p4 values less than (2014),
+partition p5 values less than (2015)
+) tablegroup=reorg_range_tg;
+
+  ## sp_range_range_n
+create table sp_range_range_n (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) (
+partition p1 values less than (2011) (
+subpartition p1sp1 values less than (1000)
+),
+partition p2 values less than (2012) (
+subpartition p2sp1 values less than (1000),
+subpartition p2sp2 values less than (2000)
+),
+partition p3 values less than (2013) (
+subpartition p3sp1 values less than (1000),
+subpartition p3sp2 values less than (2000),
+subpartition p3sp3 values less than (3000)
+),
+partition p4 values less than (2014) (
+subpartition p4sp1 values less than (1000),
+subpartition p4sp2 values less than (2000),
+subpartition p4sp3 values less than (3000),
+subpartition p4sp4 values less than (4000)
+),
+partition p5 values less than (2015) (
+subpartition p5sp1 values less than (1000),
+subpartition p5sp2 values less than (2000),
+subpartition p5sp3 values less than (3000),
+subpartition p5sp4 values less than (4000),
+subpartition p5sp5 values less than (5000)
+)
+) tablegroup=reorg_range_tg_n;
+
+show full create table sp_range_range_1;
+show full create table sp_range_range_2;
+show full create table sp_range_range_n;
+
+insert into sp_range_range_1(id,ctime) values (999,'2010-01-01');
+insert into sp_range_range_1(id,ctime) values (1999,'2010-01-01'),(1499,'2011-01-01');
+insert into sp_range_range_1(id,ctime) values (2999,'2010-01-01'),(2499,'2011-01-01'),(2799,'2012-01-01');
+insert into sp_range_range_1(id,ctime) values (3999,'2010-01-01'),(3499,'2011-01-01'),(3299,'2012-01-01'),(3799,'2013-01-01');
+insert into sp_range_range_1(id,ctime) values (4999,'2010-01-01'),(4499,'2011-01-01'),(4299,'2012-01-01'),(4799,'2013-01-01'),(4599,'2014-01-01');
+
+insert into sp_range_range_2(id,ctime) values (999,'2010-01-01');
+insert into sp_range_range_2(id,ctime) values (1999,'2010-01-01'),(1499,'2011-01-01');
+insert into sp_range_range_2(id,ctime) values (2999,'2010-01-01'),(2499,'2011-01-01'),(2799,'2012-01-01');
+insert into sp_range_range_2(id,ctime) values (3999,'2010-01-01'),(3499,'2011-01-01'),(3299,'2012-01-01'),(3799,'2013-01-01');
+insert into sp_range_range_2(id,ctime) values (4999,'2010-01-01'),(4499,'2011-01-01'),(4299,'2012-01-01'),(4799,'2013-01-01'),(4599,'2014-01-01');
+
+insert into sp_range_range_n(id,ctime) values (999,'2010-01-01'),(949,'2011-01-01'),(929,'2012-01-01'),(979,'2013-01-01'),(959,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (1999,'2011-01-01'),(1499,'2012-01-01'),(1299,'2013-01-01'),(1799,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (2999,'2012-01-01'),(2499,'2013-01-01'),(2799,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (3999,'2013-01-01'),(3499,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (4999,'2014-01-01');
+
+alter tablegroup reorg_range_tg reorganize partition p3,p4,p5 into (
+partition p34 values less than (2013),
+partition p45 values less than (2015)
+);
+
+alter tablegroup reorg_range_tg reorganize partition p1,p2 into (
+partition p11 values less than (2009),
+partition p12 values less than (2010),
+partition p21 values less than (2011),
+partition p22 values less than (2012)
+);
+
+alter tablegroup reorg_range_tg reorganize partition p34,p45 into (
+partition p34 values less than (2014),
+partition p45 values less than (2015)
+);
+
+alter tablegroup reorg_range_tg reorganize subpartition sp2,sp3,sp4 into (
+subpartition sp23 values less than (2500),
+subpartition sp34 values less than (4000)
+);
+
+alter tablegroup reorg_range_tg reorganize subpartition sp1 into (
+subpartition sp11 values less than (900),
+subpartition sp12 values less than (1000)
+);
+
+alter tablegroup reorg_range_tg reorganize subpartition sp5 into (
+subpartition sp51 values less than (4500),
+subpartition sp52 values less than (5000)
+);
+
+alter tablegroup reorg_range_tg reorganize subpartition sp23,sp34 into (
+subpartition sp23 values less than (3000),
+subpartition sp34 values less than (4000)
+);
+
+alter tablegroup reorg_range_tg_n reorganize partition p3,p4,p5 into (
+partition p34 values less than (2013),
+partition p45 values less than (2015)
+);
+
+alter tablegroup reorg_range_tg_n reorganize partition p1,p2 into (
+partition p11 values less than (2009),
+partition p12 values less than (2010),
+partition p21 values less than (2011),
+partition p22 values less than (2012)
+);
+
+alter tablegroup reorg_range_tg_n reorganize partition p34,p45 into (
+partition p34 values less than (2014),
+partition p45 values less than (2015)
+);
+
+alter tablegroup reorg_range_tg_n reorganize subpartition p45sp1 into (
+subpartition p45sp1 values less than (1000),
+subpartition p45sp2 values less than (2000),
+subpartition p45sp3 values less than (3000),
+subpartition p45sp4 values less than (4000),
+subpartition p45sp5 values less than (MAXVALUE)
+);
+
+alter tablegroup reorg_range_tg_n reorganize subpartition p34sp1 into (
+subpartition p34sp1 values less than (900),
+subpartition p34sp2 values less than (1000),
+subpartition p34sp3 values less than (MAXVALUE)
+);
+
+alter tablegroup reorg_range_tg_n reorganize subpartition p22sp1 into (
+subpartition p22sp1 values less than (3500),
+subpartition p22sp2 values less than (MAXVALUE)
+);
+
+alter tablegroup reorg_range_tg_n reorganize subpartition p45sp2,p45sp3,p45sp4 into (
+subpartition p45sp3 values less than (4000)
+);
+
+show full create table sp_range_range_1;
+show full create table sp_range_range_2;
+show full create table sp_range_range_n;

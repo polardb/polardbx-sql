@@ -57,20 +57,18 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
     private final List<Integer> paramIndex;
     private final List<String> logicalTableNames;
     private final String schemaName;
-    private ExecutionContext executionContext;
     private boolean buildForPushDownOneShardOnly = false;
 
     public PhyTableModifyViewBuilder(SqlNode sqlTemplate,
                                      Map<String, List<List<String>>> targetTables,
-                                     ExecutionContext executionContext,
+                                     Map<Integer, ParameterContext> params,
                                      RelNode parent,
                                      DbType dbType,
                                      List<String> logicalTableNames,
                                      String schemaName) {
-        this.executionContext = executionContext;
         this.sqlTemplate = sqlTemplate;
         this.targetTables = targetTables;
-        this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        this.params = params;
         this.parent = parent;
         this.dbType = dbType;
         this.paramIndex = PlannerUtils.getDynamicParamIndex(sqlTemplate);
@@ -78,7 +76,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
         this.schemaName = schemaName;
     }
 
-    public List<RelNode> build() {
+    public List<RelNode> build(ExecutionContext context) {
 
         BytesSql sqlTemplateStr = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
         ShardPlanMemoryContext shardPlanMemoryContext = buildShardPlanMemoryContext(parent,
@@ -86,7 +84,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
             (AbstractRelNode) parent,
             this.params,
             this.targetTables,
-            this.executionContext);
+            context);
         MemoryAllocatorCtx maOfPlanBuildingPool = shardPlanMemoryContext.memoryAllocator;
         if (maOfPlanBuildingPool != null) {
             long phyOpMemSize = shardPlanMemoryContext.phyOpMemSize;
@@ -105,7 +103,9 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
             }
         }
         if (buildForPushDownOneShardOnly && phyTableScans.size() > 1) {
-            throw new IllegalArgumentException("Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly=" + buildForPushDownOneShardOnly);
+            throw new IllegalArgumentException(
+                "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
+                    + buildForPushDownOneShardOnly);
         }
         return phyTableScans;
     }

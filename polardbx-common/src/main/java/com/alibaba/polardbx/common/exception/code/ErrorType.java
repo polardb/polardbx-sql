@@ -19,5 +19,5 @@ package com.alibaba.polardbx.common.exception.code;
 public enum ErrorType {
     Config, Atom, Group, Route, Sequence, Parser, Optimizer, Executor, Server, Account, Priviledge, Auth, Transaction,
     Baseline, Mpp, GMS, Xprotocol, CDC, CCL, OSS, Procedure, Function,
-    Other
+    Other, Net
 }

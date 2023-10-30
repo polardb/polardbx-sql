@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
 
 public class LogicalAlterTableEngineHandler extends LogicalCommonDdlHandler {
+
     private final Engine sourceEngine;
     private final Engine targetEngine;
 
@@ -48,18 +49,22 @@ public class LogicalAlterTableEngineHandler extends LogicalCommonDdlHandler {
     public DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         final String schemaName = logicalDdlPlan.getSchemaName();
         final String primaryTableName = logicalDdlPlan.getTableName();
+
         PolarPrivilegeUtils.checkPrivilege(schemaName, primaryTableName, PrivilegePoint.ALTER, executionContext);
         PolarPrivilegeUtils.checkPrivilege(schemaName, primaryTableName, PrivilegePoint.DROP, executionContext);
+
         if (Engine.isFileStore(targetEngine)) {
             // todo
             throw GeneralUtil.nestedException("unsupported");
         }
+
         // check primary key
         TableMeta originalTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(primaryTableName);
         if (!originalTableMeta.isHasPrimaryKey()) {
             throw GeneralUtil.nestedException("Table must have primary key");
         }
+
         // load data
         return new AlterTableEngineJobFactory(schemaName, primaryTableName, sourceEngine, targetEngine)
             .create(true);

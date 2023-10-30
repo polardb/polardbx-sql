@@ -21,9 +21,11 @@ import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import org.apache.calcite.sql.SqlOperator;
 
 import java.sql.Types;
 import java.util.List;
@@ -93,5 +95,10 @@ public class ToSecondsPartitionIntFunction extends PartitionIntFunction {
     @Override
     public String[] getFunctionNames() {
         return new String[] {"ToSecondsPartitionInt"};
+    }
+
+    @Override
+    public SqlOperator getSqlOperator() {
+        return TddlOperatorTable.TO_SECONDS;
     }
 }

@@ -36,7 +36,6 @@ import java.util.List;
  * @author chenmo.cm
  */
 
-@Ignore("REMOVE DDL NOT SUPPORTED")
 public class DropTableWithGsiRecoverableTest extends BaseFailPointTestCase {
 
     private static final String HINT = "/*+TDDL:cmd_extra(STORAGE_CHECK_ON_GSI=false)*/ ";

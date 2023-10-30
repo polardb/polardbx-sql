@@ -30,9 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * @@author chenghui.lch
  *
- * The alter table rel node converted from SqlAlterTable
  */
 public final class LogicalAlterTable extends DDL {
 
@@ -60,7 +58,6 @@ public final class LogicalAlterTable extends DDL {
      */
     protected Map<SqlNode, RexNode> allRexExprInfo = new HashMap<>();
 
-
     protected LogicalAlterTable(RelOptCluster cluster,
                                 RelTraitSet traits,
                                 RelNode input,
@@ -75,7 +72,8 @@ public final class LogicalAlterTable extends DDL {
         this.allRexExprInfo = allRexExprInfo;
     }
 
-    public static LogicalAlterTable create(RelOptCluster cluster, RelNode input, RelDataType rowType, SqlNode alterDdl, SqlNode tableName,
+    public static LogicalAlterTable create(RelOptCluster cluster, RelNode input, RelDataType rowType, SqlNode alterDdl,
+                                           SqlNode tableName,
                                            Map<SqlNode, RexNode> allRexExprInfo) {
         return new LogicalAlterTable(cluster, cluster.traitSet(), input, rowType, alterDdl, tableName, allRexExprInfo);
     }
@@ -83,7 +81,8 @@ public final class LogicalAlterTable extends DDL {
     public LogicalAlterTable copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new LogicalAlterTable(this.getCluster(), traitSet, inputs.get(0), this.rowType, this.sqlNode, getTableName(),
+        return new LogicalAlterTable(this.getCluster(), traitSet, inputs.get(0), this.rowType, this.sqlNode,
+            getTableName(),
             this.allRexExprInfo);
     }
 

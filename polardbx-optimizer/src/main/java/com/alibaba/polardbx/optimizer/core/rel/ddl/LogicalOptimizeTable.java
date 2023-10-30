@@ -28,4 +28,13 @@ public class LogicalOptimizeTable extends BaseDdlOperation {
         return new LogicalOptimizeTable(optimizeTable);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

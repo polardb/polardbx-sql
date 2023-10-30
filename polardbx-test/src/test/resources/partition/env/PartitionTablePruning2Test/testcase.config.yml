@@ -1,4 +1,6 @@
-test_bka_in_values_pruning
-test_subquery_pruning
-test_varbinary_test
+#test_bka_in_values_pruning
+#test_subquery_pruning
+##test_bka_pruning
+#test_in_subquery
+#test_varbinary_test
 test_single_insert

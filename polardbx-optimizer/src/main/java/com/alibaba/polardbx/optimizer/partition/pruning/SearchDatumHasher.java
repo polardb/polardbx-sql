@@ -16,18 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
-import com.alibaba.polardbx.common.charset.CharsetFactoryImpl;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactoryImpl;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.partition.MurmurHashUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCollation;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.nio.charset.Charset;
 
@@ -67,6 +68,8 @@ public class SearchDatumHasher {
     protected boolean isKeyPartition = false;
 
     protected Boolean[] covertToBigIntField;
+
+    protected RelDataType hashBndValDataType = PartitionPrunerUtils.getTypeFactory().createSqlType(SqlTypeName.BIGINT);
 
     public SearchDatumHasher() {
     }
@@ -165,6 +168,17 @@ public class SearchDatumHasher {
 
     }
 
+    /**
+     * <pre>
+     *     Calc hash code of Long by user-defined function
+     * </pre>
+     */
+    public long calcHashCodeForUdfHashStrategy(ExecutionContext ec, SearchDatumInfo searchValDatum) {
+        PartitionBoundVal bndVal = searchValDatum.datumInfo[0];
+        long hashVal = bndVal.getValue().longValue();
+        return hashVal;
+    }
+
     protected long doMurmurHash(long multiFiledHashCode) {
         long finalHashVal = MurmurHashUtils.murmurHashWithZeroSeed(multiFiledHashCode);
 
@@ -220,4 +234,9 @@ public class SearchDatumHasher {
         return outputHashCode;
 
     }
+
+    public RelDataType getHashBndValDataType() {
+        return hashBndValDataType;
+    }
+
 }

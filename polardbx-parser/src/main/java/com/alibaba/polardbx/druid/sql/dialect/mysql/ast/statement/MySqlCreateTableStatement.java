@@ -24,8 +24,10 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
@@ -38,6 +40,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlExprImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlShowColumnOutpuVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
@@ -142,6 +145,10 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
 
             if (like != null) {
                 like.accept(visitor);
+            }
+
+            if (asTable != null) {
+                asTable.accept(visitor);
             }
 
             if (select != null) {
@@ -271,6 +278,57 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         }
 
         return false;
+    }
+
+    @Override
+    public boolean apply(SQLAlterTableStatement alter) {
+        if (!SQLUtils.nameEquals(alter.getName(), this.getName())) {
+            return false;
+        }
+
+        int applyCount = 0;
+
+        List<SQLAlterTableItem> laterItemList = Lists.newArrayList();
+        // modify column name and drop column
+        for (SQLAlterTableItem item : alter.getItems()) {
+
+            if (item instanceof MySqlAlterTableChangeColumn) {
+                // later apply first or after， split column def and seq
+                MySqlAlterTableChangeColumn sortColumn = (MySqlAlterTableChangeColumn) item;
+                MySqlAlterTableChangeColumn changeColumn = new MySqlAlterTableChangeColumn();
+                changeColumn.setColumnName(sortColumn.getColumnName());
+                changeColumn.setNewColumnDefinition(sortColumn.getNewColumnDefinition());
+                item = changeColumn;
+                sortColumn.setColumnName(sortColumn.getNewColumnDefinition().getName());
+                laterItemList.add(sortColumn);
+            } else if (item instanceof SQLAlterTableAddColumn) {
+                laterItemList.add(item);
+                continue;
+            } else if (item instanceof MySqlAlterTableModifyColumn) {
+                MySqlAlterTableModifyColumn sortColumn = (MySqlAlterTableModifyColumn) item;
+                MySqlAlterTableModifyColumn modifyColumn = new MySqlAlterTableModifyColumn();
+                modifyColumn.setSourceColumn(sortColumn.getSourceColumn());
+                modifyColumn.setParent(sortColumn.getParent());
+                modifyColumn.setHint(sortColumn.getHint());
+                modifyColumn.setSourceLine(sortColumn.getSourceLine());
+                modifyColumn.setNewColumnDefinition(sortColumn.getNewColumnDefinition());
+                laterItemList.add(sortColumn);
+                item = modifyColumn;
+            }
+
+            if (alterApply(item)) {
+                applyCount++;
+            }
+        }
+
+        // sort column and add new column
+        for (SQLAlterTableItem item : laterItemList) {
+            if (alterApply(item)) {
+                applyCount++;
+            }
+        }
+
+        return applyCount > 0;
     }
 
     @Override

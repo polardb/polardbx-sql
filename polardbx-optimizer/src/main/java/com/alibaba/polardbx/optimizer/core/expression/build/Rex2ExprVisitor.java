@@ -52,6 +52,7 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSystemVar;
 import org.apache.calcite.rex.RexUserVar;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterFunction;
@@ -142,7 +143,7 @@ public class Rex2ExprVisitor extends RexVisitorImpl<IExpression> {
             return dynamicParamExpression;
         } else if (dynamicParam.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
             DynamicParamExpression dynamicParamExpression = new DynamicParamExpression(dynamicParam.getRel(),
-                dynamicParam, dynamicParam.getSubqueryKind(),  dynamicParam.getSubqueryOp());
+                dynamicParam, dynamicParam.getSubqueryKind(), dynamicParam.getSubqueryOp());
             return dynamicParamExpression;
         }
         return new DynamicParamExpression(dynamicParam.getIndex(), contextProvider,

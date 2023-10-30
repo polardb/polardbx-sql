@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.archive.reader;
 
-import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProvider;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.hadoop.conf.Configuration;
@@ -72,10 +72,10 @@ public class BufferPoolManager {
 
     private BufferPoolManager() {
         cache = CacheBuilder.newBuilder()
-                .maximumSize(BUFFER_POOL_SIZE)
-                .expireAfterWrite(BUFFER_POOL_EXPIRE_HOURS, TimeUnit.HOURS)
-                .softValues()
-                .build();
+            .maximumSize(BUFFER_POOL_SIZE)
+            .expireAfterWrite(BUFFER_POOL_EXPIRE_HOURS, TimeUnit.HOURS)
+            .softValues()
+            .build();
     }
 
     public void clear() {
@@ -84,7 +84,8 @@ public class BufferPoolManager {
 
     public void invalidate(String schemaName, String logicalTableName) {
         for (Key key : cache.asMap().keySet()) {
-            if (key.logicalSchemaName.equalsIgnoreCase(schemaName) && key.logicalTableName.equalsIgnoreCase(logicalTableName)) {
+            if (key.logicalSchemaName.equalsIgnoreCase(schemaName) && key.logicalTableName.equalsIgnoreCase(
+                logicalTableName)) {
                 cache.invalidate(key);
             }
         }
@@ -105,13 +106,17 @@ public class BufferPoolManager {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
             Key key = (Key) o;
             return logicalSchemaName.equals(key.logicalSchemaName)
-                    && logicalTableName.equals(key.logicalTableName)
-                    && fileName.equals(key.fileName)
-                    && column.equals(key.column);
+                && logicalTableName.equals(key.logicalTableName)
+                && fileName.equals(key.fileName)
+                && column.equals(key.column);
         }
 
         @Override
@@ -122,58 +127,64 @@ public class BufferPoolManager {
 
     public List<Block> getImpl(OSSOrcFileMeta fileMeta, String column, OSSReadOption ossReadOption,
                                ExecutionContext executionContext) throws ExecutionException {
-        return cache.get(new Key(fileMeta.getLogicalTableSchema(), fileMeta.getLogicalTableName(), fileMeta.getFileName(), column), () -> {
-            long stamp = FileSystemManager.readLockWithTimeOut(ossReadOption.getEngine());
-            try {
-                FileSystem fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
+        return cache.get(
+            new Key(fileMeta.getLogicalTableSchema(), fileMeta.getLogicalTableName(), fileMeta.getFileName(), column),
+            () -> {
+                long stamp = FileSystemManager.readLockWithTimeOut(ossReadOption.getEngine());
+                try {
+                    FileSystem fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
 
-                String orcPath = FileSystemUtils.buildUri(fileSystem, fileMeta.getFileName());
+                    String orcPath = FileSystemUtils.buildUri(fileSystem, fileMeta.getFileName());
 
-                Configuration configuration = new Configuration(false);
-                configuration.setLong(OrcConf.MAX_MERGE_DISTANCE.getAttribute(), ossReadOption.getMaxMergeDistance());
+                    Configuration configuration = new Configuration(false);
+                    configuration.setLong(OrcConf.MAX_MERGE_DISTANCE.getAttribute(),
+                        ossReadOption.getMaxMergeDistance());
 
-                Reader reader = OrcFile.createReader(new Path(URI.create(orcPath)),
+                    Reader reader = OrcFile.createReader(new Path(URI.create(orcPath)),
                         OrcFile.readerOptions(configuration).filesystem(fileSystem).orcTail(fileMeta.getOrcTail()));
 
-                ColumnMeta columnMeta = ossReadOption.getColumnMetas().stream()
-                        .filter(x -> x.getName().equals(column)).findFirst().get();
+                    ColumnMeta columnMeta = ossReadOption.getOssColumnTransformer().getTargetColumnMeta(column);
 
-                TypeDescription schema = TypeDescription.createStruct();
+                    String fieldId = fileMeta.getTableMeta(executionContext).getColumnFieldId(column);
 
-                schema.addField(
-                        fileMeta.getTypeDescription().getFieldNames().get(fileMeta.getColumnMetas().indexOf(columnMeta)),
-                        fileMeta.getTypeDescription().getChildren().get(fileMeta.getColumnMetas().indexOf(columnMeta)).clone());
+                    Preconditions.checkArgument(fieldId != null, "fix this case");
+                    Integer columnIndex = fileMeta.getColumnNameToIdx(fieldId);
+                    TypeDescription schema = TypeDescription.createStruct();
 
-                // reader filter options
-                Reader.Options readerOptions = new Reader.Options(configuration)
+                    schema.addField(
+                        fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
+                        fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
+
+                    // reader filter options
+                    Reader.Options readerOptions = new Reader.Options(configuration)
                         .schema(schema);
 
-                RecordReader recordReader = reader.rows(readerOptions);
+                    RecordReader recordReader = reader.rows(readerOptions);
 
-                ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
+                    ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
 
-                SessionProperties sessionProperties = SessionProperties.fromExecutionContext(executionContext);
+                    SessionProperties sessionProperties = SessionProperties.fromExecutionContext(executionContext);
 
-                VectorizedRowBatch buffer = schema.createRowBatch(1000);
+                    VectorizedRowBatch buffer = schema.createRowBatch(1000);
 
-                List<Block> result = new ArrayList<>();
+                    List<Block> result = new ArrayList<>();
 
-                while (recordReader.nextBatch(buffer)) {
-                    if (buffer.size == 0) {
-                        continue;
+                    while (recordReader.nextBatch(buffer)) {
+                        if (buffer.size == 0) {
+                            continue;
+                        }
+                        BlockBuilder blockBuilder = BlockBuilders.create(columnMeta.getDataType(), executionContext);
+                        columnProvider.transform(buffer.cols[0], blockBuilder, 0, buffer.size, sessionProperties);
+                        result.add(blockBuilder.build());
                     }
-                    BlockBuilder blockBuilder = BlockBuilders.create(columnMeta.getDataType(), executionContext);
-                    columnProvider.transform(buffer.cols[0], blockBuilder, 0, buffer.size, sessionProperties);
-                    result.add(blockBuilder.build());
-                }
 
-                return result;
-            } catch (Throwable e) {
-                throw GeneralUtil.nestedException(e);
-            } finally {
-                FileSystemManager.unlockRead(ossReadOption.getEngine(), stamp);
-            }
-        });
+                    return result;
+                } catch (Throwable e) {
+                    throw GeneralUtil.nestedException(e);
+                } finally {
+                    FileSystemManager.unlockRead(ossReadOption.getEngine(), stamp);
+                }
+            });
     }
 
     public List<Chunk> get(OSSOrcFileMeta fileMeta, String[] columns, OSSReadOption ossReadOption,

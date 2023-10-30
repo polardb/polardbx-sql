@@ -54,11 +54,20 @@ public class InformationSchemaTableGroup extends InformationSchemaFullTableGroup
         columns.add(new RelDataTypeFieldImpl("LOCALITY", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PRIMARY_ZONE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("IS_MANUAL_CREATE", 5, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+
+        // For partition
         columns.add(new RelDataTypeFieldImpl("CUR_PART_KEY", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("MAX_PART_KEY", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PART_COUNT", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("TABLE_COUNT", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("INDEX_COUNT", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
+        // For subpartition
+        columns.add(new RelDataTypeFieldImpl("CUR_SUBPART_KEY", 9, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("MAX_SUBPART_KEY", 10, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_TEMP", 11, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_COUNT", 12, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
+        columns.add(new RelDataTypeFieldImpl("TABLE_COUNT", 13, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("INDEX_COUNT", 14, typeFactory.createSqlType(SqlTypeName.BIGINT)));
 
         return typeFactory.createStructType(columns);
     }

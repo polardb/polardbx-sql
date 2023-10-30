@@ -1,0 +1,92 @@
+## DISABLE_FAST_SQL_PARSER
+SET ENABLE_FOREIGN_KEY = true;
+#echo # Create statement with FK on base column of stored column
+create table t1(f1 int primary key);
+#error ER_CANNOT_ADD_FOREIGN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+create table t2(f1 int, f2 int as(f1) stored,
+foreign key(f1) references t1(f1) on delete cascade)engine=innodb;
+ERR_ADD_FK_GENERATED_COLUMN
+#echo # Create statement with FK on base column of virtual column
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+create table t2(f1 int not null, f2 int as (f1) virtual,
+foreign key(f1) references t1(f1) on update cascade)engine=innodb;
+ERR_ADD_FK_GENERATED_COLUMN
+#replace_regex  /Error on rename of '.*' to '.*'/Error on rename of 'OLD_FILE_NAME' to 'NEW_FILE_NAME'/
+#error ER_CANNOT_ADD_FOREIGN
+drop table t1;
+#echo # adding foreign key constraint for base columns during alter copy.
+create table t1(f1 int primary key);
+create table t2(f1 int not null, f2 int as (f1) stored);
+#error ER_CANNOT_ADD_FOREIGN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+alter table t2 add foreign key(f1) references t1(f1) on update cascade;
+ERR_ADD_FK_GENERATED_COLUMN
+drop table t2;
+drop table t1;
+#echo # adding foreign key constraint for base columns during online alter.
+create table t1(f1 int primary key);
+create table t2(f1 int not null, f2 int as (f1) stored);
+set foreign_key_checks = 0;
+#error ER_CANNOT_ADD_FOREIGN_BASE_COL_STORED
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+alter table t2 add foreign key(f1) references t1(f1) on update cascade;
+ERR_ADD_FK_GENERATED_COLUMN
+drop table t2;
+drop table t1;
+#echo # adding stored column via online alter.
+create table t1(f1 int primary key);
+create table t2(f1 int not null,
+foreign key(f1) references t1(f1) on update cascade)engine=innodb;
+#error ER_ALTER_OPERATION_NOT_SUPPORTED
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+alter table t2 add column f2 int as (f1) stored;
+ERR_ADD_FK_GENERATED_COLUMN
+drop table t2;
+drop table t1;
+set foreign_key_checks = 1;
+#echo #
+#echo # BUG#26731689 FK ON TABLE WITH GENERATED COLS: ASSERTION POS < N_DEF
+#echo #
+SET foreign_key_checks=0;
+CREATE TABLE s (a INT, b INT GENERATED ALWAYS AS (0) STORED,  c INT,
+d INT GENERATED ALWAYS AS (0) VIRTUAL, e INT) ENGINE=innodb;
+CREATE TABLE t (a INT) ENGINE=innodb;
+# This would fail. No corresponding index
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (e) REFERENCES t(a) ON UPDATE SET null;
+ERR_CREATE_FK_MISSING_INDEX
+ALTER  TABLE t ADD KEY(a);
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (e) REFERENCES t(a) ON UPDATE SET null;
+DROP TABLE s;
+DROP TABLE t;
+CREATE TABLE s (a INT GENERATED ALWAYS AS (0) VIRTUAL,
+b INT GENERATED ALWAYS AS (0) STORED,  c INT) ENGINE=innodb;
+CREATE TABLE t (a INT) ENGINE=innodb;
+# This would fail. No corresponding index
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (c) REFERENCES t(a) ON UPDATE SET null;
+ERR_CREATE_FK_MISSING_INDEX
+ALTER  TABLE t ADD KEY(a);
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (c) REFERENCES t(a) ON UPDATE SET null;
+DROP TABLE s;
+DROP TABLE t;
+CREATE TABLE s (a INT,  b INT GENERATED ALWAYS AS (0) STORED) ENGINE=innodb;
+CREATE TABLE t (a INT PRIMARY KEY) ENGINE=innodb;
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (a) REFERENCES t(a) ON UPDATE SET null;
+DROP TABLE s;
+DROP TABLE t;
+CREATE TABLE s (a INT, b INT) ENGINE=innodb;
+CREATE TABLE t (a INT) ENGINE=innodb;
+# This would fail. No corresponding index
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (a) REFERENCES t(a) ON UPDATE SET null;
+ERR_CREATE_FK_MISSING_INDEX
+ALTER  TABLE t ADD KEY(a);
+ALTER TABLE s ADD CONSTRAINT c FOREIGN KEY (a) REFERENCES t(a) ON UPDATE SET null;
+DROP TABLE s;
+DROP TABLE t;
+SET foreign_key_checks=1;

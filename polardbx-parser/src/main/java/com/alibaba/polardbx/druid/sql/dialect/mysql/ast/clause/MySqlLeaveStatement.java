@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -23,38 +24,41 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 
  * @author zz [455910092@qq.com]
  */
 public class MySqlLeaveStatement extends MySqlStatementImpl {
-	
-	private String labelName;
 
-	public MySqlLeaveStatement() {
+    private String labelName;
 
-	}
+    public MySqlLeaveStatement() {
 
-	public MySqlLeaveStatement(String labelName) {
-		this.labelName = labelName;
-	}
+    }
 
-	@Override
+    public MySqlLeaveStatement(String labelName) {
+        this.labelName = labelName;
+    }
+
+    @Override
     public void accept0(MySqlASTVisitor visitor) {
-		visitor.visit(this);
+        visitor.visit(this);
         visitor.endVisit(this);
     }
 
-	public String getLabelName() {
-		return labelName;
-	}
+    public String getLabelName() {
+        return labelName;
+    }
 
-	public void setLabelName(String labelName) {
-		this.labelName = labelName;
-	}
+    public void setLabelName(String labelName) {
+        this.labelName = labelName;
+    }
 
-	@Override
-	public List<SQLObject> getChildren() {
-		return Collections.<SQLObject>emptyList();
-	}
-    
+    @Override
+    public List<SQLObject> getChildren() {
+        return Collections.<SQLObject>emptyList();
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

@@ -61,7 +61,7 @@ public class SpParameterizedStmt {
             params.add(new Pair<>(index, new ParameterContext(ParameterMethod.setObject1,
                 new Object[] {
                     index,
-                    DataTypeUtil.toJavaObject(spParameters.get(paramIndex).getValue().getCurrentValue())})));
+                    DataTypeUtil.toJavaObject(null, spParameters.get(paramIndex).getValue().getCurrentValue())})));
         }
         return params;
     }
@@ -73,7 +73,8 @@ public class SpParameterizedStmt {
             int index = paramIndex + 1;
             params.put(index, new ParameterContext(ParameterMethod.setObject1,
                 new Object[] {
-                    index, DataTypeUtil.toJavaObject(spParameters.get(paramIndex).getValue().getCurrentValue())}));
+                    index,
+                    DataTypeUtil.toJavaObject(null, spParameters.get(paramIndex).getValue().getCurrentValue())}));
         }
         return params;
     }

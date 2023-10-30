@@ -31,6 +31,7 @@ import java.util.List;
 public class DrdsMergePartition extends SQLObjectImpl implements SQLAlterTableItem, SQLAlterTableGroupItem {
     private final List<SQLName> partitions = new ArrayList<SQLName>(4);
     private SQLName targetPartitionName;
+    private boolean subPartitionsMerge;
 
     public SQLName getTargetPartitionName() {
         return targetPartitionName;
@@ -49,6 +50,14 @@ public class DrdsMergePartition extends SQLObjectImpl implements SQLAlterTableIt
             x.setParent(this);
         }
         this.partitions.add(x);
+    }
+
+    public boolean isSubPartitionsMerge() {
+        return subPartitionsMerge;
+    }
+
+    public void setSubPartitionsMerge(boolean subPartitionsMerge) {
+        this.subPartitionsMerge = subPartitionsMerge;
     }
 
     @Override

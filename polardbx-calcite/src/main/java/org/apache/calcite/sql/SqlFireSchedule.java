@@ -32,7 +32,6 @@ import java.util.List;
  * An operator that trigger one schedule job executed immediately
  */
 public class SqlFireSchedule extends SqlDal {
-
     private static final SqlSpecialOperator OPERATOR = new SqlFireSchedule.SqlFireScheduleOperator();
 
     final long scheduleId;
@@ -45,7 +44,6 @@ public class SqlFireSchedule extends SqlDal {
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         writer.keyword("FIRE SCHEDULE");
-
         writer.keyword(String.valueOf(scheduleId));
     }
 
@@ -69,7 +67,6 @@ public class SqlFireSchedule extends SqlDal {
     }
 
     public static class SqlFireScheduleOperator extends SqlSpecialOperator {
-
         public SqlFireScheduleOperator() {
             super("FIRE_SCHEDULE", SqlKind.FIRE_SCHEDULE);
         }
@@ -78,7 +75,6 @@ public class SqlFireSchedule extends SqlDal {
         public RelDataType deriveType(SqlValidator validator, SqlValidatorScope scope, SqlCall call) {
             final RelDataTypeFactory typeFactory = validator.getTypeFactory();
             final RelDataType columnType = typeFactory.createSqlType(SqlTypeName.CHAR);
-
             return typeFactory.createStructType(
                 ImmutableList.of((RelDataTypeField) new RelDataTypeFieldImpl("FIRE_SCHEDULE",
                     0,

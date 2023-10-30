@@ -25,6 +25,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.planner.common.BasePlannerTest;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
@@ -60,13 +61,15 @@ public class PartitionTablePartitioningEqualsTest extends BasePlannerTest {
 
     public static class PartitioningEqualsTestParameter {
         public Pair<Boolean, Pair<String, String>> createTablePair;
+
         public PartitioningEqualsTestParameter(Pair<Boolean, Pair<String, String>> createTablePair) {
             this.createTablePair = createTablePair;
         }
 
         @Override
         public String toString() {
-            return String.format("t1:[%s],t2:[%s]" , createTablePair.getValue().getKey(), createTablePair.getValue().getValue());
+            return String.format("t1:[%s],t2:[%s]", createTablePair.getValue().getKey(),
+                createTablePair.getValue().getValue());
         }
     }
 
@@ -98,7 +101,7 @@ public class PartitionTablePartitioningEqualsTest extends BasePlannerTest {
             PartitionTableType.PARTITION_TABLE, PlannerContext.fromExecutionContext(ec));
         PartitionInfo tm1PartInfo = tm1.getPartitionInfo();
         PartitionInfo tm2PartInfo = tm2.getPartitionInfo();
-        boolean compRs = PartitionInfoUtil.partitionEquals(tm1PartInfo, tm2PartInfo);
+        boolean compRs = PartitionInfoUtil.actualPartColsEquals(tm1PartInfo, tm2PartInfo);
         Assert.assertTrue(expectResult == compRs,
             "unexpected tableGroup for " + tm1.getTableName() + " <->" + tm2.getTableName());
     }

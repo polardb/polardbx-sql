@@ -102,7 +102,7 @@ public class InformationSchemaSessionPerfHandler extends BaseVirtualViewSubClass
                     DataTypes.StringType.convertFrom(row.get("TYPE")),
                     DataTypes.StringType.convertFrom(row.get("REQUEST_STATUS")),
                     DataTypes.LongType.convertFrom(row.get("FETCH_COUNT")),
-                    DataTypes.LongType.convertFrom(row.get("TOKEN_COUNT")),
+                    DataTypes.LongType.convertFrom(row.get("TOKEN_SIZE")),
                     DataTypes.DoubleType.convertFrom(row.get("TIME_SINCE_REQUEST")),
                     DataTypes.DoubleType.convertFrom(row.get("DATA_PKT_RESPONSE_TIME")),
                     DataTypes.DoubleType.convertFrom(row.get("RESPONSE_TIME")),

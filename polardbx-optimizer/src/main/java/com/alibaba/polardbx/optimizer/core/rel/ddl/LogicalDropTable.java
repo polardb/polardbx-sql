@@ -111,4 +111,13 @@ public class LogicalDropTable extends BaseDdlOperation {
         return new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

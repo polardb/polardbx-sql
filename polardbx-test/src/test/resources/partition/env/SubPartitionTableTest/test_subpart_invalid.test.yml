@@ -1,0 +1,25 @@
+## DISABLE_FAST_SQL_PARSER
+
+## error_msg: $# duplicated #$
+create table if not exists h_rc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range columns (c,d)
+(
+partition p1
+(
+subpartition p1sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p2 values less than ( '2021-01-01', 'abc' ),
+subpartition p2sp3 values less than ( maxvalue, maxvalue )
+)
+);

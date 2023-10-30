@@ -41,6 +41,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.transaction.TransactionManager;
+import org.apache.calcite.schema.Schema;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -50,22 +51,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.StampedLock;
 
 public class LockTransHandler {
 
-    // schema -> locked time
-    private static final Map<String, Date> lockedSchemas = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-
-    /*
-     * ReentrantLock does not permit releasing a lock from another thread. Here
-     * we create a thread to hold all transaction RW-locks as a workaround.
+    /**
+     * Schema -> {stamped lock, lock date}
      */
-    private static final ExecutorService lockHolderThread;
-
-    static {
-        NamedThreadFactory threadFactory = new NamedThreadFactory("lock-holder", true);
-        lockHolderThread = Executors.newSingleThreadExecutor(threadFactory);
-    }
+    private static final Map<String, SchemaLock> lockedSchemas = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     private static final Logger logger = LoggerFactory.getLogger(LockTransHandler.class);
 
@@ -106,20 +100,19 @@ public class LockTransHandler {
         }
 
         synchronized (lockedSchemas) {
-            if (lockedSchemas.putIfAbsent(schema, new Date()) != null) {
+            if (lockedSchemas.putIfAbsent(schema, new SchemaLock()) != null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Schema " + schema + " is already locked");
             }
         }
 
-        Future future = lockHolderThread.submit(() -> {
-            logger.info("Locking distributed transaction of schema " + schema);
-            ((TransactionManager) tm).exclusiveLock().lock();
-        });
-
+        logger.info("Locking distributed transaction of schema " + schema);
+        SchemaLock schemaLock = lockedSchemas.get(schema);
+        schemaLock.date = new Date();
+        schemaLock.lock = ((TransactionManager) tm).getLock();
         try {
-            future.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw GeneralUtil.nestedException(e);
+            schemaLock.stamp = schemaLock.lock.writeLock();
+        } catch (Throwable t) {
+            throw GeneralUtil.nestedException(t);
         }
 
         PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
@@ -134,21 +127,18 @@ public class LockTransHandler {
                 "UNLOCK TRANS is only available when distributed transaction is enabled");
         }
 
+        SchemaLock schemaLock;
         synchronized (lockedSchemas) {
-            if (lockedSchemas.remove(schema) == null) {
+            schemaLock = lockedSchemas.remove(schema);
+            if (null == schemaLock) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Schema " + schema + " is not locked");
             }
         }
 
-        Future future = lockHolderThread.submit(() -> {
-            logger.info("Unlocking distributed transaction of schema " + schema);
-            ((TransactionManager) tm).exclusiveLock().unlock();
-        });
-
         try {
-            future.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw GeneralUtil.nestedException(e);
+            schemaLock.lock.unlock(schemaLock.stamp);
+        } catch (Throwable t) {
+            throw GeneralUtil.nestedException(t);
         }
 
         PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
@@ -173,9 +163,9 @@ public class LockTransHandler {
         byte packetId = eof.packetId;
 
         synchronized (lockedSchemas) {
-            for (Map.Entry<String, Date> entry : lockedSchemas.entrySet()) {
+            for (Map.Entry<String, SchemaLock> entry : lockedSchemas.entrySet()) {
                 String schema = entry.getKey();
-                long lockTime = entry.getValue().getTime();
+                long lockTime = entry.getValue().date.getTime();
                 RowDataPacket row = new RowDataPacket(FIELD_COUNT);
                 row.add(StringUtil.encode(schema, c.getCharset())); // schema
                 row.add(StringUtil.encode("LOCKED", c.getCharset())); // state
@@ -221,5 +211,11 @@ public class LockTransHandler {
                 throw GeneralUtil.nestedException(e);
             }
         }
+    }
+
+    private static class SchemaLock {
+        public StampedLock lock;
+        public long stamp;
+        public Date date;
     }
 }

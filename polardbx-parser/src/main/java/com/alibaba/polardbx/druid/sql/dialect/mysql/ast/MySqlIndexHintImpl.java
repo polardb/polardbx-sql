@@ -25,7 +25,7 @@ public abstract class MySqlIndexHintImpl extends MySqlObjectImpl implements MySq
 
     private Option option;
 
-    private List<SQLName>         indexList = new ArrayList<SQLName>();
+    private List<SQLName> indexList = new ArrayList<SQLName>();
 
     @Override
     public abstract void accept0(MySqlASTVisitor visitor);

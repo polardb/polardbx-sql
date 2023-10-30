@@ -26,7 +26,7 @@ import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.sql.SqlRebalance;
 
 import java.util.ArrayList;
@@ -79,6 +79,15 @@ public class PolicySplitPartition implements BalancePolicy {
         }
 
         return actions;
+    }
+
+    @Override
+    public List<BalanceAction> applyToTable(ExecutionContext ec,
+                                            BalanceOptions options,
+                                            BalanceStats stats,
+                                            String schema,
+                                            String tableName) {
+        return applyToPartitionDb(ec, options, stats, schema);
     }
 
     @Override

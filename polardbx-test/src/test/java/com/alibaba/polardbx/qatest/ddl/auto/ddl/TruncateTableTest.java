@@ -24,7 +24,6 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -39,7 +38,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
-
 
 public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
@@ -197,7 +195,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
             + ") partition by hash(id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -215,7 +214,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName3));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName4));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -299,7 +299,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
             + "global index " + indexTableName2 + " (name) partition by hash(name)) partition by hash(id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -312,8 +313,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName1));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName2));
 
-            sql = "insert into " + tableName
-                + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -344,7 +345,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
             + " (name) partition by hash(name)) partition by hash(id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -356,7 +358,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+        sql = "insert into " + tableName
+            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
@@ -376,7 +379,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         String indexTableName = schemaPrefix + gsiIndexTableName + "_10";
         dropTableIfExists(tableName);
         dropTableIfExists(indexTableName);
-        String sql =  "create table "
+        String sql = "create table "
             + tableName
             + " (id int primary key, name int, global index "
             + indexTableName
@@ -561,9 +564,12 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
             dropTableIfExists(tableName);
             dropTableIfExists(indexTableName);
 
-            String sql = String.format("create table %s (a int primary key, b int) partition by hash(a) locality='dn=%s'", tableName, storageList.get(i % tableNum));
+            String sql =
+                String.format("create table %s (a int primary key, b int) partition by hash(a) locality='dn=%s'",
+                    tableName, storageList.get(i % tableNum));
             JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-            sql = String.format("alter table %s add global index %s(b) partition by hash(b)", tableName, indexTableName);
+            sql =
+                String.format("alter table %s add global index %s(b) partition by hash(b)", tableName, indexTableName);
             JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
             String realGsiName = getRealGsiName(tddlConnection, tableName, indexTableName);
@@ -642,7 +648,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(gsiName1);
         dropTableIfExists(gsiName2);
         String createSql = String.format(
-            "create table %s (a int primary key, b varchar(255), c int, fulltext index %s(b), index %s(c))", tableName, gsiName1, gsiName2);
+            "create table %s (a int primary key, b varchar(255), c int, fulltext index %s(b), index %s(c))", tableName,
+            gsiName1, gsiName2);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
         String insertSql = String.format("insert into %s values (1,2,'1'),(2,3,'2'),(3,4,'3')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, insertSql);
@@ -667,11 +674,13 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
         dropTableIfExists(gsiName);
         String createSql = String.format(
-            "create table %s (a int primary key, b int, global index %s(b) covering(a) partition by key(b,a) partitions 14) partition by key(a,b) partitions 13", tableName, gsiName);
+            "create table %s (a int primary key, b int, global index %s(b) covering(a) partition by key(b,a) partitions 14) partition by key(a,b) partitions 13",
+            tableName, gsiName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
         String splitSql = String.format("alter table %s split into partitions 10 by hot value(1)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, splitSql);
-        splitSql = String.format("alter table %s split into partitions 10 by hot value(1)", getRealGsiName(tddlConnection, tableName, gsiName));
+        splitSql = String.format("alter table %s split into partitions 10 by hot value(1)",
+            getRealGsiName(tddlConnection, tableName, gsiName));
         JdbcUtil.executeUpdateSuccess(tddlConnection, splitSql);
 
         String insertSql = String.format("insert into %s values (1,2),(2,3),(3,4)", tableName);
@@ -694,8 +703,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         }
         String tableName = schemaPrefix + testTableName + "_15";
         String gsiName = schemaPrefix + gsiIndexTableName + "_15";
-        String tgName1 =  testTableName + "_tg_15_1";
-        String tgName2 =  testTableName + "_tg_15_2";
+        String tgName1 = testTableName + "_tg_15_1";
+        String tgName2 = testTableName + "_tg_15_2";
         dropTableIfExists(tableName);
         dropTableIfExists(gsiName);
 
@@ -705,7 +714,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTgSql);
 
         String createSql = String.format(
-            "create table %s (a int primary key, b int, global index %s(b,a)) tablegroup=%s", tableName, gsiName, tgName1);
+            "create table %s (a int primary key, b int, global index %s(b,a)) tablegroup=%s", tableName, gsiName,
+            tgName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
         createSql = String.format(
             "alter table %s set tablegroup=%s", getRealGsiName(tddlConnection, tableName, gsiName), tgName2);
@@ -714,7 +724,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         Thread.sleep(2000);
         String splitSql = String.format("alter table %s split into partitions 1 by hot value(1)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, splitSql);
-        splitSql = String.format("alter table %s split into partitions 10 by hot value(1)", getRealGsiName(tddlConnection, tableName, gsiName));
+        splitSql = String.format("alter table %s split into partitions 10 by hot value(1)",
+            getRealGsiName(tddlConnection, tableName, gsiName));
         JdbcUtil.executeUpdateSuccess(tddlConnection, splitSql);
 
         String insertSql = String.format("insert into %s values (1,2),(2,3),(3,4)", tableName);
@@ -759,5 +770,45 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+    }
+
+    @Test
+    public void testTableWithGeneratedColumn() {
+        if (crossSchema) {
+            return;
+        }
+
+        String tableName = schemaPrefix + testTableName + "_17";
+        String gsiName = schemaPrefix + gsiIndexTableName + "_17";
+        dropTableIfExists(tableName);
+        dropTableIfExists(gsiName);
+        dropTableIfExistsInMySql(tableName);
+
+        // create table
+        String createTable = "create table " + tableName
+            + " (a int,"
+            + " b int,"
+            + " c int as (a-b) logical,"
+            + " d int as (a+b) virtual,"
+            + "global index " + gsiName + "(c) partition by hash(c)) partition by hash(a)";
+        String createTableMySQL = "create table " + tableName
+            + " (a int,"
+            + " b int,"
+            + " c int as (a-b),"
+            + " d int as (a+b))";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableMySQL);
+
+        String insert = String.format("insert into %s(a,b) values (1,2),(3,4)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        String truncate = String.format("truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, truncate);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
     }
 }

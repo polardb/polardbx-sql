@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.context;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.encrypt.MD5Utils;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,8 +40,6 @@ public class PhyDdlExecutionRecord {
 
     private int numPhyObjectsTotal;
     private AtomicInteger numPhyObjectsDone = new AtomicInteger(0);
-
-    private Set<String> errorHashesIgnored = null;
 
     public long getJobId() {
         return this.jobId;
@@ -107,28 +104,6 @@ public class PhyDdlExecutionRecord {
 
     public void decreasePhyObjsDone() {
         this.numPhyObjectsDone.decrementAndGet();
-    }
-
-    public void addErrorIgnored(ExecutionContext.ErrorMessage errorMessage) {
-        if (this.errorHashesIgnored == null) {
-            synchronized (this) {
-                if (this.errorHashesIgnored == null) {
-                    this.errorHashesIgnored = ConcurrentHashMap.newKeySet();
-                }
-            }
-        }
-        String errorHashIgnored = MD5Utils.getInstance().getMD5String(errorMessage.getGroupName()
-            + errorMessage.getCode()
-            + errorMessage.getMessage());
-        this.errorHashesIgnored.add(errorHashIgnored);
-    }
-
-    public Set<String> getErrorHashesIgnored() {
-        return errorHashesIgnored;
-    }
-
-    public void setErrorHashesIgnored(Set<String> errorHashesIgnored) {
-        this.errorHashesIgnored = errorHashesIgnored;
     }
 
     public PhyDdlExecutionRecord copy() {

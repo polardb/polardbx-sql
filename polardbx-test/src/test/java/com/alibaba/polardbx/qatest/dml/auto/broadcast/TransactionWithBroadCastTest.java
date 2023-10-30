@@ -35,8 +35,6 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAss
  *
  * @author minggong
  */
-@Ignore
-
 public class TransactionWithBroadCastTest extends AutoCrudBasedLockTestCase {
 
     @Parameterized.Parameters(name = "{index}:hint={0} table={1}")

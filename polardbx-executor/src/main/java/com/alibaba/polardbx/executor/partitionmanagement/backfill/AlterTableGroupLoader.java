@@ -84,6 +84,7 @@ public class AlterTableGroupLoader extends Loader {
         final SqlNodeList targetColumnList = new SqlNodeList(
             indexTableMeta.getAllColumns()
                 .stream()
+                .filter(columnMeta -> !columnMeta.isGeneratedColumn())
                 .map(columnMeta -> new SqlIdentifier(columnMeta.getName(), SqlParserPos.ZERO))
                 .collect(Collectors.toList()),
             SqlParserPos.ZERO);

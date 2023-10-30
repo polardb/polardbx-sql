@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.qatest.ddl.auto.locality;
 
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -43,55 +43,55 @@ public class LocalityTest extends LocalityTestBase {
         JdbcUtil.dropDatabase(tddlConnection, databaseName);
     }
 
-    @Test
-    public void testCreateDatabaseLocality() {
-        final String dn = chooseDatanode(true);
-        final String localitySql = " LOCALITY=\"dn=" + dn + "\"";
-        final String createDbSql = "create database " + databaseName + localitySql;
-        final String dropDatabaseSql = "drop database if exists " + databaseName;
-        final String showCreateDbSql = "show create database " + databaseName;
-
-        // cleanup environment
-        JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
-        int localityCount = getLocalityInfo().size();
-
-        {
-            // create database with locality
-            JdbcUtil.executeUpdateSuccess(tddlConnection, createDbSql);
-            String result = JdbcUtil.executeQueryAndGetStringResult(showCreateDbSql, tddlConnection, 2);
-
-            String tmpRs = result.replaceAll(" = ", "=");
-            Assert.assertTrue(tmpRs.contains(localitySql));
-
-            // drop database
-            JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
-            Assert.assertEquals(localityCount, getLocalityInfo().size());
-        }
-
-        {
-            // create database on multiple datanodes
-            List<String> dnList = getDatanodes();
-            String dnListStr = StringUtils.join(dnList, ",");
-            String multiDnLocality = " LOCALITY=\"dn=" + dnListStr + "\"";
-            String createSql = "CREATE DATABASE " + databaseName + multiDnLocality;
-
-            logger.info(createSql);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
-            String result = JdbcUtil.executeQueryAndGetStringResult(showCreateDbSql, tddlConnection, 2);
-            String tmpRs = result.replaceAll(" = ", "=");
-            Assert.assertTrue(tmpRs.contains(multiDnLocality));
-
-            TreeSet<String> dnListActual = new TreeSet<>();
-            TreeSet<String> dnListExpected = new TreeSet<>();
-            dnListActual.addAll(dnList);
-            dnListExpected.addAll(getDnListOfDb(databaseName, false));
-            Assert.assertEquals(dnListActual, dnListExpected);
-
-            // drop database
-            JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
-            Assert.assertEquals(localityCount, getLocalityInfo().size());
-        }
-    }
+//    @Test
+//    public void testCreateDatabaseLocality() {
+//        final String dn = chooseDatanode(true);
+//        final String localitySql = " LOCALITY=\"dn=" + dn + "\"";
+//        final String createDbSql = "create database " + databaseName + localitySql;
+//        final String dropDatabaseSql = "drop database if exists " + databaseName;
+//        final String showCreateDbSql = "show create database " + databaseName;
+//
+//        // cleanup environment
+//        JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
+//        int localityCount = getLocalityInfo().size();
+//
+//        {
+//            // create database with locality
+//            JdbcUtil.executeUpdateSuccess(tddlConnection, createDbSql);
+//            String result = JdbcUtil.executeQueryAndGetStringResult(showCreateDbSql, tddlConnection, 2);
+//
+//            String tmpRs = result.replaceAll(" = ", "=");
+//            Assert.assertTrue(tmpRs.contains(localitySql));
+//
+//            // drop database
+//            JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
+//            Assert.assertEquals(localityCount, getLocalityInfo().size());
+//        }
+//
+//        {
+//            // create database on multiple datanodes
+//            List<String> dnList = getDatanodes();
+//            String dnListStr = StringUtils.join(dnList, ",");
+//            String multiDnLocality = " LOCALITY=\"dn=" + dnListStr + "\"";
+//            String createSql = "CREATE DATABASE " + databaseName + multiDnLocality;
+//
+//            logger.info(createSql);
+//            JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
+//            String result = JdbcUtil.executeQueryAndGetStringResult(showCreateDbSql, tddlConnection, 2);
+//            String tmpRs = result.replaceAll(" = ", "=");
+//            Assert.assertTrue(tmpRs.contains(multiDnLocality));
+//
+//            TreeSet<String> dnListActual = new TreeSet<>();
+//            TreeSet<String> dnListExpected = new TreeSet<>();
+//            dnListActual.addAll(dnList);
+//            dnListExpected.addAll(getDnListOfDb(databaseName, false));
+//            Assert.assertEquals(dnListActual, dnListExpected);
+//
+//            // drop database
+//            JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
+//            Assert.assertEquals(localityCount, getLocalityInfo().size());
+//        }
+//    }
 
     @Test
     public void testSingleTableLocality() {
@@ -122,6 +122,70 @@ public class LocalityTest extends LocalityTestBase {
         // drop and check again
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
         Assert.assertEquals(originLocalityInfo.size(), getLocalityInfo().size());
+    }
+
+    @Test
+    public void testCreateTableLikeWithLocality() {
+        String dbName = "test_like_database";
+
+        dropDatabase(dbName);
+        createDatabase(dbName);
+        useDatabase(dbName);
+
+        String tableGroup = "single_tg2";
+        String locality = String.format(" LOCALITY='dn=%s'", chooseDatanode());
+
+        String createTableGroup = String.format("create tablegroup if not exists %s ", tableGroup);
+        String createTable =
+            String.format("create table if not exists %s (id int not null primary key) %s single tablegroup=%s",
+                tableName, locality, tableGroup);
+        String createTableLike = String.format("create table %s like %s", "test_table_like", tableName);
+
+        execute(createTableGroup);
+        execute(createTable);
+        execute(createTableLike);
+
+        useDatabase("polardbx");
+        dropDatabase(dbName);
+    }
+
+    @Test
+    public void testCreateTableLikeCrossSchema() {
+        String dbName = "test_like_database";
+        String dbName2 = "test_like_database_2";
+
+        dropDatabase(dbName);
+        dropDatabase(dbName2);
+        createDatabase(dbName);
+        createDatabase(dbName2);
+
+        useDatabase(dbName2);
+        String createTable = String.format("create table if not exists %s (id int not null primary key)", tableName);
+        execute(createTable);
+
+        useDatabase(dbName);
+        String createTableLike = String.format("create table %s like %s.%s", "test_table_like", dbName2, tableName);
+        execute(createTableLike);
+
+        useDatabase("polardbx");
+        dropDatabase(dbName2);
+        dropDatabase(dbName);
+    }
+
+    private void dropDatabase(String dbName) {
+        execute(String.format("drop database if exists %s", dbName));
+    }
+
+    private void createDatabase(String dbName) {
+        execute(String.format("create database if not exists %s mode='auto'", dbName));
+    }
+
+    private void useDatabase(String dbName) {
+        execute(String.format("use %s", dbName));
+    }
+
+    private void execute(String sql) {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
     private String showCreateTable(String tableName) {

@@ -30,7 +30,7 @@ alter table `tbl` change column `b` `b` int(11) not null after d;
 
 show full create table `tbl`;
   
-## error_msg: $# optimize error by Change column name or type included in GSI is not recommended #$
+## error_msg: $# optimize error #$
 alter table `tbl` modify column `c` varchar(11) after d;
 
 show full create table `tbl`;

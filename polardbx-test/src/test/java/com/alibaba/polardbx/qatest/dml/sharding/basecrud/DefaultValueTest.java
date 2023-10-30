@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;

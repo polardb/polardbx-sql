@@ -15,6 +15,7 @@
               `manual_create` int not null default 0 comment '0:create implicitly, 1:create manually',
               `tg_type` int(11) NOT NULL DEFAULT '0' COMMENT '0:part_tg_group,1:default single_tg, 2:non default single_tg',
               `auto_split_policy` int(11) NOT NULL DEFAULT '0' COMMENT '0:NONE, 1:AUTO_SPLIT, 2:AUTO_SPLIT_HOT_VALUE',
+              `partition_definition` text default null,
                primary key (`id`),
                unique key `uidx_tgname`(`schema_name`,`tg_name`, `meta_version`),
                key `db_tg`(`schema_name`, `tg_name`)
@@ -23,6 +24,9 @@
         <Change><![CDATA[
            alter table `table_group` add column `auto_split_policy` int(11) not null default '0' comment '0:NONE, 1:AUTO_SPLIT, 2:AUTO_SPLIT_HOT_VALUE'
         ]]></Change>
+        <Change><![CDATA[
+           alter table `table_group` add column `partition_definition` text default null
+        ]]></Change>
     </SystemTable>
 
     <SystemTable name="partition_group">
@@ -30,7 +34,7 @@
         create table if not exists `partition_group` (
               `id` bigint not null auto_increment,
               `partition_name` varchar(64) not null,
-              `tg_id` bigint,
+              `tg_id` bigint not null,
               `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
               `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               `phy_db` varchar(64) not null ,
@@ -40,10 +44,15 @@
               `meta_version` bigint unsigned not null default '1',
               `visible` int not null default '1',
                primary key (`id`),
-               key `idx_tgid`(`tg_id`),
                unique key `u_pname`(`tg_id`,`partition_name`, `meta_version`)
         ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `partition_group` modify column `tg_id` bigint not null
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `partition_group` drop index `idx_tgid`
+        ]]></Change>
     </SystemTable>
 
     <SystemTable name="partition_group_delta">
@@ -51,7 +60,7 @@
             create table if not exists `partition_group_delta` (
                   `id` bigint not null default 0,
                   `partition_name` varchar(64) not null,
-                  `tg_id` bigint,
+                  `tg_id` bigint not null,
                   `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   `phy_db` varchar(64) not null ,
@@ -61,10 +70,15 @@
                   `meta_version` bigint unsigned not null default '1',
                   `type` int not null default 1 comment '1:new partition group 0:outdated partition group',
                   `visible` int not null default '1',
-                   key `idx_tgid`(`tg_id`),
                    unique key `u_pname`(`tg_id`,`partition_name`, `type`)
             ) charset=utf8
             ]]></Create>
+        <Change><![CDATA[
+            alter table `partition_group_delta` modify column `tg_id` bigint not null
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `partition_group_delta` drop index `idx_tgid`
+        ]]></Change>
     </SystemTable>
 
     <SystemTable name="complex_task_outline">

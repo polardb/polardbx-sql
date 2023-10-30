@@ -90,14 +90,14 @@ The CDC Node provides change data capture capability that is fully compatible wi
 
 PolarDB-X provides tool to manage the above components through K8S Operator, and the RPC between the CN and DN can be done through private protocol component. The corresponding repositories of these components are as follows.
 
-| **Component Name**        | **Repository**                                                    | **Version** |
-|---------------------------|-------------------------------------------------------------------|---|
-| CN (Compute Node)         | [polardbx-sql](https://github.com/polardb/polardbx-sql)           | v5.4.13-16615127 |
-| GMS (Global Meta Service) | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
-| DN (Data Node)            | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | v1.0.2 |
-| CDC (Change Data Capture) | [polardbx-cdc](https://github.com/polardb/polardbx-cdc)           | v5.4.13 |
-| RPC                       | [polardbx-glue](https://github.com/polardb/polardbx-glue)         | v5.4.13-16615127 |
-| K8S Operator              | [polardbx-operator](https://github.com/polardb/polardbx-operator) | v1.2.2 |
+| **Component Name**        | **Repository**                                                    | **Version**    |
+|---------------------------|-------------------------------------------------------------------|----------------|
+| CN (Compute Node)         | [polardbx-sql](https://github.com/polardb/polardbx-sql)           | v5.4.18-16986514 |
+| GMS (Global Meta Service) | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | 2.0.1          |
+| DN (Data Node)            | [polardbx-engine](https://github.com/polardb/polardbx-engine)     | 2.0.1          |
+| CDC (Change Data Capture) | [polardbx-cdc](https://github.com/polardb/polardbx-cdc)           | v5.4.18        |
+| RPC                       | [polardbx-glue](https://github.com/polardb/polardbx-glue)         | v5.4.18-16986514 |
+| K8S Operator              | [polardbx-operator](https://github.com/polardb/polardbx-operator) | v1.5.0         |
 
 
 ## What is PolarDB-X SQL ？

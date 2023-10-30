@@ -5,9 +5,9 @@
 
   plan: |
 
-    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($1)])")
-      Exchange(distribution=single, collation=[])
-        LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin`")
+    hashwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0sum($1)", reference windows="window#0=window(partition {} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+      exchange(distribution=single, collation=[])
+        logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin`")
 - sql: |
     select *,
          sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
@@ -154,7 +154,6 @@
     from testwin join select_base_one_multi_db_multi_tb on select_base_one_multi_db_multi_tb.pk = testwin.id1 where select_base_one_multi_db_multi_tb.pk in (1,2) and testwin.id1 < 10;
 
   plan: |
-
     project(ow1="f21w0$o0", ow2="f22w0$o1", ow3="f23w1$o0", ow4="f24w1$o1", ow40="f25w2$o0", id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test")
       sortwindow(id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test", f21w0$o0="f21w0$o0", f22w0$o1="f22w0$o1", f23w1$o0="f23w1$o0", f24w1$o1="f24w1$o1", f25w0$o0="window#0sum($2)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] range between unbounded preceding and current row aggs [sum($2)])")
         exchange(distribution=hash[0], collation=[0 asc-nulls-first, 1 asc-nulls-first])
@@ -164,4 +163,52 @@
                 exchange(distribution=hash[0], collation=[0 asc-nulls-first, 1 asc-nulls-first])
                   bkajoin(condition="id1 = pk", type="inner")
                     logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
-                    logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+                    logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where ((`pk` in(1, 2)) and (`pk` < 10) and (`pk` in (...)))")
+- sql: |
+    select *, rank() over(order by c1, c2) from tt order by c1;
+
+  plan: |
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+        exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+          logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1,c2;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+        sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+          exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+            logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c2;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      exchange(distribution=single, collation=[1 asc-nulls-first])
+        memsort(sort="c2 asc")
+          sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+            exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+              logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1 desc limit 10;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      topn(sort="c1 desc", offset=0, fetch=10)
+        exchange(distribution=single, collation=[0 desc-nulls-last])
+          topn(sort="c1 desc", fetch=10)
+            sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+              exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+                logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1 asc limit 10;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      limit(offset=0, fetch=10)
+        exchange(distribution=single, collation=[0 asc-nulls-first])
+          sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+            exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first])
+              logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")

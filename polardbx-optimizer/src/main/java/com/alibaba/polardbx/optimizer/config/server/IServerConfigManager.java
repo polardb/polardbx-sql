@@ -23,8 +23,10 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.commons.collections.ListUtils;
 
 import java.sql.ResultSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -44,11 +46,15 @@ public interface IServerConfigManager {
      * <p>
      * Currently, this method is used by distributed transaction module to locate the primary group by
      * a limited-length identifier in XID.
+     * <p>
+     * If returned schema is null, it means this schema not exists.
+     * If returned schema is not null, but group is null, it means this group datasource is not inited.
      *
      * @param uniqueId group unique id
+     * @param schemaAndGroupsCache schema name -> all groups in this schema
      * @return a pair of string containing schema name and group name
      */
-    Pair<String, String> findGroupByUniqueId(long uniqueId);
+    Pair<String, String> findGroupByUniqueId(long uniqueId, Map<String, List<String>> schemaAndGroupsCache);
 
     /**
      * Perform a DDL job
@@ -84,6 +90,10 @@ public interface IServerConfigManager {
     static long getGroupUniqueId(String schema, String group) {
         // normalization is included in this method
         return FnvHash.hashCode64(schema, group);
+    }
+
+    default List<String> getLoadedSchemas() {
+        return Collections.emptyList();
     }
 
 }

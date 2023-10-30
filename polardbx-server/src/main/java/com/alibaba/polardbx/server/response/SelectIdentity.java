@@ -65,9 +65,11 @@ public class SelectIdentity {
         proxy = field.write(proxy);
 
         // write eof
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = ++packetId;
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++packetId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);

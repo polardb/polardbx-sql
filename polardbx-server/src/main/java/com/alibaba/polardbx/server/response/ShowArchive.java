@@ -44,7 +44,7 @@ public class ShowArchive {
     private static final int FIELD_COUNT = 2;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -57,10 +57,9 @@ public class ShowArchive {
         fields[i] = PacketUtil.getField("ARCHIVE_TABLE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         // TODO : 1.show archive for oss table, 2.support filter
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
@@ -74,12 +73,15 @@ public class ShowArchive {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
-
         TableInfoManager tableInfoManager = new TableInfoManager();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             tableInfoManager.setConnection(metaDbConn);
@@ -92,7 +94,7 @@ public class ShowArchive {
                     RowDataPacket row = new RowDataPacket(FIELD_COUNT);
                     row.add(record.getTableName().getBytes());
                     row.add((record.getArchiveTableSchema() + "." + record.getArchiveTableName()).getBytes());
-                    row.packetId = ++packetId;
+                    row.packetId = ++tmpPacketId;
                     proxy = row.write(proxy);
                 }
             }
@@ -106,10 +108,11 @@ public class ShowArchive {
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 }

@@ -17,18 +17,27 @@ package com.alibaba.polardbx.druid.sql.ast;
 
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class SQLSubPartitionBy extends SQLObjectImpl {
 
-    protected SQLExpr               subPartitionsCount;
-    protected boolean               linear;
-    protected List<SQLAssignItem>   options              = new ArrayList<SQLAssignItem>();
+    protected SQLExpr subPartitionsCount;
+    protected boolean linear;
+    protected List<SQLAssignItem> options = new ArrayList<SQLAssignItem>();
     protected List<SQLSubPartition> subPartitionTemplate = new ArrayList<SQLSubPartition>();
 
     protected SQLIntegerExpr lifecycle;
+
+    protected List<SQLExpr> columns = new ArrayList<SQLExpr>();
+    //use for create tablegroup template
+    protected List<SQLColumnDefinition> columnsDefinition = new ArrayList<>();
+    protected boolean forTableGroup;
+    protected boolean isColumns = false;
+    protected ByteString sourceSql;
 
     public SQLExpr getSubPartitionsCount() {
         return subPartitionsCount;
@@ -91,4 +100,55 @@ public abstract class SQLSubPartitionBy extends SQLObjectImpl {
     }
 
     public abstract SQLSubPartitionBy clone();
+
+    public boolean isColumns() {
+        return isColumns;
+    }
+
+    public void setColumns(boolean columns) {
+        isColumns = columns;
+    }
+
+    public List<SQLExpr> getColumns() {
+        return columns;
+    }
+
+    public void setColumns(List<SQLExpr> columns) {
+        this.columns = columns;
+    }
+
+    public void addColumn(SQLExpr column) {
+        if (column != null) {
+            column.setParent(this);
+        }
+        this.columns.add(column);
+    }
+
+    public List<SQLColumnDefinition> getColumnsDefinition() {
+        return columnsDefinition;
+    }
+
+    public void addColumnDefinition(SQLColumnDefinition columnDefinition) {
+        if (columnDefinition != null) {
+            columnDefinition.setParent(this);
+        }
+        this.columnsDefinition.add(columnDefinition);
+    }
+
+    public boolean isForTableGroup() {
+        return forTableGroup;
+    }
+
+    public void setForTableGroup(boolean forTableGroup) {
+        this.forTableGroup = forTableGroup;
+    }
+
+    public ByteString getSourceSql() {
+        return sourceSql;
+    }
+
+    public void setSourceSql(ByteString sourceSql) {
+        this.sourceSql = sourceSql;
+    }
+
 }

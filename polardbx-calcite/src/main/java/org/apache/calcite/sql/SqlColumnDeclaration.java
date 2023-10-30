@@ -80,6 +80,7 @@ public class SqlColumnDeclaration extends SqlCall {
     private final int innerStep;
 
     private final boolean generatedAlways;
+    private final boolean generatedAlwaysLogical;
     private final SqlCall generatedAlwaysExpr;
     /**
      * [VIRTUAL | STORED]
@@ -102,7 +103,8 @@ public class SqlColumnDeclaration extends SqlCall {
                                 SpecialIndex specialIndex, SqlLiteral comment, ColumnFormat columnFormat,
                                 Storage storage, SqlReferenceDefinition referenceDefinition,
                                 boolean onUpdateCurrentTimestamp, Type autoIncrementType, int unitCount, int unitIndex,
-                                int innerStep) {
+                                int innerStep, boolean generatedAlways, boolean generatedAlwaysLogical,
+                                SqlCall generatedAlwaysExpr) {
         super(pos);
         this.name = name;
         this.dataType = dataType;
@@ -120,8 +122,9 @@ public class SqlColumnDeclaration extends SqlCall {
         this.unitCount = unitCount;
         this.unitIndex = unitIndex;
         this.innerStep = innerStep;
-        this.generatedAlways = false;
-        this.generatedAlwaysExpr = null;
+        this.generatedAlways = generatedAlways;
+        this.generatedAlwaysLogical = generatedAlwaysLogical;
+        this.generatedAlwaysExpr = generatedAlwaysExpr;
         this.strategy = null;
     }
 
@@ -135,8 +138,9 @@ public class SqlColumnDeclaration extends SqlCall {
      * </pre>
      */
     public SqlColumnDeclaration(SqlParserPos pos, SqlIdentifier name, SqlDataTypeSpec dataType,
-                                boolean generatedAlways, SqlCall generatedAlwaysExpr, ColumnStrategy columnStrategy,
-                                ColumnNull notNull, SpecialIndex specialIndex, SqlLiteral comment) {
+                                boolean generatedAlways, boolean generatedAlwaysLogical, SqlCall generatedAlwaysExpr,
+                                ColumnStrategy columnStrategy, ColumnNull notNull, SpecialIndex specialIndex,
+                                SqlLiteral comment) {
         super(pos);
         this.name = name;
         this.dataType = dataType;
@@ -155,6 +159,7 @@ public class SqlColumnDeclaration extends SqlCall {
         this.unitIndex = SequenceAttribute.UNDEFINED_UNIT_INDEX;
         this.innerStep = SequenceAttribute.UNDEFINED_INNER_STEP;
         this.generatedAlways = generatedAlways;
+        this.generatedAlwaysLogical = generatedAlwaysLogical;
         this.generatedAlwaysExpr = generatedAlwaysExpr;
         this.strategy = columnStrategy;
     }
@@ -371,6 +376,10 @@ public class SqlColumnDeclaration extends SqlCall {
 
     public boolean isGeneratedAlways() {
         return generatedAlways;
+    }
+
+    public boolean isGeneratedAlwaysLogical() {
+        return generatedAlwaysLogical;
     }
 
     public SqlCall getGeneratedAlwaysExpr() {

@@ -33,10 +33,10 @@ public class SqlValidateException extends TddlRuntimeException {
     }
 
     public SqlValidateException(Throwable cause, String... params) {
-        super(ErrorCode.match(cause.getMessage(), ERR_VALIDATE), cause, params);
+        super(ERR_VALIDATE, cause, params);
     }
 
     public SqlValidateException(Throwable cause) {
-        super(ErrorCode.match(cause.getMessage(), ERR_VALIDATE), cause, new String[] {cause.getMessage()});
+        super(ERR_VALIDATE, cause, new String[] {cause.getMessage()});
     }
 }

@@ -47,7 +47,7 @@ public final class ShowMemoryPool {
     private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] FIELD_PACKETS = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket EOF_PACKET = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -65,18 +65,16 @@ public final class ShowMemoryPool {
 
         FIELD_PACKETS[i] = PacketUtil.getField("INFO", Fields.FIELD_TYPE_VAR_STRING);
         FIELD_PACKETS[i++].packetId = ++packetId;
-
-        EOF_PACKET.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         String charset = c.getCharset();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
-        executeInternal(proxy, charset);
+        return executeInternal(proxy, charset);
     }
 
-    public static void executeInternal(IPacketOutputProxy proxy, String charset) {
+    public static boolean executeInternal(IPacketOutputProxy proxy, String charset) {
 
         proxy.packetBegin();
 
@@ -88,25 +86,30 @@ public final class ShowMemoryPool {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = EOF_PACKET.write(proxy);
+        if (!proxy.getConnection().isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = EOF_PACKET.packetId;
         List<MemoryPool> memoryPools = collectMemoryPools();
         for (MemoryPool pool : memoryPools) {
             RowDataPacket row = getRow(pool, charset);
-            row.packetId = ++packetId;
+            row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 
     private static RowDataPacket getRow(MemoryPool pool, String charset) {

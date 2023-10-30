@@ -26,7 +26,7 @@ public class MySqlShowProfileStatement extends MySqlStatementImpl implements MyS
 
     private List<Type> types = new ArrayList<Type>();
 
-    private SQLExpr    forQuery;
+    private SQLExpr forQuery;
 
     private SQLLimit limit;
 
@@ -61,7 +61,7 @@ public class MySqlShowProfileStatement extends MySqlStatementImpl implements MyS
 
         public final String name;
 
-        Type(String name){
+        Type(String name) {
             this.name = name;
         }
     }

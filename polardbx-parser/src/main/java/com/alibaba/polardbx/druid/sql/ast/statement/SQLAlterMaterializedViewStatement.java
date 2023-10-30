@@ -39,7 +39,6 @@ public class SQLAlterMaterializedViewStatement extends SQLStatementImpl implemen
     // for ADB
     protected boolean refreshOnOverWrite;
 
-
     public SQLName getName() {
         return name;
     }
@@ -51,9 +50,9 @@ public class SQLAlterMaterializedViewStatement extends SQLStatementImpl implemen
         this.name = name;
     }
 
-
     public boolean isRefresh() {
-        return refreshFast || refreshComplete || refreshForce || refreshOnDemand || refreshOnCommit || refreshStartWith || refreshNext || refreshOnOverWrite;
+        return refreshFast || refreshComplete || refreshForce || refreshOnDemand || refreshOnCommit || refreshStartWith
+            || refreshNext || refreshOnOverWrite;
     }
 
     public boolean isRefreshFast() {
@@ -127,7 +126,6 @@ public class SQLAlterMaterializedViewStatement extends SQLStatementImpl implemen
     public void setEnableQueryRewrite(Boolean enableQueryRewrite) {
         this.enableQueryRewrite = enableQueryRewrite;
     }
-
 
     public SQLExpr getStartWith() {
         return startWith;

@@ -78,6 +78,8 @@ public class MetaDbDataIdBuilder {
 
     public static final String LOCALITY_INFO_DATA_ID = "polardbx.locality.info";
 
+    public static final String STORAGE_POOL_INFO_DATA_ID = "polardbx.storage.pool.info";
+
     public static final MessageFormat DB_COMPLEX_TASK_DATA_ID = new MessageFormat("polardbx.db.complextask.{0}");
     /**
      * {0} : instId
@@ -139,40 +141,48 @@ public class MetaDbDataIdBuilder {
      */
     public static final String FILE_STORAGE_INFO_DATA_ID = "polardbx.file.storage.info";
 
+    public static String formatDataId(String dataId) {
+        return dataId.toLowerCase();
+    }
+
     public static String getTableListDataId(String schemaName) {
-        return TABLE_LIST_DATA_ID.format(new Object[] {schemaName});
+        return formatDataId(TABLE_LIST_DATA_ID.format(new Object[] {schemaName}));
     }
 
     public static String getTableDataIdPrefix(String schemaName) {
-        return TABLE_DATA_ID.format(new Object[] {schemaName, ""});
+        return formatDataId(TABLE_DATA_ID.format(new Object[] {schemaName, ""}));
     }
 
     public static String getTableDataId(String schemaName, String tableName) {
-        return TABLE_DATA_ID.format(new Object[] {schemaName, tableName});
+        return formatDataId(TABLE_DATA_ID.format(new Object[] {schemaName, tableName}));
     }
 
     public static String getServerInfoDataId(String instId) {
-        return SERVER_INFO_DATA_ID.format(new Object[] {instId});
+        return formatDataId(SERVER_INFO_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getStorageInfoDataId(String instId) {
-        return STORAGE_INFO_DATA_ID.format(new Object[] {instId});
+        return formatDataId(STORAGE_INFO_DATA_ID.format(new Object[] {instId}));
+    }
+
+    public static String getStoragePoolInfoDataId() {
+        return STORAGE_POOL_INFO_DATA_ID;
     }
 
     public static String getInstConfigDataId(String instId) {
-        return INST_CONFIG_DATA_ID.format(new Object[] {instId});
+        return formatDataId(INST_CONFIG_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getQuarantineConfigDataId(String instId) {
-        return QUARANTINE_CONFIG_DATA_ID.format(new Object[] {instId});
+        return formatDataId(QUARANTINE_CONFIG_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getInstLockDataId(String instId) {
-        return INST_LOCK_DATA_ID.format(new Object[] {instId});
+        return formatDataId(INST_LOCK_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getDbTopologyDataId(String dbName) {
-        return DB_TOPOLOGY_DATA_ID.format(new Object[] {dbName.toLowerCase()});
+        return formatDataId(DB_TOPOLOGY_DATA_ID.format(new Object[] {dbName.toLowerCase()}));
     }
 
     public static String resolveDbTopologyDataId(String dataId) {
@@ -190,48 +200,48 @@ public class MetaDbDataIdBuilder {
     public static String getGroupConfigDataId(String instId, String dbName, String groupName) {
 
         String grpConfigDataId = GROUP_CONFIG_DATA_ID.format(new Object[] {instId, dbName, groupName});
-        return grpConfigDataId.toLowerCase();
+        return formatDataId(grpConfigDataId);
     }
 
     public static String getConfigStorageDataId(String instId, String dbName, String groupName) {
 
         String grpConfigDataId = GROUP_STORAGE_CONFIG_DATA_ID.format(new Object[] {instId, dbName, groupName});
-        return grpConfigDataId.toLowerCase();
+        return formatDataId(grpConfigDataId);
     }
 
     public static String getLocalityInfoDataId() {
-        return LOCALITY_INFO_DATA_ID;
+        return formatDataId(LOCALITY_INFO_DATA_ID);
     }
 
     public static String getPrivilegeInfoDataId() {
-        return PRIVILEGE_INFO_DATA_ID;
+        return formatDataId(PRIVILEGE_INFO_DATA_ID);
     }
 
     public static String getMetadbLockDataId() {
-        return METADB_LOCK_DATA_ID;
+        return formatDataId(METADB_LOCK_DATA_ID);
     }
 
     public static String getDbInfoDataId() {
-        return DB_INFO_DATA_ID;
+        return formatDataId(DB_INFO_DATA_ID);
     }
 
     public static String getInstInfoDataId() {
-        return INST_INFO_DATA_ID;
+        return formatDataId(INST_INFO_DATA_ID);
     }
 
     public static String getCclRuleDataId(String instId) {
-        return CCL_RULE_DATA_ID.format(new Object[] {instId});
+        return formatDataId(CCL_RULE_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getDbComplexTaskDataId(String dbName) {
-        return DB_COMPLEX_TASK_DATA_ID.format(new Object[] {dbName.toLowerCase()});
+        return formatDataId(DB_COMPLEX_TASK_DATA_ID.format(new Object[] {dbName.toLowerCase()}));
     }
 
     public static String getVariableConfigDataId(String instId) {
-        return VARIABLE_CONFIG_DATA_ID.format(new Object[] {instId});
+        return formatDataId(VARIABLE_CONFIG_DATA_ID.format(new Object[] {instId}));
     }
 
     public static String getFileStorageInfoDataId() {
-        return FILE_STORAGE_INFO_DATA_ID;
+        return formatDataId(FILE_STORAGE_INFO_DATA_ID);
     }
 }

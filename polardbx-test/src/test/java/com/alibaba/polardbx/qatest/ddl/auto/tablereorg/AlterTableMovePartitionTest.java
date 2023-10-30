@@ -17,13 +17,14 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablereorg;
 
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.calcite.util.Pair;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;

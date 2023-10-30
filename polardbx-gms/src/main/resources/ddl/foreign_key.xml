@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="foreign_key">
+        <Create><![CDATA[
+            create table if not exists `foreign_key` (
+              `ID` bigint unsigned not null auto_increment,
+              `SCHEMA_NAME` varchar(64) NOT NULL DEFAULT '',
+              `TABLE_NAME` varchar(64) NOT NULL DEFAULT '',
+              `INDEX_NAME` varchar(64) NOT NULL DEFAULT '',
+              `CONSTRAINT_NAME` varchar(64) NOT NULL DEFAULT '',
+              `REF_SCHEMA_NAME` varchar(64) NOT NULL DEFAULT '',
+              `REF_TABLE_NAME` varchar(64) NOT NULL DEFAULT '',
+              `REF_INDEX_NAME` varchar(64) NOT NULL DEFAULT '',
+              `N_COLS` int(11) unsigned NOT NULL DEFAULT '0',
+              `UPDATE_RULE` varchar(64) NOT NULL DEFAULT '',
+              `DELETE_RULE` varchar(64) NOT NULL DEFAULT '',
+              `PUSH_DOWN` int(11) unsigned NOT NULL DEFAULT '0',
+              primary key (`ID`),
+              unique key (`SCHEMA_NAME`, `TABLE_NAME`, `INDEX_NAME`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="foreign_key_cols">
+        <Create><![CDATA[
+            create table if not exists `foreign_key_cols` (
+              `ID` bigint unsigned not null auto_increment,
+              `SCHEMA_NAME` varchar(64) NOT NULL DEFAULT '',
+              `TABLE_NAME` varchar(64) NOT NULL DEFAULT '',
+              `INDEX_NAME` varchar(64) NOT NULL DEFAULT '',
+              `FOR_COL_NAME`varchar(64) NOT NULL DEFAULT '',
+              `REF_COL_NAME` varchar(64) NOT NULL DEFAULT '',
+              `POS` int(11) unsigned NOT NULL DEFAULT '0',
+              primary key (`ID`),
+              key (`SCHEMA_NAME`, `TABLE_NAME`, `INDEX_NAME`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

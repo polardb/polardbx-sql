@@ -24,9 +24,11 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.util.AppNameUtil;
@@ -40,6 +42,7 @@ import lombok.Getter;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * generate & insert gsiTable's metadata based on primaryTable's metadata
@@ -62,6 +65,8 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
     final IndexStatus indexStatus;
     Integer originTableType;
     final boolean clusteredIndex;
+    final IndexVisibility visibility;
+    final boolean needOnlineSchemaChange;
 
     @JSONCreator
     public GsiInsertIndexMetaTask(String schemaName,
@@ -73,7 +78,9 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
                                   String indexComment,
                                   String indexType,
                                   IndexStatus indexStatus,
-                                  boolean clusteredIndex) {
+                                  boolean clusteredIndex,
+                                  final IndexVisibility visibility,
+                                  boolean needOnlineSchemaChange) {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.columns = ImmutableList.copyOf(columns);
@@ -83,6 +90,8 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         this.indexType = indexType;
         this.indexStatus = indexStatus;
         this.clusteredIndex = clusteredIndex;
+        this.visibility = visibility;
+        this.needOnlineSchemaChange = needOnlineSchemaChange;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -125,6 +134,19 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         GsiMetaChanger.addIndexMeta(metaDbConnection, schemaName, indexRecords);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        //1.1 alter index record's visibility
+        if (visibility == IndexVisibility.INVISIBLE) {
+            GsiMetaChanger.updateIndexVisibility(
+                metaDbConnection,
+                schemaName,
+                logicalTableName,
+                indexName,
+                IndexVisibility.VISIBLE,
+                IndexVisibility.INVISIBLE
+            );
+        }
+
         //2. insert metadata into indexes
         GsiMetaChanger.changeTableToGsi(metaDbConnection, schemaName, indexName);
 
@@ -151,8 +173,10 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         GsiMetaChanger.removeIndexMeta(metaDbConnection, schemaName, logicalTableName, indexName);
 
         //sync have to be successful to continue
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
-        executionContext.refreshTableMeta();
+        if (needOnlineSchemaChange) {
+            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+            executionContext.refreshTableMeta();
+        }
 
         LOGGER.info(String.format("Rollback Insert GSI meta. schema:%s, table:%s, index:%s, state:%s",
             schemaName,
@@ -160,5 +184,12 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
             indexName,
             indexStatus.name()
         ));
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+        if (needOnlineSchemaChange) {
+            super.onRollbackSuccess(executionContext);
+        }
     }
 }

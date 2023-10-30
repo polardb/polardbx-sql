@@ -53,6 +53,8 @@ public class PartitionFieldBuilder {
         case MYSQL_TYPE_TIMESTAMP:
         case MYSQL_TYPE_TIMESTAMP2:
             return new TimestampPartitionField(dataType);
+        case MYSQL_TYPE_NEWDECIMAL:
+            return new DecimalPartitionField(dataType);
         case MYSQL_TYPE_LONGLONG:
             return new BigIntPartitionField(dataType);
         case MYSQL_TYPE_LONG: {

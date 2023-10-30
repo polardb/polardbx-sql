@@ -170,7 +170,7 @@ public class SqlMoveDatabase extends SqlCreate {
                 } else {
                     writer.sep(",");
                 }
-                writer.sep(id.toUpperCase());
+                writer.sep("'" + id.toUpperCase() + "'");
             }
             if (!isCleanUpCommand) {
                 writer.sep(")");

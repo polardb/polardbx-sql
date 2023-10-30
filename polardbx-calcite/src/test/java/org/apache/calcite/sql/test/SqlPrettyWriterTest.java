@@ -24,12 +24,11 @@ import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.test.DiffRepository;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
-
 import org.junit.Ignore;
 import org.junit.Test;
 
-import java.io.PrintWriter;
 import java.io.StringWriter;
 
 import static org.junit.Assert.assertTrue;
@@ -90,7 +89,7 @@ public class SqlPrettyWriterTest {
     // to the original.
     final String actual2 = actual.replaceAll("`", "\"");
     final SqlNode node2 = parseQuery(actual2);
-    assertTrue(node.equalsDeep(node2, Litmus.THROW));
+    assertTrue(node.equalsDeep(node2, Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT));
   }
 
   protected void assertExprPrintsTo(
@@ -113,7 +112,7 @@ public class SqlPrettyWriterTest {
     // to the original.
     final String actual2 = actual.replaceAll("`", "\"");
     final SqlNode valuesCall2 = parseQuery("VALUES (" + actual2 + ")");
-    assertTrue(valuesCall.equalsDeep(valuesCall2, Litmus.THROW));
+    assertTrue(valuesCall.equalsDeep(valuesCall2, Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT));
   }
 
   // ~ Tests ----------------------------------------------------------------
@@ -215,11 +214,6 @@ public class SqlPrettyWriterTest {
     checkSimple(prettyWriter, "${desc}", "${formatted}");
   }
 
-  @Ignore("default SQL parser cannot parse DDL")
-  @Test public void testExplain() {
-    assertPrintsTo(false, "explain select * from t", "foo");
-  }
-
   @Test public void testCase() {
     // Note that CASE is rewritten to the searched form. Wish it weren't
     // so, but that's beyond the control of the pretty-printer.
@@ -295,7 +289,176 @@ public class SqlPrettyWriterTest {
         "${formatted}");
   }
 
-  @Test public void testMultiset() {
+    @Test
+    public void testExplain() {
+        assertPrintsTo(false, "select * from t", "SELECT *\nFROM `T`");
+    }
+
+    @Test
+    public void testUnionAll() {
+        assertPrintsTo(false,
+            "(select id, name from t) union all (select id, name from t1) union all (select id, name from t2)",
+            "SELECT `ID`, `NAME`\n"
+                + "        FROM `T`\n"
+                + "    UNION ALL\n"
+                + "        SELECT `ID`, `NAME`\n"
+                + "        FROM `T1`\n"
+                + "UNION ALL\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union all (select id, name from t1) union all (select id, name from t2)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION ALL\n"
+                + "        SELECT `ID`, `NAME`\n"
+                + "        FROM `T1`\n"
+                + "UNION ALL\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union all (select id, name from t1 order by name) union all (select id, name from t2)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION ALL\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union all (select id, name from t1 order by name) union all (select id, name from t2 order by id)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION ALL\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union all (select id, name from t1 order by name) union all (select id, name from t2 order by id) order by id",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION ALL\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)\n"
+                + "ORDER BY `ID`");
+
+        assertPrintsTo(false,
+            "(select id, name from t) union all (select id, name from t1 order by name) union all (select id, name from t2 order by id) order by id",
+            "SELECT `ID`, `NAME`\n"
+                + "        FROM `T`\n"
+                + "    UNION ALL\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)\n"
+                + "ORDER BY `ID`");
+    }
+
+    @Test
+    public void testUnion1() {
+        assertPrintsTo(false,
+            "(select id, name from t) union (select id, name from t1) union all (select id, name from t2)",
+            "SELECT `ID`, `NAME`\n"
+                + "        FROM `T`\n"
+                + "    UNION\n"
+                + "        SELECT `ID`, `NAME`\n"
+                + "        FROM `T1`\n"
+                + "UNION ALL\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union  (select id, name from t1) union (select id, name from t2)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION\n"
+                + "        SELECT `ID`, `NAME`\n"
+                + "        FROM `T1`\n"
+                + "UNION\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union  (select id, name from t1 order by name) union all (select id, name from t2)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    SELECT `ID`, `NAME`\n"
+                + "    FROM `T2`");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union  (select id, name from t1 order by name) union  (select id, name from t2 order by id)",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)");
+
+        assertPrintsTo(false,
+            "(select id, name from t order by id) union  (select id, name from t1 order by name) union all (select id, name from t2 order by id) order by id",
+            "(SELECT `ID`, `NAME`\n"
+                + "            FROM `T`\n"
+                + "            ORDER BY `ID`)\n"
+                + "    UNION\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION ALL\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)\n"
+                + "ORDER BY `ID`");
+
+        assertPrintsTo(false,
+            "(select id, name from t) union all (select id, name from t1 order by name) union  (select id, name from t2 order by id) order by id",
+            "SELECT `ID`, `NAME`\n"
+                + "        FROM `T`\n"
+                + "    UNION ALL\n"
+                + "        (SELECT `ID`, `NAME`\n"
+                + "            FROM `T1`\n"
+                + "            ORDER BY `NAME`)\n"
+                + "UNION\n"
+                + "    (SELECT `ID`, `NAME`\n"
+                + "        FROM `T2`\n"
+                + "        ORDER BY `ID`)\n"
+                + "ORDER BY `ID`");
+    }
+
+    @Test public void testMultiset() {
     assertPrintsTo(
         false,
         "values (multiset (select * from t))",

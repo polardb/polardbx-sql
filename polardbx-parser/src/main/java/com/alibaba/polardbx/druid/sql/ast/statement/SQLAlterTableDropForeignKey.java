@@ -16,10 +16,9 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
-import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
-public class SQLAlterTableDropForeignKey extends SQLObjectImpl implements SQLAlterTableItem {
+public class SQLAlterTableDropForeignKey extends SQLAlterTableDropConstraint implements SQLAlterTableItem {
 
     private SQLName indexName;
 

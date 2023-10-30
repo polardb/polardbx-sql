@@ -17,7 +17,7 @@ CREATE TABLE `tbl2` (
 partition by hash(year('a'))
 partitions 4;
 unknown column
-## error_msg: $# use partition function #$
+## error_msg: $# user-defined function #$
 CREATE TABLE `tbl2` (
 `b` tinyint(4) NOT NULL,
 `c` bigint(20) NOT NULL COMMENT '',
@@ -25,7 +25,7 @@ CREATE TABLE `tbl2` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 partition by hash(abs(`a`))
 partitions 4;
-use partition function
+user-defined function
 ## error_msg: $# use nesting partition function #$
 CREATE TABLE `tbl2` (
 `b` tinyint(4) NOT NULL,
@@ -113,7 +113,7 @@ partition p2 values less than (2005),
 partition p3 values less than (maxvalue)
 );
 use nesting partition function
-## error_msg: $# use partition function #$
+## error_msg: $# user-defined function #$
 CREATE TABLE `tbl4` (
 `b` tinyint(4) NOT NULL,
 `c` bigint(20) NOT NULL COMMENT '',
@@ -127,7 +127,7 @@ partition p1 values less than (2004),
 partition p2 values less than (2005),
 partition p3 values less than (maxvalue)
 );
-use partition function
+user-defined function
 ## error_msg: $# unknown column #$
 CREATE TABLE `tbl3` (
 `b` int(4) NOT NULL,

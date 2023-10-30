@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
@@ -69,6 +70,14 @@ public class UpdateGroupInfoTask extends BaseGmsTask {
 
         FailPoint.injectRandomExceptionFromHint(ec);
         FailPoint.injectRandomSuspendFromHint(ec);
+    }
+
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
     }
 
     @Override

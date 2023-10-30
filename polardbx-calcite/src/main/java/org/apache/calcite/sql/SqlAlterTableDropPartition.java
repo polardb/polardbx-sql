@@ -16,7 +16,6 @@
 
 package org.apache.calcite.sql;
 
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
@@ -32,11 +31,20 @@ public class SqlAlterTableDropPartition extends SqlAlterSpecification {
 
     protected final List<SqlNode> partitions;
 
+    private boolean isSubPartition;
+    /**
+     * partitionName is only for drop subpartition
+     */
+    private SqlNode partitionName;
+
     protected SqlNode parent;
 
-    public SqlAlterTableDropPartition(SqlParserPos pos, List<SqlNode> partitions) {
+    public SqlAlterTableDropPartition(SqlParserPos pos, List<SqlNode> partitions, boolean isSubPartition,
+                                      SqlNode partitionName) {
         super(pos);
         this.partitions = partitions;
+        this.isSubPartition = isSubPartition;
+        this.partitionName = partitionName;
     }
 
     @Override
@@ -53,7 +61,8 @@ public class SqlAlterTableDropPartition extends SqlAlterSpecification {
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "DROP", "");
 
-        writer.keyword("PARTITION");
+        writer.keyword(isSubPartition ? "SUBPARTITION" : "PARTITION");
+
         int i = 0;
         for (SqlNode sqlNode : partitions) {
             sqlNode.unparse(writer, leftPrec, rightPrec);
@@ -68,6 +77,14 @@ public class SqlAlterTableDropPartition extends SqlAlterSpecification {
 
     public List<SqlNode> getPartitionNames() {
         return partitions;
+    }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public SqlNode getPartitionName() {
+        return partitionName;
     }
 }
 

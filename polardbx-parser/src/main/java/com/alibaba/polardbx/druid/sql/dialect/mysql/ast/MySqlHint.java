@@ -17,7 +17,6 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLHint;
 
-
 public interface MySqlHint extends SQLHint, MySqlObject {
 
 }

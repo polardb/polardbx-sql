@@ -94,8 +94,8 @@ public class PrivilegeCommandHandlers {
         }
     }
 
-    public static void handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore,
-                              boolean inProcedureCall) {
+    public static boolean handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore,
+                                 boolean inProcedureCall) {
         SQLStatement stmt = FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
         PolarAccountInfo granter = PolarHandlerCommon.getMatchGranter(conn);
         PrivilegeCommandHandler handler = createHandler(commandCode, conn, sql, granter, stmt);
@@ -104,6 +104,9 @@ public class PrivilegeCommandHandlers {
             PacketOutputProxyFactory.getInstance().createProxy(conn)
                 .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         }
+
+        // PrivilegeCommandHandler never write ok or error packet, it throws exception instead, so we can return true directly
+        return true;
     }
 
     private static PrivilegeCommandHandler createHandler(int commandCode, ServerConnection conn,

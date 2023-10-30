@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
@@ -27,6 +24,9 @@ import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -292,7 +292,7 @@ public class MaterializedSemiJoin extends SemiJoin implements LookupJoin {
         if (lookupIndex != null) {
             return lookupIndex;
         }
-        lookupIndex = IndexUtil.selectJoinIndex(this);
+        lookupIndex = IndexUtil.selectJoinIndex(this, true);
         return lookupIndex;
     }
 }

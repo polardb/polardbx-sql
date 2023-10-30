@@ -34,6 +34,9 @@ public class AlterTableGroupSplitPartitionByHotValuePreparedData extends AlterTa
 
     boolean skipSplit;
     String hotKeyPartitionName;
+    boolean hasSubPartition;
+    boolean splitSubPartition;
+    String parentPartitionName;
 
     public AlterTableGroupSplitPartitionByHotValuePreparedData() {
     }
@@ -88,7 +91,7 @@ public class AlterTableGroupSplitPartitionByHotValuePreparedData extends AlterTa
             for (int i = 0; i < oldPartNames.size(); i++) {
                 Pair<String, String> pair = new Pair<>(oldPartNames.get(i), newPartNames.get(i));
                 changePartitionsPair.add(pair);
-                PartitionNameUtil.validatePartName(pair.getValue(), KeyWordsUtil.isKeyWord(pair.getValue()));
+                PartitionNameUtil.validatePartName(pair.getValue(), KeyWordsUtil.isKeyWord(pair.getValue()), false);
             }
         }
         return changePartitionsPair;
@@ -100,5 +103,29 @@ public class AlterTableGroupSplitPartitionByHotValuePreparedData extends AlterTa
 
     public void setSplitPointInfos(Map<String, List<Long[]>> splitPointInfos) {
         this.splitPointInfos = splitPointInfos;
+    }
+
+    public boolean isHasSubPartition() {
+        return hasSubPartition;
+    }
+
+    public void setHasSubPartition(boolean hasSubPartition) {
+        this.hasSubPartition = hasSubPartition;
+    }
+
+    public boolean isSplitSubPartition() {
+        return splitSubPartition;
+    }
+
+    public void setSplitSubPartition(boolean splitSubPartition) {
+        this.splitSubPartition = splitSubPartition;
+    }
+
+    public String getParentPartitionName() {
+        return parentPartitionName;
+    }
+
+    public void setParentPartitionName(String parentPartitionName) {
+        this.parentPartitionName = parentPartitionName;
     }
 }

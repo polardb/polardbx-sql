@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 
 import java.sql.Connection;
@@ -111,6 +112,14 @@ public class DbInfoManager extends AbstractLifecycle {
         return dbInfoRecord.charset;
     }
 
+    public String getDbCollation(String dbName) {
+        DbInfoRecord dbInfoRecord = allDbInfoMap.get(dbName);
+        if (dbInfoRecord == null) {
+            return null;
+        }
+        return dbInfoRecord.collation;
+    }
+
     public List<String> getDbList() {
         return new ArrayList<>(allDbInfoMap.keySet());
     }
@@ -135,6 +144,12 @@ public class DbInfoManager extends AbstractLifecycle {
         return dbInfoRecord.dbType == DbInfoRecord.DB_TYPE_NEW_PART_DB;
     }
 
+    public boolean ifDatabaseIsReadOnly(String schemaName) {
+        schemaName = SQLUtils.normalize(schemaName);
+        DbInfoRecord dbInfo = getDbInfo(schemaName);
+        return dbInfo != null && dbInfo.isReadOnly();
+    }
+
     /**
      * Only allowed used for Junit Test!!!!
      */
@@ -156,7 +171,7 @@ public class DbInfoManager extends AbstractLifecycle {
     protected void doInit() {
         super.doInit();
 
-        if (ConfigDataMode.isMock()) {
+        if (!ConfigDataMode.isPolarDbX()) {
             return;
         }
 

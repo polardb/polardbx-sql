@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.scaleout;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
@@ -27,22 +28,46 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlMoveDatabase;
+import org.apache.calcite.sql.SqlNode;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -54,6 +79,102 @@ public class ScaleOutUtils {
 
     static {
         IntStream.range(0, RETRY_COUNT).forEach(i -> RETRY_WAIT[i] = Math.round(Math.pow(2, i)));
+    }
+
+    public static final String DEFAULT_PARAMETER_METHOD = "setObject1";
+
+    private static final String DEFAULT_CATALOG = "def";
+    private static final String CHECKSUM_TABLE = "checksum table ";
+    private static final String DROP_TABLE_IF_EXISTS = "drop table if exists ";
+    // 不能和逻辑表的backfill共用一个线程池，防止死锁，因为backfill是其子任务
+    private static final BackFillThreadPool LOGICAL_TABLE_PARALLEL_INSTANCE_POOL = new BackFillThreadPool();
+
+    private static SqlNode getSqlTemplate(String primaryTableDefinition, ExecutionContext ec) {
+        final SqlCreateTable primaryTableNode = (SqlCreateTable) new FastsqlParser()
+            .parse(primaryTableDefinition)
+            .get(0);
+        ReplaceTableNameWithQuestionMarkVisitor visitor =
+            new ReplaceTableNameWithQuestionMarkVisitor(DefaultSchema.getSchemaName(), ec);
+        return primaryTableNode.accept(visitor);
+    }
+
+    private static Pair<BytesSql, Map<Integer, ParameterContext>> buildSqlAndParam(List<String> tableNames,
+                                                                                   SqlNode sqlTemplate,
+                                                                                   Map<Integer, ParameterContext> param,
+                                                                                   List<Integer> paramIndex) {
+        Preconditions.checkArgument(GeneralUtil.isNotEmpty(tableNames));
+        BytesSql sql = RelUtils.toNativeBytesSql(sqlTemplate, DbType.MYSQL);
+        Preconditions.checkArgument(GeneralUtil.isNotEmpty(tableNames));
+        Map<Integer, ParameterContext> params = PlannerUtils.buildParam(tableNames, param, paramIndex);
+        return new Pair<>(sql, params);
+    }
+
+    public static boolean checkCheckSum(String schemaName, String sourceGroup, String targetGroup, String logicTable) {
+        List<String> physicalTables = ScaleOutPlanUtil.getPhysicalTables(sourceGroup, schemaName, logicTable);
+        for (String physicalTable : physicalTables) {
+            BigDecimal sourceTableCheckSum = getCheckSumResult(schemaName, sourceGroup, physicalTable);
+            BigDecimal targetTableCheckSum = getCheckSumResult(schemaName, targetGroup, physicalTable);
+            if (BigDecimal.valueOf(Long.MIN_VALUE).equals(sourceTableCheckSum)
+                || BigDecimal.valueOf(Long.MIN_VALUE).equals(targetTableCheckSum)
+                || (sourceTableCheckSum != null && !sourceTableCheckSum.equals(targetTableCheckSum))
+                || (targetTableCheckSum != null && !targetTableCheckSum.equals(sourceTableCheckSum))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static BigDecimal getCheckSumResult(String schemaName, String groupkey, String physicalTable) {
+        TGroupDataSource dataSource = getDataSource(schemaName, groupkey);
+        if (dataSource != null) {
+            try (Connection conn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
+                PreparedStatement ps = conn.prepareStatement(CHECKSUM_TABLE + physicalTable)) {
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    return rs.getBigDecimal(2);
+                }
+            } catch (SQLException e) {
+            }
+        }
+        return BigDecimal.valueOf(Long.MIN_VALUE);
+    }
+
+    private static TGroupDataSource getDataSource(String SchemaName, String groupName) {
+        TopologyHandler topology = ExecutorContext.getContext(SchemaName).getTopologyHandler();
+        Object dataSource = topology.get(groupName).getDataSource();
+
+        if (dataSource != null && dataSource instanceof TGroupDataSource) {
+            return (TGroupDataSource) dataSource;
+        }
+        return null;
+    }
+
+    public static void setGroupTypeByDbAndGroup(String schemaName, String groupName, int groupType) {
+        boolean isSuccess = false;
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            try {
+                metaDbConn.setAutoCommit(false);
+                DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
+                dbGroupInfoAccessor.setConnection(metaDbConn);
+
+                dbGroupInfoAccessor
+                    .updateGroupTypeByDbAndGroup(schemaName, groupName,
+                        groupType);
+                metaDbConn.commit();
+                isSuccess = true;
+            } finally {
+                if (!isSuccess) {
+                    metaDbConn.rollback();
+                }
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
+    public static BackFillThreadPool getLogicalTableParallelInstancePool() {
+        return LOGICAL_TABLE_PARALLEL_INSTANCE_POOL;
     }
 
     public static void cleanUpUselessGroups(Map<String, List<String>> storageGroups, String schemaName,

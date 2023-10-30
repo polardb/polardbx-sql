@@ -19,14 +19,24 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DateType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.Nullable;
 
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class TopN {
@@ -36,14 +46,14 @@ public class TopN {
     private Map<Object, Long> valueMap;
     private boolean build;
 
-    private DataType dataType;
+    private final DataType dataType;
 
     /**
      * result fields
      */
     private Object[] valueArr;
     private long[] countArr;
-    private double sampleRate = 1.0D;
+    private final double sampleRate;
 
     public TopN(DataType dataType, double sampleRate) {
         this.dataType = dataType;
@@ -65,7 +75,7 @@ public class TopN {
     }
 
     public void offer(Object o, long count) {
-        valueMap.merge(o, count, (aLong, aLong2) -> aLong + aLong2);
+        valueMap.merge(o, count, Long::sum);
     }
 
     public Long get(Object o) {
@@ -83,10 +93,45 @@ public class TopN {
     public long rangeCount(Object lower, boolean lowerInclusive, Object upper, boolean upperInclusive) {
         long count = 0;
 
+        // lower/upper object type from optimizer were `String`, compare string and date/time/timestamp objects directly
+        // would most likely cause error result.
+        // handle date/time/timestamp datatype comparison by transforming them from string to long
+        if (DataTypeUtil.isMysqlTimeType(dataType)) {
+            if (lower != null) {
+                long lowerLong = StatisticUtils.packDateTypeToLong(dataType, lower);
+                if (lowerLong == -1) {
+                    return 0;
+                } else {
+                    lower = lowerLong;
+                }
+            }
+            if (upper != null) {
+                long upperLong = StatisticUtils.packDateTypeToLong(dataType, upper);
+                if (upperLong == -1) {
+                    return 0;
+                } else {
+                    upper = upperLong;
+                }
+            }
+        }
+        if (lower == null && upper == null) {
+            return 0;
+        }
+
         for (int i = 0; i < valueArr.length; i++) {
             Object o = valueArr[i];
-            int l = dataType.compare(o, lower);
-            int u = dataType.compare(o, upper);
+            if (o == null) {
+                continue;
+            }
+            int l = 1;
+            if (lower != null) {
+                l = dataType.compare(o, lower);
+            }
+            int u = -1;
+            if (upper != null) {
+                u = dataType.compare(o, upper);
+            }
+
             if ((l == 0 && lowerInclusive) || (u == 0 && upperInclusive) || (l > 0 && u < 0)) {
                 count += countArr[i];
             }
@@ -108,41 +153,40 @@ public class TopN {
             throw new IllegalStateException("topN cannot build with empty value");
         }
 
-        /**
-         * find topn values by count
-         */
+        // `n == 0` meaning topn is no longer needed
+        if (n == 0) {
+            return false;
+        }
+
+        // find topn values by count
         List<Object> vals =
             valueMap.entrySet().stream().
                 filter(o -> o.getKey() != null).
                 filter(o -> o.getValue() >= min)
                 .sorted(Map.Entry.comparingByValue()).
-                map(o -> o.getKey())
+                map(Map.Entry::getKey)
                 .collect(Collectors.toList());
 
         if (vals.size() == 0) {
             return false;
         }
 
-        int fromIndex = vals.size() - n >= 0 ? vals.size() - n : 0;
+        int fromIndex = Math.max(vals.size() - n, 0);
         valueArr = vals.subList(fromIndex, vals.size()).toArray(new Object[0]);
 
         int from = 0;
         if (valueArr.length >= n) {
-            /**
-             * if the cardinality is beyond n, should remove the min value
-             */
+            //if the cardinality is beyond n, should remove the min value
             Long minNum = valueMap.get(valueArr[0]);
             if (minNum == null) {
                 throw new IllegalArgumentException("illegal value found when build topn:" + valueArr[0]);
             }
-            from = (int) Arrays.stream(valueArr).filter(val -> valueMap.get(val) == minNum).count();
+            from = (int) Arrays.stream(valueArr).filter(val -> Objects.equals(valueMap.get(val), minNum)).count();
         }
 
         valueArr = Arrays.copyOfRange(valueArr, from, valueArr.length);
 
-        /**
-         * sort topn values by value
-         */
+        // sort topn values by value
         Arrays.sort(valueArr);
 
         countArr = new long[valueArr.length];
@@ -162,9 +206,7 @@ public class TopN {
 
         JSONObject topNJson = new JSONObject();
         JSONArray valueJsonArray = new JSONArray();
-        for (Object o : topN.valueArr) {
-            valueJsonArray.add(o);
-        }
+        Collections.addAll(valueJsonArray, topN.valueArr);
         JSONArray countJsonArray = new JSONArray();
         for (long l : topN.countArr) {
             countJsonArray.add(l);
@@ -178,7 +220,7 @@ public class TopN {
     }
 
     public static TopN deserializeFromJson(String json) {
-        if (StringUtils.isEmpty(json)) {
+        if (StringUtils.isEmpty(json) || "null".equalsIgnoreCase(json)) {
             return null;
         }
         JSONObject topNJson = JSON.parseObject(json);
@@ -195,7 +237,7 @@ public class TopN {
         Object[] countObjArr = countJsonArray.toArray();
         long[] countArr = new long[countObjArr.length];
         for (int i = 0; i < countObjArr.length; i++) {
-            countArr[i] = Long.valueOf(countObjArr[i].toString());
+            countArr[i] = Long.parseLong(countObjArr[i].toString());
         }
         return new TopN(valueArr, countArr, datatype, sampleRate);
     }

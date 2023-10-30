@@ -260,7 +260,9 @@ public abstract class AbstractRow implements Row {
                     }
                 }
             }
+
             long l = ((BigInteger) o).longValue();
+
             final ByteBuffer buf = ByteBuffer.allocate(Long.BYTES).putLong(l);
             final int bytesLen = precision / 8 + (precision % 8 != 0 ? 1 : 0);
             final byte[] bytes = new byte[bytesLen];

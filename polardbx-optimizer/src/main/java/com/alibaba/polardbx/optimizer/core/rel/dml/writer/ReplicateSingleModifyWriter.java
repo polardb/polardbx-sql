@@ -26,7 +26,7 @@ import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.ReplicationWriter;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
@@ -43,8 +43,8 @@ import java.util.function.Function;
  */
 public class ReplicateSingleModifyWriter extends SingleModifyWriter implements ReplicationWriter {
 
-
     private final TableMeta tableMeta;
+
     public ReplicateSingleModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
                                        Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta,
                                        boolean withoutPk) {
@@ -76,7 +76,8 @@ public class ReplicateSingleModifyWriter extends SingleModifyWriter implements R
         if (GeneralUtil.isNotEmpty(relNodes)) {
 
             assert tableMeta.getPartitionInfo().isSingleTable();
-            PartitionSpec partitionSpec = tableMeta.getNewPartitionInfo().getPartitionBy().getPartitions().get(0);
+            PartitionSpec partitionSpec =
+                tableMeta.getNewPartitionInfo().getPartitionBy().getPhysicalPartitions().get(0);
             if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
                 .canWrite(tableMeta, partitionSpec.getName())) {
                 for (RelNode relNode : relNodes) {

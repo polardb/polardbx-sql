@@ -17,9 +17,15 @@
 package com.alibaba.polardbx.optimizer.biv;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
+import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeParser;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
 import com.google.common.cache.CacheBuilder;
@@ -27,6 +33,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
 import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -72,9 +79,9 @@ public class MockDataManager {
 
     private static MockCacheData playBack(String mockDataKey) throws SQLException {
         try (Connection c = getConnection()) {
-            prepareDB(c);
+            String curDb = prepareDB(c);
             MockCacheData mockCacheData = mockData(c, mockDataKey);
-//            cleanDB(c);
+            cleanDB(c, curDb);
             return mockCacheData;
         }
     }
@@ -106,13 +113,14 @@ public class MockDataManager {
         return mockDs.getConnection();
     }
 
-    private static void cleanDB(Connection c) throws SQLException {
+    private static void cleanDB(Connection c, String curDb) throws SQLException {
         Statement statement = null;
         try {
             // prepare db
             statement = c.createStatement();
-            String dbName = "__MOCK_DB__";
-            statement.execute("DROP DATABASE IF EXISTS " + dbName);
+            if (!StringUtils.isEmpty(curDb)) {
+                statement.execute("use " + curDb);
+            }
         } catch (Exception e) {
             throw e;
         } finally {
@@ -122,8 +130,20 @@ public class MockDataManager {
         }
     }
 
+    private static SqlType getSqlType(String sql) {
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, JdbcConstants.MYSQL,
+            SQLUtils.parserFeatures);
+
+        List<SQLStatement> statements = parser.parseStatementList();
+        if (statements.size() == 0) {
+            return null;
+        }
+        final SQLStatement statement = statements.get(0);
+        return statement.getSqlType();
+    }
+
     private static MockCacheData mockData(Connection c, String sql) throws SQLException {
-        SqlType sqlType = SqlTypeParser.typeOf(sql);
+        SqlType sqlType = getSqlType(sql);
         if (!SqlTypeUtils.isSelectSqlType(sqlType)
             && sqlType != SqlType.SHOW
             && !SqlTypeUtils.isShowSqlType(sqlType)) {
@@ -153,16 +173,21 @@ public class MockDataManager {
         return mockCacheData;
     }
 
-    private static void prepareDB(Connection c) throws SQLException {
+    private static String prepareDB(Connection c) {
+        String curDbName = null;
         try (Statement statement = c.createStatement()) {
+            if (StringUtils.isNotEmpty(c.getSchema())) {
+                curDbName = c.getSchema();
+            }
             // prepare db
             String dbName = "__MOCK_DB__";
             statement.execute("CREATE DATABASE IF NOT EXISTS " + dbName);
             statement.execute("use " + dbName);
             statement.execute(CREATE_TEST_TABLE);
-        } catch (Exception e) {
-            throw e;
+        } finally {
+            return curDbName;
         }
+
     }
 
     public static MockCacheData buildCacheData(String sql, MockConnection c) throws SQLException {

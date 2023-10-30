@@ -15,6 +15,7 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class CobarShowStatus extends MySqlStatementImpl {
@@ -23,5 +24,10 @@ public class CobarShowStatus extends MySqlStatementImpl {
         visitor.visit(this);
 
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

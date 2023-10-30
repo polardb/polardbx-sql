@@ -29,8 +29,9 @@ import java.util.List;
 public class SqlAlterTableGroupRenamePartition extends SqlAlterTableRenamePartition {
     private SqlAlterTableGroup parent;
 
-    public SqlAlterTableGroupRenamePartition(SqlParserPos pos, List<Pair<String, String>> changePartitionsPair) {
-        super(pos, changePartitionsPair);
+    public SqlAlterTableGroupRenamePartition(SqlParserPos pos, List<Pair<String, String>> changePartitionsPair,
+                                             boolean subPartitionRename) {
+        super(pos, changePartitionsPair, subPartitionRename);
     }
 
     public void setParent(SqlAlterTableGroup parent) {

@@ -31,8 +31,8 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
  */
 public final class StartHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
-                              boolean inProcedureCall) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
+                                 boolean inProcedureCall) {
         Throwable sqlEx = null;
         try {
             SQLStartTransactionStatement startStmt =
@@ -46,6 +46,7 @@ public final class StartHandler {
                 PacketOutputProxyFactory.getInstance().createProxy(c)
                     .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
             }
+            return true;
         } catch (Throwable ex) {
             sqlEx = ex;
             throw ex;

@@ -16,17 +16,20 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor;
 
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableScheduledJob;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.scheduler.executor.spm.SPMBaseLineSyncScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticRowCountCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
+import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
+import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import org.apache.commons.lang3.StringUtils;
-
-import java.text.ParseException;
-import java.util.Calendar;
 
 public abstract class SchedulerExecutor {
 
@@ -38,6 +41,9 @@ public abstract class SchedulerExecutor {
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.LOCAL_PARTITION.name())) {
             return new LocalPartitionScheduledJob(job);
         }
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PURGE_OSS_FILE.name())) {
+            return new PurgeOssFileScheduledJob(job);
+        }
 
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PURGE_OSS_FILE.name())) {
             return new PurgeOssFileScheduledJob(job);
@@ -45,6 +51,13 @@ public abstract class SchedulerExecutor {
 
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PARTITION_VISUALIZER.name())) {
             return new PartitionVisualizerScheduledJob(job);
+        }
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.OPTIMIZER_ALERT.name())) {
+            return new OptimizerAlertScheduledJob(job);
+        }
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.REFRESH_MATERIALIZED_VIEW.name())) {
+            return new RefreshMaterializedViewScheduledJob(job);
         }
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
             ScheduledJobExecutorType.AUTO_SPLIT_TABLE_GROUP.name())) {
@@ -64,10 +77,33 @@ public abstract class SchedulerExecutor {
             ScheduledJobExecutorType.STATISTIC_SAMPLE_SKETCH.name())) {
             return new StatisticSampleCollectionScheduledJob(job);
         }
-        if(StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.AUTO_SPLIT_TABLE_GROUP.name())){
-            return new AutoSplitTableGroupScheduledJob(job);
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.STATISTIC_HLL_SKETCH.name())) {
+            return new StatisticHllScheduledJob(job);
+        }
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.PERSIST_GSI_STATISTICS.name())) {
+            return new GsiStatisticScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.CLEAN_LOG_TABLE.name())) {
+            return new CleanLogTableScheduledJob(job);
         }
         return null;
+    }
+
+    public void executeBackgroundSql(String sql, String schemaName, InternalTimeZone timeZone) {
+        IServerConfigManager serverConfigManager = getServerConfigManager();
+        serverConfigManager.executeBackgroundSql(sql, schemaName, timeZone);
+    }
+
+    public IServerConfigManager getServerConfigManager() {
+        IServerConfigManager serverConfigManager = OptimizerHelper.getServerConfigManager();
+        if (serverConfigManager == null) {
+            serverConfigManager = new DefaultServerConfigManager(null);
+        }
+        return serverConfigManager;
     }
 
     /**
@@ -84,13 +120,17 @@ public abstract class SchedulerExecutor {
         return true;
     }
 
+    /**
+     * invoked by ScheduledJobsAutoInterrupter
+     *
+     * @return if interruption succeeds
+     */
+    public boolean interrupt() {
+        return false;
+    }
+
     public boolean inMaintenanceWindow() {
         // TODO support timezone
-        try {
-            return InstConfUtil.isInMaintenanceTimeWindow();
-        } catch (ParseException e) {
-            // ignore
-        }
-        return true;
+        return InstConfUtil.isInMaintenanceTimeWindow();
     }
 }

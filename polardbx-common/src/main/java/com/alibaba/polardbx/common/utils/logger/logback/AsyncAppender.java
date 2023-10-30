@@ -19,10 +19,32 @@ package com.alibaba.polardbx.common.utils.logger.logback;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class AsyncAppender extends AsyncAppenderBase<ILoggingEvent> {
+
+    public static Map<String, AsyncAppender> appenderMap = new ConcurrentHashMap<>();
 
     boolean includeCallerData = false;
 
+    @Override
+    protected void loadAppender() {
+        if (supportRemoteConsume) {
+            appenderMap.put(this.getName(), this);
+        }
+    }
+
+    @Override
+    protected void unLoadAppender() {
+        appenderMap.remove(this.getName());
+    }
+
+    /**
+     * Events of level TRACE, DEBUG and INFO are deemed to be discardable.
+     *
+     * @return true if the event is of level TRACE, DEBUG or INFO false otherwise.
+     */
     @Override
     protected boolean isDiscardable(ILoggingEvent event) {
         ch.qos.logback.classic.Level level = event.getLevel();

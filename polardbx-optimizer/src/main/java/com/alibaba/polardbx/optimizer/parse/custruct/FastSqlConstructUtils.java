@@ -102,6 +102,7 @@ import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDdlNodes;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDmlKeyword;
+import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
@@ -335,6 +336,9 @@ public final class FastSqlConstructUtils {
 
             text = getText(context, outFileExpr.getLinesTerminatedBy());
             outFileParams.setLineTerminatedBy(null == text ? "\n" : text);
+
+            // set statistics
+            outFileParams.setStatistics(outFileExpr.getStatistics());
         }
         return outFileParams;
     }
@@ -626,10 +630,33 @@ public final class FastSqlConstructUtils {
         return ImmutableList.of(valuesClauseList.get(0));
     }
 
+    public static SqlNode getLimitOffsetForUpdateOrDelete(SqlNodeList limitNodes) {
+        if (limitNodes == null) {
+            return null;
+        }
+
+        if (limitNodes.size() == 2) {
+            SqlNode offset = limitNodes.get(0);
+            //参数化返回SqlDynamicParam
+            if ((offset instanceof SqlDynamicParam)) {
+                return limitNodes.get(0);
+            }
+
+            //是数字0；直接返回空，去除limit offset；原因：update limit ?; fastSql 解成 limit 0,?;
+            if ((offset instanceof SqlLiteral) && ((SqlLiteral) offset).getValueAs(Integer.class) == 0) {
+                return null;
+            }
+
+            return limitNodes.get(0);
+        }
+
+        return null;
+    }
+
     /**
-     * For delete and update, only support limit n, do not support limit m, n
+     * For delete and update, support limit m, n
      */
-    public static SqlNode getLimitForUpdateOrDelete(SqlNodeList limitNodes) {
+    public static SqlNode getLimitForUpdateOrDelete(SqlNodeList limitNodes, ExecutionContext ec) {
         if (limitNodes == null) {
             return null;
         }
@@ -640,6 +667,10 @@ public final class FastSqlConstructUtils {
 
         if (limitNodes.size() == 2) {
             SqlNode offset = limitNodes.get(0);
+
+            if ((offset instanceof SqlDynamicParam) && ec.getParams() != null) {
+                return limitNodes.get(1);
+            }
             if (!(offset instanceof SqlLiteral) || ((SqlLiteral) offset).getValueAs(Integer.class) > 0) {
                 throw new UnsupportedOperationException("Does not support UPDATE/DELETE statement with offset.");
             }
@@ -991,7 +1022,11 @@ public final class FastSqlConstructUtils {
         }
 
         boolean onUpdateCurrentTimestamp = false;
-        if (tableColumn.getOnUpdate() != null && tableColumn.getOnUpdate() instanceof SQLCurrentTimeExpr) {
+        if (tableColumn.getOnUpdate() != null &&
+            (tableColumn.getOnUpdate() instanceof SQLCurrentTimeExpr || (
+                tableColumn.getOnUpdate() instanceof SQLMethodInvokeExpr
+                    && ((SQLMethodInvokeExpr) tableColumn.getOnUpdate()).getMethodName()
+                    .equalsIgnoreCase("current_timestamp")))) {
             onUpdateCurrentTimestamp = true;
         }
 
@@ -1036,6 +1071,33 @@ public final class FastSqlConstructUtils {
             autoIncrementType = SequenceBean.convertAutoIncrementType(tableColumn.getSequenceType());
         }
 
+        boolean generatedAlways = false;
+        boolean generatedAlwaysLogical = false;
+        SqlCall generatedAlwaysExpr = null;
+
+        if (tableColumn.getGeneratedAlawsAs() == null && tableColumn.isLogical()) {
+            throw new FastSqlParserException(FastSqlParserException.ExceptionType.PARSER_ERROR,
+                String.format("Keyword LOGICAL can only be used for generated column, which [%s] is not",
+                    tableColumn.getColumnName()));
+        }
+
+        if (tableColumn.getGeneratedAlawsAs() != null) {
+            FastSqlToCalciteNodeVisitor visitor = new FastSqlToCalciteNodeVisitor(context, ec);
+            tableColumn.getGeneratedAlawsAs().accept(visitor);
+            // Wrap with GEN_COL_WRAPPER_FUNC so that it will not be pushed down
+            generatedAlwaysExpr =
+                new SqlBasicCall(SqlStdOperatorTable.GEN_COL_WRAPPER_FUNC, new SqlNode[] {visitor.getSqlNode()},
+                    SqlParserPos.ZERO);
+            generatedAlways = true;
+            generatedAlwaysLogical = tableColumn.isLogical();
+
+            if (defaultValue != null || defualtExpr != null) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.PARSER_ERROR,
+                    String.format("Can not assign default value for generated column [%s].",
+                        tableColumn.getColumnName()));
+            }
+        }
+
         return (SqlColumnDeclaration) SqlDdlNodes.column(SqlParserPos.ZERO,
             tableSourceSqlNode,
             sqlDataTypeSpec,
@@ -1052,7 +1114,10 @@ public final class FastSqlConstructUtils {
             autoIncrementType,
             unitCount,
             unitIndex,
-            innerStep);
+            innerStep,
+            generatedAlways,
+            generatedAlwaysLogical,
+            generatedAlwaysExpr);
     }
 
     public static boolean collectSourceTable(SqlNode source, List<SqlNode> outTargetTables, List<SqlNode> outAliases,
@@ -1141,8 +1206,8 @@ public final class FastSqlConstructUtils {
 
     public static SqlUpdate constructUpdate(SqlNodeList keywords, SqlNode targetTable, SqlNodeList targetColumnList,
                                             SqlNodeList sourceExpressList, SqlNode condition, SqlIdentifier alias,
-                                            SqlNodeList orderBySqlNode, SqlNode limit, SqlNodeList hints,
-                                            OptimizerHint hintContext, ExecutionContext ec) {
+                                            SqlNodeList orderBySqlNode, SqlNode offset, SqlNode limit,
+                                            SqlNodeList hints, OptimizerHint hintContext, ExecutionContext ec) {
         return collectTableInfo(new SqlUpdate(SqlParserPos.ZERO,
             targetTable,
             targetColumnList,
@@ -1151,6 +1216,7 @@ public final class FastSqlConstructUtils {
             null,
             alias,
             orderBySqlNode,
+            offset,
             limit,
             keywords,
             hints,
@@ -1225,7 +1291,7 @@ public final class FastSqlConstructUtils {
     public static SqlDelete constructDelete(SqlNodeList keywords, List<SqlNode> targetTables, SqlNode targetTable,
                                             SqlNode from,
                                             SqlNode using, SqlIdentifier alias, SqlNode condition,
-                                            SqlNodeList orderBySqlNode,
+                                            SqlNodeList orderBySqlNode, SqlNode offset,
                                             SqlNode limit, SqlNodeList hints, ExecutionContext ec) {
         return collectTableInfo(new SqlDelete(SqlParserPos.ZERO,
             targetTable,
@@ -1236,6 +1302,7 @@ public final class FastSqlConstructUtils {
             using,
             new SqlNodeList(targetTables, SqlParserPos.ZERO),
             orderBySqlNode,
+            offset,
             limit,
             keywords,
             hints), ec);
@@ -1334,7 +1401,8 @@ public final class FastSqlConstructUtils {
         }
     }
 
-    public static SqlNode convertPartitionBy(SQLPartitionBy partitionBy, ContextParameters context, ExecutionContext ec) {
+    public static SqlNode convertPartitionBy(SQLPartitionBy partitionBy, ContextParameters context,
+                                             ExecutionContext ec) {
         FastSqlToCalciteNodeVisitor visitor = new FastSqlToCalciteNodeVisitor(context, ec);
         partitionBy.accept(visitor);
         return visitor.getSqlNode();

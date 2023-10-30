@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLDropResourceGroupStatement
-        extends SQLStatementImpl implements SQLDropStatement {
+    extends SQLStatementImpl implements SQLDropStatement {
 
     private SQLExpr name;
     private boolean ifExists;
@@ -35,7 +35,7 @@ public class SQLDropResourceGroupStatement
     }
 
     public SQLDropResourceGroupStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

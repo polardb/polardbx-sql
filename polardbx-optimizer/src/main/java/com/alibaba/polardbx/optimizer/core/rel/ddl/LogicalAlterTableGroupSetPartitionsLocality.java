@@ -23,8 +23,11 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSetPartitionsLocalityPreparedData;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
@@ -33,6 +36,7 @@ import org.apache.calcite.rel.ddl.AlterTableGroupSetPartitionsLocality;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperation {
@@ -43,13 +47,23 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         super(ddl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void preparedData() {
         AlterTableGroupSetPartitionsLocality alterTableGroupSetPartitionLocality =
             (AlterTableGroupSetPartitionsLocality) relDdl;
         String tableGroupName = alterTableGroupSetPartitionLocality.getTableGroupName();
         String partition = alterTableGroupSetPartitionLocality.getPartition();
         String targetLocality = alterTableGroupSetPartitionLocality.getTargetLocality();
-        LocalityDesc targetLocalityDesc = LocalityDesc.parse(targetLocality);
+        LocalityDesc targetLocalityDesc = LocalityInfoUtils.parse(targetLocality);
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
@@ -62,19 +76,13 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
                     "invalid alter locality operation on partition! table group [%s] is single table group or broadcast table group",
                     tableGroupName));
         }
-        LocalityDesc originalTableGroupLocalityDesc = tableGroupConfig.getLocalityDesc();
 
         PartitionGroupRecord partitionGroupRecord = tableGroupConfig.getPartitionGroupByName(partition);
         String originalPartitionGroupLocality = partitionGroupRecord.getLocality();
-        LocalityDesc originalPartitionGroupLocalityDesc = LocalityDesc.parse(originalPartitionGroupLocality);
+        LocalityDesc originalPartitionGroupLocalityDesc = LocalityInfoUtils.parse(originalPartitionGroupLocality);
 
-        List<String> schemaDnList =
-            TableGroupLocation.getOrderedGroupList(schemaName).stream().map(group -> group.getStorageInstId())
-                .collect(Collectors.toList());
-
-        List<String> targetDnList = targetLocalityDesc.getDnList();
-        List<String> orignialDnList = originalPartitionGroupLocalityDesc.getDnList();
-        List<String> drainDnList = new ArrayList<>();
+        Set<String> targetDnList = targetLocalityDesc.getDnSet();
+        Set<String> orignialDnList = originalPartitionGroupLocalityDesc.getDnSet();
         Boolean withRebalance;
         String rebalanceSql = "";
         // validate locality
@@ -82,17 +90,17 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         // generate metadb task
 
         LocalityInfo localityOfDb = LocalityManager.getInstance().getLocalityOfDb(schemaName);
-        LocalityDesc localityDescOfDb = LocalityDesc.parse(localityOfDb.getLocality());
-        if (!localityDescOfDb.compactiableWith(targetLocalityDesc)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                String.format("invalid locality: '%s', conflict with locality of database [%s]: '%s'",
-                    targetLocality, schemaName, localityDescOfDb));
-        }
+        LocalityDesc localityDescOfDb = LocalityInfoUtils.parse(localityOfDb.getLocality());
+//        if (!localityDescOfDb.compactiableWith(targetLocalityDesc)) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+//                String.format("invalid locality: '%s', conflict with locality of database [%s]: '%s'",
+//                    targetLocality, schemaName, localityDescOfDb));
+//        }
         if (targetDnList.containsAll(orignialDnList) && !orignialDnList.isEmpty()) {
             withRebalance = false;
         } else {
             withRebalance = true;
-            rebalanceSql = String.format("rebalance tablegroup `%s`", tableGroupName);
+            rebalanceSql = String.format("schedule rebalance tablegroup `%s` policy = 'data_balance'", tableGroupName);
         }
 
         preparedData = new AlterTableGroupSetPartitionsLocalityPreparedData();
@@ -100,7 +108,6 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         preparedData.setPartition(partition);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
-        preparedData.setDrainNodeList(drainDnList);
         preparedData.setWithRebalance(withRebalance);
         preparedData.setRebalanceSql(rebalanceSql);
     }
@@ -113,4 +120,19 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         return new LogicalAlterTableGroupSetPartitionsLocality(ddl);
     }
 
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupSetPartitionsLocality alterTableGroupSetPartitionLocality =
+            (AlterTableGroupSetPartitionsLocality) relDdl;
+        String tableGroupName = alterTableGroupSetPartitionLocality.getTableGroupName();
+        return TableGroupNameUtil.isOssTg(tableGroupName);
+    }
+
+    @Override
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupSetPartitionsLocality alterTableGroupSetPartitionLocality =
+            (AlterTableGroupSetPartitionsLocality) relDdl;
+        String tableGroupName = alterTableGroupSetPartitionLocality.getTableGroupName();
+        return !CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroupName);
+    }
 }

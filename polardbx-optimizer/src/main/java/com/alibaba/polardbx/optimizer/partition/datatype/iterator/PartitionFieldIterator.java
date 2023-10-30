@@ -20,7 +20,7 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 
 import java.util.Iterator;
 
-public interface PartitionFieldIterator extends Iterator<Long> {
+public interface PartitionFieldIterator extends Iterator {
     long INVALID_NEXT_VALUE = -1;
     long INVALID_COUNT = 0;
     long INVALID_RANGE = 1 << 16;

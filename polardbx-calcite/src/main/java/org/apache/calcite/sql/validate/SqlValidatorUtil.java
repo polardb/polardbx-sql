@@ -50,6 +50,7 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
@@ -1202,7 +1203,7 @@ public class SqlValidatorUtil {
   private static int lookupGroupExpr(GroupAnalyzer groupAnalyzer,
       SqlNode expr) {
     for (Ord<SqlNode> node : Ord.zip(groupAnalyzer.groupExprs)) {
-      if (node.e.equalsDeep(expr, Litmus.IGNORE)) {
+      if (node.e.equalsDeep(expr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return node.i;
       }
     }

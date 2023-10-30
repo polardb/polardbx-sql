@@ -25,8 +25,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class SQLAlterResourceGroupStatement
-        extends SQLStatementImpl
-        implements SQLCreateStatement {
+    extends SQLStatementImpl
+    implements SQLCreateStatement {
     private SQLName name;
     private Map<String, SQLExpr> properties = new HashMap<String, SQLExpr>();
     private Boolean enable;
@@ -57,8 +57,7 @@ public class SQLAlterResourceGroupStatement
         this.enable = enable;
     }
 
-    public Map<String, SQLExpr> getProperties()
-    {
+    public Map<String, SQLExpr> getProperties() {
         return properties;
     }
 

@@ -27,6 +27,8 @@ public abstract class ReadViewConn implements IConnection {
 
     private boolean inShareReadView = false;
 
+    private int shareReadViewSeq = -1;
+
     @Override
     public String getTrxXid() {
         return xid;
@@ -43,8 +45,18 @@ public abstract class ReadViewConn implements IConnection {
     }
 
     @Override
-    public boolean inShareReadView() {
-        return this.inShareReadView;
+    public boolean isInShareReadView() {
+        return inShareReadView;
+    }
+
+    @Override
+    public void setShareReadViewSeq(int seq) {
+        shareReadViewSeq = seq;
+    }
+
+    @Override
+    public int getShareReadViewSeq() {
+        return shareReadViewSeq;
     }
 
     @Override

@@ -58,6 +58,16 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         return truncateTableWithGsiPreparedData;
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void prepareData(ExecutionContext ec) {
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();

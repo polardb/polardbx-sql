@@ -18,17 +18,22 @@ package com.alibaba.polardbx.qatest.oss;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.qatest.BaseTestCase;
+import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
+import com.google.common.collect.Queues;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -54,42 +59,14 @@ public class MultiTableExpireTest extends BaseTestCase {
 
     @Before
     public void test() {
-
-        long start = Timestamp.valueOf("2022-06-01 00:00:00").getTime();
-        long end = Timestamp.valueOf("2022-06-20 00:00:00").getTime();
         try (Connection connection = getPolardbxConnection(testDataBase)) {
 
             for (int tableIndex = 1; tableIndex < TABLE_COUNT; tableIndex++) {
-
                 String innodbTable = "t_order_" + tableIndex;
                 String ossTable = "t_order_" + tableIndex + "_oss";
-                Statement statement = connection.createStatement();
-                statement.execute("DROP TABLE IF EXISTS " + innodbTable);
-                statement.execute("CREATE TABLE " + innodbTable + " (\n"
-                    + "    id bigint NOT NULL AUTO_INCREMENT,\n"
-                    + "    gmt_modified DATETIME NOT NULL,\n"
-                    + "    PRIMARY KEY (id, gmt_modified)\n"
-                    + ")\n"
-                    + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
-                    + "STARTWITH '2022-06-01'\n"
-                    + "INTERVAL 1 DAY\n"
-                    + "EXPIRE AFTER 7\n"
-                    + "PRE ALLOCATE 3;\n");
 
-                statement.execute(
-                    "CREATE TABLE " + ossTable + " LIKE " + innodbTable + " ENGINE = '" + engine.name() + "' ARCHIVE_MODE = 'TTL';");
-
-                for (int i = 0; i < 1000; i++) {
-                    PreparedStatement preparedStatement =
-                        connection.prepareStatement("insert into " + innodbTable + " (gmt_modified) values (?)");
-                    for (int j = 0; j < 100; j++) {
-                        long time = start + (int) (Math.random() * ((end - start) + 1));
-                        String randomTime = new Timestamp(time).toString();
-                        preparedStatement.setString(1, randomTime);
-                        preparedStatement.addBatch();
-                    }
-                    preparedStatement.executeBatch();
-                }
+                FileStorageTestUtil.prepareInnoTable(connection, innodbTable, 2000);
+                FileStorageTestUtil.prepareTTLTable(connection, ossTable, innodbTable, engine);
             }
 
         } catch (SQLException e) {
@@ -106,23 +83,27 @@ public class MultiTableExpireTest extends BaseTestCase {
                 String innodbTable = "t_order_" + tableIndex;
 
                 try (Connection connection = getPolardbxConnection(testDataBase)) {
+                    // get local partition
+                    List<String> localPartitions = new ArrayList<>();
+                    ResultSet rs = JdbcUtil.executeQuery(String.format(
+                        "select LOCAL_PARTITION_NAME from information_schema.local_partitions where table_schema=\"%s\" and table_name=\"%s\"",
+                        testDataBase, innodbTable), connection);
+                    while (rs.next()) {
+                        localPartitions.add(rs.getString("LOCAL_PARTITION_NAME"));
+                    }
+                    rs.close();
+
                     Statement statement = connection.createStatement();
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220601'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220602'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220603'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220604'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220605'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220606'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220607'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220608'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220609'");
-                    statement.execute("ALTER TABLE " + innodbTable + " EXPIRE LOCAL PARTITION 'p20220610'");
+                    for (int j = 0; j < 10; j++) {
+                        statement.execute(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION '%s'", innodbTable,
+                            localPartitions.get(j)));
+                    }
                 } catch (SQLException e) {
                     throw new RuntimeException(e);
                 }
             });
         }
 
-        threadPool.awaitTermination(1, TimeUnit.MINUTES);
+        threadPool.awaitTermination(3, TimeUnit.MINUTES);
     }
 }

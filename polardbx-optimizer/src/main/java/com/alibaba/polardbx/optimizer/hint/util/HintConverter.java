@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.hint.operator.HintCmdNode;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdPlan;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdQueryBlockName;
+import com.alibaba.polardbx.optimizer.hint.operator.HintCmdRandomNode;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdScan;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdSocketTimeout;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdSqlDelayCutoff;
@@ -158,6 +159,7 @@ public class HintConverter {
             cmdCount++;
             switch (cmdOperator.getType()) {
             case CMD_NODE:
+            case CMD_RANDOM_NODE:
                 nodeCount++;
                 break;
             case CMD_SCAN:
@@ -235,6 +237,9 @@ public class HintConverter {
                     case CMD_NODE:
                         hintCollection.nodeCount++;
                         break;
+                    case CMD_RANDOM_NODE:
+                        hintCollection.nodeCount++;
+                        break;
                     case CMD_SCAN:
                         hintCollection.scanCount++;
                         break;
@@ -295,6 +300,7 @@ public class HintConverter {
 
                 case CMD_MASTER:
                 case CMD_SLAVE:
+                case CMD_FOLLOWER:
                     hintCollection.cmdHintOperator(new HintCmdMasterSlave(hintOp, ec));
                     break;
                 case CMD_SOCKET_TIMEOUT:
@@ -330,6 +336,12 @@ public class HintConverter {
                         break;
                     }
                     hintCollection.cmdHintOperator(new HintCmdNode(hintOp, ec));
+                    break;
+                case CMD_RANDOM_NODE:
+                    if (ConfigDataMode.isFastMock()) {
+                        break;
+                    }
+                    hintCollection.cmdHintOperator(new HintCmdRandomNode(hintOp, ec));
                     break;
                 case CMD_SCAN:
                     hintCollection.cmdHintOperator(new HintCmdScan(hintOp, ec));

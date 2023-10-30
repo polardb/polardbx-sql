@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.OutFileCursor;
+import com.alibaba.polardbx.executor.cursor.impl.OutFileStatisticsCursor;
 import com.alibaba.polardbx.executor.cursor.impl.OutOrcFileCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
@@ -46,14 +47,16 @@ public class LogicalOutFileHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_DATA_OUTPUT,
                 "OutFileCursor cannot be implemented when the inputs more than one");
         }
+        if (((LogicalOutFile) logicalPlan).getOutFileParams().getStatistics()) {
+            return new OutFileStatisticsCursor(executionContext,
+                ServiceProvider.getInstance().getServer().getSpillerFactory(),
+                ((LogicalOutFile) logicalPlan).getOutFileParams());
+        }
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SELECT_INTO_OUTFILE)) {
             throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
                 "Selecting into outfile is not enabled");
         }
-        if (logicalPlan.getInputs().size() != 1) {
-            throw new TddlRuntimeException(ErrorCode.ERR_DATA_OUTPUT,
-                "OutFileCursor cannot be implented when the inputs more than one");
-        }
+
         RelNode inputRelNode = logicalPlan.getInput(0);
         Cursor cursor = ExecutorHelper.execute(inputRelNode, executionContext, false);
 

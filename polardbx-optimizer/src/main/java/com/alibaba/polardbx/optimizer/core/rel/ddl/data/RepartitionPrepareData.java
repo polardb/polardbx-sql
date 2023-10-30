@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.Pair;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author wumu
@@ -65,4 +69,17 @@ public class RepartitionPrepareData extends DdlPreparedData {
 
     private Pair<String, String> dropLocalIndexSql;
 
+    /**
+     * change foreign key to physical or logical when repartition
+     * Foreign key.
+     */
+    private List<ForeignKeyData> modifyForeignKeys = new ArrayList<>();
+
+    private List<Pair<String, String>> addForeignKeySql = new ArrayList<>();
+
+    private List<Pair<String, String>> dropForeignKeySql = new ArrayList<>();
+
+    private Map<String, Set<String>> foreignKeyChildTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    private Boolean modifyLocality;
 }

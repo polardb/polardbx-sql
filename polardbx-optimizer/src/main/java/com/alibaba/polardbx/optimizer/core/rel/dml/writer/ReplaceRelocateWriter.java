@@ -73,18 +73,19 @@ public class ReplaceRelocateWriter extends RelocateWriter {
 
         final List<DuplicateCheckResult> classifiedRows = sourceRows.valueRows;
 
+        final RelOptTable targetTable = getTargetTable();
+        assert targetTable.getQualifiedName().size() == 2;
+        final String schemaName = targetTable.getQualifiedName().get(0);
+        final String tableName = targetTable.getQualifiedName().get(1);
+        final TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+
+        final boolean canWriteForScaleout = ComplexTaskPlanUtils.canWrite(tableMeta);
+        final boolean isReadyToPublishForScaleout = ComplexTaskPlanUtils.isReadyToPublish(tableMeta);
+
         classifiedRows.forEach(row -> {
             final List<Object> before = row.before;
             final Map<Integer, ParameterContext> after = row.insertParam;
 
-            final RelOptTable targetTable = getTargetTable();
-            assert targetTable.getQualifiedName().size() == 2;
-            final String schemaName = targetTable.getQualifiedName().get(0);
-            final String tableName = targetTable.getQualifiedName().get(1);
-            final TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
-
-            final boolean canWriteForScaleout = ComplexTaskPlanUtils.canWrite(tableMeta);
-            final boolean isReadyToPublishForScaleout = ComplexTaskPlanUtils.isReadyToPublish(tableMeta);
             // Use delete + insert to avoid dup key error while adding column
             final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
             // If this table contains all local/global uk and sk does not modified, do REPLACE

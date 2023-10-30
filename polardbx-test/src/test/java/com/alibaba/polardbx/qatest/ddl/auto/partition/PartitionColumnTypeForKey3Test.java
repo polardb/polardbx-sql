@@ -17,8 +17,10 @@ public class PartitionColumnTypeForKey3Test extends PartitionColumnTypePrepStmtT
 
     public PartitionColumnTypeForKey3Test(TestParameter parameter) {
         super(parameter);
+        this.testDbName = this.testDbName + "_k3";
         this.testQueryByPrepStmt = true;
         this.testInsertByPrepStmt = true;
+        this.testDbName = this.testDbName + "_k3";
     }
 
     @Parameterized.Parameters(name = "{index}: partColTypeTestCase {0}")
@@ -32,7 +34,7 @@ public class PartitionColumnTypeForKey3Test extends PartitionColumnTypePrepStmtT
              */
             /* varbinary */
             new PartitionColumnTypePrepStmtTestBase.TestParameter(
-                "key_varbin",
+                "key_varbinary",
                 new String[] {"c1"}/*col*/,
                 new String[] {"varbinary(1024) default null "}/*data types*/,
                 new String[] {"set sql_mode='';set names utf8;", "", ""}/*prepStmts*/,

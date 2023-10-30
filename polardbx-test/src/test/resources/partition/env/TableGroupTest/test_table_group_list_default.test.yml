@@ -350,6 +350,9 @@ testCases:
       - alter tablegroup test_tg split partition pd into (partition pd0 values in(0), partition pd1 values in(default));
       # test split normal partition into default partition
       - alter tablegroup test_tg split partition p0 into (partition pd0 values in(0), partition pd1 values in(1), partition pd2 values in(default));
+      # test wrong default partition order
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(4), partition pd values in(default), partition pd1 values in(5));
+      - alter tablegroup test_tg split partition pd into (partition pd values in(default), partition pd0 values in(4), partition pd1 values in(5));
       # other cases
       - alter tablegroup test_tg split partition p0 into (partition p00 values in(4), partition p01 values in(0,1));
       - alter tablegroup test_tg split partition p0 into (partition p00 values in(1));
@@ -553,6 +556,9 @@ testCases:
       - alter tablegroup test_tg split partition pd into (partition pd0 values in((0, 'aaa')), partition pd1 values in(default));
       # test split normal partition into default partition
       - alter tablegroup test_tg split partition p0 into (partition pd0 values in((0, 'aaa')), partition pd1 values in((1, 'bbb')), partition pd2 values in(default));
+      # test default partition in wrong order
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in((100, 'aaa')), partition pd values in(default), partition pd1 values in((101, 'zzz')));
+      - alter tablegroup test_tg split partition pd into (partition pd values in(default), partition pd0 values in((100, 'aaa')), partition pd1 values in((101, 'zzz')));
       # other cases
       - alter tablegroup test_tg split partition p0 into (partition p00 values in((4, 'ddd')), partition p01 values in((0, 'aaa'),(1, 'bbb')));
       - alter tablegroup test_tg split partition p0 into (partition p00 values in((1, 'bbb')));
@@ -751,7 +757,6 @@ testCases:
       - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
     syntaxWrongDDLs:
       # test merge default partition to new partition
-      - alter tablegroup test_tg merge partitions p0, pd to pnew;
       - alter tablegroup test_tg merge partitions pd to pnew;
       - alter tablegroup test_tg merge partitions p0, p1 to pd;
     checkActions:
@@ -831,7 +836,6 @@ testCases:
       - create tablegroup test_normal_tg;
       - create table test_normal_tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
     syntaxWrongDDLs:
-      - alter tablegroup test_tg merge partitions p0, pd to pnew;
       - alter tablegroup test_tg merge partitions pd to pnew;
       - alter tablegroup test_tg merge partitions p0, p1 to pd;
     checkActions:
@@ -915,6 +919,8 @@ testCases:
       - alter tablegroup test_tg add partition (partition pnew1 values in(100), partition pnew2 values in(default));
       - alter tablegroup test_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
       - alter tablegroup test_normal_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+      # test default partition in wrong order
+      - alter tablegroup test_normal_tg add partition (partition pd values in(default), partition pnew2 values in(1000));
       # other tests
       - alter tablegroup test_tg add partition (partition pnew1 values in(100, default), partition pnew2 values in(120));
       - alter tablegroup test_tg add partition (partition pnew1 values in(100), partition pnew2 values in(101, default));
@@ -1060,6 +1066,8 @@ testCases:
       - alter tablegroup test_tg add partition (partition pnew1 values in((100, 'fff')), partition pnew2 values in(default));
       - alter tablegroup test_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
       - alter tablegroup test_normal_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+    # test default partition in wrong order
+      - alter tablegroup test_normal_tg add partition (partition pd values in(default), partition pnew2 values in((100, 'fff')));
     # other tests
       - alter tablegroup test_tg add partition (partition pnew1 values in((100,'fff'), default), partition pnew2 values in((120,'fff')));
       - alter tablegroup test_tg add partition (partition pnew1 values in((100,'fff')), partition pnew2 values in((101,'fff'), default));
@@ -1294,8 +1302,6 @@ testCases:
       - create tablegroup test_normal_tg;
       - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
     syntaxWrongDDLs:
-      - alter tablegroup test_tg modify partition p0 add values(10,11,12);
-      - alter tablegroup test_tg modify partition p0 drop values(0);
       - alter tablegroup test_tg modify partition pd add values(10,11,12);
       - alter tablegroup test_tg modify partition pd drop values(0);
     checkActions:
@@ -1371,8 +1377,6 @@ testCases:
       - create tablegroup test_normal_tg;
       - create table test_normal_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
     syntaxWrongDDLs:
-      - alter tablegroup test_tg modify partition p0 add values((10,'fff'),(11,'fff'),(12,'fff'));
-      - alter tablegroup test_tg modify partition p0 drop values((0,'aaa'));
       - alter tablegroup test_tg modify partition pd add values((10,'fff'),(11,'fff'),(12,'fff'));
       - alter tablegroup test_tg modify partition pd drop values((10,'fff'));
     checkActions:

@@ -44,10 +44,6 @@ public class VectorizedFilterExec extends AbstractExecutor {
         super(context);
         this.input = input;
         this.condition = condition;
-        if (condition instanceof BuiltInFunctionVectorizedExpression) {
-            ((BuiltInFunctionVectorizedExpression) condition).setInFilter();
-        }
-
         this.preAllocatedChunk = preAllocatedChunk;
         position = 0;
     }

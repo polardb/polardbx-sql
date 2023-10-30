@@ -16,12 +16,20 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.google.common.base.Preconditions;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 
 import java.util.ArrayList;
@@ -35,7 +43,7 @@ import java.util.List;
 public class SqlPartition extends SqlNode {
     protected SqlNode name;
     protected SqlNode subPartitionCount;
-    protected List<SqlSubPartition> subPartitions = new ArrayList<>();
+    protected List<SqlNode> subPartitions = new ArrayList<>();
     protected SqlPartitionValue values;
     protected String comment;
     protected String locality;
@@ -54,7 +62,7 @@ public class SqlPartition extends SqlNode {
         this.values = values;
     }
 
-    public List<SqlSubPartition> getSubPartitions() {
+    public List<SqlNode> getSubPartitions() {
         return subPartitions;
     }
 
@@ -89,7 +97,6 @@ public class SqlPartition extends SqlNode {
         if (values != null) {
             values.validate(validator, scope);
         }
-
         // Validate partition name
         // To be impl
 
@@ -110,7 +117,7 @@ public class SqlPartition extends SqlNode {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
         if (this == node) {
             return true;
         }
@@ -121,7 +128,7 @@ public class SqlPartition extends SqlNode {
 
         SqlPartition sqlPart = (SqlPartition) node;
 
-        if (!equalDeep(name, sqlPart.name, litmus)) {
+        if (!equalDeep(name, sqlPart.name, litmus, context)) {
             return false;
         }
 
@@ -132,7 +139,7 @@ public class SqlPartition extends SqlNode {
             return false;
         }
 
-        return equalDeep(values, sqlPart.values, litmus);
+        return equalDeep(values, sqlPart.values, litmus, context);
     }
 
     public SqlNode getName() {
@@ -151,7 +158,7 @@ public class SqlPartition extends SqlNode {
         this.subPartitionCount = subPartitionCount;
     }
 
-    public void setSubPartitions(List<SqlSubPartition> subPartitions) {
+    public void setSubPartitions(List<SqlNode> subPartitions) {
         this.subPartitions = subPartitions;
     }
 

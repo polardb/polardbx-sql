@@ -18,6 +18,7 @@ package org.apache.calcite.sql.validate;
 
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 
@@ -79,7 +80,7 @@ public class OverScope extends ListScope {
       final List<Pair<SqlNode, SqlMonotonicity>> monotonicExprs =
           child.getMonotonicExprs();
       for (Pair<SqlNode, SqlMonotonicity> pair : monotonicExprs) {
-        if (expr.equalsDeep(pair.left, Litmus.IGNORE)) {
+        if (expr.equalsDeep(pair.left, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
           return pair.right;
         }
       }

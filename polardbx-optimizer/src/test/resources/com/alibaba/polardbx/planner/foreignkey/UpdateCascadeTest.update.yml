@@ -1,0 +1,54 @@
+- sql: |
+    update test_hash_ta set id = 2 where id = 1;
+
+  plan: |
+
+    logicalrelocate(type=update, set="test_hash_ta.id=?0", relocate="test_hash_ta")
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `school`, `create_time`, ? from `test_hash_ta` as `test_hash_ta` where (`id` = ?) for update")
+
+- sql: |
+    update test_hash_ta set name = 'test1' where name = 'test';
+
+  plan: |
+
+    logicalmodify(type="update", set="test_hash_ta.name=?0")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `id`, `name`, `school`, `create_time`, ? from `test_hash_ta` as `test_hash_ta` where (`name` = ?) for update")
+
+- sql: |
+    update test_hash_ta set school = 'test1' where name = 'test';
+
+  plan: |
+
+    logicalmodifyview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="update `test_hash_ta` as `test_hash_ta` set `school` = ? where (`name` = ?)")
+
+- sql: |
+    update test_hash_tb set id = 2 where id = 1;
+
+  plan: |
+
+    logicalrelocate(type=update, set="test_hash_tb.id=?0", relocate="test_hash_tb")
+      logicalview(tables="optest_0001.test_hash_tb", sql="select `id`, `name`, `create_time`, ? from `test_hash_tb` as `test_hash_tb` where (`id` = ?) for update")
+
+- sql: |
+    update test_hash_single_1 set id = 2 where id = 1;
+
+  plan: |
+
+    logicalmodify(type="update", set="test_hash_single_1.id=?0")
+      logicalview(tables="optest_0000.test_hash_single_1", sql="select `id`, `name`, `create_time`, ? from `test_hash_single_1` as `test_hash_single_1` where (`id` = ?) for update")
+
+- sql: |
+    update test_hash_single_1 set name = 'test1' where name = 'test';
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_hash_single_1", sql="update `test_hash_single_1` as `test_hash_single_1` set `name` = ? where (`name` = ?)", params="test1,test")
+
+- sql: |
+    update test_hash_single_2 set id = 2 where id = 1;
+
+  plan: |
+
+    logicalmodify(type="update", set="test_hash_single_2.id=?0")
+      logicalview(tables="optest_0000.test_hash_single_2", sql="select `id`, `name`, `create_time`, ? from `test_hash_single_2` as `test_hash_single_2` where (`id` = ?) for update")

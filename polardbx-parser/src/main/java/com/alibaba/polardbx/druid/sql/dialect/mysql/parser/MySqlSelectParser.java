@@ -709,6 +709,10 @@ public class MySqlSelectParser extends SQLSelectParser {
                     outFile.setLinesTerminatedBy(expr());
                 }
             }
+            if (lexer.identifierEquals(FnvHash.Constants.STATISTICS)) {
+                lexer.nextToken();
+                outFile.setStatistics(true);
+            }
         } else {
             // Why we need this?
             // output of select a, b into @x, @y from test; is select a, b into (@x, @y) from test

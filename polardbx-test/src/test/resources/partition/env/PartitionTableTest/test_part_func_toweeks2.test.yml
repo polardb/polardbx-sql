@@ -1,0 +1,29 @@
+## DISABLE_FAST_SQL_PARSER
+
+DROP TABLE IF EXISTS `hash_to_weeks`;
+CREATE TABLE IF NOT EXISTS `hash_to_weeks` (
+`dt` date NOT NULL
+) ENGINE = InnoDB
+partition by hash(to_weeks(`dt`))
+partitions 8;
+
+## one-week
+explain select dt from hash_to_weeks where dt = '2021-12-25';
+
+## two-week
+explain select dt from hash_to_weeks where dt = '2021-12-26';
+explain select dt from hash_to_weeks where dt = '2021-12-27';
+explain select dt from hash_to_weeks where dt = '2021-12-31';
+explain select dt from hash_to_weeks where dt = '2022-01-01';
+
+## three-week
+explain select dt from hash_to_weeks where dt = '2022-01-02';
+explain select dt from hash_to_weeks where dt = '2022-01-03';
+explain select dt from hash_to_weeks where dt = '2022-01-08';
+
+explain select dt from hash_to_weeks where dt between '2022-01-02' and '2022-01-08';
+explain select dt from hash_to_weeks where dt between '2022-01-01' and '2022-01-08';
+
+explain select dt from hash_to_weeks where dt >= '2022-01-08' and dt < '2022-01-09';
+
+explain select dt from hash_to_weeks where dt > '2022-01-08' and dt <= '2022-01-09';

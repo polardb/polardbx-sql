@@ -1,0 +1,38 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======== key-key ===========
+
+## key-key-tp, use tp
+drop table if exists k_k_tp;
+create table if not exists k_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d)
+subpartition by key (a,b)
+;
+show create table k_k_tp;
+
+## key-key-ntp, use ntp
+CREATE TABLE `k_k_ntp` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION `p0` VALUES LESS THAN (1,MAXVALUE)
+(SUBPARTITION `p0sp1` VALUES LESS THAN (-3074457345618258601,9223372036854775807) ENGINE = InnoDB,
+SUBPARTITION `p0sp2` VALUES LESS THAN (3074457345618258603,9223372036854775807) ENGINE = InnoDB,
+SUBPARTITION `p0sp3` VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB),
+PARTITION `p1` VALUES LESS THAN (20,MAXVALUE)
+(SUBPARTITION `p1sp1` VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+SUBPARTITION `p1sp2` VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB));
+
+/*+TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table k_k_ntp;
+

@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
-import com.alibaba.polardbx.common.charset.CharsetHandler;
-import com.alibaba.polardbx.common.charset.CollationHandlers;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CollationHandlers;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;

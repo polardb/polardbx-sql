@@ -143,6 +143,18 @@ public class TableGroupConfig {
         return tableGroupRecord != null && tableGroupRecord.auto_split_policy != 0;
     }
 
+    public boolean isPreDefinePartitionInfo() {
+        return tableGroupRecord != null && !StringUtils.isEmpty(tableGroupRecord.partition_definition);
+    }
+
+    public String getPreDefinePartitionInfo() {
+        if (isPreDefinePartitionInfo()) {
+            return tableGroupRecord.getPartition_definition();
+        } else {
+            return null;
+        }
+    }
+
     public boolean containsTable(String tableName) {
         if (tables == null) {
             return false;
@@ -170,7 +182,11 @@ public class TableGroupConfig {
     public Map<String, String> phyToLogicalTables() {
         Map<String, String> res = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(getTables())) {
-            for (TablePartitionRecord tablePart : tableInfo.getPartitionRecList()) {
+            List<TablePartitionRecord> tableParts = tableInfo.getPartitionRecList();
+            if (!tableInfo.getSubPartitionRecList().isEmpty()) {
+                tableParts = tableInfo.getSubPartitionRecList();
+            }
+            for (TablePartitionRecord tablePart : tableParts) {
                 res.put(tablePart.getPhyTable(), tablePart.getTableName());
             }
         }

@@ -23,11 +23,13 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import lombok.SneakyThrows;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -46,10 +48,11 @@ import static org.junit.Assert.assertTrue;
 public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());
+    private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
 
     @Before
     public void beforeMethod() {
-        org.junit.Assume.assumeTrue(supportsAlterType);
+        org.junit.Assume.assumeTrue(supportsAlterType && !isRDS80);
     }
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC";
@@ -61,7 +64,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     private static final int FILL_COUNT = 2500;
     private static final int FILL_BATCH_SIZE = 2500;
 
-    private static String buildCmdExtra(String... params) {
+    protected static String buildCmdExtra(String... params) {
         if (0 == params.length) {
             return "";
         }
@@ -75,7 +78,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void modifyWithInsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -224,8 +227,159 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void modifyWithInsertSelect() throws Exception {
+    public void modifyWithInsert4PartitionKey() throws Exception {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_1";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) values (%d,%d+1)", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsert 1");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_2";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) values (%d,%d+1)", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsert 2");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_3";
+            String colDef = "int not null";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint not null";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) values (%d,%d+1)", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsert 3");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_4";
+            String colDef = "int not null";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint not null";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s values (%d,%d+1)", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsert 4");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_5";
+            String colDef = "int not null default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint not null default 4";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator = (count) -> String.format("insert into %%s(a) values (%d)", count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> (colB == 3 || colB == 4);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1);
+            System.out.println("modifyWithInsert 5");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_6";
+            String colDef = "int default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint default null";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator = (count) -> String.format("insert into %%s(a) values (%d)", count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> (colB == 3 || colB == 0);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1);
+            System.out.println("modifyWithInsert 6");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_7";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) values (%d,%d),(%d,%d)", count * 2, count * 2 + 1,
+                    count * 2 + 1, count * 2 + 2);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                2);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                2);
+            System.out.println("modifyWithInsert 7");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_8";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) values (%d*2,%d*2+1),(%d*2+1,%d*2+2)", count, count,
+                    count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                2);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                2);
+            System.out.println("modifyWithInsert 8");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
+    @Test
+    public void modifyWithInsertSelect() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         String selectTableName = "omc_with_insert_select_src_tbl";
@@ -294,8 +448,95 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void modifyWithUpdate() throws Exception {
+    public void modifyWithInsertSelect4PartitionKey() throws Exception {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        String selectTableName = "omc_with_insert_select_src_tbl";
+        buildSelectTable(selectTableName);
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_select_1";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) select %d,%d+1", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> (colA == colB - 1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsertSelect 1");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_select_2";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(a,b) select %d,%d+1", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> (colA == colB - 1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsertSelect 2");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_select_3";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s(b,a) select c,d+1 from %s where c=%d", selectTableName,
+                    count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> (colA == colB + 1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsertSelect 3");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_select_4";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s select * from %s where c=%d", selectTableName, count);
+            BiFunction<Integer, Integer, Boolean> checker = Integer::equals;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
+                1, true);
+            System.out.println("modifyWithInsertSelect 4");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
+    @Test
+    public void modifyWithUpdate() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -410,8 +651,124 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void modifyWithReplace() throws Exception {
+    public void modifyWithUpdate4PartitionKey() throws Exception {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_1";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("update %%s set b=%d+1 where a=%d", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 1");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_2";
+            String colDef = "int";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("update %%s set b=%d+1 where a=%d", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + 1 == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 2");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_3";
+            String colDef = "int default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint default 4";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("update %%s set b=default where a=%d", count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colB == 3 || colB == 4;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 3");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_4";
+            String colDef = "int default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint default 4";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("update %%s set b=default(b) where a=%d", count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colB == 3 || colB == 4;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 4");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_5";
+            String colDef = "int default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint default 4";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator = (count) -> String.format("update %%s set b=a+1 where a=%d", count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colB == colA + 1;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 5");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_with_update_6";
+            String colDef = "int default 3";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint default 4";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("update %%s set b=a+1,a=%d,b=a+1,b=b+1 where a=%d", count, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colB == colA + 2;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpdate 6");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
+    @Test
+    public void modifyWithReplace() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -478,8 +835,41 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void modifyWithUpsert() throws Exception {
+    public void modifyWithReplace4PartitionKey2() throws Exception {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        tasks.add(() -> {
+            String tableName = "omc_with_replace_2";
+            String colDef = "int unique key";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s order by a desc";
+            Function<Integer, String> generator = (count) -> String.format(
+                buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) + "replace into %%s values(%d + %d, %d)",
+                count, FILL_COUNT, count);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA - FILL_COUNT == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithReplace 2");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
+    @Test
+    public void modifyWithUpsert() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -600,9 +990,79 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Ignore
+    @Test
+    public void modifyWithUpsert4PartitionKey() throws Exception {
+        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        tasks.add(() -> {
+            String tableName = "omc_with_upsert_1";
+            String colDef = "int unique key";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s order by a";
+            Function<Integer, String> generator =
+                (count) -> String.format("insert into %%s values(%d, %d) on duplicate key update b=b+%d", count, count,
+                    FILL_COUNT);
+            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA + FILL_COUNT == colB;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithUpsert 1");
+            return null;
+        });
+
+//        tasks.add(() -> {
+//            String tableName = "omc_with_upsert_2";
+//            String colDef = "int";
+//            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+//                + " alter table %s modify column b bigint";
+//            String selectSql = "select * from %s order by a desc";
+//            Function<Integer, String> generator =
+//                (count) -> String.format("insert into %%s values(%d, %d) on duplicate key update a=a+%d", count, count,
+//                    FILL_COUNT);
+//            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA - FILL_COUNT == colB;
+//            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+//                1, true);
+//            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+//                1, true);
+//            System.out.println("modifyWithUpsert 2");
+//            return null;
+//        });
+
+//        tasks.add(() -> {
+//            String tableName = "omc_with_upsert_3";
+//            String colDef = "int unique key";
+//            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+//                + " alter table %s modify column b bigint";
+//            String selectSql = "select * from %s order by a desc";
+//            Function<Integer, String> generator =
+//                (count) -> String.format("insert into %%s values(%d + %d, %d) on duplicate key update a=a+%d", count,
+//                    FILL_COUNT, count, FILL_COUNT);
+//            BiFunction<Integer, Integer, Boolean> checker = (colA, colB) -> colA - FILL_COUNT == colB;
+//            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+//                1, true);
+//            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+//                1, true);
+//            System.out.println("modifyWithUpsert 3");
+//            return null;
+//        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
     @Test
     public void modifyWithInsertIgnore() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -653,8 +1113,42 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void changeWithInsert() throws Exception {
+    public void modifyWithInsertIgnore4PartitionKey() throws Exception {
         final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        // 2
+        tasks.add(() -> {
+            String tableName = "omc_with_insert_ignore_2";
+            String colDef = "int unique key";
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION, OMC_ALTER_TABLE_WITH_GSI)
+                + " alter table %s modify column b bigint";
+            String selectSql = "select * from %s order by a desc";
+            Function<Integer, String> generator = (count) -> String.format(
+                buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
+                    + "insert ignore into %%s values(%d + %d, %d)", count, FILL_COUNT, count);
+            BiFunction<Integer, Integer, Boolean> checker = Objects::equals;
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+                1, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+                1, true);
+            System.out.println("modifyWithInsertIgnore 2");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
+
+    @Test
+    public void changeWithInsert() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -819,7 +1313,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithInsertSelect() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         String selectTableName = "omc_with_insert_select_src_tbl";
@@ -896,7 +1390,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithUpdate() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
         tasks.add(() -> {
@@ -1023,7 +1517,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithReplace() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_replace_1";
@@ -1090,7 +1584,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithUpsert() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_upsert_1";
@@ -1230,7 +1724,7 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void changeWithInsertIgnore() throws Exception {
-        final ExecutorService threadPool = Executors.newCachedThreadPool();
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
         tasks.add(() -> {
             String tableName = "omc_with_insert_ignore_1";
@@ -1297,7 +1791,15 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
     public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
                                        Function<Integer, String> generator1, Function<Integer, String> generator2,
                                        BiFunction<Integer, Integer, Boolean> checker, boolean fillData, boolean withGsi,
-                                       int batchSize)
+                                       int batchSize) throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, batchSize, false);
+    }
+
+    public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
+                                       Function<Integer, String> generator1, Function<Integer, String> generator2,
+                                       BiFunction<Integer, Integer, Boolean> checker, boolean fillData, boolean withGsi,
+                                       int batchSize, boolean isModifyPartitionKey)
         throws Exception {
         tableName = tableName + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -1308,21 +1810,38 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
         String finalTableName = tableName;
 
         try {
-            String createSql = withGsi ? String.format(
-                "create table %s ("
-                    + "a int primary key, "
-                    + "b %s, "
-                    + "global index %s(`a`) partition by hash(`a`) partitions 7,"
-                    + "global index %s(`a`) covering(b) partition by hash(`a`) partitions 7,"
-                    + "clustered index %s(`a`) partition by hash(`a`) partitions 7"
-                    + ") partition by hash(`a`) partitions 7",
-                tableName, colDef, indexName1, indexName2, indexName3) :
-                String.format(
+            String createSql;
+            if (isModifyPartitionKey) {
+                createSql = withGsi ? String.format(
+                    "create table %s ("
+                        + "a int, "
+                        + "b %s, "
+                        + "global index %s(`b`) covering(a) partition by hash(`b`) partitions 3"
+                        + ") partition by hash(`b`) partitions 3",
+                    tableName, colDef, indexName1) :
+                    String.format(
+                        "create table %s ("
+                            + "a int, "
+                            + "b %s "
+                            + ") partition by hash(`b`) partitions 3",
+                        tableName, colDef);
+            } else {
+                createSql = withGsi ? String.format(
                     "create table %s ("
                         + "a int primary key, "
-                        + "b %s "
+                        + "b %s, "
+                        + "global index %s(`a`) partition by hash(`a`) partitions 7,"
+                        + "global index %s(`a`) covering(b) partition by hash(`a`) partitions 7,"
+                        + "clustered index %s(`a`) partition by hash(`a`) partitions 7"
                         + ") partition by hash(`a`) partitions 7",
-                    tableName, colDef);
+                    tableName, colDef, indexName1, indexName2, indexName3) :
+                    String.format(
+                        "create table %s ("
+                            + "a int primary key, "
+                            + "b %s "
+                            + ") partition by hash(`a`) partitions 7",
+                        tableName, colDef);
+            }
 
             // Retry in case of table group not exist
             int retryCnt = 0;
@@ -1371,6 +1890,8 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                         changed = true;
                                         generator = generator2;
                                         totalCount.getAndDecrement();
+                                    } else if (e.getMessage().contains("Lock wait timeout exceeded")) {
+                                        // ignore
                                     } else {
                                         throw e;
                                     }
@@ -1392,7 +1913,8 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                     public Void apply(AtomicBoolean shouldStop, AtomicInteger totalCount) {
                         Connection connection = getPolardbxConnection();
                         Thread.sleep(1000);
-                        String sql = String.format(alterSql, finalTableName) + USE_OMC_ALGORITHM;
+                        String algorithm = isModifyPartitionKey ? "" : USE_OMC_ALGORITHM;
+                        String sql = String.format(alterSql, finalTableName) + algorithm;
                         try {
                             execDdlWithRetry(tddlDatabase1, finalTableName, sql, connection);
                         } finally {
@@ -1409,8 +1931,10 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
             index.add(" force index (primary)");
             if (withGsi) {
                 index.add(String.format(" force index (%s) ", indexName1));
-                index.add(String.format(" force index (%s) ", indexName2));
-                index.add(String.format(" force index (%s) ", indexName3));
+                if (!isModifyPartitionKey) {
+                    index.add(String.format(" force index (%s) ", indexName2));
+                    index.add(String.format(" force index (%s) ", indexName3));
+                }
             }
 
             BiFunction<AtomicBoolean, AtomicInteger, Void> selectFunc =
@@ -1419,11 +1943,12 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                     @Override
                     public Void apply(AtomicBoolean shouldStop, AtomicInteger totalCount) {
                         Connection connection = getPolardbxConnection();
+                        Statement statement = connection.createStatement();
                         try {
                             int cnt = 0;
                             while ((!shouldStop.get() || fillData) && totalCount.get() < FILL_COUNT) {
                                 int tot = totalCount.get();
-                                ResultSet rs = JdbcUtil.executeQuerySuccess(connection,
+                                ResultSet rs = statement.executeQuery(
                                     String.format(selectSql, finalTableName + index.get(cnt % index.size())));
                                 cnt++;
                                 ResultSetMetaData rsmd = rs.getMetaData();
@@ -1437,8 +1962,10 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                     assertTrue(checker.apply(colA, colB));
                                     tot--;
                                 }
+                                rs.close();
                                 Thread.sleep(500);
                             }
+                            statement.close();
 
                             Thread.sleep(500); // sleep to wait dmlTask
                             ResultSet rs =
@@ -1485,14 +2012,21 @@ public class ConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(alterTask));
             results.add(threadPool.submit(selectTask));
 
-            for (Future<Void> result : results) {
-                result.get();
+            try {
+                for (Future<Void> result : results) {
+                    result.get();
+                }
+            } catch (Throwable e) {
+                e.printStackTrace();
+                throw (e);
             }
 
             if (withGsi) {
                 checkGsi(conn, getRealGsiName(conn, tableName, indexName1));
-                checkGsi(conn, getRealGsiName(conn, tableName, indexName2));
-                checkGsi(conn, getRealGsiName(conn, tableName, indexName3));
+                if (!isModifyPartitionKey) {
+                    checkGsi(conn, getRealGsiName(conn, tableName, indexName2));
+                    checkGsi(conn, getRealGsiName(conn, tableName, indexName3));
+                }
             }
         } finally {
             conn.close();

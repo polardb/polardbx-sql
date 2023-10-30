@@ -45,4 +45,14 @@ public class LogicalDropProcedure extends BaseDdlOperation {
             setSchemaName(((SQLPropertyExpr) procedureName).getOwnerName());
         }
     }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

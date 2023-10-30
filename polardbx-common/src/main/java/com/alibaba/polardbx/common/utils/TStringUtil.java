@@ -25,7 +25,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public class TStringUtil extends StringUtils {
@@ -826,6 +830,10 @@ public class TStringUtil extends StringUtils {
 
         }
         return strings1;
+    }
+
+    public static String concatTableName(String schema, String table) {
+        return backQuote(schema) + "." + backQuote(table);
     }
 
 }

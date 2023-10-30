@@ -163,11 +163,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column id int not null comment 'new comment'", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "not supported", "can't modify shard column");
-
-        sql = String.format(
-            "/*TDDL:ENABLE_ALTER_SHARD_KEY=TRUE*/alter table %s modify column id int not null comment 'new comment'",
-            mytable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
@@ -979,7 +974,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            isMySQL80() ? "optimize error by Referenced identifier" :
+                "Not all physical DDLs have been executed successfully"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -1067,7 +1063,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         String sql = "create table %s(c1 int not null primary key, c2 int, c3 int) dbpartition by hash(c1)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
-        sql = "select * from %s where c1 > 10";
+        sql = "analyze table %s";
         JdbcUtil.executeSuccess(tddlConnection, String.format(sql, tableName));
         checkVirtualStatistics(simpleTableName, new String[] {"c1", "c2", "c3"});
 
@@ -1601,8 +1597,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<Integer, String> columnPositions = new HashMap<>();
         String sql = "select ordinal_position, column_name from information_schema.columns "
             + "where table_schema='%s' and table_name='%s' order by ordinal_position";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlConn = getMysqlDirectConnection(phyDbName);
+            Statement stmt = mysqlConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 columnPositions.put(rs.getInt(1), rs.getString(2));
@@ -1831,8 +1827,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<String, Map<Integer, String>> indexColumnInfo = new HashMap<>();
         String sql = "select index_name,seq_in_index,column_name from information_schema.statistics "
             + "where table_schema='%s' and table_name='%s' order by index_name,seq_in_index";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlDbConn = getMysqlDirectConnection(phyDbName);
+            Statement stmt = mysqlDbConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 String indexName = rs.getString(1);
@@ -1850,9 +1846,11 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         throws SQLException {
         String phyDbName = null, phyTableName = null;
         try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement()) {
+            Connection mysqlConn = getMysqlDirectConnection();
+            Statement stmt_meta = metaDbConn.createStatement();
+            Statement stmt_mysql = mysqlConn.createStatement()) {
             String sql = "show databases";
-            try (ResultSet rs = stmt.executeQuery(sql)) {
+            try (ResultSet rs = stmt_mysql.executeQuery(sql)) {
                 while (rs.next()) {
                     String phyDatabase = rs.getString(1);
                     if (TStringUtil.startsWithIgnoreCase(phyDatabase, schemaName) &&
@@ -1863,7 +1861,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 }
             }
             sql = "select tb_name_pattern from tables_ext where table_schema='%s' and table_name='%s'";
-            try (ResultSet rs = stmt.executeQuery(String.format(sql, schemaName, tableName))) {
+            try (ResultSet rs = stmt_meta.executeQuery(String.format(sql, schemaName, tableName))) {
                 if (rs.next()) {
                     phyTableName = rs.getString(1);
                 }
@@ -1892,6 +1890,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testForeignKey() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
         String parentNamePrefix = "fk_parent_";
         String parentSingle = schemaPrefix + parentNamePrefix + "s";
         String parentBroadcast = schemaPrefix + parentNamePrefix + "b";
@@ -1937,22 +1937,22 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
         alterChildTablesAddForeignKeys(new Object[][] {
             new Object[] {
-                childSingleToSingle, parentSingle, false, errUnsupported},
-            new Object[] {childSingleToOthers, parentBroadcast, false, errInvalidReference},
-            new Object[] {childSingleToOthers, parentShardingDb, false, errInvalidReference},
-            new Object[] {childSingleToOthers, parentShardingDbTb, false, errInvalidReference},
-            new Object[] {childBroadcastToAll, parentSingle, false, errUnsupported},
-            new Object[] {childBroadcastToAll, parentBroadcast, false, errUnsupported},
-            new Object[] {childBroadcastToAll, parentShardingDb, false, errUnsupported},
-            new Object[] {childBroadcastToAll, parentShardingDbTb, false, errUnsupported},
-            new Object[] {childShardingDbToAll, parentSingle, false, errUnsupported},
-            new Object[] {childShardingDbToAll, parentBroadcast, false, errUnsupported},
-            new Object[] {childShardingDbToAll, parentShardingDb, false, errUnsupported},
-            new Object[] {childShardingDbToAll, parentShardingDbTb, false, errUnsupported},
-            new Object[] {childShardingDbTbToAll, parentSingle, false, errUnsupported},
-            new Object[] {childShardingDbTbToAll, parentBroadcast, false, errUnsupported},
-            new Object[] {childShardingDbTbToAll, parentShardingDb, false, errUnsupported},
-            new Object[] {childShardingDbTbToAll, parentShardingDbTb, false, errUnsupported},
+                childSingleToSingle, parentSingle, true},
+            new Object[] {childSingleToOthers, parentBroadcast, true},
+            new Object[] {childSingleToOthers, parentShardingDb, true},
+            new Object[] {childSingleToOthers, parentShardingDbTb, true},
+            new Object[] {childBroadcastToAll, parentSingle, true},
+            new Object[] {childBroadcastToAll, parentBroadcast, true},
+            new Object[] {childBroadcastToAll, parentShardingDb, true},
+            new Object[] {childBroadcastToAll, parentShardingDbTb, true},
+            new Object[] {childShardingDbToAll, parentSingle, true},
+            new Object[] {childShardingDbToAll, parentBroadcast, true},
+            new Object[] {childShardingDbToAll, parentShardingDb, true},
+            new Object[] {childShardingDbToAll, parentShardingDbTb, true},
+            new Object[] {childShardingDbTbToAll, parentSingle, true},
+            new Object[] {childShardingDbTbToAll, parentBroadcast, true},
+            new Object[] {childShardingDbTbToAll, parentShardingDb, true},
+            new Object[] {childShardingDbTbToAll, parentShardingDbTb, true},
         });
 
         // child tables first, then parent tables
@@ -3142,6 +3142,33 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testAlterTableDefaultCharset() {
+        String mytable = tableName;
+        dropTableIfExists(mytable);
+        String sql =
+            String.format("create table " + createOption + " %s(a int,b char) DEFAULT CHARSET = utf8mb4", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s DEFAULT CHARACTER SET utf8mb4 collate utf8mb4_bin", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        try {
+            sql = String.format(
+                "select TABLE_COLLATION from information_schema.tables where table_schema = '%s' and table_name = '%s';",
+                tddlDatabase1, mytable);
+
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            org.junit.Assert.assertTrue(rs.next());
+            org.junit.Assert.assertEquals(rs.getString(1), "utf8mb4_bin");
+        } catch (Exception e) {
+            e.printStackTrace();
+            org.junit.Assert.fail(e.getMessage());
+        }
+
+        dropTableIfExists(mytable);
     }
 
 }

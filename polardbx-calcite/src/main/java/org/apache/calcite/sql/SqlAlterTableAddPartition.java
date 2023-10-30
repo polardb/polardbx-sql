@@ -34,12 +34,17 @@ public class SqlAlterTableAddPartition extends SqlAlterSpecification {
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("ADD PARTITION", SqlKind.ADD_PARTITION);
 
     protected final List<SqlNode> partitions;
-    
+
     protected SqlNode parent;
 
-    public SqlAlterTableAddPartition(SqlParserPos pos, List<SqlNode> partitions) {
+    protected boolean isSubPartition;
+
+    protected String algorithm = null;
+
+    public SqlAlterTableAddPartition(SqlParserPos pos, List<SqlNode> partitions, boolean isSubPartition) {
         super(pos);
         this.partitions = partitions;
+        this.isSubPartition = isSubPartition;
     }
 
     @Override
@@ -83,6 +88,22 @@ public class SqlAlterTableAddPartition extends SqlAlterSpecification {
         this.parent = parent;
     }
 
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public void setSubPartition(boolean subPartition) {
+        isSubPartition = subPartition;
+    }
+
+    public String getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(String algorithm) {
+        this.algorithm = algorithm;
+    }
+
     @Override
     public void validate(SqlValidator validator, SqlValidatorScope scope) {
         validator.setColumnReferenceExpansion(false);
@@ -90,7 +111,7 @@ public class SqlAlterTableAddPartition extends SqlAlterSpecification {
             List<SqlNode> partDefs = new ArrayList<>();
             partDefs.addAll(partitions);
             int partColCnt = -1;
-            SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, true);
+            SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, -1, true, false);
         }
     }
 }

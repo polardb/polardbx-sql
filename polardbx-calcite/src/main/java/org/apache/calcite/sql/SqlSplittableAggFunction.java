@@ -251,8 +251,7 @@ public interface SqlSplittableAggFunction {
         node = merges.get(0);
         break;
       case 2:
-        node = rexBuilder.makeCall(SqlStdOperatorTable.MULTIPLY, merges);
-        node = rexBuilder.makeAbstractCast(aggregateCall.type, node);
+        node = rexBuilder.makeCall(aggregateCall.type, SqlStdOperatorTable.MULTIPLY, merges);
         break;
       default:
         throw new AssertionError("unexpected count " + merges);

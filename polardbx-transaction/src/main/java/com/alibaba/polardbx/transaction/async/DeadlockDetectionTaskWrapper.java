@@ -26,6 +26,7 @@ import com.alibaba.polardbx.transaction.utils.ParamValidationUtils;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimerTask;
 
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
@@ -35,41 +36,19 @@ import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_D
  */
 public class DeadlockDetectionTaskWrapper extends BaseTimerTaskWrapper {
 
-    private final Map<String, Object> properties;
     private final Collection<String> allSchemas;
-    private final AsyncTaskQueue asyncTaskQueue;
 
     public DeadlockDetectionTaskWrapper(Map<String, Object> properties, Collection<String> allSchemas,
                                         AsyncTaskQueue asyncTaskQueue) {
-        this.properties = properties;
+        super(properties, asyncTaskQueue);
         this.allSchemas = allSchemas;
-        this.asyncTaskQueue = asyncTaskQueue;
         // Enable an active task when this timer task wrapper is created.
         resetTask();
     }
 
     @Override
-    public void resetTask() {
-        if (ConfigDataMode.isFastMock()) {
-            cancel();
-            return;
-        }
-
-        // 1. Get new parameters.
-        final Map<String, String> newParams = getNewParams();
-
-        // 2. Validate parameters.
-        validateParams(newParams);
-
-        // 3. If new parameters are identical to the current running ones, ignore the reset.
-        final Map<String, String> currentParam = getCurrentParam();
-        if (null != currentParam &&
-            ParamValidationUtils.isIdentical(newParams, currentParam, MODIFIABLE_DEADLOCK_DETECTION_PARAM)) {
-            return;
-        }
-
-        // 4. Reset the timer task.
-        innerReset(newParams);
+    protected Set<String> getParamsDef() {
+        return MODIFIABLE_DEADLOCK_DETECTION_PARAM;
     }
 
     @Override
@@ -89,7 +68,8 @@ public class DeadlockDetectionTaskWrapper extends BaseTimerTaskWrapper {
             .scheduleDeadlockDetectionTask(detectionInterval, getTask(new DeadlockDetectionTask(allSchemas)));
     }
 
-    private Map<String, String> getNewParams() {
+    @Override
+    protected Map<String, String> getNewParams() {
         final Map<String, String> newParam = new HashMap<>(2);
         ParamManager paramManager = new ParamManager(properties);
         newParam.put(ConnectionProperties.ENABLE_DEADLOCK_DETECTION,
@@ -99,7 +79,8 @@ public class DeadlockDetectionTaskWrapper extends BaseTimerTaskWrapper {
         return newParam;
     }
 
-    private static void validateParams(Map<String, String> newParams) {
+    @Override
+    protected void validateParams(Map<String, String> newParams) {
         for (Map.Entry<String, String> keyAndVal : newParams.entrySet()) {
             final String key = keyAndVal.getKey();
             final String val = keyAndVal.getValue();

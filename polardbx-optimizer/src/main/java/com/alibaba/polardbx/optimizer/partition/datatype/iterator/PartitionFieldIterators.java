@@ -18,27 +18,59 @@ package com.alibaba.polardbx.optimizer.partition.datatype.iterator;
 
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.*;
 
 public class PartitionFieldIterators {
-    public static PartitionFieldIterator getIterator(DataType fieldType, MySQLIntervalType intervalType) {
+    public static PartitionFieldIterator getIterator(DataType fieldType, MySQLIntervalType intervalType,
+                                                     PartitionIntFunction partitionIntFunction) {
         if (intervalType == null) {
-            return new SimpleInIterator(fieldType);
+            if (DataTypeUtil.equalsSemantically(fieldType, DataTypes.DecimalType)) {
+                return new DecimalInIterator(fieldType);
+            } else {
+                return new SimpleInIterator(fieldType);
+            }
+        } else if (intervalType == MySQLIntervalType.INTERVAL_SECOND) {
+            if (partitionIntFunction instanceof ToSecondsPartitionIntFunction) {
+                return new SecondIterator(fieldType);
+            }
+        } else if (intervalType == MySQLIntervalType.INTERVAL_DAY) {
+            if (partitionIntFunction instanceof DayOfMonthPartitionIntFunction) {
+                return new DayIterator(fieldType);
+            } else if (partitionIntFunction instanceof DayOfWeekPartitionIntFunction) {
+                return new DayOfWeekIterator(fieldType);
+            } else if (partitionIntFunction instanceof DayOfYearPartitionIntFunction) {
+                return new DayOfYearIterator(fieldType);
+            } else if (partitionIntFunction instanceof ToDaysPartitionIntFunction) {
+                return new ToDaysIterator(fieldType);
+            }
+        } else if (intervalType == MySQLIntervalType.INTERVAL_WEEK) {
+            if (partitionIntFunction instanceof ToWeeksPartitionIntFunction) {
+                return new ToWeeksIterator(fieldType);
+            } else if (partitionIntFunction instanceof WeekOfYearPartitionIntFunction) {
+                return new WeekOfYearIterator(fieldType);
+            }
+        } else if (intervalType == MySQLIntervalType.INTERVAL_MONTH) {
+            if (partitionIntFunction instanceof MonthPartitionIntFunction) {
+                return new MonthIterator(fieldType);
+            } else if (partitionIntFunction instanceof ToMonthsPartitionIntFunction) {
+                return new ToMonthsIterator(fieldType);
+            }
+        } else if (intervalType == MySQLIntervalType.INTERVAL_YEAR) {
+            if (partitionIntFunction instanceof YearPartitionIntFunction) {
+                return new YearIterator(fieldType);
+            }
         }
-        switch (intervalType) {
-        case INTERVAL_MONTH:
-            return new MonthIterator(fieldType);
-        case INTERVAL_DAY:
-            return new DayIterator(fieldType);
-        case INTERVAL_YEAR:
-            return new YearIterator(fieldType);
-        case INTERVAL_SECOND:
-            return new SecondIterator(fieldType);
-        default:
-            return null;
-        }
+
+        return null;
     }
 
     public static PartitionFieldIterator getIterator(DataType fieldType) {
-        return new SimpleInIterator(fieldType);
+        if (DataTypeUtil.equalsSemantically(fieldType, DataTypes.DecimalType)) {
+            return new DecimalInIterator(fieldType);
+        } else {
+            return new SimpleInIterator(fieldType);
+        }
     }
 }

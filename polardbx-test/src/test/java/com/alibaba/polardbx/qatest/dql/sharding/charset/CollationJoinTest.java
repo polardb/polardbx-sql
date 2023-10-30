@@ -29,7 +29,6 @@ import java.util.List;
  * inner join collation_test b
  * where a.v_utf8mb4_general_ci = b.v_utf8mb4_general_ci;
  */
-@Ignore
 
 public class CollationJoinTest extends CharsetTestBase {
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
@@ -50,6 +49,31 @@ public class CollationJoinTest extends CharsetTestBase {
         testJoin(gbkStrings, COL_GBK_CHINESE_CI);
     }
 
+    // gb18030_chinese_ci
+    @Test
+    public void testGB18030_CHINESE_CI() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testJoin(gbkStrings, COL_GB18030_CHINESE_CI);
+    }
+
+    // gb18030_bin
+    @Test
+    public void testGB18030_bin() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testJoin(gbkStrings, COL_GB18030_BIN);
+    }
+
+    // gb18030_unicode_520_ci
+    @Ignore
+    @Test
+    public void testGB18030_UNICODE_520_CI() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testJoin(gbkStrings, COL_GB18030_UNICODE_520_CI);
+    }
+
     // utf8mb4_general_ci
     @Test
     public void testUTF8MB4_GENERAL_CI() {
@@ -64,6 +88,14 @@ public class CollationJoinTest extends CharsetTestBase {
         List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
 
         testJoin(utf8Strings, COL_UTF8MB4_BIN);
+    }
+
+    // utf8mb4_unicode_520_ci
+    @Test
+    public void testUTF8MB4_UNICODE_520_CI() {
+        List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testJoin(utf8Strings, COL_UTF8MB4_UNICODE_520_CI);
     }
 
     // utf8_general_ci

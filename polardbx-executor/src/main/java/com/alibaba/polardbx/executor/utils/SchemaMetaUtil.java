@@ -26,7 +26,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.misc.SchemaInfoCleaner;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
@@ -71,8 +71,8 @@ public class SchemaMetaUtil {
             String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
             MetaDbConfigManager.getInstance().unregister(tableListDataId, metaDbConn);
 
-            List<TablesExtRecord> records = tableInfoManager.queryTableExts(schemaName);
-            for (TablesExtRecord record : records) {
+            List<TablesRecord> records = tableInfoManager.queryTables(schemaName);
+            for (TablesRecord record : records) {
                 String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, record.tableName);
                 MetaDbConfigManager.getInstance().unbindListener(tableDataId);
                 MetaDbConfigManager.getInstance().unregister(tableDataId, metaDbConn);
@@ -138,4 +138,5 @@ public class SchemaMetaUtil {
         }
         return executorContext.getStorageInfoManager().supportsHyperLogLog();
     }
+
 }

@@ -22,7 +22,7 @@ import java.util.Locale;
  * @author fangwu
  */
 public enum Module {
-    SPM, STATISTICS, SCHEDULE_JOB, MODULE_LOG, UNKNOWN, OSS;
+    SPM, STATISTICS, SCHEDULE_JOB, MODULE_LOG, UNKNOWN, OSS, TRX, OPTIMIZER;
 
     private ModuleInfo moduleInfo;
 

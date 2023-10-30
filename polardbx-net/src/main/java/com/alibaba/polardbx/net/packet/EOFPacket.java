@@ -27,11 +27,11 @@ import com.alibaba.polardbx.net.util.MySQLMessage;
  * <pre>
  * Bytes                 Name
  * -----                 ----
- * 1                     field_count, always = 0xfe
+ * 1                     header, always = 0xfe
  * 2                     warning_count
  * 2                     Status Flags
  *
- * @see http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol#EOF_Packet
+ * @see https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_eof_packet.html
  * </pre>
  *
  * @author xianmao.hexm 2010-7-16 上午10:55:53
@@ -39,9 +39,9 @@ import com.alibaba.polardbx.net.util.MySQLMessage;
 public class EOFPacket extends MySQLPacket {
 
     public static final int PACKET_LEN = 5; // 1+2+2;
-    public static final byte FIELD_COUNT = (byte) 0xfe;
+    public static final byte EOF_HEADER = (byte) 0xfe;
 
-    public byte fieldCount = FIELD_COUNT;
+    public byte header = EOF_HEADER;
     public int warningCount;
     public int status = SERVER_STATUS_AUTOCOMMIT;
 
@@ -49,12 +49,21 @@ public class EOFPacket extends MySQLPacket {
         MySQLMessage mm = new MySQLMessage(data);
         packetLength = mm.readUB3();
         packetId = mm.read();
-        fieldCount = mm.read();
+        header = mm.read();
         warningCount = mm.readUB2();
         status = mm.readUB2();
     }
 
     public IPacketOutputProxy write(IPacketOutputProxy proxy) {
+        if (proxy.getConnection().isEofDeprecated()) {
+            // Use Ok packet instead of EOF
+            OkPacket ok = new OkPacket(true);
+            ok.packetId = packetId;
+            ok.serverStatus = status;
+            ok.write(proxy);
+            return proxy;
+        }
+
         proxy.packetBegin();
 
         int size = getPacketLength();
@@ -62,7 +71,7 @@ public class EOFPacket extends MySQLPacket {
         proxy.writeUB3(size);
         proxy.write(packetId);
 
-        proxy.write(fieldCount);
+        proxy.write(header);
         proxy.writeUB2(warningCount);
         proxy.writeUB2(status);
 

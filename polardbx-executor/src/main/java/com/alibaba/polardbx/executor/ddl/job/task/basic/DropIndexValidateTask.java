@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.job.validator.ForeignKeyValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -44,6 +45,8 @@ public class DropIndexValidateTask extends BaseValidateTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
+        ForeignKeyValidator.validateDropReferredTableFkIndex(
+            executionContext.getSchemaManager(schemaName).getTable(logicalTableName), indexName);
         if (tableGroupConfig != null) {
             TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
         }

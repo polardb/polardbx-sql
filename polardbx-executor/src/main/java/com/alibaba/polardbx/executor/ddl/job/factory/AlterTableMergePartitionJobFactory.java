@@ -26,11 +26,13 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddM
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
@@ -41,7 +43,6 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +59,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
                                               Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                               Map<String, Map<String, Set<String>>> targetTablesTopology,
                                               Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                              Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                              Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                               ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -174,8 +175,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
                 preparedData.getTargetPhysicalGroups());
 
         SubJobTask subJobMoveTableToNewGroup =
-            new SubJobTask(schemaName, String.format("alter table %s set tablegroup=''", preparedData.getTableName()),
-                null);
+            new SubJobTask(schemaName, String.format(SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
         SubJobTask subJobSplitTable = new SubJobTask(schemaName, preparedData.getSourceSql(), null);
         subJobMoveTableToNewGroup.setParentAcquireResource(true);
         subJobSplitTable.setParentAcquireResource(true);
@@ -205,7 +205,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
             .getTableGroupConfigByName(alterTableMergePartitionPreparedData.getTableGroupName());
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
-        for (String mergePartitionName : alterTableMergePartitionPreparedData.getOldPartitionNames()) {
+        for (String mergePartitionName : alterTableMergePartitionPreparedData.getOldPartitionGroupNames()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(mergePartitionName)) {
                     outdatedPartitionGroupId.add(record.id);
@@ -216,10 +216,10 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
         List<String> targetDbList = new ArrayList<>();
         int targetDbCnt = alterTableMergePartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
         List<String> newPartitions = new ArrayList<>();
-        for (int i = 0; i < alterTableMergePartitionPreparedData.getNewPartitionNames().size(); i++) {
+        for (int i = 0; i < alterTableMergePartitionPreparedData.getNewPartitionGroupNames().size(); i++) {
             targetDbList.add(alterTableMergePartitionPreparedData.getTargetGroupDetailInfoExRecords()
                 .get(i % targetDbCnt).phyDbName);
-            newPartitions.add(alterTableMergePartitionPreparedData.getNewPartitionNames().get(i));
+            newPartitions.add(alterTableMergePartitionPreparedData.getNewPartitionGroupNames().get(i));
         }
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
@@ -275,7 +275,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
             alterTableMergePartitionBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableMergePartitionBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableMergePartitionBuilder.getOrderedTargetTablesLocations();
 
         return new AlterTableMergePartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
@@ -283,11 +283,18 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
             orderedTargetTablesLocations, executionContext).create();
     }
 
+    @Override
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
         EmptyTask emptyTask = new EmptyTask(schemaName);
-        AlterTableMergePartitionSubTaskJobFactory subTaskJobFactory =
-            new AlterTableMergePartitionSubTaskJobFactory(ddl, (AlterTableMergePartitionPreparedData) preparedData,
+        String logicalTableName = preparedData.getTableName();
+        TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+        final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
+
+        AlterTableGroupSubTaskJobFactory subTaskJobFactory;
+        if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
+            subTaskJobFactory = new AlterTableMergePartitionChangeSetSubJobFactory(ddl,
+                (AlterTableMergePartitionPreparedData) preparedData,
                 tablesPrepareData.get(preparedData.getTableName()),
                 newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
                 tablesTopologyMap.get(preparedData.getTableName()),
@@ -295,6 +302,18 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
                 sourceTablesTopology.get(preparedData.getTableName()),
                 orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
                 taskType, executionContext);
+        } else {
+            subTaskJobFactory =
+                new AlterTableMergePartitionSubTaskJobFactory(ddl, (AlterTableMergePartitionPreparedData) preparedData,
+                    tablesPrepareData.get(preparedData.getTableName()),
+                    newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
+                    tablesTopologyMap.get(preparedData.getTableName()),
+                    targetTablesTopology.get(preparedData.getTableName()),
+                    sourceTablesTopology.get(preparedData.getTableName()),
+                    orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
+                    taskType, executionContext);
+        }
+
         ExecutableDdlJob subTask = subTaskJobFactory.create();
         executableDdlJob.combineTasks(subTask);
         executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());

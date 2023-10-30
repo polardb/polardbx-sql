@@ -54,7 +54,19 @@ public class SqlRebalance extends SqlDdl {
     public final static String OPTION_EXPLAIN = "EXPLAIN";
     public final static String OPTION_MAX_ACTIONS = "MAX_ACTIONS";
     public final static String OPTION_MAX_SIZE = "MAX_SIZE";
+
+    public final static String OPTION_MAX_TASK_UNIT_ROWS = "MAX_TASK_UNIT_ROWS";
+
+    public final static String OPTION_MAX_TASK_UNIT_SIZE = "MAX_TASK_UNIT_SIZE";
+
+    public final static String OPTION_SHUFFLE_DATA_DIST = "SHUFFLE_DATA_DIST";
+
+    public final static String OPTION_BENCHMARK_CPU = "BENCHMARK_CPU";
+
+    public final static String OPTION_SOLVE_LEVEL = "SOLVE_LEVEL";
+
     public final static String OPTION_DRAIN_NODE = "DRAIN_NODE";
+    public final static String OPTION_DRAIN_STORAGE_POOL = "DRAIN_STORAGE_POOL";
     public final static String OPTION_ASYNC = "async";
     public final static String OPTION_DEBUG = "debug";
     public final static String OPTION_DISK_INFO = "disk_info";
@@ -67,12 +79,18 @@ public class SqlRebalance extends SqlDdl {
     public static final String POLICY_DRAIN_NODE = "drain_node";
     public static final String POLICY_BALANCE_GROUP = "balance_group";
     public static final String POLICY_DATA_BALANCE = "data_balance";
+    public static final String POLICY_PARTITION_BALANCE = "partition_balance";
+
+    public static final String POLICY_AUTO_SPLIT_FOR_PARTITION_BALANCE = "auto_split_for_partition_balance";
+
     public static final List<String> ALL_POLICIES = Arrays.asList(
         POLICY_SPLIT_PARTITION,
         POLICY_MERGE_PARTITION,
         POLICY_DRAIN_NODE,
         POLICY_BALANCE_GROUP,
-        POLICY_DATA_BALANCE
+        POLICY_DATA_BALANCE,
+        POLICY_PARTITION_BALANCE,
+        POLICY_AUTO_SPLIT_FOR_PARTITION_BALANCE
     );
 
     /**
@@ -81,6 +99,20 @@ public class SqlRebalance extends SqlDdl {
     private int maxActions;
     private int maxPartitionSize;
 
+    private int maxTaskUnitRows;
+
+    private int maxTaskUnitSize;
+
+    private int shuffleDataDist;
+
+    private int benchmarkCPU;
+
+    public String getSolveLevel() {
+        return solveLevel;
+    }
+
+    private String solveLevel = "";
+
     /**
      * Option values
      */
@@ -88,11 +120,14 @@ public class SqlRebalance extends SqlDdl {
     private String policy;
     private SqlNode tableName;
     private SqlNode tableGroupName;
+
+    private SqlNode storagePoolName;
     private boolean explain = false;
     private boolean async = true;
     private boolean debug = false;
     private String diskInfo;
     private String drainNode;
+    private String drainStoragePool = "";
     private boolean logicalDdl = false;
 
     public SqlRebalance(SqlParserPos pos, SqlNode tableName) {
@@ -137,6 +172,25 @@ public class SqlRebalance extends SqlDdl {
             validateValue(3, value);
             this.drainNode = ((SqlCharStringLiteral) value).getNlsString().getValue();
             this.policy = POLICY_DRAIN_NODE;
+        } else if (name.equalsIgnoreCase(OPTION_DRAIN_STORAGE_POOL)){
+            validateValue(3, value);
+            this.drainStoragePool = ((SqlCharStringLiteral) value).getNlsString().getValue();
+        } else if (name.equalsIgnoreCase(OPTION_MAX_TASK_UNIT_ROWS)) {
+            validateValue(1, value);
+            this.maxTaskUnitRows = ((SqlLiteral) value).intValue(false);
+        } else if (name.equalsIgnoreCase(OPTION_MAX_TASK_UNIT_SIZE)) {
+            validateValue(1, value);
+            this.maxTaskUnitSize = ((SqlLiteral) value).intValue(false);
+        } else if (name.equalsIgnoreCase(OPTION_SHUFFLE_DATA_DIST)) {
+            validateValue(1, value);
+            this.shuffleDataDist = ((SqlLiteral) value).intValue(false);
+        } else if (name.equalsIgnoreCase(OPTION_BENCHMARK_CPU)) {
+            validateValue(1, value);
+            this.benchmarkCPU = ((SqlLiteral) value).intValue(false);
+        } else if (name.equalsIgnoreCase(OPTION_SOLVE_LEVEL)) {
+            validateValue(3, value);
+            this.solveLevel = ((SqlCharStringLiteral) value).getNlsString().getValue();
+
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, name + " not supported");
         }
@@ -156,7 +210,7 @@ public class SqlRebalance extends SqlDdl {
                 break;
             }
         } catch (Exception ex) {
-            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG,  " not supported value " + value.toString());
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, " not supported value " + value.toString());
         }
     }
 
@@ -168,6 +222,16 @@ public class SqlRebalance extends SqlDdl {
     public void setRebalanceTableGroup(SqlNode tableGroupName) {
         this.target = RebalanceTarget.TABLEGROUP;
         this.tableGroupName = tableGroupName;
+    }
+
+    public void setRebalanceTenantDatabase(SqlNode storagePoolName){
+        this.target = RebalanceTarget.TENANT_DB;
+        this.storagePoolName = storagePoolName;
+    }
+
+    public void setRebalanceTenant(SqlNode storagePoolName){
+        this.target = RebalanceTarget.TENANT;
+        this.storagePoolName = storagePoolName;
     }
 
     public void setRebalanceDatabase() {
@@ -190,8 +254,16 @@ public class SqlRebalance extends SqlDdl {
         return this.target.equals(RebalanceTarget.DATABASE);
     }
 
+    public boolean isRebalanceTenant(){
+        return this.target.equals(RebalanceTarget.TENANT);
+    }
+
     public boolean isRebalanceTableGroup() {
         return this.target.equals(RebalanceTarget.TABLEGROUP);
+    }
+
+    public boolean isRebalaceTenantDb(){
+        return this.target.equals(RebalanceTarget.TENANT_DB);
     }
 
     @Override
@@ -209,9 +281,15 @@ public class SqlRebalance extends SqlDdl {
             writer.keyword("DATABASE");
         } else if (this.target.equals(RebalanceTarget.CLUSTER)) {
             writer.keyword("CLUSTER");
-        } else if(this.target.equals(RebalanceTarget.TABLEGROUP)){
+        } else if (this.target.equals(RebalanceTarget.TABLEGROUP)) {
             writer.keyword("TABLEGROUP");
             this.tableGroupName.unparse(writer, leftPrec, rightPrec);
+        } else if (this.target.equals(RebalanceTarget.TENANT_DB)){
+            writer.keyword("TENANTDB");
+            this.storagePoolName.unparse(writer, leftPrec, rightPrec);
+        } else if (this.target.equals(RebalanceTarget.TENANT)) {
+            writer.keyword("TENANT");
+            this.storagePoolName.unparse(writer, leftPrec, rightPrec);
         }
 
         if (this.maxActions != 0) {
@@ -221,6 +299,9 @@ public class SqlRebalance extends SqlDdl {
 
         if (TStringUtil.isNotBlank(this.drainNode)) {
             writer.print(" drain_node=" + TStringUtil.quoteString(this.drainNode));
+        }
+        if (TStringUtil.isNotBlank(this.drainStoragePool)){
+            writer.print(" drain_storage_pool="  + TStringUtil.quoteString(this.drainStoragePool));
         }
         if (TStringUtil.isNotBlank(this.policy)) {
             writer.print(" POLICY=" + TStringUtil.quoteString(this.policy));
@@ -247,6 +328,10 @@ public class SqlRebalance extends SqlDdl {
     @Override
     public SqlKind getKind() {
         return SqlKind.REBALANCE;
+    }
+
+    public int getBenchmarkCPU() {
+        return benchmarkCPU;
     }
 
     public static class SqlRebalanceOperator extends SqlSpecialOperator {

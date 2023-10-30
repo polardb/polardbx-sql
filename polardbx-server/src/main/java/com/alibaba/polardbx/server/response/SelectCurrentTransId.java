@@ -38,17 +38,16 @@ public class SelectCurrentTransId {
     private static final int FIELD_COUNT = 1;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         byte packetId = 0;
         header.packetId = ++packetId;
         fields[0] = PacketUtil.getField("CURRENT_TRANS_ID()", Fields.FIELD_TYPE_VAR_STRING);
         fields[0].packetId = ++packetId;
-        eof.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -58,15 +57,22 @@ public class SelectCurrentTransId {
         for (FieldPacket field : fields) {
             proxy = field.write(proxy);
         }
-        proxy = eof.write(proxy);
-        byte packetId = eof.packetId;
+
+        byte tmpPacketId = packetId;
+        // write eof
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
+
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
 
         try {
             if (c.getTddlConnection() == null) {
                 boolean ret = c.initTddlConnection();
                 if (!ret) {
-                    return;
+                    return true;
                 }
             }
             String txcId = getCurrentTransId(c);
@@ -76,16 +82,17 @@ public class SelectCurrentTransId {
         }
 
         // 需要处理异常
-        row.packetId = ++packetId;
+        row.packetId = ++tmpPacketId;
         proxy = row.write(proxy);
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
         proxy = lastEof.write(proxy);
 
         proxy.packetEnd();
+        return true;
     }
 
     private static String getCurrentTransId(ServerConnection c) throws SQLException {

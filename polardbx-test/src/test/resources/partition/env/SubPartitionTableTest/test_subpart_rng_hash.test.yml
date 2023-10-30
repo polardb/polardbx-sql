@@ -1,0 +1,266 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======== r-hash ===========
+## r-hash-tp
+drop table if exists r_h_tp;
+create table if not exists r_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp;
+
+## r-hash-tp2
+drop table if exists r_h_tp2;
+create table if not exists r_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(month(c))
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp2;
+
+## r-hash-tp3, hash with multi columns
+drop table if exists r_h_tp3;
+create table if not exists r_h_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp3;
+
+## r-hash-tp4, hash with multi columns, specify suppart name
+drop table if exists r_h_tp4;
+create table if not exists r_h_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+subpartitions 4
+(
+subpartition sp1 values less than(1),
+subpartition sp2 values less than(10),
+subpartition sp3 values less than(100),
+subpartition sp4 values less than(9223372036854775807)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table r_h_tp4;
+
+## r-hash-ntp, hash with multi columns
+drop table if exists r_h_ntp;
+create table if not exists r_h_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+(
+partition p0 values less than (2020) subpartitions 2,
+partition p1 values less than (2021) subpartitions 3,
+partition p2 values less than (maxvalue) subpartitions 4
+);
+show create table r_h_ntp;
+
+
+## r-hash-ntp2, hash with multi columns
+drop table if exists r_h_ntp2;
+create table if not exists r_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+(
+partition p0 values less than (2020) (
+subpartition sp1,
+subpartition sp2
+),
+partition p1 values less than (2022)(
+subpartition sp3,
+subpartition sp4,
+subpartition sp5
+),
+partition p2 values less than (maxvalue) (
+subpartition sp6,
+subpartition sp7,
+subpartition sp8,
+subpartition sp9
+)
+);
+show create table r_h_ntp2;
+
+##======== rc-hash ===========
+## r-hash-tp
+drop table if exists rc_h_tp;
+create table if not exists rc_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a)
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp;
+
+## rc-hash-tp2
+drop table if exists rc_h_tp2;
+create table if not exists rc_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(month(c))
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp2;
+
+## rc-hash-tp3, hash with multi columns
+drop table if exists rc_h_tp3;
+create table if not exists rc_h_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp3;
+
+## rc-hash-tp4, hash with multi columns, specify suppart name
+drop table if exists rc_h_tp4;
+create table if not exists rc_h_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+subpartitions 4
+(
+subpartition sp1 values less than(1),
+subpartition sp2 values less than(10),
+subpartition sp3 values less than(100),
+subpartition sp4 values less than(9223372036854775807)
+)
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_h_tp4;
+
+
+## rc-hash-ntp, hash with multi columns
+drop table if exists rc_h_ntp;
+create table if not exists rc_h_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+(
+partition p0 values less than ('2020-01-01','abc') subpartitions 1,
+partition p1 values less than ('2022-01-01','efg') subpartitions 2,
+partition p2 values less than (maxvalue, maxvalue) subpartitions 3
+);
+show create table rc_h_ntp;
+
+
+## r-hash-ntp2, hash with multi columns
+drop table if exists rc_h_ntp2;
+create table if not exists rc_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+(
+partition p0 values less than ('2020-01-01','abc') (
+subpartition sp1,
+subpartition sp2
+),
+partition p1 values less than ('2022-02-01','efg')(
+subpartition sp3,
+subpartition sp4,
+subpartition sp5
+),
+partition p2 values less than (maxvalue, maxvalue) (
+subpartition sp6,
+subpartition sp7,
+subpartition sp8,
+subpartition sp9
+)
+);
+show create table rc_h_ntp2;

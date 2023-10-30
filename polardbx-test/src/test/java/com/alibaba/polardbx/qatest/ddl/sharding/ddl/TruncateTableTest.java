@@ -612,4 +612,44 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
         checkGsi(tddlConnection, gsiName);
     }
+
+    @Test
+    public void testTableWithGeneratedColumn() {
+        if (crossSchema) {
+            return;
+        }
+
+        String tableName = schemaPrefix + testTableName + "_12";
+        String gsiName = schemaPrefix + gsiIndexTableName + "_12";
+        dropTableIfExists(tableName);
+        dropTableIfExists(gsiName);
+        dropTableIfExistsInMySql(tableName);
+
+        // create table
+        String createTable = "create table " + tableName
+            + " (a int,"
+            + " b int,"
+            + " c int as (a-b) logical,"
+            + " d int as (a+b) virtual,"
+            + "global index " + gsiName + "(c) dbpartition by hash(c)) dbpartition by hash(a)";
+        String createTableMySQL = "create table " + tableName
+            + " (a int,"
+            + " b int,"
+            + " c int as (a-b),"
+            + " d int as (a+b))";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableMySQL);
+
+        String insert = String.format("insert into %s(a,b) values (1,2),(3,4)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        String truncate = String.format("truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, truncate);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
 }

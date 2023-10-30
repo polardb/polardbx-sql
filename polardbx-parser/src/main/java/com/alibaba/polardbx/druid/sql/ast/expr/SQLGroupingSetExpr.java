@@ -40,7 +40,7 @@ public class SQLGroupingSetExpr extends SQLExprImpl implements SQLReplaceable {
     public List<SQLExpr> getParameters() {
         return parameters;
     }
-    
+
     public void addParameter(SQLExpr parameter) {
         if (parameter != null) {
             parameter.setParent(this);

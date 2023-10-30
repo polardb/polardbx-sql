@@ -34,7 +34,6 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -55,7 +54,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -80,11 +78,10 @@ public class ExplainStatisticsHandler {
 
     private final ExecutionContext executionContext;
     private final StatisticsContext statisticsContext;
-    private final ExecutionPlan executionPlan;
     private final String[] indent;
+
     public ExplainStatisticsHandler(ExecutionContext executionContext, ExecutionPlan executionPlan) {
         this.executionContext = executionContext;
-        this.executionPlan = executionPlan;
         statisticsContext = new StatisticsContext();
         indent = new String[4];
         indent[0] = "";
@@ -118,7 +115,7 @@ public class ExplainStatisticsHandler {
         Matcher m = p.matcher(originalSql);
         String result = m.replaceAll("");
         plan.append(indent[1]).append("- sql: |\n").append(indent[3]).
-            append(result.replace("\n"," "));
+            append(result.replace("\n", " "));
         plan.append("\n").append(indent[2]).append("plan: |").append("\n");
         statisticsContext.setSql(plan.toString());
     }
@@ -159,7 +156,7 @@ public class ExplainStatisticsHandler {
             // show create table result of full table name
             String sql = "show create table " + schemaName + "." + tableName + ";";
             ExecutionContext newExecutionContext = executionContext.copy();
-            newExecutionContext.setTestMode(false);
+            newExecutionContext.newStatement();
             ExecutionPlan plan = Planner.getInstance().plan(sql, newExecutionContext);
 
             Cursor cursor = null;
@@ -186,10 +183,11 @@ public class ExplainStatisticsHandler {
                                     ((MySqlKey) element).setComment(null);
                                 }
                             }
-                        Engine engine;
-                        if (Engine.isFileStore(engine = CBOUtil.getTableMeta(tableScan.getTable()).getEngine())) {
-                            create.setEngine(engine.name());
-                        }}
+                            Engine engine;
+                            if (Engine.isFileStore(engine = CBOUtil.getTableMeta(tableScan.getTable()).getEngine())) {
+                                create.setEngine(engine.name());
+                            }
+                        }
                         sb.append(statement.toString().replace("\n", " ")).append(";");
                     }
                     tableSchemas.append("\n").append(indent[1]).append(fullTableName).append(":\n")
@@ -225,14 +223,14 @@ public class ExplainStatisticsHandler {
                 }
                 //check row count
                 Set<String> tablesWithRowCount = new HashSet<>();
-                rs = conn.prepareStatement(checkRowCountSql(schema,schemaTables)).executeQuery();
+                rs = conn.prepareStatement(checkRowCountSql(schema, schemaTables)).executeQuery();
                 while (rs.next()) {
                     tablesWithRowCount.add(rs.getString("table_name"));
                 }
 
                 // table with full column statistics
                 Set<String> tablesWithColumn = new HashSet<>();
-                rs = conn.prepareStatement(checkColumnSql(schema,schemaTables)).executeQuery();
+                rs = conn.prepareStatement(checkColumnSql(schema, schemaTables)).executeQuery();
                 while (rs.next()) {
                     String tableName = rs.getString("table_name").toLowerCase();
                     int columnCount = rs.getInt("column_count");
@@ -264,7 +262,7 @@ public class ExplainStatisticsHandler {
                 }
 
                 //get row count
-                rs = conn.prepareStatement(getRowCountSql(schema,schemaTables)).executeQuery();
+                rs = conn.prepareStatement(getRowCountSql(schema, schemaTables)).executeQuery();
                 while (rs.next()) {
                     String tableName = rs.getString("table_name").toLowerCase();
                     long rowCount = rs.getLong("row_count");
@@ -279,7 +277,7 @@ public class ExplainStatisticsHandler {
                 }
 
                 //get column statistics
-                rs = conn.prepareStatement(getColumnSql(schema,schemaTables)).executeQuery();
+                rs = conn.prepareStatement(getColumnSql(schema, schemaTables)).executeQuery();
                 while (rs.next()) {
                     String tableName = rs.getString("table_name").toLowerCase();
                     String column = rs.getString("column_name").toLowerCase();
@@ -297,7 +295,8 @@ public class ExplainStatisticsHandler {
                                 append(column).append(".").append(mapEntry.getKey()).append(":\n")
                                 .append(indent[2]).append(mapEntry.getValue());
                         } else {
-                            columnInfo.append("\n").append(indent[1]).append(schema).append(".").append(tableName).append(".").
+                            columnInfo.append("\n").append(indent[1]).append(schema).append(".").append(tableName)
+                                .append(".").
                                 append(column).append(".").append(mapEntry.getKey()).append(":\n")
                                 .append(indent[2]).append(mapEntry.getValue());
                         }
@@ -306,7 +305,7 @@ public class ExplainStatisticsHandler {
                 }
 
                 // get composite cardinality, there is no such table in drds
-                rs = conn.prepareStatement(getCardinalitySql(schema,schemaTables)).executeQuery();
+                rs = conn.prepareStatement(getCardinalitySql(schema, schemaTables)).executeQuery();
                 while (rs.next()) {
                     String tableName = rs.getString("table_name").toLowerCase();
                     String columns = rs.getString("column_names").toLowerCase();
@@ -316,7 +315,8 @@ public class ExplainStatisticsHandler {
                             append(columns).append(".").append(COMPOSITE_CARDINALITY).append(":\n")
                             .append(indent[2]).append(cardinality);
                     } else {
-                        cardinalityInfo.append("\n").append(indent[1]).append(schema).append(".").append(tableName).append(".").
+                        cardinalityInfo.append("\n").append(indent[1]).append(schema).append(".").append(tableName)
+                                .append(".").
                             append(columns).append(".").append(COMPOSITE_CARDINALITY).append(":\n")
                             .append(indent[2]).append(cardinality);
                     }
@@ -339,24 +339,23 @@ public class ExplainStatisticsHandler {
     private void getConfig(Map<String, Set<String>> tableNames) {
         StringBuilder config = new StringBuilder("\n");
         // get cmd_extra kv
-        for (Map.Entry<String, Object> entry : executionContext.getExtraCmds().entrySet()) {
-            String key = entry.getKey();
+        for (String key : executionContext.getExtraCmds().keySet()) {
             if (executionContext.getDefaultExtraCmds() != null
                 && executionContext.getDefaultExtraCmds().containsKey(key)) {
                 config.append(indent[1]).append(key).append(":\n")
                     .append(indent[2]).append(executionContext.getDefaultExtraCmds().get(key)).append("\n");
             } else {
                 config.append(indent[1]).append(key).append(":\n")
-                    .append(indent[2]).append(entry.getValue()).append("\n");
+                    .append(indent[2]).append(executionContext.getExtraCmds().get(key)).append("\n");
             }
         }
         // it is assumed DEFAULT_SCHEMA is not used as any cmd_extra
         for (String schema : tableNames.keySet()) {
             if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
-                config.append(indent[1]).append(sameSchema(schema)? DEFAULT_SCHEMA:schema).append(".isNew:\n")
+                config.append(indent[1]).append(sameSchema(schema) ? DEFAULT_SCHEMA : schema).append(".isNew:\n")
                     .append(indent[2]).append(true).append("\n");
             } else {
-                config.append(indent[1]).append(sameSchema(schema)? DEFAULT_SCHEMA:schema).append(".isNew:\n")
+                config.append(indent[1]).append(sameSchema(schema) ? DEFAULT_SCHEMA : schema).append(".isNew:\n")
                     .append(indent[2]).append(false).append("\n");
             }
         }
@@ -376,7 +375,7 @@ public class ExplainStatisticsHandler {
                 }
                 String sql = "show topology " + schemaName + "." + tableName + ";";
                 ExecutionContext newExecutionContext = executionContext.copy();
-                newExecutionContext.setTestMode(false);
+                newExecutionContext.newStatement();
                 ExecutionPlan plan = Planner.getInstance().plan(sql, newExecutionContext);
                 Cursor cursor = null;
                 try {
@@ -397,7 +396,8 @@ public class ExplainStatisticsHandler {
 
             }
             if (countDB > 0) {
-                config.append(indent[1]).append(sameSchema(schemaName)? DEFAULT_SCHEMA: schemaName).append(".dbNumber:\n")
+                config.append(indent[1]).append(sameSchema(schemaName) ? DEFAULT_SCHEMA : schemaName)
+                    .append(".dbNumber:\n")
                     .append(indent[2]).append(countDB).append("\n");
             }
         }
@@ -415,11 +415,11 @@ public class ExplainStatisticsHandler {
             result.addRow(new Object[] {
 
                 "\n" + "SQL:\n" + statisticsContext.getSql()
-                    +"\n" + "DDL:" +  statisticsContext.getTableSchemas()
-                    +"\n" + "STATISTICS:" +statisticsContext.getRowCount()
+                    + "\n" + "DDL:" + statisticsContext.getTableSchemas()
+                    + "\n" + "STATISTICS:" + statisticsContext.getRowCount()
                     + statisticsContext.getColumnStatistics()
                     + statisticsContext.getCompositeCardinality()
-                    +"\n" + "CONFIG:" +  statisticsContext.getConfig(),
+                    + "\n" + "CONFIG:" + statisticsContext.getConfig(),
                 statisticsContext.getNeedAnalyze()
             });
         } else {
@@ -466,6 +466,7 @@ public class ExplainStatisticsHandler {
             + " where schema_name='" + schema + "' and table_name in ('"
             + String.join("','", tables) + "');";
     }
+
     class StatisticsContext {
         String sql;
         String tableSchemas;

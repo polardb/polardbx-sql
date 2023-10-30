@@ -50,22 +50,22 @@ a,b
 401,3000
 explain select * from t_ab_hash where a=99 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p3]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="99")
+LogicalView(tables="t_ab_hash[p3]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where a=100 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="100")
+LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where a=401 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p10]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="401")
+LogicalView(tables="t_ab_hash[p10]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where a=99 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p3]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="99")
+LogicalView(tables="t_ab_hash[p3]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where a=100 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="100")
+LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where a=401 order by a,b;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ab_hash[p10]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="401")
+LogicalView(tables="t_ab_hash[p10]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
 explain select * from t_ab_hash where (a,b)=(100,102);
 Logical ExecutionPlan
 LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")

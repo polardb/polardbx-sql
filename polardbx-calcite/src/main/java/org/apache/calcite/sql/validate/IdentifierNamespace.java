@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.sql.validate;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.SqlCall;
@@ -25,13 +27,10 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Pair;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import javax.annotation.Nullable;
 
 import static org.apache.calcite.util.Static.RESOURCE;
 
@@ -269,6 +268,10 @@ public class IdentifierNamespace extends AbstractNamespace {
       return modality == SqlModality.RELATION;
     }
     return table.supportsModality(modality);
+  }
+
+  public SqlValidatorNamespace getResolvedNamespace() {
+    return resolvedNamespace;
   }
 }
 

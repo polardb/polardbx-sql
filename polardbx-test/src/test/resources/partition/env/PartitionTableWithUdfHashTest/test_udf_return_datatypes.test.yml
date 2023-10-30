@@ -1,0 +1,39 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table uh_myf1bint2bint(c1 bigint not null)
+partition by udf_hash(myf1bint2bint(c1))
+partitions 2 (
+  partition p1 values less than(0),
+  partition p2 values less than(9223372036854775807)
+);
+show create table uh_myf1bint2bint;
+
+create table h_myf1bint2bint(c1 bigint not null)
+partition by hash(myf1bint2bint(c1))
+partitions 2;
+show create table h_myf1bint2bint;
+
+  ## error_msg: $# not allowed #$
+create table uh_myf1bint2var(c1 bigint not null)
+partition by udf_hash(myf1bint2var(c1))
+partitions 2 (
+partition p1 values less than(0),
+partition p2 values less than(9223372036854775807)
+);
+
+  ## error_msg: $# not allowed #$
+create table h_myf1bint2var(c1 bigint not null)
+partition by hash(myf1bint2var(c1))
+partitions 2;
+
+  ## error_msg: $# not allowed #$
+create table r_myf1bint2var(c1 bigint not null)
+partition by range(myf1bint2var(c1))
+( partition p1 values less than(maxvalue));
+
+  ## error_msg: $# not allowed #$
+create table l_myf1bint2var(c1 bigint not null)
+partition by list(myf1bint2var(c1))
+( partition p1 values in(default));
+
+

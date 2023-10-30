@@ -30,10 +30,6 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName SqlBaseline
- * @description
- * @Author zzy
- * @Date 2019/9/18 10:43
  */
 public class SqlBaseline extends SqlDal {
 
@@ -43,16 +39,19 @@ public class SqlBaseline extends SqlDal {
     private List<Long> baselineIds = new ArrayList<>();
 
     private SqlSelect select;
+    private SqlNode statement;
     private String sql;
     private String parameterizedSql;
     private String hint;
 
-    public SqlBaseline(SqlParserPos pos, String operation, List<Long> baselineIds, SqlSelect select) {
+    public SqlBaseline(SqlParserPos pos, String operation, List<Long> baselineIds, SqlSelect select,
+                       SqlNode statement) {
         super(pos);
         this.operands = new ArrayList<>(0);
         this.operation = operation;
         this.baselineIds.addAll(baselineIds);
         this.select = select;
+        this.statement = statement;
         this.operator = new SqlBaselineOperator(operation);
     }
 
@@ -88,7 +87,6 @@ public class SqlBaseline extends SqlDal {
     public void setHint(String hint) {
         this.hint = hint;
     }
-
 
     public String getSql() {
         return sql;
@@ -149,9 +147,11 @@ public class SqlBaseline extends SqlDal {
 
             if (baselineOp.equalsIgnoreCase("LIST")) {
                 columns.add(new RelDataTypeFieldImpl("BASELINE_ID", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-                columns.add(new RelDataTypeFieldImpl("PARAMETERIZED_SQL", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(
+                    new RelDataTypeFieldImpl("PARAMETERIZED_SQL", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
                 columns.add(new RelDataTypeFieldImpl("PLAN_ID", 2, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-                columns.add(new RelDataTypeFieldImpl("EXTERNALIZED_TYPE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(
+                    new RelDataTypeFieldImpl("EXTERNALIZED_TYPE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
                 columns.add(new RelDataTypeFieldImpl("FIXED", 4, typeFactory.createSqlType(SqlTypeName.TINYINT)));
                 columns.add(new RelDataTypeFieldImpl("ACCEPTED", 5, typeFactory.createSqlType(SqlTypeName.TINYINT)));
             } else {

@@ -40,10 +40,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory.MAX_HASH_TABLE_SIZE;
-import static com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory.MIN_HASH_TABLE_SIZE;
-import static com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory.convertFrom;
-
 public class HashGroupJoinExecutorFactory extends ExecutorFactory {
 
     private HashGroupJoin hashAggJoin;
@@ -90,17 +86,11 @@ public class HashGroupJoinExecutorFactory extends ExecutorFactory {
     private synchronized List<Executor> createAllExecutor(ExecutionContext context) {
         if (executors.isEmpty()) {
 
-            Integer expectedOutputRowCount = rowCount / (taskNumber * parallelism);
-            if (expectedOutputRowCount == null) {
-                expectedOutputRowCount = MIN_HASH_TABLE_SIZE;
-            } else if (expectedOutputRowCount > MAX_HASH_TABLE_SIZE) {
-                expectedOutputRowCount = MAX_HASH_TABLE_SIZE;
-            } else if (expectedOutputRowCount < MIN_HASH_TABLE_SIZE) {
-                expectedOutputRowCount = MIN_HASH_TABLE_SIZE;
-            }
+            int expectedOutputRowCount = rowCount / (taskNumber * parallelism);
+            int estimateHashTableSize = AggregateUtils.estimateHashTableSize(expectedOutputRowCount, context);
 
             ImmutableBitSet gp = hashAggJoin.getGroupSet();
-            int[] groups = convertFrom(gp);
+            int[] groups = AggregateUtils.convertBitSet(gp);
 
             for (int i = 0; i < parallelism; i++) {
                 final Executor outerInput = getInputs().get(0).createExecutor(context, i);
@@ -139,7 +129,7 @@ public class HashGroupJoinExecutorFactory extends ExecutorFactory {
                         maxOneRow,
                         joinKeys, otherCondition, null, groups, aggregators,
                         context,
-                        expectedOutputRowCount
+                        estimateHashTableSize
                     );
                 exec.setId(hashAggJoin.getRelatedId());
                 if (context.getRuntimeStatistics() != null) {

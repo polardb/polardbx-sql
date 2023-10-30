@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 
 /**
@@ -130,6 +131,11 @@ public class RepoSchemaManager extends AbstractLifecycle implements SchemaManage
             meta.setSchemaName(this.getTddlRuleManager().getTddlRule().getSchemaName());
             return meta;
         }
+    }
+
+    @Override
+    public Collection<TableMeta> getAllTables() {
+        throw new NotSupportException();
     }
 
     @Override

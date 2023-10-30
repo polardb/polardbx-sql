@@ -21,8 +21,12 @@ import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ConnectionStats;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ReadViewConn;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -49,25 +53,34 @@ public class DeferredConnection extends ReadViewConn {
     protected final boolean serverDiscards;
     protected final IConnection conn;
     /**
-     * The trace id of the last sql executed by this physical connection.
+     * For Auto-Savepoint.
      */
-    protected String traceId = null;
+    protected String autoSavepointMark = null;
+    public final static String INVALID_AUTO_SAVEPOINT = "INVALID";
 
     //    protected List<String> deferSqls;
     protected List<BytesSql> deferBytesSqls;
     protected int discardResults;
+    private final boolean xProtoOptForAutoSp;
 
     public DeferredConnection(IConnection conn, final boolean serverDiscards) {
         this.conn = conn;
         this.serverDiscards = serverDiscards;
+        this.xProtoOptForAutoSp = false;
     }
 
-    public String getTraceId() {
-        return traceId;
+    public DeferredConnection(IConnection conn, final boolean serverDiscards, boolean xProtoOptForAutoSp) {
+        this.conn = conn;
+        this.serverDiscards = serverDiscards;
+        this.xProtoOptForAutoSp = xProtoOptForAutoSp;
     }
 
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
+    public String getAutoSavepointMark() {
+        return autoSavepointMark;
+    }
+
+    public void setAutoSavepointMark(String autoSavepointMark) {
+        this.autoSavepointMark = autoSavepointMark;
     }
 
     @Override
@@ -253,7 +266,7 @@ public class DeferredConnection extends ReadViewConn {
 
     @Override
     public void close() throws SQLException {
-        traceId = null;
+        autoSavepointMark = null;
         super.close();
         conn.close();
     }
@@ -647,5 +660,53 @@ public class DeferredConnection extends ReadViewConn {
         } else {
             return conn;
         }
+    }
+
+    @Override
+    public void discard(Throwable t) {
+        if (conn != null) {
+            conn.discard(t);
+        }
+    }
+
+    public void setAutoSavepoint(String spName, String schemaName) throws SQLException {
+        if (isSupportXOptForAutoSp(schemaName)) {
+            this.flushUnsent();
+            this.unwrap(XConnection.class).handleAutoSavepoint(spName, PolarxExecPlan.AutoSp.Operation.SET, true);
+        } else {
+            this.executeLater("SAVEPOINT " + TStringUtil.backQuote(spName));
+        }
+    }
+
+    public void releaseAutoSavepoint(String spName, String schemaName, boolean ignoreResult) throws SQLException {
+        if (isSupportXOptForAutoSp(schemaName)) {
+            this.flushUnsent();
+            this.unwrap(XConnection.class)
+                .handleAutoSavepoint(spName, PolarxExecPlan.AutoSp.Operation.RELEASE, ignoreResult);
+        } else {
+            if (ignoreResult) {
+                this.executeLater("RELEASE SAVEPOINT " + TStringUtil.backQuote(spName));
+            } else {
+                try (Statement stmt = createStatement()) {
+                    stmt.execute("RELEASE SAVEPOINT " + TStringUtil.backQuote(spName));
+                }
+            }
+        }
+    }
+
+    public void rollbackAutoSavepoint(String spName, String schemaName) throws SQLException {
+        if (isSupportXOptForAutoSp(schemaName)) {
+            this.flushUnsent();
+            this.unwrap(XConnection.class).handleAutoSavepoint(spName, PolarxExecPlan.AutoSp.Operation.ROLLBACK, true);
+        } else {
+            this.executeLater("ROLLBACK TO SAVEPOINT " + TStringUtil.backQuote(spName));
+        }
+    }
+
+    private boolean isSupportXOptForAutoSp(String schemaName) throws SQLException {
+        return this.isWrapperFor(XConnection.class)
+            && xProtoOptForAutoSp
+            && ExecutorContext.getContext(schemaName).getStorageInfoManager().supportXOptForAutoSp()
+            && this.unwrap(XConnection.class).isXRPC();
     }
 }

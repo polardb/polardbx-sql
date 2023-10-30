@@ -3,6 +3,7 @@
 desc information_schema.storage;
 desc information_schema.storage_replicas;
 desc information_schema.full_storage;
+desc information_schema.storage_status;
 
 #select distinct storage_inst_id from information_schema.storage order by storage_inst_id;
 #select distinct storage_inst_id,replicas from information_schema.storage_replicas order by storage_inst_id,replicas;

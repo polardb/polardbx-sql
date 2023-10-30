@@ -81,7 +81,7 @@ public class MppMockConnection implements ITConnection {
     }
 
     @Override
-    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
+    public void setTrxPolicy(ITransactionPolicy trxPolicy, boolean check) {
         throw new UnsupportedOperationException();
     }
 

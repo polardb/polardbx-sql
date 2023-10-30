@@ -40,7 +40,7 @@ public class SelectExtractTraceId {
         header.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore, long traceId) {
+    public static boolean response(ServerConnection c, boolean hasMore, long traceId) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -51,10 +51,14 @@ public class SelectExtractTraceId {
         FieldPacket field = PacketUtil.getField("Extract_Trace_Id(" + traceId + ")", Fields.FIELD_TYPE_VAR_STRING);
         field.packetId = ++packetId;
         proxy = field.write(proxy);
+
         // write eof
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = ++packetId;
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++packetId;
+            proxy = eof.write(proxy);
+        }
+
         // write rows
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
         row.add(String.format("Timestamp: %s, Worker id: %d, Sequence: %s",
@@ -71,5 +75,6 @@ public class SelectExtractTraceId {
         proxy = lastEof.write(proxy);
         // post write
         proxy.packetEnd();
+        return true;
     }
 }

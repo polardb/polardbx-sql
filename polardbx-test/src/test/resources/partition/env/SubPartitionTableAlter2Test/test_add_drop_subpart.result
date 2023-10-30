@@ -1,0 +1,41 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `my_r_lc_ntp2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+(SUBPARTITION p1sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+SUBPARTITION p1sp2 VALUES IN ((3000,4000)) ENGINE = InnoDB),
+PARTITION p3 VALUES LESS THAN (738156)
+(SUBPARTITION p2sp4 VALUES IN ((1000,2000),(3000,4000)) ENGINE = InnoDB));
+## error_msg: $# not a subpartition #$
+alter table my_r_lc_ntp2 truncate subpartition p1;
+not a subpartition
+## error_msg: $# doesn't exist #$
+alter table my_r_lc_ntp2 drop subpartition p1;
+doesn't exist
+alter table my_r_lc_ntp2 drop subpartition p1sp2;
+alter table my_r_lc_ntp2 modify partition p3 add subpartition ( subpartition p3sp5 VALUES IN ((1001,2001),(3001,4001)) );
+show create table my_r_lc_ntp2;
+Table,Create Table
+my_r_lc_ntp2,CREATE TABLE `my_r_lc_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (738156)
+ (SUBPARTITION p2sp4 VALUES IN ((1000,2000),(3000,4000)) ENGINE = InnoDB,
+  SUBPARTITION p3sp5 VALUES IN ((1001,2001),(3001,4001)) ENGINE = InnoDB))

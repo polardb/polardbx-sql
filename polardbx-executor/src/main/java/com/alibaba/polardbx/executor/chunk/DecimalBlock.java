@@ -34,7 +34,6 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.INTEGERS_OFFS
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.IS_NEG_OFFSET;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.roundUp;
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
-import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * An implement of Decimal block mixed with fixed and variable length

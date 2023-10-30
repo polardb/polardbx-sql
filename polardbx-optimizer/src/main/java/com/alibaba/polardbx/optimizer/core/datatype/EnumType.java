@@ -18,8 +18,10 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import io.airlift.slice.Slice;
@@ -121,6 +123,9 @@ public class EnumType extends AbstractDataType<String> {
     }
 
     private String checkResult(String value) {
+        if (!InstConfUtil.getBool(ConnectionParams.STRICT_ENUM_CONVERT)) {
+            return value;
+        }
         if (value != null && enumValues.containsKey(value)) {
             return value;
         } else {

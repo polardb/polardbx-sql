@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
@@ -72,6 +73,8 @@ public class ParameterContextJSONTest {
         module1.addDeserializer(ParameterContext.class, new DefinedJsonSerde.ParameterContextDeserializer());
         module1.addSerializer(RawString.class, new DefinedJsonSerde.RawStringSerializer());
         module1.addDeserializer(RawString.class, new DefinedJsonSerde.RawStringDeserializer());
+        module1.addSerializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringSerializer());
+        module1.addDeserializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringDeserializer());
 
         objectMapper.registerModule(module1);
         objectMapper.registerModule(new JavaTimeModule());
@@ -98,6 +101,7 @@ public class ParameterContextJSONTest {
             new HashMap<>(),
             new HashSet<>(),
             new HashMap<>(),
+            new HashMap<>(),
             false,
             -1,
             new InternalTimeZone(TimeZone.getDefault(), "test"),
@@ -105,7 +109,8 @@ public class ParameterContextJSONTest {
             new HashMap<>(),
             false,
             false,
-            WorkloadType.TP);
+            WorkloadType.TP,
+            null);
 
         String json = objectMapper.writeValueAsString(sessionRepresentation);
         System.out.println(json);
@@ -159,6 +164,25 @@ public class ParameterContextJSONTest {
         System.out.println(json);
         RawString target = objectMapper.readValue(json, source.getClass());
         Assert.assertTrue(target.toString().equals(source.toString()));
+    }
+
+    @Test
+    public void testPruneRawStringListList() throws JsonProcessingException {
+        List<Object> objectList1 = Lists.newArrayList("123", 4.5f, "null", null);
+        List<Object> objectList2 = Lists.newArrayList("1234", 4.6f, "null", null);
+        List<Object> objectList3 = Lists.newArrayList("12345", 4.7f, "null", null);
+        List<List<Object>> objectListList = Lists.newArrayList(objectList1, objectList2, objectList3);
+        PruneRawString source = new PruneRawString(objectListList, PruneRawString.PRUNE_MODE.RANGE, 1, 2, null);
+        String json = objectMapper.writeValueAsString(source);
+        System.out.println(json);
+        PruneRawString target = objectMapper.readValue(json, source.getClass());
+        System.out.println(source.toString());
+        System.out.println(target.toString());
+        Assert.assertTrue(target.getObjList().size() == 1);
+        Assert.assertTrue(target.getObj(0, 0).equals("1234"));
+        Assert.assertTrue(target.getObj(0, 1).toString().equals("4.6"));
+        Assert.assertTrue(target.toString().equals(source.toString()));
+        Assert.assertTrue(target.buildRawString().equals(source.buildRawString()));
     }
 
     @Test

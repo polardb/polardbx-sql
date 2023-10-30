@@ -17,5 +17,5 @@
 package com.alibaba.polardbx.transaction;
 
 public enum TransactionType {
-    XA, TSO
+    XA, BED, TSO
 }

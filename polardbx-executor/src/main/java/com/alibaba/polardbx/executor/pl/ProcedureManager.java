@@ -92,7 +92,7 @@ public class ProcedureManager {
         return statement;
     }
 
-    private boolean notFound(String schema, String procedureName) {
+    public synchronized boolean notFound(String schema, String procedureName) {
         return !procedures.containsKey(schema) || !procedures.get(schema).containsKey(procedureName);
     }
 

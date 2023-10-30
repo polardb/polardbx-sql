@@ -58,20 +58,46 @@ public class InformationSchemaPartitions extends VirtualView {
             new RelDataTypeFieldImpl("SUBPARTITION_EXPRESSION", 10, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns
             .add(new RelDataTypeFieldImpl("PARTITION_DESCRIPTION", 11, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLE_ROWS", 12, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("AVG_ROW_LENGTH", 13, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("DATA_LENGTH", 14, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("MAX_DATA_LENGTH", 15, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("INDEX_LENGTH", 16, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("DATA_FREE", 17, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("CREATE_TIME", 18, typeFactory.createSqlType(SqlTypeName.DATETIME)));
-        columns.add(new RelDataTypeFieldImpl("UPDATE_TIME", 19, typeFactory.createSqlType(SqlTypeName.DATETIME)));
-        columns.add(new RelDataTypeFieldImpl("CHECK_TIME", 20, typeFactory.createSqlType(SqlTypeName.DATETIME)));
-        columns.add(new RelDataTypeFieldImpl("CHECKSUM", 21, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("PARTITION_COMMENT", 22, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("NODEGROUP", 23, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLESPACE_NAME", 24, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
+        /**
+         * New add column for information_schema.partitions of polardb-x
+         */
+        columns
+            .add(new RelDataTypeFieldImpl("SUBPARTITION_DESCRIPTION", 12,
+                typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
+        columns.add(new RelDataTypeFieldImpl("TABLE_ROWS", 13, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("AVG_ROW_LENGTH", 14, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("DATA_LENGTH", 15, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("MAX_DATA_LENGTH", 16, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("INDEX_LENGTH", 17, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
+        columns.add(new RelDataTypeFieldImpl("DATA_FREE", 18, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
+        columns.add(new RelDataTypeFieldImpl("CREATE_TIME", 19, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("UPDATE_TIME", 20, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("CHECK_TIME", 21, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("CHECKSUM", 22, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+
+        columns.add(new RelDataTypeFieldImpl("PARTITION_COMMENT", 23, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
+        columns.add(new RelDataTypeFieldImpl("NODEGROUP", 24, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLESPACE_NAME", 25, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
+    }
+
+    @Override
+    boolean indexableColumn(int i) {
+        // SCHEMA_NAME && LOGICAL_TABLE
+        return i == getTableSchemaIndex() || i == getTableNameIndex();
+    }
+
+    public int getTableSchemaIndex() {
+        return 1;
+    }
+
+    public int getTableNameIndex() {
+        return 2;
     }
 }

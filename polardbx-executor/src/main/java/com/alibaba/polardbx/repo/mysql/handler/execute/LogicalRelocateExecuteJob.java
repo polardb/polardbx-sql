@@ -16,16 +16,18 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.execute;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.executor.utils.RowSet;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.dml.BroadcastWriter;
@@ -38,6 +40,7 @@ import com.alibaba.polardbx.repo.mysql.handler.LogicalRelocateHandler;
 import com.google.common.util.concurrent.SettableFuture;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.lang.StringUtils;
 
@@ -71,22 +74,42 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
         final Map<Integer, DistinctWriter> primaryDistinctWriter = relocate.getPrimaryDistinctWriter();
         final Map<Integer, RelocateWriter> primaryRelocateWriter = relocate.getPrimaryRelocateWriter();
 
+        final boolean skipUnchangedRow =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW);
+
         for (Integer tableIndex : relocate.getSetColumnMetas().keySet()) {
             RowSet rowSet = new RowSet(values, returnColumns);
             DistinctWriter dw = primaryRelocateWriter.containsKey(tableIndex) ?
                 primaryRelocateWriter.get(tableIndex).getDeleteWriter() :
                 primaryDistinctWriter.get(tableIndex);
             List<List<Object>> distinctValues = rowSet.distinctRowSetWithoutNull(dw);
-            affectRows += distinctValues.size();
 
-            if (executionContext.getParamManager()
-                .getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW)) {
+            if (executionContext.isClientFoundRows()) {
+                affectRows += distinctValues.size();
+            }
+
+            final boolean useRowSet;
+            if (skipUnchangedRow && relocate.getModifySkOnlyMap().get(tableIndex)) {
                 rowSet = LogicalRelocateHandler.buildChangedRowSet(distinctValues, returnColumns,
                     relocate.getSetColumnTargetMappings().get(tableIndex),
                     relocate.getSetColumnSourceMappings().get(tableIndex),
                     relocate.getSetColumnMetas().get(tableIndex));
                 if (rowSet == null) {
                     continue;
+                }
+                useRowSet = true;
+            } else {
+                useRowSet = false;
+            }
+
+            // calculate affected rows by comparing all changed columns
+            if (!executionContext.isClientFoundRows()) {
+                // targetMap和sourceMap中只包含了更新的列，不包含 ON UPDATE TIMESTAMP 列，所以不会受自动更新列影响
+                final Mapping targetMap = relocate.getSetColumnTargetMappings().get(tableIndex);
+                final Mapping sourceMap = relocate.getSetColumnSourceMappings().get(tableIndex);
+                final List<ColumnMeta> metas = relocate.getSetColumnMetas().get(tableIndex);
+                for (List<Object> row : (useRowSet ? rowSet.getRows() : distinctValues)) {
+                    affectRows += identicalRow(row, targetMap, sourceMap, metas) ? 0 : 1;
                 }
             }
 
@@ -110,6 +133,15 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
 
     }
 
+    protected static boolean identicalRow(List<Object> row, Mapping setColumnTargetMapping,
+                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas) {
+        final List<Object> targets = Mappings.permute(row, setColumnTargetMapping);
+        final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
+        final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
+        final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
+        return sourceKey.equalsForUpdate(targetKey);
+    }
+
     private int executeRelocateWriter(RelocateWriter relocateWriter, RowSet rowSet) throws Exception {
         final ExecutionContext insertEc = executionContext.copy();
 
@@ -127,22 +159,27 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
                 if (usePartFieldChecker) {
                     final List<ColumnMeta> sourceColMetas =
                         Mappings.permute(rowSet.getMetas(), rw.getIdentifierKeySourceMapping());
-                    final List<ColumnMeta> targetColMetas =
-                        Mappings.permute(rowSet.getMetas(), rw.getIdentifierKeyTargetMapping());
+//                    final List<ColumnMeta> targetColMetas =
+//                        Mappings.permute(rowSet.getMetas(), rw.getIdentifierKeyTargetMapping());
 
                     try {
                         final NewGroupKey skSourceKey = new NewGroupKey(skSources,
                             sourceColMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()),
                             rw.getIdentifierKeyMetas(), true, executionContext);
                         final NewGroupKey skTargetKey = new NewGroupKey(skTargets,
-                            targetColMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()),
+                            skTargets.stream().map(DataTypeUtil::getTypeOfObject).collect(Collectors.toList()),
                             rw.getIdentifierKeyMetas(), true, executionContext);
 
                         return skSourceKey.equals(skTargetKey);
                     } catch (Throwable e) {
-                        // Maybe value can not be cast, just use DELETE + INSERT to be safe
-                        LoggerFactory.getLogger(LogicalRelocateExecuteJob.class)
-                            .warn("new sk checker failed, cause by " + e);
+                        if (!relocateWriter.printed &&
+                            executionContext.getParamManager().getBoolean(ConnectionParams.DML_PRINT_CHECKER_ERROR)) {
+                            // Maybe value can not be cast, just use DELETE + INSERT to be safe
+                            EventLogger.log(EventType.DML_ERROR,
+                                executionContext.getTraceId() + " new sk checker failed, cause by " + e);
+                            LoggerFactory.getLogger(LogicalRelocateExecuteJob.class).warn(e);
+                            relocateWriter.printed = true;
+                        }
                     }
                     return false;
                 } else {

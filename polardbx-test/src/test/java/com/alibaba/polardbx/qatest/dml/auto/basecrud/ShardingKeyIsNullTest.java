@@ -33,7 +33,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * 拆分建可以为空
  */
-@RunWith(Parameterized.class)
+
 public class ShardingKeyIsNullTest extends AutoCrudBasedLockTestCase {
 
 

@@ -29,6 +29,7 @@ import java.util.List;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.selectBaseOneTable;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 
+
 public class SqlShowTest extends ReadBaseTestCase {
 
     public SqlShowTest(String baseOneTableName) {

@@ -34,10 +34,10 @@ public enum SQLObjectType {
     GLOBAL("GLOBAL"), //
     XFLOW("XFLOW") // for odps
     ;
-    
+
     public final String name;
     public final String name_lcase;
-    
+
     SQLObjectType(String name) {
         this.name = name;
         this.name_lcase = name.toLowerCase();

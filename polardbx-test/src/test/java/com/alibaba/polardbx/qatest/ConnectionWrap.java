@@ -325,4 +325,7 @@ public class ConnectionWrap implements Connection {
         return connection.isWrapperFor(iface);
     }
 
+    public Connection getConnection() {
+        return connection;
+    }
 }

@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -44,6 +45,7 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import lombok.Value;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -51,6 +53,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -93,8 +96,26 @@ public class ColumnChecker {
     private final List<String> primaryKeys;
 
     private final Params params;
+    private final ConcurrentPolicy concurrentPolicy;
     PhyTableOperation selectPlan;
     private final ITransactionManager tm;
+
+    enum ConcurrentPolicy {
+        TABLE_CONCURRENT,
+        DB_CONCURRENT,
+        INSTANCE_CONCURRENT;
+
+        public static ConcurrentPolicy fromValue(String value) {
+            if (StringUtils.isEmpty(value)) {
+                return null;
+            }
+            try {
+                return ConcurrentPolicy.valueOf(value.toUpperCase());
+            } catch (Exception e) {
+                return null;
+            }
+        }
+    }
 
     public ColumnChecker(String schemaName, String tableName, String checkerColumn, String sourceColumn,
                          String targetColumn, boolean simpleChecker, Params params, ExecutionContext ec) {
@@ -114,6 +135,10 @@ public class ColumnChecker {
             builder.buildSelectForColumnCheck(tableMeta, primaryKeys, 1, checkerColumn, sourceColumn, targetColumn,
                 simpleChecker);
         this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
+        // by default, we use group concurrent
+        this.concurrentPolicy = Optional.ofNullable(
+                ConcurrentPolicy.fromValue(ec.getParamManager().getString(ConnectionParams.OMC_CHECKER_CONCURRENT_POLICY)))
+            .orElse(ConcurrentPolicy.INSTANCE_CONCURRENT);
     }
 
     public void checkInBackfill(ExecutionContext ec) {
@@ -126,36 +151,85 @@ public class ColumnChecker {
         final AtomicInteger startedTaskCount = new AtomicInteger(0);
         final CountDownLatch taskFinishBarrier = new CountDownLatch(taskCount);
         final AtomicInteger taskId = new AtomicInteger(0);
-        final List<FutureTask<Void>> futures = new ArrayList<>(taskCount);
+
+        // Group tasks
+        final List<List<Pair<String, String>>> taskGroups = new ArrayList<>();
+        switch (concurrentPolicy) {
+        case INSTANCE_CONCURRENT:
+            Map<String, List<Pair<String, String>>> taskByInstance = new HashMap<>();
+            for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
+                String dbIndex = entry.getKey();
+                TGroupDataSource groupDataSource =
+                    (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                        .getGroupExecutor(dbIndex).getDataSource();
+                String instanceId = groupDataSource.getMasterSourceAddress();
+                for (String tbIndex : entry.getValue()) {
+                    taskByInstance.computeIfAbsent(instanceId, k -> new ArrayList<>())
+                        .add(new Pair<>(dbIndex, tbIndex));
+                }
+            }
+
+            taskGroups.addAll(taskByInstance.values());
+            break;
+        case DB_CONCURRENT:
+            for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
+                List<Pair<String, String>> taskGroup = new ArrayList<>();
+                String dbIndex = entry.getKey();
+                for (String tbIndex : entry.getValue()) {
+                    taskGroup.add(new Pair<>(dbIndex, tbIndex));
+                }
+                taskGroups.add(taskGroup);
+            }
+            break;
+        case TABLE_CONCURRENT:
+            for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
+                String dbIndex = entry.getKey();
+                for (String tbIndex : entry.getValue()) {
+                    List<Pair<String, String>> taskGroup = new ArrayList<>();
+                    taskGroup.add(new Pair<>(dbIndex, tbIndex));
+                    taskGroups.add(new ArrayList<>(taskGroup));
+                }
+            }
+            break;
+        default:
+            break;
+        }
 
         // Use a bounded blocking queue to control the parallelism.
         final BlockingQueue<Object> blockingQueue =
             params.getParallelism() <= 0 ? null : new ArrayBlockingQueue<>((int) params.getParallelism());
-
-        for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
-            String dbIndex = entry.getKey();
-            for (String tbIndex : entry.getValue()) {
-                futures.add(new FutureTask<>(() -> {
-                    int ret =
-                        startedTaskCount.getAndUpdate(origin -> (origin == TASK_CANCELLED) ? origin : (origin + 1));
-                    if (ret == TASK_CANCELLED) {
-                        return;
-                    }
-                    try {
-                        forEachPhyTable(dbIndex, tbIndex, ec);
-                    } finally {
-                        taskFinishBarrier.countDown();
-                        // Poll in finally to prevent dead lock on putting blockingQueue.
-                        if (blockingQueue != null) {
-                            blockingQueue.poll(); // Parallelism control notify.
+        Exception exception = null;
+        while (!taskGroups.isEmpty()) {
+            final List<FutureTask<Void>> futures = new ArrayList<>(taskCount);
+            for (List<Pair<String, String>> taskGroup : taskGroups) {
+                if (!taskGroup.isEmpty()) {
+                    Pair<String, String> dbTbIndex = taskGroup.get(taskGroup.size() - 1);
+                    taskGroup.remove(taskGroup.size() - 1);
+                    futures.add(new FutureTask<>(() -> {
+                        int ret =
+                            startedTaskCount.getAndUpdate(origin -> (origin == TASK_CANCELLED) ? origin : (origin + 1));
+                        if (ret == TASK_CANCELLED) {
+                            return;
                         }
-                    }
-                }, null));
+                        try {
+                            forEachPhyTable(dbTbIndex.getKey(), dbTbIndex.getValue(), ec);
+                        } finally {
+                            taskFinishBarrier.countDown();
+                            // Poll in finally to prevent dead lock on putting blockingQueue.
+                            if (blockingQueue != null) {
+                                blockingQueue.poll(); // Parallelism control notify.
+                            }
+                        }
+                    }, null));
+                }
+            }
+            taskGroups.removeIf(List::isEmpty);
+            Collections.shuffle(futures);
+            exception = Checker.runTasks(futures, blockingQueue, params.getParallelism());
+            if (exception != null) {
+                break;
             }
         }
-
-        Collections.shuffle(futures);
-        Exception exception = Checker.runTasks(futures, blockingQueue, params.getParallelism());
 
         // To ensure that all tasks have finished at this moment, otherwise we may leak resources in execution context,
         // such as memory pool.
@@ -190,19 +264,15 @@ public class ColumnChecker {
         params.put(1, PlannerUtils.buildParameterContextForTableName(tbIndex, 1));
 
         // Build plan
-//        final PhyTableOperation plan = new PhyTableOperation(this.selectPlan);
-//        plan.setDbIndex(dbIndex);
-//        plan.setTableNames(ImmutableList.of(ImmutableList.of(tbIndex)));
-//        plan.setParam(params);
-
         PhyTableOperation targetPhyOp = this.selectPlan;
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
         buildParams.setGroupName(dbIndex);
         buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(tbIndex)));
         buildParams.setDynamicParams(params);
-        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
-        Function<ExecutionContext, List<List<Pair<ParameterContext, byte[]>>>> select =  (ec) -> {
+        Function<ExecutionContext, List<List<Pair<ParameterContext, byte[]>>>> select = (ec) -> {
             final Cursor cursor = ExecutorHelper.executeByCursor(plan, ec, false);
             List<List<Pair<ParameterContext, byte[]>>> result = new ArrayList<>();
             try {
@@ -243,7 +313,7 @@ public class ColumnChecker {
      * @param retryCount Times of retried
      */
     protected static void errConsumer(PhyTableOperation plan, ExecutionContext ec,
-                                              TddlNestableRuntimeException e, int retryCount) {
+                                      TddlNestableRuntimeException e, int retryCount) {
         final String dbIndex = plan.getDbIndex();
         final String phyTable = plan.getTableNames().get(0).get(0);
 

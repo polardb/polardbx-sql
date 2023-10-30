@@ -28,6 +28,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ColumnBackFill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlCall;
 
 import java.util.List;
 import java.util.Map;
@@ -43,14 +44,16 @@ public class ColumnBackfillHandler extends HandlerCommon {
         ColumnBackFill backfill = (ColumnBackFill) logicalPlan;
         String schemaName = backfill.getSchemaName();
         String tableName = backfill.getTableName();
-        String sourceColumn = backfill.getSourceColumn();
-        String targetColumn = backfill.getTargetColumn();
+        List<SqlCall> sourceNodes = backfill.getSourceNodes();
+        List<String> targetColumns = backfill.getTargetColumns();
+        boolean forceCnEval = backfill.isForceCnEval();
 
         ExecutionContext executionContext = ec.copy();
         PhyTableOperationUtil.disableIntraGroupParallelism(schemaName, executionContext);
 
         ColumnBackfillExecutor executor =
-            ColumnBackfillExecutor.create(schemaName, tableName, sourceColumn, targetColumn, executionContext);
+            ColumnBackfillExecutor.create(schemaName, tableName, sourceNodes, targetColumns, forceCnEval,
+                executionContext);
         executor.loadBackfillMeta(executionContext);
 
         final AtomicInteger affectRows = new AtomicInteger();
@@ -62,7 +65,8 @@ public class ColumnBackfillHandler extends HandlerCommon {
             }
 
             @Override
-            public void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context, List<Map<Integer, ParameterContext>> mockResult) {
+            public void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context,
+                                List<Map<Integer, ParameterContext>> mockResult) {
                 // pass
             }
         });

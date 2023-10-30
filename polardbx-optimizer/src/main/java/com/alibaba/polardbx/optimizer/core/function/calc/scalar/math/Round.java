@@ -84,8 +84,11 @@ public class Round extends AbstractScalarFunction {
 
         boolean isArg0Unsigned =
             operandTypes.get(0) instanceof ULongType || arg0 instanceof UInt64 || arg0 instanceof BigInteger;
-        boolean isArg1Unsigned =
-            operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
+        boolean isArg1Unsigned = false;
+        if (operandTypes.size() > 1) {
+            isArg1Unsigned =
+                operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
+        }
 
         Object valueObj = isArg0Unsigned
             ? DataTypes.ULongType.convertFrom(arg0)
@@ -161,8 +164,11 @@ public class Round extends AbstractScalarFunction {
         Object arg1 = args[1];
 
         Double value = DataTypes.DoubleType.convertFrom(arg0);
-        boolean isArg1Unsigned =
-            operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
+        boolean isArg1Unsigned = false;
+        if (operandTypes.size() > 1) {
+            isArg1Unsigned =
+                operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
+        }
 
         Object decObj = isArg1Unsigned
             ? DataTypes.ULongType.convertFrom(arg1)

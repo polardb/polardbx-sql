@@ -18,21 +18,18 @@ package com.alibaba.polardbx.net.handler;
 
 import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.Commands;
-import com.alibaba.polardbx.ErrorCode;
-import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
-import com.alibaba.polardbx.net.packet.AuthPacket;
-import com.alibaba.polardbx.net.packet.AuthSwitchResponsePacket;
-import com.alibaba.polardbx.net.packet.QuitPacket;
-import com.alibaba.polardbx.common.audit.AuditAction;
-import com.alibaba.polardbx.net.util.AuditUtil;
-import com.taobao.tddl.common.privilege.EncrptPassword;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.packet.AuthPacket;
+import com.alibaba.polardbx.net.packet.AuthSwitchResponsePacket;
+import com.alibaba.polardbx.net.packet.QuitPacket;
+import com.taobao.tddl.common.privilege.EncrptPassword;
 
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -103,42 +100,7 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
         // succeed, for non-java driver, this action may cause failure because
         // of null schema
         setSchema(auth, isTrustedIp);
-
-        // check schema
-        switch (checkSchema(auth.database, auth.user, source.getHost(), isTrustedIp)) {
-        case ErrorCode.ER_BAD_DB_ERROR:
-            failure(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + auth.database + "'", null);
-            break;
-        case ErrorCode.ER_DBACCESS_DENIED_ERROR:
-            String s = "Access denied for user '" + auth.user + "'@'" + source.getHost() + "' to database '"
-                + auth.database + "'";
-            failure(ErrorCode.ER_DBACCESS_DENIED_ERROR, s, null);
-            break;
-        default:
-            success(auth, isTrustedIp);
-        }
-    }
-
-    private int checkSchema(String schema, String user, String host, boolean trustLogin) {
-        if (schema == null) {
-            return 0;
-        }
-
-        Privileges privileges = source.getPrivileges();
-        if (!privileges.schemaExists(schema)) {
-            return ErrorCode.ER_BAD_DB_ERROR;
-        }
-
-        if (trustLogin || ConfigDataMode.isFastMock()) {
-            return 0;
-        }
-
-        Set<String> schemas = privileges.getUserSchemas(user, host);
-        if (schemas != null && schemas.contains(schema)) {
-            return 0;
-        } else {
-            return ErrorCode.ER_DBACCESS_DENIED_ERROR;
-        }
+        checkSchemaPrivilege(isTrustedIp);
     }
 
     /**
@@ -270,35 +232,4 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
         }
     }
 
-    @Override
-    protected void success(AuthPacket auth, boolean trustLogin) {
-        source.setAuthenticated(true);
-        source.setTrustLogin(trustLogin);
-        source.setUser(auth.user);
-        source.setSchema(auth.database);
-        source.setAuthSchema(auth.database);
-        source.setCharsetIndex(auth.charsetIndex);
-        source.setClientFlags(auth.clientFlags);
-        source.setHandler(new FrontendCommandHandler(source));
-        source.addConnectionCount();
-        source.updateMDC();
-        if (logger.isInfoEnabled()) {
-            StringBuilder s = new StringBuilder();
-            s.append(source).append('\'').append(auth.user).append("' login success");
-            byte[] extra = auth.extra;
-            if (extra != null && extra.length > 0) {
-                s.append(",extra:").append(new String(extra));
-            }
-            logger.info(s.toString());
-        }
-        AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
-            AuditAction.LOGIN);
-        /**
-         * 表示server接受此链接，如果不接受压缩就报错，通过抓包看 不论压缩还是非压缩都是 Login
-         * Request(带clientFlags) + OK Packet Handshake
-         * packet返回强制不能压缩，否则php客户端不认，但mysql console可以
-         */
-        ByteBufferHolder buffer = source.allocate();
-        sendOk(buffer);
-    }
 }

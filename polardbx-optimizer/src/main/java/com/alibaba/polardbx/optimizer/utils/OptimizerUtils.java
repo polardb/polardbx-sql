@@ -19,7 +19,11 @@ package com.alibaba.polardbx.optimizer.utils;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.utils.ExecutorMode;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -37,15 +41,21 @@ import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Util;
 
 import java.text.ParseException;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 
 /**
  * @since 5.0.0
@@ -61,11 +71,12 @@ public class OptimizerUtils {
         }
     }
 
-    public static String buildInexprKey(Map<Integer, ParameterContext> currentParameter) {
+    public static String buildInExprKey(Map<Integer, ParameterContext> currentParameter) {
         StringBuilder key = new StringBuilder();
-        for (Map.Entry<Integer, ParameterContext> entry : currentParameter.entrySet()) {
-            if (entry.getValue().getValue() instanceof RawString) {
-                RawString rawString = (RawString) entry.getValue().getValue();
+        for (int i = 1; i <= currentParameter.size(); i++) {
+            ParameterContext pc = currentParameter.get(i);
+            if (pc != null && pc.getValue() instanceof RawString) {
+                RawString rawString = (RawString) pc.getValue();
                 key.append(rawString.size()).append(":");
             }
         }
@@ -77,11 +88,11 @@ public class OptimizerUtils {
         }
     }
 
-    public static String buildInexprKey(ExecutionContext ec) {
+    public static String buildInExprKey(ExecutionContext ec) {
         if (ec.getParams() == null) {
             return EMPTY_KEY;
         }
-        return buildInexprKey(ec.getParams().getCurrentParameter());
+        return buildInExprKey(ec.getParams().getCurrentParameter());
     }
 
     public static Date parseDate(String str, String[] parsePatterns, Locale locale) throws ParseException {
@@ -114,6 +125,9 @@ public class OptimizerUtils {
 
     public static Map<Integer, ParameterContext> buildParam(List<?> params, ExecutionContext executionContext) {
         Int2ObjectOpenHashMap<ParameterContext> newParam = new Int2ObjectOpenHashMap<>();
+        if (params == null) {
+            return newParam;
+        }
         for (int i = 0, j = 1; i < params.size(); i++, j++) {
             Object o = params.get(i);
             if (executionContext != null && executionContext.isExecutingPreparedStmt()) {
@@ -127,6 +141,34 @@ public class OptimizerUtils {
             newParam.put(j, pc);
         }
         return newParam;
+    }
+
+    /**
+     * Batch prepare 参数构建
+     */
+    public static List<Map<Integer, ParameterContext>> buildBatchParam(List<Object> params,
+                                                                       ExecutionContext executionContext) {
+        List<Map<Integer, ParameterContext>> batchParameters = new ArrayList<>();
+        for (Map<Integer, ParameterContext> oldMap : executionContext.getParams().getBatchParameters()) {
+            Map<Integer, ParameterContext> newMap = new HashMap<>();
+            for (int i = 0, j = 1; i < params.size(); i++, j++) {
+                if (params.get(i) instanceof PreparedParamRef) {
+                    PreparedParamRef preparedParamRef = (PreparedParamRef) params.get(i);
+                    int index = preparedParamRef.getIndex() + 1;
+                    ParameterContext oldCtx = oldMap.get(index);
+                    ParameterContext newCtx =
+                        new ParameterContext(oldCtx.getParameterMethod(), new Object[] {j, oldCtx.getValue()});
+                    newMap.put(j, newCtx);
+                } else {
+                    Object o = params.get(i);
+                    o = Planner.processSingleParam(i, o, executionContext);
+                    ParameterContext pc = new ParameterContext(getParameterMethod(o), new Object[] {j, o});
+                    newMap.put(j, pc);
+                }
+            }
+            batchParameters.add(newMap);
+        }
+        return batchParameters;
     }
 
     public static ParameterMethod getParameterMethod(Object v) {
@@ -150,6 +192,9 @@ public class OptimizerUtils {
         case REPLACE:
         case UPDATE:
         case DELETE:
+        case CREATE_MATERIALIZED_VIEW:
+        case DROP_MATERIALIZED_VIEW:
+        case REFRESH_MATERIALIZED_VIEW:
         case CREATE_VIEW:
         case DROP_VIEW:
         case CREATE_TABLE:
@@ -170,6 +215,8 @@ public class OptimizerUtils {
         case ALTER_RULE:
         case CREATE_DATABASE:
         case DROP_DATABASE:
+        case CREATE_JAVA_FUNCTION:
+        case DROP_JAVA_FUNCTION:
         case CHANGE_CONSENSUS_ROLE:
         case ALTER_SYSTEM_SET_CONFIG:
         case LOCK_TABLE:
@@ -202,6 +249,11 @@ public class OptimizerUtils {
         case DROP_JOINGROUP:
         case ALTER_JOINGROUP:
         case MERGE_TABLEGROUP:
+        case ALTER_DATABASE:
+        case CREATE_STORAGE_POOL:
+        case DROP_STORAGE_POOL:
+        case ALTER_STORAGE_POOL:
+        case INSPECT_INDEX:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {
@@ -403,4 +455,44 @@ public class OptimizerUtils {
         return new SubqueryFinder().run(rootRel);
     }
 
+    public static boolean allowMultipleReadConns(ExecutionContext context, LogicalView logicalView) {
+        boolean ret = useExplicitTransaction(context);
+        if (ret) {
+            boolean shareReadView = context.isShareReadView() && context.getTransaction().
+                getTransactionClass().isA(SUPPORT_SHARE_READVIEW_TRANSACTION);
+            if (!shareReadView && !context.isAutoCommit()) {
+                return false;
+            } else {
+                if (!isSelectQuery(context)) {
+                    return false;
+                }
+                if (logicalView != null) {
+                    return ((IDistributedTransaction) context.getTransaction()).allowMultipleReadConns()
+                        && logicalView.getLockMode() == SqlSelect.LockMode.UNDEF;
+                } else {
+                    return ((IDistributedTransaction) context.getTransaction()).allowMultipleReadConns();
+                }
+            }
+        } else {
+            return true;
+        }
+    }
+
+    public static boolean isSelectQuery(ExecutionContext context) {
+        if (context.getFinalPlan() == null || context.getFinalPlan().getAst() == null) {
+            return context.getSqlType() == SqlType.SELECT;
+        } else {
+            return context.getFinalPlan().getAst().getKind().belongsTo(SqlKind.QUERY);
+        }
+    }
+
+    public static boolean useExplicitTransaction(ExecutionContext context) {
+        //Autocommit is true, but the GSI must be in transaction.
+        boolean ret = context.getTransaction().getTransactionClass().isA(EXPLICIT_TRANSACTION);
+        return ret && ConfigDataMode.isMasterMode() && !isMppMode(context);
+    }
+
+    private static boolean isMppMode(ExecutionContext context) {
+        return context.getExecuteMode() == ExecutorMode.MPP;
+    }
 }

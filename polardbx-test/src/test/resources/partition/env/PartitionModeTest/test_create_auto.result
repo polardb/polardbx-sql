@@ -6,7 +6,7 @@ DEFAULT COLLATE = `utf8mb4_general_ci`
 mode='auto';
 show create database db_with_charset;
 Database,Create Database
-db_with_charset,CREATE DATABASE `db_with_charset` /* MODE = 'auto' */
+db_with_charset,CREATE DATABASE `db_with_charset` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
 CREATE TABLE `db_with_charset`.`hash_tbl_bigint` (
 `a` bigint(20) UNSIGNED NOT NULL,
 `b` bigint(20) UNSIGNED NOT NULL

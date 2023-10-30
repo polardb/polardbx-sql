@@ -27,6 +27,8 @@ import org.apache.calcite.sql.type.ReturnTypes;
  * Created by chuanqin on 17/4/10.
  */
 public class SqlSubStrFunction extends SqlFunction {
+    private int position;
+    private int length;
 
     public SqlSubStrFunction(String funcName) {
         super(funcName,
@@ -35,5 +37,29 @@ public class SqlSubStrFunction extends SqlFunction {
             InferTypes.FIRST_KNOWN,
             OperandTypes.VARIADIC,
             SqlFunctionCategory.STRING);
+    }
+
+    @Override
+    public Object clone() {
+        SqlSubStrFunction function = new SqlSubStrFunction(this.getName());
+        function.setPosition(this.position);
+        function.setLength(this.length);
+        return function;
+    }
+
+    public int getPosition() {
+        return position;
+    }
+
+    public void setPosition(int position) {
+        this.position = position;
+    }
+
+    public int getLength() {
+        return length;
+    }
+
+    public void setLength(int length) {
+        this.length = length;
     }
 }

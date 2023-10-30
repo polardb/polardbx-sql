@@ -46,7 +46,6 @@ public class DataSourceHolderTest {
         allowedReadLearnerIds.add("1");
         allowedReadLearnerIds.add("2");
         allowedReadLearnerIds.add("3");
-        StorageStatusManager.getInstance().allowedReadLearnerIds(allowedReadLearnerIds);
         master = Mockito.mock(TAtomDataSource.class);
 
         TAtomDataSource ob1 = Mockito.mock(TAtomDataSource.class);
@@ -66,7 +65,6 @@ public class DataSourceHolderTest {
     @After
     public void after() {
         StorageStatusManager.getInstance().setStorageStatus(new HashMap<>());
-        StorageStatusManager.getInstance().allowedReadLearnerIds(new HashSet<>());
     }
 
     @Test

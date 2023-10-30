@@ -17,13 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.util.GroupInfoUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -32,23 +28,17 @@ import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder;
-import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder.PhyTableShardResult;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.SingleTableInsert;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dml.ReplicationWriter;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
-import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Writer for INSERT or REPLACE on single table
@@ -89,14 +79,14 @@ public class ReplicateSingleInsertWriter extends SingleInsertWriter implements R
             return replicateRels;
         }
         assert tableMeta.getPartitionInfo().isSingleTable();
-        PartitionSpec partitionSpec = tableMeta.getNewPartitionInfo().getPartitionBy().getPartitions().get(0);
+        PartitionSpec partitionSpec = tableMeta.getNewPartitionInfo().getPartitionBy().getPhysicalPartitions().get(0);
         if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
             .canWrite(tableMeta, partitionSpec.getName()) && !ComplexTaskPlanUtils
             .isDeleteOnly(tableMeta, partitionSpec.getName())) {
             PartitionLocation location = partitionSpec.getLocation();
             String targetDbIndex = location.getGroupKey();
             String targetphyTb = location.getPhyTableName();
-            for (RelNode relNode:primaryRelNode) {
+            for (RelNode relNode : primaryRelNode) {
                 RelNode replicateRel;
                 if (relNode instanceof SingleTableOperation) {
                     assert primaryRelNode.size() == 1;
@@ -135,6 +125,7 @@ public class ReplicateSingleInsertWriter extends SingleInsertWriter implements R
         }
         return replicateRels;
     }
+
     @Override
     public TableMeta getTableMeta() {
         return tableMeta;

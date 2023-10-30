@@ -453,6 +453,40 @@ public class MySQLStandardTypeInference {
     };
 
     /**
+     * FROM_UNIXTIME(unix_timestamp[,format])
+     * <p>
+     * Returns a representation of unix_timestamp as a datetime or character string value.
+     * If format is omitted, this function returns a DATETIME value.
+     * If unix_timestamp is an integer, the fractional seconds precision of the DATETIME is zero.
+     * When unix_timestamp is a decimal value, the fractional seconds precision of the DATETIME is the same as the precision of the decimal value, up to a maximum of 6.
+     * When unix_timestamp is a floating point number, the fractional seconds precision of the datetime is 6.
+     * format is used to format the result in the same way as the format string used for the DATE_FORMAT() function. If format is supplied, the value returned is a VARCHAR.
+     */
+    public static final SqlReturnTypeInference FROM_UNIX_TIME_TYPE = new SqlReturnTypeInference() {
+        @Override
+        public RelDataType inferReturnType(SqlOperatorBinding opBinding) {
+            final RelDataTypeFactory typeFactory = opBinding.getTypeFactory();
+
+            if (opBinding.getOperandCount() == 2) {
+                return typeFactory.createSqlType(SqlTypeName.VARCHAR);
+            }
+
+            RelDataType operandType = opBinding.getOperandType(0);
+            int scale;
+            if (opBinding.isConstant(0)) {
+                scale = dynamicTemporalScale(operandType);
+            } else {
+                scale = operandType.getScale();
+            }
+
+            return typeFactory.createSqlType(
+                SqlTypeName.DATETIME,
+                typeFactory.getTypeSystem().getMaxPrecision(SqlTypeName.DATETIME),
+                scale);
+        }
+    };
+
+    /**
      * FROM_DAYS(N)
      * Given a day number N, returns a DATE value.
      * get data type with 0 scale.

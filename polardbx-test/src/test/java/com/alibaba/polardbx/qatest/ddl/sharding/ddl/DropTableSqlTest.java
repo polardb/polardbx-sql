@@ -31,6 +31,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.enableAsyncDDL;
 
+
 public class DropTableSqlTest extends AsyncDDLBaseNewDBTestCase {
 
     private List<Connection> phyConnectionList;

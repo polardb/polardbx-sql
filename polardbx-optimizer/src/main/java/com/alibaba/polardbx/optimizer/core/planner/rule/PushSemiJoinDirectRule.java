@@ -49,8 +49,8 @@ public class PushSemiJoinDirectRule extends PushSemiJoinRule {
      */
     @Override
     public boolean matches(RelOptRuleCall call) {
-        final LogicalView leftView = (LogicalView)call.rels[1];
-        final LogicalView rightView = (LogicalView)call.rels[2];
+        final LogicalView leftView = (LogicalView) call.rels[1];
+        final LogicalView rightView = (LogicalView) call.rels[2];
         if (leftView instanceof OSSTableScan || rightView instanceof OSSTableScan) {
             return false;
         }

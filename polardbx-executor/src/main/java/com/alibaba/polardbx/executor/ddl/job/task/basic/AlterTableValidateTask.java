@@ -18,11 +18,10 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
@@ -30,6 +29,7 @@ import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -39,6 +39,7 @@ import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlAddColumn;
+import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAddFullTextIndex;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddPrimaryKey;
@@ -49,14 +50,19 @@ import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlChangeColumn;
+import org.apache.calcite.sql.SqlColumnDeclaration;
+import org.apache.calcite.sql.SqlConvertToCharacterSet;
+import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDropColumn;
+import org.apache.calcite.sql.SqlDropForeignKey;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlModifyColumn;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -122,17 +128,27 @@ public class AlterTableValidateTask extends BaseValidateTask {
         SqlAlterTable sqlAlterTable = (SqlAlterTable) new FastsqlParser()
             .parse(stmt, executionContext)
             .get(0);
-        boolean allowAlterShardingKey =
-            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_ALTER_SHARD_KEY);
-        if (!allowAlterShardingKey) {
-            for (Map.Entry<SqlAlterTable.ColumnOpt, List<String>> entry : sqlAlterTable.getColumnOpts().entrySet()) {
-                final List<String> value = entry.getValue();
-                for (int i = 0; i < value.size(); i++) {
-                    final String s = value.get(i);
-                    checkModifyShardingKey(s);
-                }
+
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks();
+        Map<String, ForeignKeyData> referencedColumns = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (ForeignKeyData data : tableMeta.getReferencedForeignKeys().values()) {
+            for (String refColumn : data.refColumns) {
+                referencedColumns.put(refColumn, data);
             }
         }
+        Map<String, ForeignKeyData> referencingColumns = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (ForeignKeyData data : tableMeta.getForeignKeys().values()) {
+            for (String refColumn : data.columns) {
+                referencingColumns.put(refColumn, data);
+            }
+        }
+        Map<String, SqlDataTypeSpec.DrdsTypeName> columnsBeforeDdlType = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        tableMeta.getAllColumns().forEach(c -> columnsBeforeDdlType.put(c.getName(),
+            SqlDataTypeSpec.DrdsTypeName.from(c.getDataType().getStringSqlType().toUpperCase())));
+        Set<String> constraints = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        constraints.addAll(
+            tableMeta.getForeignKeys().values().stream().map(c -> c.constraint).collect(Collectors.toList()));
 
         Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> columnsBeforeDdl = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -158,19 +174,22 @@ public class AlterTableValidateTask extends BaseValidateTask {
         for (SqlAlterSpecification alterItem : sqlAlterTable.getAlters()) {
             switch (alterItem.getKind()) {
             case ADD_COLUMN:
-                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnNotExists(columns, ((SqlAddColumn) alterItem).getColName().getLastName());
                 if (((SqlAddColumn) alterItem).getAfterColumn() != null) {
                     checkColumnExists(columns, ((SqlAddColumn) alterItem).getAfterColumn().getLastName());
                 }
+                checkAddGeneratedColumnOnFk((SqlAddColumn) alterItem);
 
                 columns.add(((SqlAddColumn) alterItem).getColName().getLastName());
                 break;
 
             case DROP_COLUMN:
-                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 String columnName = ((SqlDropColumn) alterItem).getColName().getLastName();
                 checkColumnExists(columnsBeforeDdl, columnName);
+                checkModifyShardingKey(columnName);
+                if (checkForeignKey) {
+                    checkFkDropColumn(referencedColumns, referencingColumns, columnName);
+                }
                 if (existsPrimary) {
                     if (tableMeta.getPrimaryIndex().getKeyColumn(columnName) != null) {
                         throw new TddlRuntimeException(ErrorCode.ERR_DROP_PRIMARY_KEY);
@@ -180,28 +199,36 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case MODIFY_COLUMN:
-                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnExists(columnsBeforeDdl, ((SqlModifyColumn) alterItem).getColName().getLastName());
                 if (((SqlModifyColumn) alterItem).getAfterColumn() != null) {
                     checkColumnExists(columns, ((SqlModifyColumn) alterItem).getAfterColumn().getLastName());
                 }
+                checkFkModifyColumn(referencedColumns, referencingColumns, columnsBeforeDdlType,
+                    (SqlModifyColumn) alterItem);
+
                 break;
 
             case ALTER_COLUMN_DEFAULT_VAL:
-                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnExists(columnsBeforeDdl,
                     ((SqlAlterColumnDefaultVal) alterItem).getColumnName().getLastName());
                 break;
 
             case CHANGE_COLUMN:
-                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
-
                 checkColumnExists(columnsBeforeDdl, ((SqlChangeColumn) alterItem).getOldName().getLastName());
                 columns.remove(((SqlChangeColumn) alterItem).getOldName().getLastName());
                 checkColumnNotExists(columns, ((SqlChangeColumn) alterItem).getNewName().getLastName());
                 if (((SqlChangeColumn) alterItem).getAfterColumn() != null) {
                     checkColumnExists(columns, ((SqlChangeColumn) alterItem).getAfterColumn().getLastName());
                 }
+                checkFkChangeColumn(referencedColumns, referencingColumns, columnsBeforeDdlType,
+                    (SqlChangeColumn) alterItem);
+                if (!referencedColumns.isEmpty()) {
+                    checkNotNull((SqlChangeColumn) alterItem, referencedColumns);
+                }
+                if (!referencingColumns.isEmpty()) {
+                    checkNotNull((SqlChangeColumn) alterItem, referencingColumns);
+                }
+
                 columns.add(((SqlChangeColumn) alterItem).getNewName().getLastName());
                 break;
 
@@ -277,8 +304,21 @@ public class AlterTableValidateTask extends BaseValidateTask {
             case DROP_INDEX:
                 String indexName = ((SqlAlterTableDropIndex) alterItem).getIndexName().getLastName();
                 checkDropLocalIndex(indexName, gsiMetaBean);
-                checkIndexExists(indexesBeforeDdl,indexName);
+                checkIndexExists(indexesBeforeDdl, indexName);
                 indexes.remove(((SqlAlterTableDropIndex) alterItem).getIndexName().getLastName());
+                break;
+            case ADD_FOREIGN_KEY:
+                if (((SqlAddForeignKey) alterItem).getConstraint() != null) {
+                    checkFkConstraintsExists(constraints, ((SqlAddForeignKey) alterItem).getConstraint().getLastName());
+                }
+                break;
+            case DROP_FOREIGN_KEY:
+                checkFkConstraintsNotExists(constraints, ((SqlDropForeignKey) alterItem).getConstraint().getLastName());
+                break;
+            case CONVERT_TO_CHARACTER_SET:
+                if (checkForeignKey) {
+                    checkFkCharset(((SqlConvertToCharacterSet) alterItem).getCharset());
+                }
                 break;
             }
         }
@@ -358,6 +398,167 @@ public class AlterTableValidateTask extends BaseValidateTask {
     private void checkColumnNotExists(Set<String> columns, String columnName) {
         if (columns.contains(columnName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATE_COLUMN, columnName);
+        }
+    }
+
+    private void checkFkModifyColumn(Map<String, ForeignKeyData> referencedColumns,
+                                     Map<String, ForeignKeyData> referencingColumns,
+                                     Map<String, SqlDataTypeSpec.DrdsTypeName> columnsBeforeDdlType,
+                                     SqlModifyColumn alterItem) {
+        String columnName = alterItem.getColName().getLastName();
+        if (referencedColumns.containsKey(columnName)) {
+            checkColumnType(alterItem, columnsBeforeDdlType, columnName, referencedColumns, true);
+            checkNotNull(alterItem, referencedColumns);
+        }
+        if (referencingColumns.containsKey(columnName)) {
+            checkColumnType(alterItem, columnsBeforeDdlType, columnName, referencingColumns, false);
+            checkNotNull(alterItem, referencingColumns);
+        }
+    }
+
+    private void checkFkChangeColumn(Map<String, ForeignKeyData> referencedColumns,
+                                     Map<String, ForeignKeyData> referencingColumns,
+                                     Map<String, SqlDataTypeSpec.DrdsTypeName> columnsBeforeDdlType,
+                                     SqlChangeColumn alterItem) {
+        String columnName = alterItem.getOldName().getLastName();
+        if (referencedColumns.containsKey(columnName)) {
+            checkColumnType(alterItem, columnsBeforeDdlType, columnName, referencedColumns, true);
+        }
+        if (referencingColumns.containsKey(columnName)) {
+            checkColumnType(alterItem, columnsBeforeDdlType, columnName, referencingColumns, false);
+        }
+    }
+
+    private void checkColumnType(SqlModifyColumn alterItem,
+                                 Map<String, SqlDataTypeSpec.DrdsTypeName> columnsBeforeDdlType, String columnName,
+                                 Map<String, ForeignKeyData> columns, boolean referenced) {
+        SqlDataTypeSpec.DrdsTypeName columnType = SqlDataTypeSpec.DrdsTypeName.from(
+            alterItem.getColDef().getDataType().getTypeName().getLastName().toUpperCase());
+        if (!columnType.equals(columnsBeforeDdlType.get(columnName))) {
+            int columnIndex = referenced ? columns.get(columnName).refColumns.indexOf(columnName) :
+                columns.get(columnName).columns.indexOf(columnName);
+            String referencingColumnName = columns.get(columnName).refColumns.get(columnIndex);
+            String referencedColumnName = columns.get(columnName).columns.get(columnIndex);
+            if (referenced) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CHANGE_COLUMN_FK_CONSTRAINT, referencingColumnName,
+                    schemaName,
+                    tableName, referencedColumnName, columns.get(columnName).schema, columns.get(columnName).tableName,
+                    columns.get(columnName).constraint);
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_CHANGE_COLUMN_FK_CONSTRAINT,
+                    columns.get(columnName).refSchema, columns.get(columnName).refTableName, referencingColumnName,
+                    schemaName, tableName, referencedColumnName, columns.get(columnName).constraint);
+            }
+        }
+    }
+
+    private void checkNotNull(SqlModifyColumn alterItem, Map<String, ForeignKeyData> columns) {
+        boolean onSetNull = columns.get(alterItem.getColName().getSimple()).onUpdate.equals(
+            ForeignKeyData.ReferenceOptionType.SET_NULL) ||
+            columns.get(alterItem.getColName().getSimple()).onDelete.equals(
+                ForeignKeyData.ReferenceOptionType.SET_NULL);
+        boolean isNotNull = alterItem.getColDef().getNotNull() == SqlColumnDeclaration.ColumnNull.NOTNULL;
+        boolean isPrimary = alterItem.getColDef().getSpecialIndex() != null && alterItem.getColDef().getSpecialIndex()
+            .equals(SqlColumnDeclaration.SpecialIndex.PRIMARY);
+        if (onSetNull && (isNotNull || isPrimary)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CONSTRAINT,
+                "Foreign key columns can not be NULL when option is SET NULL");
+        }
+    }
+
+    private void checkNotNull(SqlChangeColumn alterItem, Map<String, ForeignKeyData> columns) {
+        boolean onSetNull = columns.get(alterItem.getOldName().getSimple()) != null && (
+            columns.get(alterItem.getOldName().getSimple()).onUpdate.equals(
+                ForeignKeyData.ReferenceOptionType.SET_NULL) ||
+                columns.get(alterItem.getOldName().getSimple()).onDelete.equals(
+                    ForeignKeyData.ReferenceOptionType.SET_NULL));
+        boolean isNotNull = alterItem.getColDef().getNotNull() == SqlColumnDeclaration.ColumnNull.NOTNULL;
+        boolean isPrimary = alterItem.getColDef().getSpecialIndex() != null && alterItem.getColDef().getSpecialIndex()
+            .equals(SqlColumnDeclaration.SpecialIndex.PRIMARY);
+        if (onSetNull && (isNotNull || isPrimary)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CONSTRAINT,
+                "Foreign key columns can not be NULL when option is SET NULL");
+        }
+    }
+
+    private void checkColumnType(SqlChangeColumn alterItem,
+                                 Map<String, SqlDataTypeSpec.DrdsTypeName> columnsBeforeDdlType, String columnName,
+                                 Map<String, ForeignKeyData> columns, boolean referenced) {
+        SqlDataTypeSpec.DrdsTypeName columnType = SqlDataTypeSpec.DrdsTypeName.from(
+            alterItem.getColDef().getDataType().getTypeName().getLastName().toUpperCase());
+        if (!columnType.equals(columnsBeforeDdlType.get(columnName))) {
+            int columnIndex = referenced ? columns.get(columnName).refColumns.indexOf(columnName) :
+                columns.get(columnName).columns.indexOf(columnName);
+            String referencingColumnName = columns.get(columnName).refColumns.get(columnIndex);
+            String referencedColumnName = columns.get(columnName).columns.get(columnIndex);
+            if (referenced) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CHANGE_COLUMN_FK_CONSTRAINT, referencingColumnName,
+                    schemaName,
+                    tableName, referencedColumnName, columns.get(columnName).schema, columns.get(columnName).tableName,
+                    columns.get(columnName).constraint);
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_CHANGE_COLUMN_FK_CONSTRAINT,
+                    columns.get(columnName).refSchema, columns.get(columnName).refTableName, referencingColumnName,
+                    schemaName, tableName, referencedColumnName, columns.get(columnName).constraint);
+            }
+        }
+    }
+
+    private void checkFkDropColumn(Map<String, ForeignKeyData> referencedColumns,
+                                   Map<String, ForeignKeyData> referencingColumns,
+                                   String columnName) {
+        if (referencedColumns.containsKey(columnName) || referencingColumns.containsKey(columnName)) {
+            ForeignKeyData data = null;
+            if (referencedColumns.containsKey(columnName)) {
+                data = referencedColumns.get(columnName);
+                throw new TddlRuntimeException(ErrorCode.ERR_DROP_COLUMN_FK_CONSTRAINT, columnName, data.schema,
+                    data.tableName, data.constraint);
+            } else {
+                data = referencingColumns.get(columnName);
+                throw new TddlRuntimeException(ErrorCode.ERR_DROP_COLUMN_FK_CONSTRAINT, columnName, data.schema,
+                    data.tableName, data.constraint);
+            }
+
+        }
+    }
+
+    private void checkFkConstraintsExists(Set<String> constraints, String constraintName) {
+        if (constraints.contains(constraintName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATE_NAME_FK_CONSTRAINT, constraintName);
+        }
+    }
+
+    private void checkFkConstraintsNotExists(Set<String> constraints, String constraintName) {
+        if (!constraints.contains(constraintName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DROP_FK_CONSTRAINT, constraintName);
+        }
+    }
+
+    private void checkFkCharset(String charset) {
+        if (!charset.equalsIgnoreCase(tableMeta.getDefaultCharset())) {
+            if (!tableMeta.getForeignKeys().isEmpty() || !tableMeta.getReferencedForeignKeys().isEmpty()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_FK_CONVERT_TO_CHARSET, charset, schemaName, tableName);
+            }
+        }
+    }
+
+    private void checkAddGeneratedColumnOnFk(SqlAddColumn addColumn) {
+        SqlColumnDeclaration col = addColumn.getColDef();
+        Set<String> generatedReferencedColumns = new TreeSet<>(String::compareToIgnoreCase);
+        if (col.isGeneratedAlways()) {
+            generatedReferencedColumns.add(col.toString());
+            SqlCall expr = col.getGeneratedAlwaysExpr();
+            GeneratedColumnUtil.validateGeneratedColumnExpr(expr);
+            generatedReferencedColumns.addAll(GeneratedColumnUtil.getReferencedColumns(expr));
+        } else {
+            return;
+        }
+        for (ForeignKeyData data : tableMeta.getForeignKeys().values()) {
+            for (String column : data.columns) {
+                if (generatedReferencedColumns.contains(column)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_GENERATED_COLUMN, column);
+                }
+            }
         }
     }
 

@@ -50,7 +50,7 @@ public class InformationSchemaTriggerHandler extends BaseVirtualViewSubClassHand
             String schemaSql =
                 "select SCHEMA_NAME from information_schema.schemata where schema_name not in ('information_schema', '__cdc__') limit 1;";
             ExecutionContext newEc = executionContext.copy();
-            newEc.setTestMode(false);
+            newEc.newStatement();
             ExecutionPlan ep = Planner.getInstance().plan(schemaSql, newEc);
             Cursor schemaCursor = ExecutorHelper.execute(ep.getPlan(), newEc);
 
@@ -67,7 +67,7 @@ public class InformationSchemaTriggerHandler extends BaseVirtualViewSubClassHand
         String sql = "/*+TDDL:NODE(0)*/\n" +
             "select TRIGGER_CATALOG,TRIGGER_SCHEMA,TRIGGER_NAME,EVENT_MANIPULATION,EVENT_OBJECT_CATALOG,EVENT_OBJECT_SCHEMA,EVENT_OBJECT_TABLE,ACTION_ORDER,ACTION_CONDITION,ACTION_STATEMENT,ACTION_ORIENTATION,ACTION_TIMING,ACTION_REFERENCE_OLD_TABLE,ACTION_REFERENCE_NEW_TABLE,ACTION_REFERENCE_OLD_ROW,ACTION_REFERENCE_NEW_ROW,CREATED,SQL_MODE,DEFINER,CHARACTER_SET_CLIENT,COLLATION_CONNECTION,DATABASE_COLLATION from information_schema.triggers;";
         ExecutionContext newExecutionContext = executionContext.copy();
-        newExecutionContext.setTestMode(false);
+        newExecutionContext.newStatement();
         ExecutionPlan executionPlan = Planner.getInstance().plan(sql, newExecutionContext);
         Cursor c = ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);
         Row row = null;

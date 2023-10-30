@@ -209,6 +209,7 @@ public class CobarConfig extends AbstractLifecycle implements Lifecycle {
     }
 
     public void reloadCluster(String cluster, String unitName, String instanceId) {
+
         if (!StringUtils.equals(instanceId, this.instanceId)) {
             // 出现instanceId变动
             if (clusterLoader != null) {

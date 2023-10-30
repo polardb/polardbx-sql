@@ -16,24 +16,24 @@
 
 package org.apache.calcite.sql;
 
-import java.util.List;
-
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.ImmutableNullableList;
 
+import java.util.List;
+
 /**
  * @author chenmo.cm
- * @date 2019/1/2 12:35 PM
  */
 public class SqlReferenceOption extends SqlCall {
 
     private static final SqlSpecialOperator OPERATOR = new SqlSpecialOperator("COLUMN_REFERENCE_OPTION",
-                                                         SqlKind.COLUMN_REFERENCE_OPTION);
+        SqlKind.COLUMN_REFERENCE_OPTION);
 
-    private final OnType                    onType;
-    private final ReferenceOptionType       referenceOptionType;
+    private final OnType onType;
+    private final ReferenceOptionType referenceOptionType;
 
-    public SqlReferenceOption(SqlParserPos pos, OnType onType, ReferenceOptionType referenceOptionType){
+    public SqlReferenceOption(SqlParserPos pos, OnType onType, ReferenceOptionType referenceOptionType) {
         super(pos);
         this.onType = onType;
         this.referenceOptionType = referenceOptionType;
@@ -50,36 +50,63 @@ public class SqlReferenceOption extends SqlCall {
             SqlUtil.wrapSqlLiteralSymbol(referenceOptionType));
     }
 
+    public OnType getOnType() {
+        return onType;
+    }
+
+    public ReferenceOptionType getReferenceOptionType() {
+        return referenceOptionType;
+    }
+
+    public ForeignKeyData.ReferenceOptionType convertReferenceOptionType(ReferenceOptionType referenceOptionType) {
+        switch (referenceOptionType) {
+        case RESTRICT:
+            return ForeignKeyData.ReferenceOptionType.RESTRICT;
+        case CASCADE:
+            return ForeignKeyData.ReferenceOptionType.CASCADE;
+        case SET_NULL:
+            return ForeignKeyData.ReferenceOptionType.SET_NULL;
+        case SET_DEFAULT:
+            return ForeignKeyData.ReferenceOptionType.SET_DEFAULT;
+        case NO_ACTION:
+            return ForeignKeyData.ReferenceOptionType.NO_ACTION;
+        }
+        return ForeignKeyData.ReferenceOptionType.NO_ACTION;
+    }
+
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         if (null != onType) {
             switch (onType) {
-                case ON_DELETE:
-                    writer.keyword("ON DELETE");
-                    break;
-                case ON_UPDATE:
-                    writer.keyword("ON UPDATE");
-                    break;
-                default:
-                    break;
+            case ON_DELETE:
+                writer.keyword("ON DELETE");
+                break;
+            case ON_UPDATE:
+                writer.keyword("ON UPDATE");
+                break;
+            default:
+                break;
             }
 
             if (null != referenceOptionType) {
                 switch (referenceOptionType) {
-                    case RESTRICT:
-                        writer.keyword("RESTRICT");
-                        break;
-                    case CASCADE:
-                        writer.keyword("CASCADE");
-                        break;
-                    case SET_NULL:
-                        writer.keyword("SET NULL");
-                        break;
-                    case NO_ACTION:
-                        writer.keyword("NO ACTION");
-                        break;
-                    default:
-                        break;
+                case RESTRICT:
+                    writer.keyword("RESTRICT");
+                    break;
+                case CASCADE:
+                    writer.keyword("CASCADE");
+                    break;
+                case SET_NULL:
+                    writer.keyword("SET NULL");
+                    break;
+                case NO_ACTION:
+                    writer.keyword("NO ACTION");
+                    break;
+                case SET_DEFAULT:
+                    writer.keyword("SET DEFAULT");
+                    break;
+                default:
+                    break;
                 }
             }
         }
@@ -90,6 +117,6 @@ public class SqlReferenceOption extends SqlCall {
     }
 
     public static enum ReferenceOptionType {
-        RESTRICT, CASCADE, SET_NULL, NO_ACTION
+        RESTRICT, CASCADE, SET_NULL, SET_DEFAULT, NO_ACTION
     }
 }

@@ -3843,6 +3843,23 @@ public abstract class RelOptUtil {
     }
   }
 
+  /** Shuttle that finds the set of inputs in equality that are used. */
+  public static class EquivalentInputReferencedVisitor extends InputReferencedVisitor {
+
+    @Override
+    public RexNode visitCall(RexCall call) {
+      boolean[] update = {false};
+      switch (call.getOperator().getKind()) {
+      case EQUALS:
+      case IS_NOT_DISTINCT_FROM:
+      case AND:
+        visitList(call.operands, update);
+      default:
+        return call;
+      }
+    }
+  }
+
   /** Converts types to descriptive strings. */
   public static class TypeDumper {
     private final String extraIndent = "  ";

@@ -59,4 +59,7 @@ public class SqlAddFullTextIndex extends SqlAddIndex {
 
         writer.endList(frame);
     }
+
+    @Override
+    public boolean supportFileStorage() { return false;}
 }

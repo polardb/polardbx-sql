@@ -188,7 +188,7 @@ MergeSort(sort="a ASC")
 explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p4) t4 on t4.a=t3.a order by t1.a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
-  LogicalView(tables="tbl_with_gsi1[p4],tbl_with_gsi2[p4],tbl_bro1,tbl_bro2", sql="SELECT `tbl_bro1`.`a`, `tbl_bro1`.`b` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` INNER JOIN `tbl_with_gsi2` AS `tbl_with_gsi2` ON (`tbl_with_gsi1`.`a` = `tbl_with_gsi2`.`a`) INNER JOIN `tbl_bro1` AS `tbl_bro1` ON ((`tbl_with_gsi1`.`a` = `tbl_bro1`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro1`.`a`)) INNER JOIN `tbl_bro2` AS `tbl_bro2` ON (((`tbl_with_gsi1`.`a` = `tbl_bro2`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro2`.`a`)) AND (`tbl_bro1`.`a` = `tbl_bro2`.`a`)) ORDER BY `tbl_bro1`.`a`")
+  LogicalView(tables="tbl_with_gsi1[p4],tbl_with_gsi2[p4],tbl_bro1,tbl_bro2", sql="SELECT `tbl_bro1`.`a`, `tbl_bro1`.`b` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` INNER JOIN `tbl_with_gsi2` AS `tbl_with_gsi2` ON (`tbl_with_gsi1`.`a` = `tbl_with_gsi2`.`a`) INNER JOIN `tbl_bro1` AS `tbl_bro1` ON ((`tbl_with_gsi1`.`a` = `tbl_bro1`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro1`.`a`)) INNER JOIN `tbl_bro2` AS `tbl_bro2` ON ((`tbl_with_gsi1`.`a` = `tbl_bro2`.`a`) AND (`tbl_with_gsi2`.`a` = `tbl_bro2`.`a`) AND (`tbl_bro1`.`a` = `tbl_bro2`.`a`)) ORDER BY `tbl_bro1`.`a`")
 explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t3.a order by t1.a;
 Logical ExecutionPlan
 Project(a="a0", b="b")

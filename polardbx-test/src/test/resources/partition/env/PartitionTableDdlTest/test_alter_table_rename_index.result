@@ -1,0 +1,135 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	b int NOT NULL,
+	c int NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX gsi_b(b) PARTITION BY KEY (b),
+	KEY idx_c (c)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300)
+);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX `gsi_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `idx_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+INSERT INTO tbl
+VALUES (1, 2, 3),
+	(101, 3, 4),
+	(102, 4, 5),
+	(201, 5, 6),
+	(202, 6, 7);
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+ALTER TABLE tbl
+	RENAME INDEX idx_c TO local_index_c;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX `gsi_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `local_index_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+ALTER TABLE tbl
+	RENAME INDEX gsi_b TO global_secondary_index_b;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX `global_secondary_index_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `local_index_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+SHOW CREATE TABLE global_secondary_index_b;
+Table,Create Table
+global_secondary_index_b_$,CREATE TABLE `global_secondary_index_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+RENAME TABLE tbl TO tbl2;
+SHOW CREATE TABLE tbl2;
+Table,Create Table
+tbl2,CREATE TABLE `tbl2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX `global_secondary_index_b` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `local_index_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+SELECT *
+FROM tbl2
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7

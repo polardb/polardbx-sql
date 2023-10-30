@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
@@ -27,6 +28,11 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.boundspec.RangeBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import org.apache.calcite.rel.type.RelDataType;
@@ -43,7 +49,6 @@ import java.util.List;
  */
 public class PartitionInfoMocker {
 
-
     public static PartitionInfo buildPartitionInfoByTableName(String dbName,
                                                               String tbName,
                                                               String shardKey,
@@ -54,11 +59,11 @@ public class PartitionInfoMocker {
         /**
          * <pre>
          *     PARTITION BY RANGE(col) (
-                PARTITION p1 VALUES LESS THAN (1000),
-                PARTITION p2 VALUES LESS THAN (2000),
-                PARTITION p3 VALUES LESS THAN (2000),
-                PARTITION p4 VALUES LESS THAN (2000),
-               )
+         PARTITION p1 VALUES LESS THAN (1000),
+         PARTITION p2 VALUES LESS THAN (2000),
+         PARTITION p3 VALUES LESS THAN (2000),
+         PARTITION p4 VALUES LESS THAN (2000),
+         )
          * </pre>
          */
         partitionInfo.tableSchema = dbName;
@@ -82,15 +87,14 @@ public class PartitionInfoMocker {
 
         SqlIdentifier shardExpr = new SqlIdentifier(shardKey, SqlParserPos.ZERO);
         partitionInfo.partitionBy.getPartitionExprList().add(shardExpr);
-        partitionInfo.subPartitionBy = null;
-        partitionInfo.partitionBy.strategy = PartitionStrategy.RANGE;
+        partitionInfo.partitionBy.setStrategy(PartitionStrategy.RANGE);
 
         final Field shardKeyField = new Field(shardKeyRelDataType);
         ColumnMeta shardKeyColumnMeta = new ColumnMeta(tbName, shardKey, null, shardKeyField);
-        partitionInfo.partitionBy.partitionFieldList = new ArrayList<>();
-        partitionInfo.partitionBy.partitionFieldList.add(shardKeyColumnMeta);
-        partitionInfo.partitionBy.partitionColumnNameList = new ArrayList<>();
-        partitionInfo.partitionBy.partitionColumnNameList.add(shardKey);
+        partitionInfo.partitionBy.setPartitionFieldList(new ArrayList<>());
+        partitionInfo.partitionBy.getPartitionFieldList().add(shardKeyColumnMeta);
+        partitionInfo.partitionBy.setPartitionColumnNameList(new ArrayList<>());
+        partitionInfo.partitionBy.getPartitionColumnNameList().add(shardKey);
 
         List<Long> boundValList = new ArrayList<>();
         boundValList.add(1000L);
@@ -100,37 +104,39 @@ public class PartitionInfoMocker {
 
         int grpCnt = 0;
         DbGroupInfoAccessor dbGroupInfoAccessor;
-        try(Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             dbGroupInfoAccessor = new DbGroupInfoAccessor();
             dbGroupInfoAccessor.setConnection(conn);
-            List<DbGroupInfoRecord>  grpList = dbGroupInfoAccessor.queryDbGroupByDbName(dbName);
+            List<DbGroupInfoRecord> grpList = dbGroupInfoAccessor.queryDbGroupByDbName(dbName);
             grpCnt = grpList.size();
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
         }
 
-        TableGroupLocation.GroupAllocator groupAllocator = TableGroupLocation.buildGroupAllocator(dbName);
+        TableGroupLocation.GroupAllocator groupAllocator =
+            TableGroupLocation.buildGroupAllocator(dbName, new LocalityDesc());
         for (int i = 0; i < boundValList.size(); i++) {
             PartitionSpec p = new PartitionSpec();
             RangeBoundSpec pBoundSpec = new RangeBoundSpec();
-            pBoundSpec.strategy = PartitionStrategy.RANGE;
+            pBoundSpec.setStrategy(PartitionStrategy.RANGE);
             Long shardKeyObj = boundValList.get(i);
             PartitionField partFld = PartitionFieldBuilder.createField(DataTypes.LongType);
             partFld.store(shardKeyObj, DataTypes.LongType);
-            PartitionBoundVal pBoundVal = PartitionBoundVal.createPartitionBoundVal(partFld, PartitionBoundValueKind.DATUM_NORMAL_VALUE);
+            PartitionBoundVal pBoundVal =
+                PartitionBoundVal.createPartitionBoundVal(partFld, PartitionBoundValueKind.DATUM_NORMAL_VALUE);
 
             pBoundSpec.setBoundValue(pBoundVal);
-            p.position = Long.valueOf(i + 1);
-            p.isMaxValueRange = false;
-            p.boundSpec = pBoundSpec;
-            p.strategy = pBoundSpec.strategy;
-            p.name = String.format("p%s", i + 1);
-            p.engine = TablePartitionRecord.PARTITION_ENGINE_INNODB;
+            p.setPosition(Long.valueOf(i + 1));
+            p.setMaxValueRange(false);
+            p.setBoundSpec(pBoundSpec);
+            p.setStrategy(pBoundSpec.getStrategy());
+            p.setName(String.format("p%s", i + 1));
+            p.setEngine(TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
             PartitionLocation location = new PartitionLocation();
             location.setGroupKey(groupAllocator.allocate());
             p.setLocation(location);
-            partitionInfo.partitionBy.partitions.add(p);
+            partitionInfo.getPartitionBy().getPartitions().add(p);
             //partitionInfo.setPartSpecSearcher(PartSpecSearcher.buildPartSpecSearcher(partitionInfo.getTableType(),partitionInfo.getPartitionBy()));
             partitionInfo.initPartSpecSearcher();
         }

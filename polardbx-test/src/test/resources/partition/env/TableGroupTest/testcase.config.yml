@@ -8,3 +8,4 @@ test_table_group_hash_split_merge
 test_table_group_join_push
 test_table_group_range_split_merge
 test_table_group
+test_table_group_hash_split_n_partition

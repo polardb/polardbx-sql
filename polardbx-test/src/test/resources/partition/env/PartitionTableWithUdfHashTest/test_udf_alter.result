@@ -1,0 +1,129 @@
+## DISABLE_FAST_SQL_PARSER
+  ## error_msg: $# one partition column #$
+create table uh_tb(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1,c2)
+(
+  partition p1 values less than(1000),
+  partition pm values less than(maxvalue)
+);
+one partition column
+create table uh_p(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+(
+partition p1 values less than(1000),
+partition pm values less than(maxvalue)
+);
+show create table uh_p;
+Table,Create Table
+uh_p,CREATE TABLE `uh_p` (
+	`c1` bigint(20) NOT NULL,
+	`c2` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY UDF_HASH(`c1`)
+PARTITIONS 2
+(PARTITION p1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+ PARTITION pm VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+create table uh_sp_tp(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+subpartition by udf_hash(c2)
+(
+subpartition sp1 values less than(1000),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(1000),
+partition pm values less than(maxvalue)
+);
+show create table uh_sp_tp;
+Table,Create Table
+uh_sp_tp,CREATE TABLE `uh_sp_tp` (
+	`c1` bigint(20) NOT NULL,
+	`c2` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`),
+	KEY `auto_shard_key_c2` USING BTREE (`c2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY UDF_HASH(`c1`)
+PARTITIONS 2
+SUBPARTITION BY UDF_HASH(`c2`)
+SUBPARTITIONS 2
+(SUBPARTITION sp1 VALUES LESS THAN (1000),
+ SUBPARTITION spm VALUES LESS THAN (9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (1000),
+ PARTITION pm VALUES LESS THAN (9223372036854775807))
+create table uh_sp_ntp(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+subpartition by udf_hash(c2)
+(
+partition p1 values less than(1000) (
+subpartition p1sp1 values less than(1000),
+subpartition p1spm values less than(maxvalue)
+),
+partition pm values less than(maxvalue) (
+subpartition pmsp1 values less than(1000),
+subpartition pmspm values less than(maxvalue)
+)
+);
+show create table uh_sp_ntp;
+Table,Create Table
+uh_sp_ntp,CREATE TABLE `uh_sp_ntp` (
+	`c1` bigint(20) NOT NULL,
+	`c2` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`),
+	KEY `auto_shard_key_c2` USING BTREE (`c2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY UDF_HASH(`c1`)
+PARTITIONS 2
+SUBPARTITION BY UDF_HASH(`c2`)
+(PARTITION p1 VALUES LESS THAN (1000)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p1spm VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),
+ PARTITION pm VALUES LESS THAN (9223372036854775807)
+ (SUBPARTITION pmsp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION pmspm VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB))
+## error_msg: $# not support #$
+alter table uh_sp_ntp merge partitions p1,pm to pm;
+not support
+## error_msg: $# not support #$
+alter table uh_sp_ntp merge subpartitions p1sp1,p1spm to p1spm;
+not support
+## error_msg: $# not support #$
+alter table uh_sp_ntp split partition p1 into (
+  partition p0 values less than(5000),
+  partition p1 values less than(1000)
+);
+not support
+## error_msg: $# not support #$
+alter table uh_sp_ntp split subpartition p1sp1 into (
+  subpartition p1sp0 values less than(5000),
+  subpartition p1sp1 values less than(1000)
+);
+not support
+## error_msg: $# not support #$
+alter table uh_sp_ntp drop partition p1;
+not support
+## error_msg: $# not support #$
+alter table uh_sp_ntp drop subpartition p1sp1;
+not support
+## error_msg: $# Unsupported #$
+alter table uh_sp_ntp add partition (
+  partition p2 values less than(5000)
+);
+Unsupported
+## error_msg: $# not support #$
+alter table uh_sp_ntp modify partition p1 add subpartition (
+  subpartition p1sp2 values less than(5000)
+);
+not support

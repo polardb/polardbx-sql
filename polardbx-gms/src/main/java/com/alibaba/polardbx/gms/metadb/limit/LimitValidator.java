@@ -37,6 +37,10 @@ public class LimitValidator {
         validateIdentifierNameLength(logicalTableName, Limits.MAX_LENGTH_OF_LOGICAL_TABLE_NAME);
     }
 
+    public static void validateDatabaseNameLength(String schemaName) {
+        validateIdentifierNameLength(schemaName, Limits.MAX_LENGTH_OF_IDENTIFIER_NAME);
+    }
+
     public static void validateTableCount(String tableSchema) {
         // Get current table count in the schema.
         int tableCount = 0;

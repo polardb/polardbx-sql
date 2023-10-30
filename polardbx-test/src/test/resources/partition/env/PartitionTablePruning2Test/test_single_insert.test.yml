@@ -3,7 +3,7 @@
 create table tbl_sin
 (
 pk     decimal(18)    not null comment '',
-c1     varchar(256)  null comment '',
+c1     varchar(64)  null comment '',
 primary key (pk)
 ) single;
 
@@ -15,7 +15,7 @@ select pk,c1 from tbl_sin;
 create table tbl_bro
 (
 pk     decimal(18)    not null comment '',
-c1     varchar(256)  null comment '',
+c1     varchar(64)  null comment '',
 primary key (pk)
 ) broadcast;
 

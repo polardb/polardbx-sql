@@ -16,14 +16,10 @@
 
 package com.alibaba.polardbx.common.constants;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.LongConfigParam;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -49,8 +45,6 @@ public class ServerVariables {
 
     public static Set<String> globalBannedVariables = new HashSet<>();
 
-    public static final Set<String> SUPPORT_SHOW_CN_GLOBAL_VARIABLES;
-
     public static final Set<String> CN_VARIABLES_REPLACE_DN_VARIABLES = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
     /**
@@ -63,12 +57,13 @@ public class ServerVariables {
     public static final Set<String> MODIFIABLE_DEADLOCK_DETECTION_PARAM = ImmutableSet.of(
         ConnectionProperties.ENABLE_DEADLOCK_DETECTION,
         ConnectionProperties.DEADLOCK_DETECTION_INTERVAL);
+    public static final Set<String> MODIFIABLE_TRANSACTION_STATISTICS_PARAM = ImmutableSet.of(
+        ConnectionProperties.TRANSACTION_STATISTICS_TASK_INTERVAL,
+        ConnectionProperties.ENABLE_TRANSACTION_STATISTICS);
 
-    public static final List<LongConfigParam> PROCEDURE_PARAMS = ImmutableList.of(
-        ConnectionParams.MAX_PL_DEPTH,
-        ConnectionParams.PL_MEMORY_LIMIT,
-        ConnectionParams.PL_CURSOR_MEMORY_LIMIT,
-        ConnectionParams.PL_INTERNAL_CACHE_SIZE);
+    public static final Set<String> MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM = ImmutableSet.of(
+        ConnectionProperties.ENABLE_TRX_IDLE_TIMEOUT_TASK,
+        ConnectionProperties.TRX_IDLE_TIMEOUT_TASK_INTERVAL);
 
     public static final Set<String> MODIFIABLE_TIMER_TASK_PARAM;
 
@@ -843,6 +838,14 @@ public class ServerVariables {
         variables.add("warning_count");
         variables.add("weak_consensus_mode");
         variables.add("windowing_use_high_precision");
+        variables.add("hotspot");
+        variables.add("hotspot_lock_type");
+        variables.add("hotspot_for_autocommit");
+        variables.add("hotspot_update_max_wait_time");
+        variables.add("innodb_hotspot_kill_lock_holder");
+        variables.add("innodb_concurrency_tickets_hotspot");
+        variables.add("innodb_hotspot_lock_wait_timeout");
+        variables.add("enable_changeset");
 
         readonlyVariables.add("audit_log_current_session");
         readonlyVariables.add("audit_log_filter_id");
@@ -1226,9 +1229,12 @@ public class ServerVariables {
         canOnlyExecByNullVariables.add("innodb_ft_user_stopword_table");
         canOnlyExecByNullVariables.add("innodb_tmpdir");
 
+        canOnlyExecByEmptyStrVariables.add("innodb_monitor_disable");
+        canOnlyExecByEmptyStrVariables.add("innodb_monitor_enable");
         canOnlyExecByEmptyStrVariables.add("optimizer_switch");
         canOnlyExecByEmptyStrVariables.add("optimizer_trace");
         canOnlyExecByEmptyStrVariables.add("optimizer_trace_features");
+        canOnlyExecByEmptyStrVariables.add("slave_type_conversions");
         canOnlyExecByEmptyStrVariables.add("sql_mode");
 
         extraVariables.add(TransactionAttribute.DRDS_TRANSACTION_POLICY);
@@ -3217,7 +3223,6 @@ public class ServerVariables {
         mysqlDynamicVariables.add("wait_timeout");
         mysqlDynamicVariables.add("weak_consensus_mode");
         mysqlDynamicVariables.add("windowing_use_high_precision");
-
         globalBannedVariables.add("gtid_mode");
 
         globalBannedVariables.add("max_allowed_packet");
@@ -3228,28 +3233,23 @@ public class ServerVariables {
         globalBannedVariables.add("auto_increment_increment");
 
         ImmutableSet.Builder<String> modifiableTimerTaskVarBuilder = new ImmutableSet.Builder<>();
-        ImmutableSet.Builder<String> supportSetGlobalVarBuilder = new ImmutableSet.Builder<>();
 
         for (String modifiableTimerTaskParam : MODIFIABLE_PURGE_TRANS_PARAM) {
             modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-            supportSetGlobalVarBuilder.add(modifiableTimerTaskParam.toLowerCase());
         }
 
         for (String modifiableTimerTaskParam : MODIFIABLE_DEADLOCK_DETECTION_PARAM) {
             modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-            supportSetGlobalVarBuilder.add(modifiableTimerTaskParam.toLowerCase());
         }
 
+        for (String modifiableTimerTaskParam : MODIFIABLE_TRANSACTION_STATISTICS_PARAM) {
+            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
+        }
+
+        for (String modifiableTimerTaskParam : MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM) {
+            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
+        }
         MODIFIABLE_TIMER_TASK_PARAM = modifiableTimerTaskVarBuilder.build();
-
-        supportSetGlobalVarBuilder.add(ConnectionProperties.SQL_SELECT_LIMIT);
-        CN_VARIABLES_REPLACE_DN_VARIABLES.add(ConnectionProperties.SQL_SELECT_LIMIT);
-
-        for (LongConfigParam procedureParam : PROCEDURE_PARAMS) {
-            supportSetGlobalVarBuilder.add(procedureParam.getName());
-        }
-
-        SUPPORT_SHOW_CN_GLOBAL_VARIABLES = supportSetGlobalVarBuilder.build();
     }
 
     public static boolean contains(String variable) {

@@ -27,14 +27,14 @@ import java.util.Map;
 
 public abstract class SQLObjectImpl implements SQLObject {
 
-    protected SQLObject           parent;
+    protected SQLObject parent;
     protected Map<String, Object> attributes;
-    protected SQLCommentHint      hint;
+    protected SQLCommentHint hint;
 
     protected int sourceLine;
     protected int sourceColumn;
 
-    public SQLObjectImpl(){
+    public SQLObjectImpl() {
     }
 
     public final void accept(SQLASTVisitor visitor) {
@@ -82,13 +82,25 @@ public abstract class SQLObjectImpl implements SQLObject {
         }
 
         accept(
-                SQLUtils.createOutputVisitor(buf, dbType)
+            SQLUtils.createOutputVisitor(buf, dbType)
         );
     }
 
     public String toString() {
         StringBuffer buf = new StringBuffer();
         output(buf);
+        return buf.toString();
+    }
+
+    private void output(Appendable buf, DbType dbType) {
+        accept(
+            SQLUtils.createOutputVisitor(buf, dbType)
+        );
+    }
+
+    public String toString(DbType dbType) {
+        StringBuffer buf = new StringBuffer();
+        output(buf, dbType);
         return buf.toString();
     }
 
@@ -135,32 +147,32 @@ public abstract class SQLObjectImpl implements SQLObject {
     public Map<String, Object> getAttributesDirect() {
         return attributes;
     }
-    
+
     @SuppressWarnings("unchecked")
     public void addBeforeComment(String comment) {
         if (comment == null) {
             return;
         }
-        
+
         if (attributes == null) {
             attributes = new HashMap<String, Object>(1);
         }
-        
+
         List<String> comments = (List<String>) attributes.get("rowFormat.before_comment");
         if (comments == null) {
             comments = new ArrayList<String>(2);
             attributes.put("rowFormat.before_comment", comments);
         }
-        
+
         comments.add(comment);
     }
-    
+
     @SuppressWarnings("unchecked")
     public void addBeforeComment(List<String> comments) {
         if (attributes == null) {
             attributes = new HashMap<String, Object>(1);
         }
-        
+
         List<String> attrComments = (List<String>) attributes.get("rowFormat.before_comment");
         if (attrComments == null) {
             attributes.put("rowFormat.before_comment", comments);
@@ -168,31 +180,31 @@ public abstract class SQLObjectImpl implements SQLObject {
             attrComments.addAll(comments);
         }
     }
-    
+
     @SuppressWarnings("unchecked")
     public List<String> getBeforeCommentsDirect() {
         if (attributes == null) {
             return null;
         }
-        
+
         return (List<String>) attributes.get("rowFormat.before_comment");
     }
-    
+
     @SuppressWarnings("unchecked")
     public void addAfterComment(String comment) {
         if (attributes == null) {
             attributes = new HashMap<String, Object>(1);
         }
-        
+
         List<String> comments = (List<String>) attributes.get("rowFormat.after_comment");
         if (comments == null) {
             comments = new ArrayList<String>(2);
             attributes.put("rowFormat.after_comment", comments);
         }
-        
+
         comments.add(comment);
     }
-    
+
     @SuppressWarnings("unchecked")
     public void addAfterComment(List<String> comments) {
         if (comments == null) {
@@ -202,7 +214,7 @@ public abstract class SQLObjectImpl implements SQLObject {
         if (attributes == null) {
             attributes = new HashMap<String, Object>(1);
         }
-        
+
         List<String> attrComments = (List<String>) attributes.get("rowFormat.after_comment");
         if (attrComments == null) {
             attributes.put("rowFormat.after_comment", comments);
@@ -210,16 +222,16 @@ public abstract class SQLObjectImpl implements SQLObject {
             attrComments.addAll(comments);
         }
     }
-    
+
     @SuppressWarnings("unchecked")
     public List<String> getAfterCommentsDirect() {
         if (attributes == null) {
             return null;
         }
-        
+
         return (List<String>) attributes.get("rowFormat.after_comment");
     }
-    
+
     public boolean hasBeforeComment() {
         if (attributes == null) {
             return false;
@@ -230,10 +242,10 @@ public abstract class SQLObjectImpl implements SQLObject {
         if (comments == null) {
             return false;
         }
-        
+
         return !comments.isEmpty();
     }
-    
+
     public boolean hasAfterComment() {
         if (attributes == null) {
             return false;
@@ -243,7 +255,7 @@ public abstract class SQLObjectImpl implements SQLObject {
         if (comments == null) {
             return false;
         }
-        
+
         return !comments.isEmpty();
     }
 

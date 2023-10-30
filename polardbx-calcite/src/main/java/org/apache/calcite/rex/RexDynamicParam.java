@@ -238,6 +238,13 @@ public class RexDynamicParam extends RexVariable {
     return this.dynamicRexName;
   }
 
+  /**
+   * @return true if actual value of this parameter is a literal value of user input
+   */
+  public boolean literal() {
+    return true;
+  }
+
   //~ Enum
   public enum DYNAMIC_SPECIAL_VALUE{
     EMPTY,

@@ -16,7 +16,6 @@
 
 package org.apache.calcite.sql;
 
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
@@ -28,13 +27,16 @@ import java.util.List;
  */
 public class SqlAlterTableTruncatePartition extends SqlAlterSpecification {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("TRUNCATE PARTITION", SqlKind.TRUNCATE_PARTITION);
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("TRUNCATE PARTITION", SqlKind.TRUNCATE_PARTITION);
 
-    protected final SqlIdentifier partitionName;
+    protected final List<SqlNode> partitionNames;
+    protected final boolean isSubPartition;
 
-    public SqlAlterTableTruncatePartition(SqlParserPos pos, SqlIdentifier partitionName){
+    public SqlAlterTableTruncatePartition(SqlParserPos pos, List<SqlNode> partitionNames, boolean isSubPartition) {
         super(pos);
-        this.partitionName = partitionName;
+        this.partitionNames = partitionNames;
+        this.isSubPartition = isSubPartition;
     }
 
     @Override
@@ -44,18 +46,33 @@ public class SqlAlterTableTruncatePartition extends SqlAlterSpecification {
 
     @Override
     public List<SqlNode> getOperandList() {
-        return ImmutableList.of(partitionName);
+        return partitionNames;
     }
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "truncate table", "");
-        partitionName.unparse(writer, leftPrec, rightPrec);
+        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "TRUNCATE", "");
+
+        writer.keyword(isSubPartition ? "SUBPARTITION" : "PARTITION");
+
+        int i = 0;
+        for (SqlNode sqlNode : partitionNames) {
+            sqlNode.unparse(writer, leftPrec, rightPrec);
+            i++;
+            if (i < partitionNames.size()) {
+                writer.sep(",");
+            }
+        }
+
         writer.endList(frame);
     }
 
-    public SqlIdentifier getPartitionName() {
-        return partitionName;
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public List<SqlNode> getPartitionNames() {
+        return partitionNames;
     }
 }
 

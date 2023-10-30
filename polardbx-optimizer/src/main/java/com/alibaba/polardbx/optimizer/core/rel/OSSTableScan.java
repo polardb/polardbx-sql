@@ -68,11 +68,13 @@ import java.util.Map;
 import java.util.Set;
 
 public class OSSTableScan extends LogicalView {
+
     private OrcTableScan orcNodeCache;
     private boolean noMoreFilterProject = false;
     private LogicalAggregate agg = null;
     private List<RelColumnOrigin> aggColumns = null;
     private OSSIndexContext indexContext = null;
+
     private RexNode runtimeFilter;
 
     public OSSTableScan(RelInput relInput) {
@@ -118,7 +120,9 @@ public class OSSTableScan extends LogicalView {
         Map<Integer, ParameterContext> paramMap = extractPlan.getParam();
         String phySchema = extractPlan.getDbIndex();
         String phyTable = extractPlan.getTableNames().get(0).get(0);
+
         RelNode plan = doPlan(context, sourceTableName, physicalSql, paramMap, tableParamIndex);
+
         // set target tables
         Map<String, List<List<String>>> targetTables = ImmutableMap.of(
             phySchema, ImmutableList.of(ImmutableList.of(phyTable))
@@ -128,6 +132,7 @@ public class OSSTableScan extends LogicalView {
             plan.accept(visitor);
             return plan;
         }
+
         return null;
     }
 
@@ -142,6 +147,7 @@ public class OSSTableScan extends LogicalView {
             }
         }
         String logicalSql = replace(physicalSql, params);
+
         // fix npe
         if (context.getParams() == null) {
             context.setParams(new Parameters());
@@ -167,6 +173,7 @@ public class OSSTableScan extends LogicalView {
 
     private static String replace(String sql, Object[] params) {
         StringBuilder builder = new StringBuilder("/*+TDDL:cmd_extra()*/");
+
         int paramPos = 0;
         for (int i = 0; i < sql.length(); i++) {
             if (sql.charAt(i) == '?') {
@@ -180,6 +187,7 @@ public class OSSTableScan extends LogicalView {
                 builder.append(sql.charAt(i));
             }
         }
+
         if (paramPos < params.length) {
             throw new RuntimeException("paramPos = " + paramPos + ", " + params.length);
         }
@@ -190,6 +198,7 @@ public class OSSTableScan extends LogicalView {
     public String explainNodeName() {
         String name = "OSSTableScan";
         return name;
+
     }
 
     @Override
@@ -276,6 +285,7 @@ public class OSSTableScan extends LogicalView {
             return true;
         }
         RexNode predicate = filter.getCondition();
+
         int idx = -1;
         if (predicate instanceof RexCall) {
             RexCall rexCall = (RexCall) predicate;
@@ -338,6 +348,7 @@ public class OSSTableScan extends LogicalView {
         if (!canPushFilterProject()) {
             return;
         }
+
         RelNode plan = CBOUtil.OssTableScanFormat(getPushedRelNode());
         LogicalFilter filter = null;
         LogicalProject bottomProject = null;
@@ -360,11 +371,13 @@ public class OSSTableScan extends LogicalView {
         if (filter == null) {
             return;
         }
+
         TableMeta tableMeta = CBOUtil.getTableMeta(tableScan.getTable());
         Map<ColumnMeta, Integer> allColumns = new HashMap<>();
         for (int i = 0; i < tableMeta.getPhysicalColumns().size(); i++) {
             allColumns.put(tableMeta.getPhysicalColumns().get(i), i);
         }
+
         // build index
         OSSMergeIndexRule.GenerateContext generateContext = OSSMergeIndexRule.getIndexColumns(
             bottomProject == null ? tableScan : bottomProject,
@@ -373,6 +386,7 @@ public class OSSTableScan extends LogicalView {
             allColumns,
             null);
         indexContext = andIndexContext(filter.getCondition(), generateContext, -1);
+
         orcNode.setIndexAble(indexContext);
     }
 
@@ -396,6 +410,7 @@ public class OSSTableScan extends LogicalView {
         if (clustering == null) {
             return new OSSIndexContext();
         }
+
         Set<Integer> keys = new HashSet<>();
         // the index needed by the condition
         int goalIdx = -1;
@@ -482,6 +497,7 @@ public class OSSTableScan extends LogicalView {
         }
         int shardUpperBound = calShardUpperBound();
         int totalShardCount = getTotalShardCount();
+
         double estimateRowCount = mq.getRowCount(this);
         double totalRowCount = getTable().getRowCount() * shardUpperBound / totalShardCount;
         // get total stripe number
@@ -498,13 +514,16 @@ public class OSSTableScan extends LogicalView {
             readCost = readCost.plus(planner.getCostFactory().makeCost(
                 0, totalStripeRows * base * CostModelWeight.BLOOM_FILTER_READ_COST, 0, 0, 0));
         }
+
         return readCost;
     }
 
     @Override
     public RelWriter explainLogicalView(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
+
         List<RelNode> relList = new ArrayList<>();
+
         if (runtimeFilter != null) {
             relList.add(LogicalFilter.create(getOrcNode(), runtimeFilter));
         } else {
@@ -526,9 +545,11 @@ public class OSSTableScan extends LogicalView {
     @Override
     public List<Integer> getBloomFilters() {
         List<Integer> bloomFilterIds = new ArrayList<>();
+
         if (runtimeFilter == null) {
             return bloomFilterIds;
         }
+
         List<RexNode> conditions = RelOptUtil.conjunctions(runtimeFilter);
         for (RexNode rexNode : conditions) {
             if (rexNode instanceof RexCall &&
@@ -543,9 +564,11 @@ public class OSSTableScan extends LogicalView {
 
     public Map<Integer, RexCall> getBloomFiltersMap() {
         Map<Integer, RexCall> results = new HashMap<>();
+
         if (runtimeFilter == null) {
             return results;
         }
+
         List<RexNode> conditions = RelOptUtil.conjunctions(runtimeFilter);
         for (RexNode rexNode : conditions) {
             if (rexNode instanceof RexCall &&

@@ -43,27 +43,33 @@ public class PolarDBXOrcSchema {
      * Schema = {column schema + redundant schema}
      */
     private TypeDescription schema;
+
     /**
      * Subset of schema with bloom filter
      * BF Schema = {column bf schema + redundant bf schema}
      */
     private TypeDescription bfSchema;
+
     /**
      * Column Metas (mapping to column schema)
      */
     private List<ColumnMeta> columnMetas;
+
     /**
      * Column Metas with bloom filter (mapping to bloom filter schema)
      */
     private List<ColumnMeta> bfColumnMetas;
+
     /**
      * Subset of column Metas, with redundant column.
      */
     private List<ColumnMeta> redundantColumnMetas;
+
     /**
      * The column id, from which the child schema represent the sort key.
      */
     private int redundantId;
+
     /**
      * Mapping from original col pos to redundant col pos.
      * Redundant col pos = -1 means no redundant col for original col.
@@ -74,6 +80,7 @@ public class PolarDBXOrcSchema {
                              List<ColumnMeta> columnMetas, List<ColumnMeta> bfColumnMetas,
                              List<ColumnMeta> redundantColumnMetas,
                              int redundantId, int[] redundantMap) {
+
         Preconditions.checkArgument(schema.getChildren().size() == columnMetas.size() + redundantColumnMetas.size());
         Preconditions.checkArgument(
             bfSchema.getChildren().size() == bfColumnMetas.size() + redundantColumnMetas.size());
@@ -89,6 +96,7 @@ public class PolarDBXOrcSchema {
 
     public boolean[] buildNoRedundantSchema() {
         boolean[] noRedundantSchemaBitMap = new boolean[schema.getMaximumId() + 1];
+
         Arrays.fill(noRedundantSchemaBitMap, false);
         for (int columnId = 0; columnId < this.redundantId; columnId++) {
             noRedundantSchemaBitMap[columnId] = true;

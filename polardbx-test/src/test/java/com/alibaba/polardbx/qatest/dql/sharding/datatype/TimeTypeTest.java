@@ -25,6 +25,7 @@ import org.junit.runners.Parameterized;
 import java.util.Arrays;
 import java.util.List;
 
+
 public class TimeTypeTest extends ReadBaseTestCase {
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepareDate() {

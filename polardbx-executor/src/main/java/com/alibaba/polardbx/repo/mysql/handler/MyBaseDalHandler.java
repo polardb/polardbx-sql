@@ -27,6 +27,8 @@ import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.BaseDalHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -49,6 +51,7 @@ import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import groovy.sql.Sql;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -66,11 +69,8 @@ import java.util.Set;
  */
 public class MyBaseDalHandler extends BaseDalHandler {
 
-    private IRepository myRepo;
-
     public MyBaseDalHandler(IRepository repo) {
         super(repo);
-        myRepo = repo;
     }
 
     @Override
@@ -83,57 +83,52 @@ public class MyBaseDalHandler extends BaseDalHandler {
             executionContext.getExtraCmds().put(ConnectionProperties.MASTER, true);
         }
 
-        try {
-            handleForShow(dal, executionContext);
-            if (dal.getNativeSqlNode() instanceof SqlShow) {
-                try {
-                    // MyJdbcHandler does not support show view statement
-                    // thus try to handle here
-                    Cursor cursor = handleForShowView(dal, executionContext);
-                    if (cursor != null) {
-                        return cursor;
-                    }
-                } catch (Throwable t) {
-                    // pass
+        IRepository myRepo = handleForShow(dal, executionContext);
+        if (dal.getNativeSqlNode() instanceof SqlShow) {
+            try {
+                // MyJdbcHandler does not support show view statement
+                // thus try to handle here
+                Cursor cursor = handleForShowView(dal, executionContext);
+                if (cursor != null) {
+                    return cursor;
                 }
+            } catch (Throwable t) {
+                // pass
             }
-            if (dal.getKind().belongsTo(SqlKind.SQL_SET_QUERY)) {
-                if (dal.single()) {
-                    MyPhyQueryCursor phyQueryCursor = (MyPhyQueryCursor) myRepo.getCursorFactory()
-                        .repoCursor(executionContext, logicalPlan);
-                    int[] affectRows = new int[1];
-                    affectRows[0] = phyQueryCursor.getAffectedRows();
-                    return new AffectRowCursor(affectRows);
-                } else {
-
-                    Map<Integer, ParameterContext> params =
-                        executionContext.getParams() == null ? null : executionContext.getParams()
-                            .getCurrentParameter();
-                    List<RelNode> inputs = dal.getInput(params);
-
-                    int affectRow = 0;
-                    for (RelNode relNode : inputs) {
-                        MyPhyQueryCursor phyQueryCursor = (MyPhyQueryCursor) myRepo.getCursorFactory()
-                            .repoCursor(executionContext, relNode);
-                        affectRow += phyQueryCursor.getAffectedRows();
-                    }
-                    int[] affectRows = new int[1];
-                    affectRows[0] = affectRow;
-                    return new AffectRowCursor(affectRows);
-                } // end of else
-            } // end of if
-
-            if (dal.single()) {
-                ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, executionContext);
-                Cursor cursor = myRepo.getCursorFactory().repoCursor(executionContext, dal.getInput(null).get(0));
-                return reorgLogicalColumnOrder(showColumnsContext, cursor, executionContext);
-            }
-
-            return buildMultiCursor(executionContext, dal);
-        } finally {
-            // Restore default repo in case we had cross-schema access.
-            myRepo = repo;
         }
+        if (dal.getKind().belongsTo(SqlKind.SQL_SET_QUERY)) {
+            if (dal.single()) {
+                MyPhyQueryCursor phyQueryCursor = (MyPhyQueryCursor) myRepo.getCursorFactory()
+                    .repoCursor(executionContext, logicalPlan);
+                int[] affectRows = new int[1];
+                affectRows[0] = phyQueryCursor.getAffectedRows();
+                return new AffectRowCursor(affectRows);
+            } else {
+
+                Map<Integer, ParameterContext> params =
+                    executionContext.getParams() == null ? null : executionContext.getParams()
+                        .getCurrentParameter();
+                List<RelNode> inputs = dal.getInput(params);
+
+                int affectRow = 0;
+                for (RelNode relNode : inputs) {
+                    MyPhyQueryCursor phyQueryCursor = (MyPhyQueryCursor) myRepo.getCursorFactory()
+                        .repoCursor(executionContext, relNode);
+                    affectRow += phyQueryCursor.getAffectedRows();
+                }
+                int[] affectRows = new int[1];
+                affectRows[0] = affectRow;
+                return new AffectRowCursor(affectRows);
+            } // end of else
+        } // end of if
+
+        if (dal.single()) {
+            ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, executionContext);
+            Cursor cursor = myRepo.getCursorFactory().repoCursor(executionContext, dal.getInput(null).get(0));
+            return reorgLogicalColumnOrder(showColumnsContext, cursor, executionContext);
+        }
+
+        return buildMultiCursor(executionContext, dal);
     }
 
     private Cursor reorgLogicalColumnOrder(ShowColumnsContext context, Cursor cursor, ExecutionContext ec) {
@@ -188,8 +183,7 @@ public class MyBaseDalHandler extends BaseDalHandler {
                     cursor.close(new ArrayList<>());
                 }
             }
-
-            rows = ResultSetHelper.filterOutHiddenColumns(context.schemaName, context.tableName, rows, ec);
+            rows = ResultSetHelper.processColumnInfos(context.schemaName, context.tableName, rows, ec);
             ResultSetHelper.reorgLogicalColumnOrder(context.schemaName, context.tableName, rows, resultCursor);
 
             return resultCursor;
@@ -306,7 +300,8 @@ public class MyBaseDalHandler extends BaseDalHandler {
         return null;
     }
 
-    private void handleForShow(BaseDalOperation dal, ExecutionContext executionContext) {
+    private IRepository handleForShow(BaseDalOperation dal, ExecutionContext executionContext) {
+        IRepository myRepo = repo;
         if (dal.getNativeSqlNode() instanceof SqlShow) {
             SqlNode dbNameNode = ((SqlShow) dal.getNativeSqlNode()).getDbName();
 
@@ -350,6 +345,7 @@ public class MyBaseDalHandler extends BaseDalHandler {
                 }
             }
         }
+        return myRepo;
     }
 
     private String getTargetPhyTable(String logicalTableName, OptimizerContext optimizerContext) {
@@ -374,5 +370,4 @@ public class MyBaseDalHandler extends BaseDalHandler {
 
         return targetPhyTable;
     }
-
 }

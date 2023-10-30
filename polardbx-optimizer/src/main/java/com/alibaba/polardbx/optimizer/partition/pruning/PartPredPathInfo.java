@@ -36,8 +36,7 @@ public class PartPredPathInfo {
      * label that if current vectorial interval contains predicates for each partition columns
      */
     protected boolean containFullPartColPreds = true;
-    
-    
+
     public PartPredPathInfo(PartPredPathItem prefixPathItem, Integer partKeyStart, Integer partKeyEnd,
                             ComparisonKind cmpKind,
                             boolean containFullPartColPreds) {
@@ -46,6 +45,10 @@ public class PartPredPathInfo {
         this.partKeyEnd = partKeyEnd;
         this.cmpKind = cmpKind;
         this.containFullPartColPreds = containFullPartColPreds;
+    }
+
+    public Integer getPartKeyStart() {
+        return partKeyStart;
     }
 
     public Integer getPartKeyEnd() {
@@ -61,7 +64,11 @@ public class PartPredPathInfo {
     }
 
     public String getDigest() {
-        return prefixPathItem == null ? "" : prefixPathItem.getDigest();
+        return getDigest(false);
+    }
+
+    public String getDigest(boolean ignoreOp) {
+        return prefixPathItem == null ? "" : prefixPathItem.getDigest(ignoreOp);
     }
 
     public boolean isContainFullPartColPreds() {
@@ -72,4 +79,5 @@ public class PartPredPathInfo {
     public String toString() {
         return getDigest();
     }
+
 }

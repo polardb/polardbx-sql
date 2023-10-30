@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
@@ -30,7 +31,6 @@ import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.alibaba.polardbx.optimizer.variable.VariableManager;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.stats.MatrixStatistics;
+import com.alibaba.polardbx.stats.SchemaTransactionStatistics;
 
 import java.util.Collection;
 import java.util.List;
@@ -245,4 +246,13 @@ public class OptimizerContext {
     public void setParamManager(ParamManager paramManager) {
         this.paramManager = paramManager;
     }
+
+    public static SchemaTransactionStatistics getTransStat(String schema) {
+        OptimizerContext context = getContext(schema);
+        if (DynamicConfig.getInstance().isEnableTransactionStatistics() && null != context) {
+            return context.statistics.getTransactionStats();
+        }
+        return null;
+    }
+
 }

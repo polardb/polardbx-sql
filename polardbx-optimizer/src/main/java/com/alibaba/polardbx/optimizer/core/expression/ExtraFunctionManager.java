@@ -63,6 +63,11 @@ public class ExtraFunctionManager {
 
         boolean dummyForUdf = false;
         if (constructor == null) {
+            AbstractScalarFunction function = (AbstractScalarFunction) JavaFunctionManager.getInstance().getJavaFunction(functionName);
+            if (function != null) {
+                return function;
+            }
+
             try {
                 constructor = Class.forName("com.alibaba.polardbx.executor.function.calc.Dummy").getConstructor(String.class, List.class, DataType.class);
                 dummyForUdf = true;
@@ -126,4 +131,11 @@ public class ExtraFunctionManager {
             addFunction(clazz);
         }
     }
+
+    public static boolean constainsFunction(String funcName) {
+        return functionCaches.containsKey(
+            FunctionSignature.
+                getFunctionSignature(null, funcName));
+    }
+
 }

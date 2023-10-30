@@ -178,6 +178,10 @@ public class DataTypeTestBase {
         + "    v_gbk varchar(255) character set gbk not null default 'abc',\n"
         + "    v_gbk_chinese_ci varchar(255) character set gbk collate gbk_chinese_ci not null default 'abc',\n"
         + "    v_gbk_bin varchar(255) character set gbk collate gbk_bin not null default 'abc',\n"
+        + "    v_gb18030 varchar(255) character set gb18030 not null default 'abc',\n"
+        + "    v_gb18030_chinese_ci varchar(255) character set gb18030 collate gb18030_chinese_ci not null default 'abc',\n"
+        + "    v_gb18030_bin varchar(255) character set gb18030 collate gb18030_bin not null default 'abc',\n"
+        + "    v_gb18030_unicode_520_ci varchar(255) character set gb18030 collate gb18030_unicode_520_ci not null default 'abc',\n"
         + "    v_big5 varchar(255) character set big5 not null default 'abc',\n"
         + "    v_big5_chinese_ci varchar(255) character set big5 collate big5_chinese_ci not null default 'abc',\n"
         + "    v_big5_bin varchar(255) character set big5 collate big5_bin not null default 'abc',\n"
@@ -211,6 +215,8 @@ public class DataTypeTestBase {
             (MySqlCreateTableStatement) FastsqlUtils.parseSql(COLLATION_TEST_DDL).get(0);
         final TableMeta tm1 = new TableMetaParser().parse(stat1, new ExecutionContext());
         final TableMeta tm2 = new TableMetaParser().parse(stat2, new ExecutionContext());
+        tm1.setSchemaName(SCHEMA_NAME);
+        tm2.setSchemaName(SCHEMA_NAME);
         tm1.setSchemaName(SCHEMA_NAME);
         tm2.setSchemaName(SCHEMA_NAME);
         schemaManager = new MySchemaManager();

@@ -29,7 +29,7 @@ public class SQLAlterTableOptimizePartition extends SQLObjectImpl implements SQL
     public List<SQLName> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLName partition) {
         if (partition != null) {
             partition.setParent(this);

@@ -18,43 +18,49 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 
 import java.util.BitSet;
+import java.util.List;
 
 /**
  * @author chenghui.lch
  */
 public abstract class PartRouteFunction {
 
-    protected int partCount;
-    protected int subPartCount;
+//    protected int partCount;
+//    protected int subPartCount;
+
     protected PartitionInfo partInfo;
-    protected PartitionRouter router = null;
     protected PartKeyLevel matchLevel;
     protected ComparisonKind cmpKind;
+    protected PartitionStrategy strategy;
 
     public PartRouteFunction() {
     }
 
     public abstract PartRouteFunction copy();
 
-    public abstract BitSet routePartitions(ExecutionContext ec, PartPruneStepPruningContext pruningCtx);
+    public abstract PartPrunedResult routePartitions(ExecutionContext ec,
+                                                     PartPruneStepPruningContext pruningCtx,
+                                                     List<Integer> parentPartPosiSet);
 
-    public int getPartCount() {
-        return partCount;
-    }
-
-    public void setPartCount(int partCount) {
-        this.partCount = partCount;
-    }
-
-    public int getSubPartCount() {
-        return subPartCount;
-    }
-
-    public void setSubPartCount(int subPartCount) {
-        this.subPartCount = subPartCount;
-    }
+//    public int getPartCount() {
+//        return partCount;
+//    }
+//
+//    public void setPartCount(int partCount) {
+//        this.partCount = partCount;
+//    }
+//
+//    public int getSubPartCount() {
+//        return subPartCount;
+//    }
+//
+//    public void setSubPartCount(int subPartCount) {
+//        this.subPartCount = subPartCount;
+//    }
 
     public PartitionInfo getPartInfo() {
         return partInfo;
@@ -62,14 +68,6 @@ public abstract class PartRouteFunction {
 
     public void setPartInfo(PartitionInfo partInfo) {
         this.partInfo = partInfo;
-    }
-
-    public PartitionRouter getRouter() {
-        return router;
-    }
-
-    public void setRouter(PartitionRouter router) {
-        this.router = router;
     }
 
     public PartKeyLevel getMatchLevel() {
@@ -86,5 +84,27 @@ public abstract class PartRouteFunction {
 
     public void setCmpKind(ComparisonKind cmpKind) {
         this.cmpKind = cmpKind;
+    }
+
+    public PartitionStrategy getStrategy() {
+        return strategy;
+    }
+
+    public void setStrategy(PartitionStrategy strategy) {
+        this.strategy = strategy;
+    }
+
+    public static PartitionRouter getRouterByPartInfo(PartKeyLevel partLevel,
+                                                      Integer parentPartPosi,
+                                                      PartitionInfo partInfo) {
+        if (partLevel == PartKeyLevel.PARTITION_KEY) {
+            return partInfo.getPartitionBy().getRouter();
+        }
+
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            return partInfo.getPartitionBy().getPartitions().get(parentPartPosi - 1).getSubRouter();
+        }
+
+        return null;
     }
 }

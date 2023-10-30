@@ -40,7 +40,9 @@ import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.TreeSet;
 
 /**
  * @author guxu
@@ -91,7 +93,8 @@ class StatisticsBasedSplitPointBuilder implements SplitPointBuilder {
             OptimizerContext.getContext(tableSchema).getTableGroupInfoManager();
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         List<String> newPartitionNames =
-            PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, splitBounds.size() + 1);
+            PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, splitBounds.size() + 1,
+                new TreeSet<>(String::compareToIgnoreCase), false);
 
         if (newPartitionNames.size() != splitBounds.size() + 1) {
             throw new TddlNestableRuntimeException("auto generate partition name error");

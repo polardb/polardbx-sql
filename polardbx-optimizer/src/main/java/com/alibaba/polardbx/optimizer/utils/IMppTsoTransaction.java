@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import java.util.function.Consumer;
+
 public interface IMppTsoTransaction {
-    long nextTimestamp();
+    long nextTimestamp(Consumer<Long> updateGetTsoTime);
 }

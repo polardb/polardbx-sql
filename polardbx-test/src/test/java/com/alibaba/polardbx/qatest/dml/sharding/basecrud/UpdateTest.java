@@ -20,6 +20,9 @@ import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataOperator;
+import com.alibaba.polardbx.qatest.validator.DataValidator;
+import com.google.common.collect.ImmutableSet;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -29,6 +32,7 @@ import org.junit.runners.Parameterized.Parameters;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -904,6 +908,156 @@ public class UpdateTest extends CrudBasedLockTestCase {
             throwables.printStackTrace();
         }
         return physicalTableName;
+    }
+
+    @Test
+    public void updateWithLimitOffset() {
+        int checkNum = 17345239;
+        String updateSql = String.format("update %s set integer_test = %d limit 0,2", baseOneTableName, checkNum);
+        int updateNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, updateSql);
+        Assert.assertEquals(2, updateNum);
+
+        String countSql = String.format("select count(1) from %s where integer_test = %d", baseOneTableName, checkNum);
+        int count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, count);
+
+        String updateSqlErr = String.format("update %s set integer_test = %d limit 2,2", baseOneTableName, checkNum);
+        JdbcUtil.executeUpdateFailed(tddlConnection, updateSqlErr, "UPDATE/DELETE statement");
+
+        updateSqlErr = String.format("update %s set integer_test = %d limit 1,1", baseOneTableName, checkNum);
+        JdbcUtil.executeUpdateFailed(tddlConnection, updateSqlErr, "UPDATE/DELETE statement");
+
+        checkNum = 1695978;
+        updateSql = String.format(
+            "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ update %s set integer_test = %d limit 2,2",
+            baseOneTableName, checkNum);
+        updateNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, updateSql);
+        Assert.assertEquals(2, updateNum);
+        countSql = String.format("select count(1) from %s where integer_test = %d", baseOneTableName, checkNum);
+        count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, count);
+    }
+
+    /**
+     * 修改拆分键, 走LogicalRelocate
+     */
+    @Test
+    public void updateWithLimitOffsetWhenRelocate() {
+        String updateSql =
+            String.format("update %s set pk = pk + 10000 where pk in (4,5,6) limit 0,2", baseOneTableName);
+        int updateNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, updateSql);
+        Assert.assertEquals(2, updateNum);
+
+        String countSql = String.format("select count(1) from %s where pk > 10000", baseOneTableName);
+        int count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, count);
+
+        String updateSqlErr =
+            String.format("update %s set pk = pk + 10000 where pk in (7,8,9) limit 2,2", baseOneTableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, updateSqlErr, "UPDATE/DELETE statement");
+
+        updateSqlErr = String.format("update %s set pk = pk + 10000 where pk in (0,0,0) limit 1,1", baseOneTableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, updateSqlErr, "UPDATE/DELETE statement");
+
+        updateSql = String.format(
+            "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ update %s set pk = pk + 10000 where pk in (7,8,9) limit 1,2",
+            baseOneTableName);
+        updateNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, updateSql);
+        Assert.assertEquals(2, updateNum);
+        count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(4, count);
+
+        updateSql = String.format(
+            "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ update %s set pk = pk + 10000 order by pk limit 1,2",
+            baseOneTableName);
+        updateNum = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, updateSql);
+        Assert.assertEquals(2, updateNum);
+        count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(countSql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(6, count);
+    }
+
+    @Test
+    public void updateWithOrderAndLimitOffset() {
+        int checkNum = 17345239;
+        String mysqlSql =
+            String.format("update %s set integer_test = %d order by pk limit 2", baseOneTableName, checkNum);
+        String tddlSql =
+            String.format("update %s set integer_test = %d order by pk limit 0,2", baseOneTableName, checkNum);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+
+        String sql = "SELECT * FROM " + baseOneTableName;
+        DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        checkNum = 1695978;
+        mysqlSql = String.format("update %s set integer_test = %d order by pk limit 2", baseOneTableName, checkNum);
+        tddlSql = String.format("update %s set integer_test = %d order by pk limit 0,2", baseOneTableName, checkNum);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        sql = "SELECT * FROM " + baseOneTableName;
+        DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        String updateSqlErr =
+            String.format("update %s set integer_test = %d order by pk limit 2,2", baseOneTableName, checkNum);
+        JdbcUtil.executeUpdateFailed(tddlConnection, updateSqlErr, "UPDATE/DELETE statement");
+
+        checkNum = 1893072;
+        tddlSql = String.format(
+            "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO=true)*/ update %s set integer_test = %d order by pk limit 2,2",
+            baseOneTableName, checkNum);
+        int count = JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection, tddlSql);
+        Assert.assertEquals(2, count);
+
+        sql = String.format("select count(1) from %s where integer_test = %d", baseOneTableName, checkNum);
+        count = Integer.parseInt(
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery(sql, tddlConnection)).get(0).get(0).toString());
+        Assert.assertEquals(2, count);
+    }
+
+    @Test
+    public void updateWithDualAndSubQuery() {
+        String sql = String.format(
+            "update %s t1 inner join ( select 1 pk from dual ) t2 on t1.pk = t2.pk set t1.integer_test = 123456 where 1=1",
+            baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+        sql = "SELECT integer_test FROM " + baseOneTableName + " WHERE pk = 1";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
+
+    @Test
+    public void updateWithView() {
+        final String viewName = "update_with_view_test_view";
+
+        // Recreate view
+        String sql = "drop view " + viewName;
+        JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql, ImmutableSet.of("Unknown view"));
+        JdbcUtil.executeUpdateSuccessIgnoreErr(mysqlConnection, sql, ImmutableSet.of("Unknown table"));
+
+        sql = String.format("create view %s as\n"
+            + "(\n"
+            + "    select integer_test, varchar_test from %s as a where a.pk < 11 \n"
+            + ")\n", viewName, baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Execute update
+        sql =
+            String.format("update %s a, %s v set a.bigint_test = v.integer_test where a.varchar_test = v.varchar_test",
+                baseOneTableName, viewName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+
+        // Check error message
+        sql =
+            String.format("update %s a, %s v set v.integer_test = a.bigint_test where a.varchar_test = v.varchar_test",
+                baseOneTableName, viewName);
+        executeErrorAssert(tddlConnection, sql, null,
+            MessageFormat.format("{0}'' of the {1} is not updatable", viewName, "UPDATE"));
     }
 }
 

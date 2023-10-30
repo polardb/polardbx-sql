@@ -16,15 +16,14 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.executor.mpp.metadata.Split;
-import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
@@ -32,12 +31,13 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelFieldCollation;
+import org.apache.calcite.rel.core.Sort;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -119,19 +119,21 @@ public class TableScanSortExec extends TableScanExec {
             try {
                 if (sortedRows == null) {
                     if (orderComparator == null) {
-                        Collection<RelCollation> collations = logicalView.getCollations();
-                        if (collations == null || collations.isEmpty()) {
-                            GeneralUtil.nestedException("logicalview should provided one sort collation at least");
+                        boolean unSort = logicalView.pushedRelNodeIsSort();
+                        if (unSort) {
+                            Sort sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
+                            RelCollation collation = sort.getCollation();
+                            if (log.isDebugEnabled()) {
+                                log.debug(logicalView.getRelatedId() + " table scan need sort by:" + collation);
+                            }
+                            List<RelFieldCollation> sortList = collation.getFieldCollations();
+                            List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
+                            this.orderComparator = ExecUtils.getComparator(orderBys,
+                                dataTypeList
+                            );
+                        } else {
+                            GeneralUtil.nestedException("logicalView should provided one sort collation at least");
                         }
-                        RelCollation collation = collations.iterator().next();
-                        if (log.isDebugEnabled()) {
-                            log.debug(logicalView.getRelatedId() + " table scan need sort by:" + collation);
-                        }
-                        List<RelFieldCollation> sortList = collation.getFieldCollations();
-                        List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
-                        this.orderComparator = ExecUtils.getComparator(orderBys,
-                            dataTypeList
-                        );
                     }
 
                     List<WorkProcessor<Row>> sortedStreams = buildSortedStream();

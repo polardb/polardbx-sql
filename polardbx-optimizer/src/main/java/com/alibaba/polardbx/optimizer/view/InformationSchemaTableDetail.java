@@ -53,9 +53,17 @@ public class InformationSchemaTableDetail extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("TABLE_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("INDEX_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PHYSICAL_TABLE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
         columns.add(
             new RelDataTypeFieldImpl("PARTITION_SEQ", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("PARTITION_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPARTITION_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPARTITION_TEMPLATE_NAME", i++,
+                typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+
         columns.add(
             new RelDataTypeFieldImpl("TABLE_ROWS", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(
@@ -63,6 +71,7 @@ public class InformationSchemaTableDetail extends VirtualView {
         columns.add(
             new RelDataTypeFieldImpl("INDEX_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("BOUND_VALUE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUB_BOUND_VALUE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PERCENT", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("STORAGE_INST_ID", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("GROUP_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));

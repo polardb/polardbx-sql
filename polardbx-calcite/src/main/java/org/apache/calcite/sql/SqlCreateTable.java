@@ -19,6 +19,9 @@ package org.apache.calcite.sql;
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -52,6 +55,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatement
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.gms.util.PartColLocalIndexNameUtil;
 import com.alibaba.polardbx.rule.MappingRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -97,6 +101,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -106,7 +111,11 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
 import static com.alibaba.polardbx.common.TddlConstants.UGSI_PK_INDEX_NAME;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_FUNCTION_ALIAS;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_WITH_GSI;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_WITH_OSS;
 
 /**
  * Parse tree for {@code CREATE TABLE} statement.
@@ -114,12 +123,14 @@ import static com.alibaba.polardbx.common.TddlConstants.UGSI_PK_INDEX_NAME;
 public class SqlCreateTable extends SqlCreate {
 
     private final SqlNodeList columnList;
-    private final SqlNode query;
+    private SqlNode query;
     private final SqlNode likeTableName;
+    private SqlNode asTableName;
     private SqlNode dbpartitionBy; // May changed by validator.
     private final SqlNode dbpartitions;
-    private final SqlNode tbpartitionBy;
+    private SqlNode tbpartitionBy;
     private final SqlNode tbpartitions;
+    // private final SqlNode sqlSelect;
     private boolean autoPartition = false;
     private boolean broadcast;
     private boolean single = false;
@@ -132,9 +143,13 @@ public class SqlCreateTable extends SqlCreate {
     private List<MappingRule> mappingRules;
     private boolean uniqueShardingKey = false;
 
+    private boolean isSelect;
+
     private boolean shadow;
 
     private boolean temporary;
+
+    private boolean DbPartition;
 
     private List<Pair<SqlIdentifier, SqlColumnDeclaration>> colDefs;
     private SqlIndexDefinition primaryKey;
@@ -151,6 +166,8 @@ public class SqlCreateTable extends SqlCreate {
 
     private List<String> logicalReferencedTables = null;
     private List<String> physicalReferencedTables = null;
+    private List<ForeignKeyData> addedForeignKeys;
+    public boolean pushDownForeignKeys;
 
     /**
      * 应该只有一个CONSTRAINT for primary key
@@ -163,6 +180,8 @@ public class SqlCreateTable extends SqlCreate {
 
     // default collation for create table
     private String defaultCollation = null;
+
+    private String encryption = null;
 
     private String locality = "";
 
@@ -180,12 +199,44 @@ public class SqlCreateTable extends SqlCreate {
 
     private SqlNode tableGroupName = null;
     private SqlNode joinGroupName = null;
-
     private SQLPartitionByRange localPartitionSuffix;
 
     private Engine engine = null;
     private ArchiveMode archiveMode;
     private String loadTableSchema = null;
+
+    private final static int MAX_AUTO_INDEX_LEN = 191;
+
+    boolean ignore = false;
+
+    // use for create table replace select
+    // different from base class‘s replace
+    boolean replaceInto = false;
+
+    public void setIgnore(boolean ignore) {
+        this.ignore = ignore;
+    }
+
+    public void setReplace1(boolean replace) {
+        this.replaceInto = replace;
+    }
+
+    public void setAsTableName(SqlNode asTableName) {
+        this.asTableName = asTableName;
+    }
+
+    public SqlNode getAsTableName() {
+        return asTableName;
+    }
+
+    public boolean isIgnore() {
+        return ignore;
+    }
+
+    public boolean isReplace1() {
+        return replaceInto;
+    }
+
     public String getLoadTableSchema() {
         return loadTableSchema;
     }
@@ -228,6 +279,14 @@ public class SqlCreateTable extends SqlCreate {
         this.defaultCollation = defaultCollation;
     }
 
+    public String getEncryption() {
+        return encryption;
+    }
+
+    public void setEncryption(String defaultEncryption) {
+        this.encryption = defaultEncryption;
+    }
+
     public void setRowFormat(String rf) {
         rowFormat = rf;
     }
@@ -258,6 +317,14 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setLocalPartitionSuffix(final SQLPartitionByRange localPartitionSuffix) {
         this.localPartitionSuffix = localPartitionSuffix;
+    }
+
+    public void setSelect(boolean flag) {
+        isSelect = flag;
+    }
+
+    public boolean isSelect() {
+        return isSelect;
     }
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("CREATE TABLE", SqlKind.CREATE_TABLE);
@@ -344,9 +411,11 @@ public class SqlCreateTable extends SqlCreate {
         if (!Engine.isFileStore(engine)) {
             return false;
         }
+
         if (archiveMode != null) {
             return this.archiveMode == ArchiveMode.LOADING;
         }
+
         if (comment != null) {
             // compatible to old syntax
             String trimmedComment = StringUtils.strip(comment, "'");
@@ -356,8 +425,10 @@ public class SqlCreateTable extends SqlCreate {
                 || trimmedComment.equalsIgnoreCase("load_nfs")
                 || trimmedComment.equalsIgnoreCase("load_external_disk");
         }
+
         return false;
     }
+
     public boolean shouldBind() {
         return Engine.isFileStore(engine) && archiveMode == ArchiveMode.TTL;
     }
@@ -370,15 +441,32 @@ public class SqlCreateTable extends SqlCreate {
         return ImmutableNullableList.of(name, columnList, query);
     }
 
+    private String convertName(String wrappedName) {
+        final int len = wrappedName.length();
+        if (len > 6 && wrappedName.startsWith("_$", len - 6)) {
+            return wrappedName.substring(0, len - 6);
+        }
+        return wrappedName;
+    }
+
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         writer.keyword("CREATE");
+        if (shadow) {
+            writer.keyword("SHADOW");
+        }
+        /* 不支持 temporary 语法
+        if(temporary) {
+            writer.keyword("TEMPORARY");
+        }
+        */
+
         writer.keyword("TABLE");
         if (ifNotExists) {
             writer.keyword("IF NOT EXISTS");
         }
         name.unparse(writer, leftPrec, rightPrec);
-        if (columnList != null) {
+        if (columnList != null && getColumnList().size() > 0) {
             SqlWriter.Frame frame = writer.startList("(", ")");
             for (SqlNode c : columnList) {
                 writer.sep(",");
@@ -386,6 +474,134 @@ public class SqlCreateTable extends SqlCreate {
             }
             writer.endList(frame);
         }
+        if (colDefs != null) {
+            SqlWriter.Frame frame = writer.startList("(", ")");
+            for (Pair<SqlIdentifier, SqlColumnDeclaration> c : colDefs) {
+                writer.sep(",");
+                c.getValue().unparse(writer, 0, 0);
+            }
+
+            if (primaryKey != null) {
+                writer.sep(",");
+                writer.keyword("primary");
+                writer.keyword("key");
+                // SqlWriter.Frame frame1 = writer.startList("(", ")");
+                primaryKey.unparse(writer, 0, 0);
+                // writer.endList(frame1);
+            }
+
+            if (uniqueKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : uniqueKeys) {
+                    writer.sep(",");
+                    writer.keyword("unique");
+                    writer.keyword("index");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (globalKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : globalKeys) {
+                    writer.sep(",");
+                    writer.keyword("global");
+                    writer.keyword("index");
+
+//                    TddlSqlToRelConverter.unwr/**/apGsiName(c.getKey().getLastName());
+
+                    if (DbPartition == true) {
+                        String otherName = c.getKey().getLastName();
+//                        String n = otherName.substring(0, otherName.lastIndexOf("_"));
+                        String n = convertName(otherName);
+                        writer.keyword(n);
+                    } else {
+                        writer.keyword(c.getKey().getLastName());
+                    }
+                    c.getValue().unparse(writer, 0, 0);
+//                    throw new TddlRuntimeException(ERR_CREATE_SELECT_WITH_GSI, "create select don't support table with GSI");
+                }
+            }
+
+            if (globalUniqueKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : globalUniqueKeys) {
+                    writer.sep(",");
+                    writer.keyword("unique");
+                    writer.keyword("global");
+                    writer.keyword("index");
+                    if (DbPartition == true) {
+                        String otherName = c.getKey().getLastName();
+//                        String n = otherName.substring(0, otherName.lastIndexOf("_"));
+                        String n = convertName(otherName);
+                        writer.keyword(n);
+                    } else {
+                        writer.keyword(c.getKey().getLastName());
+                    }
+                    c.getValue().unparse(writer, 0, 0);
+//                    throw new TddlRuntimeException(ERR_CREATE_SELECT_WITH_GSI, "create select don't support table with GSI");
+                }
+            }
+
+            if (clusteredKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : clusteredKeys) {
+                    writer.sep(",");
+                    writer.keyword("clustered");
+                    writer.keyword("index");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (clusteredUniqueKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : clusteredUniqueKeys) {
+                    writer.sep(",");
+                    writer.keyword("unique");
+                    writer.keyword("clustered");
+                    writer.keyword("index");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (keys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : keys) {
+                    writer.sep(",");
+                    writer.keyword("key");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (fullTextKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : fullTextKeys) {
+                    writer.sep(",");
+                    writer.keyword("fulltext");
+                    writer.keyword("key");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+            if (spatialKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : spatialKeys) {
+                    writer.sep(",");
+                    writer.keyword("spatial");
+                    writer.keyword("key");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+            if (foreignKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : foreignKeys) {
+                    writer.sep(",");
+                    writer.keyword("foreign");
+                    writer.keyword("key");
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (checks != null) {
+                for (SqlCall c : checks) {
+                    writer.sep(",");
+                    writer.keyword("check");
+                    c.unparse(writer, 0, 0);
+                }
+            }
+
+            writer.endList(frame);
+        }
+
         if (query != null) {
             writer.keyword("AS");
             writer.newlineAndIndent();
@@ -407,6 +623,30 @@ public class SqlCreateTable extends SqlCreate {
             if (tbpartitions != null) {
                 writer.keyword("TBPARTITIONS");
                 tbpartitions.unparse(writer, 0, 0);
+            }
+        }
+
+        if (sqlPartition != null) {
+            sqlPartition.unparse(writer, 0, 0);
+        }
+
+        if (localPartition != null) {
+            localPartition.unparse(writer, 0, 0);
+        }
+
+        if (single == true) {
+            writer.keyword("SINGLE");
+        }
+
+        if (broadcast == true) {
+            writer.keyword("BROADCAST");
+        }
+
+        if (engine != null) {
+            writer.keyword("ENGINE=");
+            writer.keyword(engine.name());
+            if (engine.name().equalsIgnoreCase("OSS")) {
+                throw new TddlRuntimeException(ERR_CREATE_SELECT_WITH_OSS, "create select don't support OSS engine");
             }
         }
 
@@ -450,6 +690,10 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setJoinGroupName(SqlNode joinGroupName) {
         this.joinGroupName = joinGroupName;
+    }
+
+    public void setDBPartition(boolean newPartitionDb) {
+        DbPartition = newPartitionDb;
     }
 
     /**
@@ -579,6 +823,10 @@ public class SqlCreateTable extends SqlCreate {
         return tbpartitionBy;
     }
 
+    public void setTbpartitionBy(SqlNode tbpartitionBy) {
+        this.tbpartitionBy = tbpartitionBy;
+    }
+
     public SqlNode getTbpartitions() {
         return tbpartitions;
     }
@@ -601,6 +849,10 @@ public class SqlCreateTable extends SqlCreate {
 
     public SqlNode getQuery() {
         return query;
+    }
+
+    public void setQuery(SqlNode query) {
+        this.query = query;
     }
 
     public String getSourceSql() {
@@ -637,7 +889,7 @@ public class SqlCreateTable extends SqlCreate {
 
     @Override
     public SqlCreateTable clone(SqlParserPos pos) {
-        return new SqlCreateTable(SqlParserPos.ZERO,
+        SqlCreateTable ret = new SqlCreateTable(SqlParserPos.ZERO,
             replace,
             ifNotExists,
             name,
@@ -671,10 +923,14 @@ public class SqlCreateTable extends SqlCreate {
             localPartition,
             tableGroupName,
             joinGroupName);
+        ret.setEngine(engine);
+        ret.setDBPartition(DbPartition);
+        return ret;
     }
 
     public MySqlStatement rewriteForGsi() {
-        final List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        final List<SQLStatement> statementList =
+            SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         final MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
         Set<String> shardKeys = new LinkedHashSet<>();
         if (dbpartitionBy != null) {
@@ -746,9 +1002,26 @@ public class SqlCreateTable extends SqlCreate {
     }
 
     public MySqlStatement rewrite() {
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList = SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
         Set<String> shardKeys = new LinkedHashSet<>();
+        Set<String> subPartKeys = new LinkedHashSet<>();
+        List<SQLTableElement> removeFKs = new ArrayList<>();
+        List<SQLTableElement> originElementList = new ArrayList<>(stmt.getTableElementList());
+        if (!pushDownForeignKeys) {
+            for (SQLTableElement sqlTableElement : originElementList) {
+                if (sqlTableElement instanceof MysqlForeignKey) {
+                    removeFKs.add(sqlTableElement);
+                }
+            }
+            for (ForeignKeyData foreignKeyData : getAddedForeignKeys()) {
+                Set<String> foreignKeys = new LinkedHashSet<>(foreignKeyData.columns);
+
+                addForeignKeyIndex(foreignKeys, stmt, uniqueShardingKey, foreignKeyData);
+            }
+            stmt.getTableElementList().removeAll(removeFKs);
+        }
+
         if (dbpartitionBy != null) {
             shardKeys = getShardingKeys(dbpartitionBy, shardKeys);
         }
@@ -758,20 +1031,38 @@ public class SqlCreateTable extends SqlCreate {
         }
 
         if (sqlPartition != null) {
-            getPartitionKeys(sqlPartition, shardKeys);
+            getPartitionKeys(sqlPartition, shardKeys, subPartKeys);
         }
 
         // Remove implicit pk in shard keys, because it must be primary key.
         shardKeys.removeIf(SqlValidatorImpl::isImplicitKey);
 
+        boolean useSubPartBy = false;
+        boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
+        if (subPartKeys != null && subPartKeys.size() > 0) {
+            useSubPartBy = true;
+            List<String> partKeyList = shardKeys.stream().collect(Collectors.toList());
+            List<String> subPartKeyList = subPartKeys.stream().collect(Collectors.toList());
+            subPartKeyContainAllPartKeyAsPrefixCols = checkIfContainPrefixPartCols(subPartKeyList, partKeyList);
+        }
         if (shardKeys.size() > 0) {
-            if (sqlPartition == null || shardKeys.size() == 1) {
-                addIndex(shardKeys, stmt, uniqueShardingKey);
-            } else {
-                // create composite indexes for key/range column/list column partitions
-                addCompositeIndex(shardKeys, stmt);
-
+            if (!(useSubPartBy && subPartKeyContainAllPartKeyAsPrefixCols)) {
+                if (sqlPartition == null) {
+                    addIndex(shardKeys, stmt, uniqueShardingKey);
+                } else {
+                    addCompositeIndex(shardKeys, stmt);
+                }
             }
+            if (useSubPartBy) {
+                addCompositeIndex(subPartKeys, stmt);
+            }
+
+//            if (sqlPartition == null || shardKeys.size() == 1) {
+//                addIndex(shardKeys, stmt, uniqueShardingKey);
+//            } else {
+//                // create composite indexes for key/range column/list column partitions
+//                addCompositeIndex(shardKeys, stmt);
+//            }
         }
         stmt.setBroadCast(false);
         // remove locality on mysql
@@ -833,7 +1124,7 @@ public class SqlCreateTable extends SqlCreate {
     }
 
     private String prepare() {
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList = SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
         Set<String> shardKeys = new HashSet<>();
         if (dbpartitions == null) {
@@ -925,9 +1216,9 @@ public class SqlCreateTable extends SqlCreate {
                     if (!ConfigDataMode.isFastMock() && logicalReferencedTables != null) {
                         String referencedTableName = null;
                         if (expr instanceof SQLIdentifierExpr) {
-                            referencedTableName = ((SQLIdentifierExpr) expr).getSimpleName();
+                            referencedTableName = SQLUtils.normalizeNoTrim(((SQLIdentifierExpr) expr).getSimpleName());
                         } else if (expr instanceof SQLPropertyExpr) {
-                            referencedTableName = ((SQLPropertyExpr) expr).getSimpleName();
+                            referencedTableName = SQLUtils.normalizeNoTrim(((SQLPropertyExpr) expr).getSimpleName());
                         }
                         if (TStringUtil.isNotEmpty(referencedTableName) &&
                             logicalReferencedTables.contains(referencedTableName)) {
@@ -955,6 +1246,19 @@ public class SqlCreateTable extends SqlCreate {
         addIndex(indexColumnNameMap, stmt, isUniqueIndex, ImmutableList.<SqlIndexOption>of(), false, shardKeys);
     }
 
+    public static void addForeignKeyIndex(Set<String> shardKeys, MySqlCreateTableStatement stmt, boolean isUniqueIndex,
+                                          ForeignKeyData foreignKeyData) {
+        final Map<String, SqlIndexColumnName> indexColumnNameMap = new LinkedHashMap<>();
+        for (String columnName : shardKeys) {
+            indexColumnNameMap.put(columnName, new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(columnName,
+                SqlParserPos.ZERO), null, null));
+        }
+        addCompositeIndex(indexColumnNameMap, stmt, false, ImmutableList.<SqlIndexOption>of(), false,
+            new ArrayList<>(shardKeys), true,
+            foreignKeyData.indexName == null ? foreignKeyData.constraint : foreignKeyData.indexName);
+
+    }
+
     public static String getIndexColumnName(final SQLSelectOrderByItem indexColumnDef) {
         final SQLExpr expr = indexColumnDef.getExpr();
 
@@ -967,6 +1271,15 @@ public class SqlCreateTable extends SqlCreate {
         return null;
     }
 
+    /**
+     * only for drds mode, add global index or create table
+     *
+     * @param indexColumnDefMap index columns
+     * @param stmt stmt
+     * @param isUniqueIndex will add unique local index
+     * @param gsi will add local index `i_col_col`
+     * @param shardingKey will add local index `auto_shard_key_col`
+     */
     public static void addIndex(Map<String, SqlIndexColumnName> indexColumnDefMap, MySqlCreateTableStatement stmt,
                                 boolean isUniqueIndex, List<SqlIndexOption> options, boolean gsi,
                                 Collection<String> shardingKey) {
@@ -977,7 +1290,7 @@ public class SqlCreateTable extends SqlCreate {
         final Set<String> indexColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumns.addAll(indexColumnDefMap.keySet());
 
-        boolean needAddIndexColumns = gsi ? true : false;
+        boolean needAddIndexColumns = gsi;
 
         // Columns to be singly indexed
         final Set<String> unindexedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -1131,7 +1444,7 @@ public class SqlCreateTable extends SqlCreate {
                 mySqlTableIndex.setName(new SQLIdentifierExpr(indexName));
 
                 final SQLSelectOrderByItem sqlSelectOrderByItem =
-                    buildIndexColumnDef(columnName, indexColumnDefMap, columnDefMap, gsi, 191);
+                    buildIndexColumnDef(columnName, indexColumnDefMap, columnDefMap, gsi, MAX_AUTO_INDEX_LEN);
 
                 if (sqlSelectOrderByItem != null) {
                     mySqlTableIndex.addColumn(sqlSelectOrderByItem);
@@ -1224,10 +1537,8 @@ public class SqlCreateTable extends SqlCreate {
         case "VARCHAR":
             if (!gsi && arguments != null && arguments.size() > 0
                 && arguments.get(0) instanceof SQLIntegerExpr) {
-                length = ((SQLIntegerExpr) arguments.get(0)).getNumber().intValue();
-
-                if (length > maxLen) {
-                    length = maxLen;
+                if (length == -1) {
+                    length = Math.min(((SQLIntegerExpr) arguments.get(0)).getNumber().intValue(), maxLen);
                 }
             }
             break;
@@ -1316,7 +1627,19 @@ public class SqlCreateTable extends SqlCreate {
         return indexColumnList;
     }
 
+    public static String buildAutoShardKeyLocalIndexName(Set<String> existingIndexes, String suffix) {
+        return buildIndexName(existingIndexes, suffix);
+    }
+
+    private static String buildForeignKeyIndexName(Set<String> existingIndexes, String suffix) {
+        return buildIndexName(existingIndexes, TddlConstants.FOREIGN_KEY_PREFIX, suffix);
+    }
+
     private static String buildIndexName(Set<String> existingIndexes, String suffix) {
+        if (suffix.length() > TddlConstants.MAX_SHARD_COLS_LOCAL_INDEX_NAME_LENGTH) {
+            suffix = PartColLocalIndexNameUtil.buildRandomName(existingIndexes, TddlConstants.AUTO_SHARD_KEY_PREFIX);
+            return SqlIdentifier.surroundWithBacktick(suffix.toLowerCase(Locale.ROOT));
+        }
         return buildIndexName(existingIndexes, TddlConstants.AUTO_SHARD_KEY_PREFIX, suffix);
     }
 
@@ -1361,13 +1684,33 @@ public class SqlCreateTable extends SqlCreate {
         return shardings;
     }
 
-    public static Set<String> getPartitionKeys(SqlNode partitionBy, Set<String> shardings) {
-        return getPartitionKeys(partitionBy, shardings, true);
+    public static Set<String> getPartitionKeys(SqlNode partitionBy,
+                                               Set<String> partKeys,
+                                               Set<String> subPartKeys) {
+        return getPartitionKeys(partitionBy, partKeys, subPartKeys, true);
+    }
+
+    /**
+     * Check if the target partition columns contains the target prefix part columns
+     */
+    public static boolean checkIfContainPrefixPartCols(List<String> targetPartCols, List<String> targetPrefixCols) {
+        if (targetPartCols.size() < targetPrefixCols.size()) {
+            return false;
+        }
+        for (int i = 0; i < targetPrefixCols.size(); i++) {
+            String partCol = targetPartCols.get(i);
+            String prefixCol = targetPrefixCols.get(i);
+            if (!partCol.equalsIgnoreCase(prefixCol)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static class PartitionColumnFinder extends SqlShuttle {
 
         protected SqlIdentifier partColumn;
+        protected List<SqlNode> allPartColAsts = new ArrayList<>();
         protected boolean containConstExpr = false;
         protected boolean containPartFunc = false;
         protected boolean useNestingPartFunc = false;
@@ -1385,7 +1728,7 @@ public class SqlCreateTable extends SqlCreate {
             containPartFunc = true;
             List<SqlNode> operandList = call.getOperandList();
             for (int i = 0; i < operandList.size(); i++) {
-                if (operandList.get(i) instanceof  SqlCall) {
+                if (operandList.get(i) instanceof SqlCall) {
                     useNestingPartFunc = true;
                 }
             }
@@ -1394,13 +1737,14 @@ public class SqlCreateTable extends SqlCreate {
 
         @Override
         public SqlNode visit(SqlLiteral literal) {
-            containConstExpr =  true;
+            containConstExpr = true;
             return super.visit(literal);
         }
 
         @Override
         public SqlNode visit(SqlIdentifier id) {
             partColumn = id;
+            allPartColAsts.add(id);
             return id;
         }
 
@@ -1419,13 +1763,26 @@ public class SqlCreateTable extends SqlCreate {
         public boolean isUseNestingPartFunc() {
             return useNestingPartFunc;
         }
+
+        public List<SqlNode> getAllPartColAsts() {
+            return allPartColAsts;
+        }
     }
 
-    public static Set<String> getPartitionKeys(SqlNode partitionBy, Set<String> shardingKeys, boolean toUpperCase) {
+    /**
+     * get partition key or subpartition key from partitionBy ast
+     *
+     * @return all partition and subpartition keys after removing duplicated cols
+     */
+    public static Set<String> getPartitionKeys(SqlNode partitionBy,
+                                               Set<String> partKeys,
+                                               Set<String> subPartKeys,
+                                               boolean toUpperCase) {
 
         SqlPartitionBy partitionByVal = (SqlPartitionBy) partitionBy;
         List<SqlNode> partCols = partitionByVal.getColumns();
         final List<String> skNames = new ArrayList<>();
+        Set<String> allPartColNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         for (int i = 0; i < partCols.size(); i++) {
             SqlNode partCol = partCols.get(i);
             PartitionColumnFinder columnFinder = new PartitionColumnFinder();
@@ -1433,11 +1790,37 @@ public class SqlCreateTable extends SqlCreate {
             if (findPartCol) {
                 SqlIdentifier colName = columnFinder.getPartColumn();
                 final String simple = colName.getSimple();
-                skNames.add(toUpperCase ? simple.toUpperCase() : simple);
+                String colVal = toUpperCase ? simple.toUpperCase() : simple;
+                skNames.add(colVal);
+                if (!allPartColNameSet.contains(colVal)) {
+                    allPartColNameSet.add(colVal);
+                }
             }
         }
-        shardingKeys.addAll(skNames);
-        return shardingKeys;
+        partKeys.addAll(skNames);
+
+        if (partitionByVal.getSubPartitionBy() != null) {
+            SqlSubPartitionBy subPartitionBy = partitionByVal.getSubPartitionBy();
+            List<SqlNode> subPartCols = subPartitionBy.getColumns();
+            final List<String> subSkNames = new ArrayList<>();
+            for (int i = 0; i < subPartCols.size(); i++) {
+                SqlNode partCol = subPartCols.get(i);
+                PartitionColumnFinder columnFinder = new PartitionColumnFinder();
+                boolean findPartCol = columnFinder.find(partCol);
+                if (findPartCol) {
+                    SqlIdentifier colName = columnFinder.getPartColumn();
+                    final String simple = colName.getSimple();
+                    String colVal = toUpperCase ? simple.toUpperCase() : simple;
+                    subSkNames.add(colVal);
+                    if (!allPartColNameSet.contains(colVal)) {
+                        allPartColNameSet.add(colVal);
+                    }
+                }
+            }
+            subPartKeys.addAll(subSkNames);
+        }
+
+        return allPartColNameSet;
     }
 
     @Override
@@ -1445,6 +1828,7 @@ public class SqlCreateTable extends SqlCreate {
         return prepare();
     }
 
+    @Override
     public SqlString toSqlString(SqlDialect dialect) {
         String sql = prepare();
         return new SqlString(dialect, sql);
@@ -1554,6 +1938,32 @@ public class SqlCreateTable extends SqlCreate {
         this.foreignKeys = foreignKeys;
     }
 
+    public void addForeignKeys(List<ForeignKeyData> addedForeignKeys) {
+        if (null == this.addedForeignKeys) {
+            this.addedForeignKeys = new ArrayList<>();
+        }
+
+        if (addedForeignKeys != null) {
+            this.addedForeignKeys.addAll(addedForeignKeys);
+        }
+    }
+
+    public void removeForeignKeys() {
+        addedForeignKeys.clear();
+    }
+
+    public List<ForeignKeyData> getAddedForeignKeys() {
+        return addedForeignKeys;
+    }
+
+    public boolean getPushDownForeignKeys() {
+        return pushDownForeignKeys;
+    }
+
+    public void setPushDownForeignKeys(boolean pushDownForeignKeys) {
+        this.pushDownForeignKeys = pushDownForeignKeys;
+    }
+
     public List<SqlCall> getChecks() {
         return checks;
     }
@@ -1610,18 +2020,58 @@ public class SqlCreateTable extends SqlCreate {
         return sqlPartition;
     }
 
+    private static boolean listContainsIgnoreCase(List<String> indexKey, List<String> shardingKey) {
+        if (indexKey.size() < shardingKey.size()) {
+            return false;
+        }
+        int i = 0;
+        for (String item : shardingKey) {
+            if (!item.equalsIgnoreCase(indexKey.get(i))) {
+                break;
+            }
+            i++;
+        }
+        return i == shardingKey.size();
+    }
+
+    public static void addLocalIndexForAutoTbl(MySqlCreateTableStatement indexTableStmt,
+                                               List<List<String>> allLevelPartKeys) {
+
+        final Map<String, SqlIndexColumnName> partKeyColNameMap = new LinkedHashMap<>();
+        List<String> partKeys = allLevelPartKeys.get(0);
+        for (String columnName : partKeys) {
+            partKeyColNameMap.put(columnName, new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(columnName,
+                SqlParserPos.ZERO), null, null));
+        }
+
+    }
+
     public static void addCompositeIndex(Set<String> shardKeys, MySqlCreateTableStatement stmt) {
+
         final Map<String, SqlIndexColumnName> indexColumnNameMap = new LinkedHashMap<>();
         for (String columnName : shardKeys) {
             indexColumnNameMap.put(columnName, new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(columnName,
                 SqlParserPos.ZERO), null, null));
         }
-        addCompositeIndex(indexColumnNameMap, stmt, shardKeys.stream().collect(Collectors.toList()));
+        addCompositeIndex(indexColumnNameMap, stmt, false, ImmutableList.<SqlIndexOption>of(), false,
+            new ArrayList<>(shardKeys), false, "");
     }
 
+    /**
+     * only for auto mode, add global index or create table
+     *
+     * @param indexColumnDefMap index columns
+     * @param stmt stmt
+     * @param isUniqueIndex will add unique local index
+     * @param isGsi will add local index `i_col_col`
+     * @param shardingKey will add local index `auto_shard_key_col`
+     * @param addFkIndex will add local index for foreign key
+     */
     public static void addCompositeIndex(Map<String, SqlIndexColumnName> indexColumnDefMap,
-                                         MySqlCreateTableStatement stmt,
-                                         List<String> shardingKey) {
+                                         MySqlCreateTableStatement stmt, boolean isUniqueIndex,
+                                         List<SqlIndexOption> options, boolean isGsi,
+                                         List<String> shardingKey,
+                                         boolean addFkIndex, String foreignKeyIndexName) {
 
         final Set<String> indexColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumns.addAll(indexColumnDefMap.keySet());
@@ -1629,78 +2079,274 @@ public class SqlCreateTable extends SqlCreate {
         // Columns to be singly indexed
         final Set<String> unindexedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         unindexedColumns.addAll(shardingKey);
+        final Set<String> shardingKeyNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        final Map<String, SQLColumnDefinition> shardingColumnDefMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        shardingKeyNameSet.addAll(shardingKey);
 
         final Set<String> existingIndexNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         final Map<String, SQLColumnDefinition> columnDefMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
         final List<SQLTableElement> existIndexList = new ArrayList<>();
 
-        String indexType = "BTREE";
+        final Map<String, SQLColumnDefinition> pkColumnDefMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        final List<String> pkNames = stmt.getPrimaryKeyNames();
+        final Set<String> pkNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        pkNameSet.addAll(pkNames);
 
+        String indexType = "BTREE";
+        if (GeneralUtil.isNotEmpty(options)) {
+            for (SqlIndexOption option : options) {
+                if (null != option.getIndexType()) {
+                    indexType = option.getIndexType().name();
+                }
+            }
+        }
+
+        shardingKey.remove(IMPLICIT_COL_NAME);
+        shardingKey.remove(IMPLICIT_KEY_NAME);
+
+        boolean autoShardIndexAlreadyExists = false;
+        boolean needAddIndexColumns = isGsi;
         final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
         while (it.hasNext()) {
             final SQLTableElement sqlTableElement = it.next();
             if (sqlTableElement instanceof SQLColumnDefinition) {
                 final SQLColumnDefinition columnDef = (SQLColumnDefinition) sqlTableElement;
-                final String columnName = SQLUtils.normalizeNoTrim(columnDef.getName().getSimpleName());
+                final String columnName = SQLUtils.normalizeNoTrim(columnDef.getName().getSimpleName()).toLowerCase();
+
+                List<String> indexingColumnsName = new ArrayList<>();
+
+                Optional.ofNullable(columnDef.getConstraints()).ifPresent(
+                    constraints -> constraints.stream()
+                        .filter(c -> c instanceof SQLColumnUniqueKey || c instanceof SQLColumnPrimaryKey)
+                        .forEach(e -> indexingColumnsName.add(
+                            SQLUtils.normalize(((SQLColumnDefinition) sqlTableElement).getColumnName()))));
+
+                if (listContainsIgnoreCase(indexingColumnsName, shardingKey)) {
+                    autoShardIndexAlreadyExists = true;
+                }
+
                 // Store index column def
                 if (indexColumns.contains(columnName)) {
                     columnDefMap.put(columnName, columnDef);
+                } else {
+                    shardingKey.remove(columnName.toLowerCase());
                 }
+
+                if (pkNameSet.contains(columnName)) {
+                    pkColumnDefMap.put(columnName, columnDef);
+                }
+
+                if (shardingKeyNameSet.contains(columnName)) {
+                    shardingColumnDefMap.put(columnName, columnDef);
+                }
+
             } else if (sqlTableElement instanceof MySqlTableIndex && !((MySqlTableIndex) sqlTableElement).isGlobal()) {
-                if (((MySqlTableIndex) sqlTableElement).getColumns().size() > 1) {
-                    existIndexList.add(sqlTableElement);
-                }
-            } else if (sqlTableElement instanceof MySqlKey) {
-                if (((MySqlKey) sqlTableElement).getColumns().size() > 1) {
-                    existIndexList.add(sqlTableElement);
-                }
-            }
-        }
+                if (((MySqlTableIndex) sqlTableElement).getColumns().size() > 0) {
+                    List<String> indexingColumnsName = ((MySqlTableIndex) sqlTableElement).getColumns()
+                        .stream().map(SqlCreateTable::getIndexColumnName).collect(Collectors.toList());
 
-        if (columnDefMap.size() != indexColumns.size()) {
-            indexColumns.removeAll(columnDefMap.keySet());
-            throw new IllegalArgumentException("Unknown index column " + String.join(",", indexColumns));
-        }
-
-        boolean indexAlreadExists = false;
-        for (SQLTableElement sqlTableElement : existIndexList) {
-            List<SQLSelectOrderByItem> indexingColumns = null;
-            if (sqlTableElement instanceof MySqlTableIndex) {
-                indexingColumns = ((MySqlTableIndex) sqlTableElement).getColumns();
-            } else if (sqlTableElement instanceof MySqlKey) {
-                indexingColumns = ((MySqlKey) sqlTableElement).getColumns();
-            }
-            if (GeneralUtil.isNotEmpty(indexColumns) && indexingColumns.size() == shardingKey.size()) {
-                int i = 0;
-                for (SQLSelectOrderByItem item : indexingColumns) {
-                    String colName = getIndexColumnName(item);
-                    if (!colName.equalsIgnoreCase(shardingKey.get(i))) {
-                        break;
+                    if (listContainsIgnoreCase(indexingColumnsName, shardingKey)) {
+                        autoShardIndexAlreadyExists = true;
                     }
-                    i++;
+
+                    if (isGsi && needAddIndexColumns) {
+                        final Set<String> elementColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        elementColumns.addAll(indexingColumnsName);
+
+                        if (indexColumns.equals(elementColumns)) {
+                            if (isUniqueIndex) {
+                                if (!((MySqlTableIndex) sqlTableElement).getName().getSimpleName()
+                                    .equalsIgnoreCase(UGSI_PK_INDEX_NAME)) {
+                                    it.remove();    // Need to be replaced with MySqlUnique
+                                }
+                            } else {
+                                needAddIndexColumns = false;
+                            }
+                        }
+                    }
                 }
-                if (i == indexingColumns.size()) {
-                    indexAlreadExists = true;
+            } else if (sqlTableElement instanceof MySqlKey && !(sqlTableElement instanceof MySqlUnique
+                && ((MySqlUnique) sqlTableElement).isGlobal())) {
+
+//                if (((MySqlKey) sqlTableElement).getColumns().size() > 1) {
+//                    existIndexList.add(sqlTableElement);
+//                } else {
+//                    MySqlKey myKey = (MySqlKey) sqlTableElement;
+//                    if (myKey.getIndexDefinition() != null) {
+//                        SQLIndexDefinition idxDef = myKey.getIndexDefinition();
+//                        boolean normalLocalKey = !(myKey instanceof MySqlUnique) && !(myKey instanceof MySqlPrimaryKey);
+//                        if (normalLocalKey && idxDef.getName() != null) {
+//                            String localKeyName = SQLUtils.normalizeNoTrim(idxDef.getName().getSimpleName());
+//                            /**
+//                             * Show create table stmt from showing create table has contains some local index with
+//                             * name like 'auto_shard_key_xxx'
+//                             */
+//                            if (localKeyName.toLowerCase().contains( TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+//                                existIndexList.add(sqlTableElement);
+//                            }
+//                        }
+//
+//                    }
+//
+//                }
+
+                if (((MySqlKey) sqlTableElement).getColumns().size() > 0) {
+                    List<String> indexingColumnsName = ((MySqlKey) sqlTableElement).getColumns()
+                        .stream().map(SqlCreateTable::getIndexColumnName).collect(Collectors.toList());
+
+                    if (listContainsIgnoreCase(indexingColumnsName, shardingKey)) {
+                        autoShardIndexAlreadyExists = true;
+                    }
+
+                    if (isGsi && needAddIndexColumns) {
+                        final Set<String> elementColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        elementColumns.addAll(indexingColumnsName);
+
+                        if (indexColumns.equals(elementColumns)) {
+                            if (isUniqueIndex && !(sqlTableElement instanceof MySqlUnique)
+                                && !(sqlTableElement instanceof MySqlPrimaryKey)) {
+                                // never remove implicit pk info
+                                if (!((MySqlKey) sqlTableElement).getName().getSimpleName()
+                                    .equalsIgnoreCase(UGSI_PK_INDEX_NAME)) {
+                                    it.remove();  //  Need to be replaced with MySqlUnique
+                                }
+                            } else if (sqlTableElement instanceof MySqlPrimaryKey) {
+                                needAddIndexColumns = false;
+                            } else {
+                                needAddIndexColumns = false;
+                                ((MySqlKey) sqlTableElement).setIndexType(indexType);
+                            }
+                        }
+                    }
                 }
-                if (indexAlreadExists) {
-                    break;
-                }
-            } else {
-                continue;
+            } else if (sqlTableElement instanceof MysqlForeignKey) {
+                // Store existing index name
+                Optional.ofNullable(((MysqlForeignKey) sqlTableElement).getName())
+                    .map(in -> SQLUtils.normalizeNoTrim(in.getSimpleName())).ifPresent(existingIndexNames::add);
             }
         }
-        if (!indexAlreadExists) {
+
+//        if (columnDefMap.size() != indexColumns.size()) {
+//            indexColumns.removeAll(columnDefMap.keySet());
+//            throw new IllegalArgumentException("Unknown index column " + String.join(",", indexColumns));
+//        }
+//
+//        boolean indexAlreadExists = false;
+//        int shardingKeyCnt = shardingKey.size();
+//        for (SQLTableElement sqlTableElement : existIndexList) {
+//            List<SQLSelectOrderByItem> indexingColumns = null;
+//            if (sqlTableElement instanceof MySqlTableIndex) {
+//                indexingColumns = ((MySqlTableIndex) sqlTableElement).getColumns();
+//            } else if (sqlTableElement instanceof MySqlKey) {
+//                indexingColumns = ((MySqlKey) sqlTableElement).getColumns();
+//            }
+//
+//            if (GeneralUtil.isNotEmpty(indexColumns) && indexingColumns.size() >= shardingKey.size()) {
+////                int i = 0;
+////                for (SQLSelectOrderByItem item : indexingColumns) {
+////                    String colName = getIndexColumnName(item);
+////                    if (!colName.equalsIgnoreCase(shardingKey.get(i))) {
+////                        break;
+////                    }
+////                    i++;
+////                }
+////                if (i == indexingColumns.size()) {
+////                    indexAlreadExists = true;
+////                }
+//
+//                boolean isExist = true;
+//                int indexingColumnsCnt = indexingColumns.size();
+//                for (int j = 0; j < shardingKeyCnt; j++) {
+//                    if (j >= indexingColumnsCnt) {
+//                        break;
+//                    }
+//                    SQLSelectOrderByItem idxingCol = indexingColumns.get(j);
+//                    String colName = getIndexColumnName(idxingCol);
+//                    if (!colName.equalsIgnoreCase(shardingKey.get(j))) {
+//                        isExist = false;
+//                        break;
+//                    }
+//                }
+//
+//                if (isExist) {
+//                    indexAlreadExists = true;
+//                    break;
+//                }
+//            } else {
+//                continue;
+//            }
+//        }
+
+        if (needAddIndexColumns && isUniqueIndex) {
+            final Set<String> orderedIndexColumnNames = indexColumnDefMap.keySet();
+            final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
+            final String indexName = buildIndexName(existingIndexNames, suffix);
+
+            final MySqlUnique uniqueIndex = new MySqlUnique();
+            uniqueIndex.getIndexDefinition().setType("UNIQUE");
+            uniqueIndex.getIndexDefinition().setKey(true);
+            uniqueIndex.setIndexType(indexType);
+            uniqueIndex.setName(new SQLIdentifierExpr(indexName));
+
+            final List<SQLSelectOrderByItem> indexColumnList =
+                buildUnifiedIndexColumnDef(orderedIndexColumnNames, indexColumnDefMap, columnDefMap);
+
+            List<String> indexingColumnsName =
+                indexColumnList.stream().map(SqlCreateTable::getIndexColumnName).collect(Collectors.toList());
+
+            if (listContainsIgnoreCase(indexingColumnsName, shardingKey)) {
+                autoShardIndexAlreadyExists = true;
+            }
+
+            uniqueIndex.getIndexDefinition().getColumns().addAll(indexColumnList);
+
+            if (GeneralUtil.isNotEmpty(uniqueIndex.getColumns())) {
+                stmt.getTableElementList().add(uniqueIndex);
+            }
+        } else if (needAddIndexColumns && indexColumns.size() > 1) {
+            final String surfix = buildUnifyIndexName(indexColumnDefMap.keySet(), 58);
+            final String indexName = buildIndexName(existingIndexNames, "i_", surfix);
+
+            final MySqlUnique uniqueIndex = new MySqlUnique();
+            uniqueIndex.getIndexDefinition().setKey(true);
+            uniqueIndex.setIndexType(indexType);
+            uniqueIndex.setName(new SQLIdentifierExpr(indexName));
+
+            final List<SQLSelectOrderByItem> indexColumnList =
+                buildUnifiedIndexColumnDef(indexColumnDefMap.keySet(), indexColumnDefMap, columnDefMap);
+
+            List<String> indexingColumnsName =
+                indexColumnList.stream().map(SqlCreateTable::getIndexColumnName).collect(Collectors.toList());
+
+            if (listContainsIgnoreCase(indexingColumnsName, shardingKey)) {
+                autoShardIndexAlreadyExists = true;
+            }
+
+            uniqueIndex.getIndexDefinition().getColumns().addAll(indexColumnList);
+
+            if (GeneralUtil.isNotEmpty(uniqueIndex.getColumns())) {
+                stmt.getTableElementList().add(uniqueIndex);
+            }
+        }
+
+        final Map<String, SQLColumnDefinition> columnDefIncludedPkColsMap =
+            new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        columnDefIncludedPkColsMap.putAll(columnDefMap);
+        columnDefIncludedPkColsMap.putAll(pkColumnDefMap);
+        columnDefIncludedPkColsMap.putAll(shardingColumnDefMap);
+
+//        if (!indexAlreadExists) {
+        if (!autoShardIndexAlreadyExists || addFkIndex) {
             List<IndexColumnInfo> indexColumnInfos =
                 preparAutoCompositeIndexs(shardingKey, columnDefMap, 191);
 
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < indexColumnInfos.size(); i++) {
-                if (i > 0) {
-                    sb.append("_");
-                }
-                sb.append(indexColumnInfos.get(i).getColName());
-            }
-            final String indexName = buildIndexName(existingIndexNames, sb.toString());
+            Set<String> orderedIndexColumnNames = new LinkedHashSet<>(shardingKey);
+            final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
+            final String indexName = addFkIndex ? (foreignKeyIndexName == null ?
+                buildForeignKeyIndexName(existingIndexNames, suffix) : foreignKeyIndexName) :
+                buildIndexName(existingIndexNames, suffix);
+
             final MySqlTableIndex mySqlTableIndex = new MySqlTableIndex();
             mySqlTableIndex.getIndexDefinition().setKey(true);
             // get/setIndexType of MySqlTableIndex is ambiguous since refactor of DDL, because of legacy code.
@@ -1710,7 +2356,8 @@ public class SqlCreateTable extends SqlCreate {
 
             for (int i = 0; i < indexColumnInfos.size(); i++) {
                 final SQLSelectOrderByItem sqlSelectOrderByItem =
-                    buildIndexColumnDef(indexColumnInfos.get(i).getColName(), indexColumnDefMap, columnDefMap,
+                    buildIndexColumnDef(indexColumnInfos.get(i).getColName(), indexColumnDefMap,
+                        columnDefIncludedPkColsMap,
                         false,
                         indexColumnInfos.get(i).getIndexLen());
 
@@ -1726,11 +2373,10 @@ public class SqlCreateTable extends SqlCreate {
     private static List<IndexColumnInfo> preparAutoCompositeIndexs(List<String> shardKeys,
                                                                    Map<String, SQLColumnDefinition> columnDefMap,
                                                                    int maxLen) {
-        assert shardKeys.size() <= 3;
         int totalIndexLen = 0;
         int totalCharTypeIndexLen = 0;
         int charTypeCount = 0;
-        List<IndexColumnInfo> indexColumnInfos = new ArrayList<>(3);
+        List<IndexColumnInfo> indexColumnInfos = new ArrayList<>();
         for (String shardKey : shardKeys) {
             SQLColumnDefinition sqlColumnDefinition = columnDefMap.get(shardKey);
             final String dataType = sqlColumnDefinition.getDataType().getName().toUpperCase();
@@ -1823,7 +2469,8 @@ public class SqlCreateTable extends SqlCreate {
             int allocLen = 0;
             for (int i = 0; i < indexColumnInfos.size(); i++) {
                 if (indexColumnInfos.get(i).isCharType()) {
-                    int calcIndexLen = indexColumnInfos.get(i).indexLen * (remainingLen / totalCharTypeIndexLen);
+                    int calcIndexLen =
+                        (int) (indexColumnInfos.get(i).indexLen * (1.0 * remainingLen / totalCharTypeIndexLen));
                     charTypeCount--;
                     if (remainingLen - calcIndexLen - allocLen < IndexColumnInfo.MIN_INDEX_LEN * charTypeCount) {
                         for (int j = i + 1; j < indexColumnInfos.size(); j++) {

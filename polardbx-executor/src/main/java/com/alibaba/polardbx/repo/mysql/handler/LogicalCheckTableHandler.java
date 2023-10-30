@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.atom.TAtomDataSource;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
@@ -29,9 +29,9 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.handler.LogicalCheckLocalPartitionHandler;
+import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
-import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -49,23 +49,23 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils;
 import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
-import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.repo.mysql.checktable.CheckTableUtil;
 import com.alibaba.polardbx.repo.mysql.checktable.FieldDescription;
 import com.alibaba.polardbx.repo.mysql.checktable.TableCheckResult;
@@ -73,10 +73,11 @@ import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCheckTable;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
 import org.eclipse.jetty.util.StringUtil;
 
@@ -91,10 +92,11 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
 
 /**
  * @author chenmo.cm
@@ -114,6 +116,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
     enum MsgType {
         status, error, info, note, warning
     }
+
     static String statusError = "error";
 
     @Override
@@ -126,12 +129,18 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         }
         displayMode = checkTable.getDisplayMode();
 
-        List<String> tableNameList = new LinkedList<>();
+        String appName = PlannerContext.getPlannerContext(logicalPlan).getSchemaName();
+        List<Pair<String, String>> tableNameList = new LinkedList<>();
+//        List<String> tableNameList = new LinkedList<>();
         for (SqlNode tableName : checkTable.getTableNames()) {
-            tableNameList.add(RelUtils.lastStringValue(tableName));
+            if (tableName instanceof SqlIdentifier && ((SqlIdentifier) tableName).names.size() == 2) {
+                List<String> names = ((SqlIdentifier) tableName).names;
+                tableNameList.add(Pair.of(names.get(0), names.get(1)));
+            } else {
+                tableNameList.add(Pair.of(appName, tableName.toString()));
+            }
         }
 
-        String appName = PlannerContext.getPlannerContext(logicalPlan).getSchemaName();
         ArrayResultCursor result = new ArrayResultCursor("checkTable");
         result.addColumn("Table", DataTypes.StringType);
         result.addColumn("Op", DataTypes.StringType);
@@ -146,24 +155,27 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             }
         }
         for (int i = 0; i < tableNameList.size(); i++) {
-            String table = tableNameList.get(i);
+            String schemaName = tableNameList.get(i).getKey();
+            String table = tableNameList.get(i).getValue();
             isTableWithPrivileges = CanAccessTable.verifyPrivileges(
-                executionContext.getSchemaName(),
+                schemaName,
                 table,
                 executionContext);
             if (isTableWithPrivileges) {
-                if (DbInfoManager.getInstance().isNewPartitionDb(executionContext.getSchemaName())) {
+                if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     if (CBOUtil.isOss(executionContext, table)) {
                         // check the existence of files of oss table
-                        doCheckFileStorageTable(executionContext.getSchemaName(), table, executionContext, result);
+                        doCheckFileStorageTable(schemaName, table, executionContext, result);
                         continue;
                     }
-                    doCheckForOnePartTable(executionContext.getSchemaName(), table, executionContext, result);
-                    doCheckForOnePartTableGsi(executionContext.getSchemaName(), table, executionContext, result);
-                    doCheckTableColumn(executionContext.getSchemaName(), table, executionContext, result);
+                    doCheckForOnePartTableTopology(schemaName, table, executionContext, result);
+                    doCheckTableColumn(schemaName, table, executionContext, result);
+                    doCheckForOnePartTableLocalIndex(schemaName, table, executionContext, result);
+                    doCheckForOnePartTableGsi(schemaName, table, executionContext, result);
+                    doCheckForOnePartTableForeignKeys(schemaName, table, executionContext, result);
 
                 } else {
-                    doCheckForOneTable(executionContext.getSchemaName(), appName, table, executionContext, result);
+                    doCheckForOneTable(schemaName, appName, table, executionContext, result);
                 }
             }
         }
@@ -190,7 +202,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
 
     protected void doCheckTableColumn(String schemaName, String logicalTableName, ExecutionContext executionContext,
                                       ArrayResultCursor result) {
-        String tableText = String.format("%s.%s:columns", schemaName, logicalTableName);
+        String tableText = String.format("%s.%s:Columns", schemaName, logicalTableName);
         String opText = "check";
         String statusText = "status";
         Boolean isBroadCast = false;
@@ -201,18 +213,20 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             return;
         }
         boolean isSingleTable = logicalTablePartInfo.getTableType() == PartitionTableType.SINGLE_TABLE;
-        if (isSingleTable) {
-            return;
+//        if (isSingleTable) {
+//            return;
+//        }
+        PartitionSpec firstPartSpec = logicalTablePartInfo.getPartitionBy().getPartitions().get(0);
+        //PartitionSpec firstLogicalTablePartSpec = logicalTablePartInfo.getPartitionBy().getPartitions().get(0);
+        if (logicalTablePartInfo.getPartitionBy().getSubPartitionBy() != null) {
+            firstPartSpec = firstPartSpec.getSubPartitions().get(0);
         }
-        PartitionSpec firstLogicalTablePartSpec = logicalTablePartInfo.getPartitionBy().getPartitions().get(0);
-        // referenceGroup: it's default values is the first partition.groupName
-        String firstLogicalTablereferenceGroupName = firstLogicalTablePartSpec.getLocation().getGroupKey();
-        // referenceTable: it default values is the first partition.phyTableName
-        String firstLogicalTablereferenceTableName = firstLogicalTablePartSpec.getLocation().getPhyTableName();
+        String firstPhysicalGroupName = firstPartSpec.getLocation().getGroupKey();
+        String firstPhysicalTableName = firstPartSpec.getLocation().getPhyTableName();
 
-        TableDescription firstLogicalTableDesc = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-            firstLogicalTablereferenceGroupName,
-            firstLogicalTablereferenceTableName,
+        TableDescription firstPhysicalTableDesc = CheckTableUtil.getTableDescription((MyRepository) this.repo,
+            firstPhysicalGroupName,
+            firstPhysicalTableName,
             false,
             schemaName);
         try (Connection connection = MetaDbUtil.getConnection()) {
@@ -221,31 +235,26 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             List<ColumnsRecord> columnsRecordList = tableInfoManager.queryColumns(schemaName, logicalTableName);
 
 //        Map<String, FieldDescription> logicalTableMetaDbDesc = new LinkedHashMap<>();
-            List<FieldDescription> logicalMetaDesc = new ArrayList<>();
-            if (!columnsRecordList.isEmpty()) {
-                for (ColumnsRecord columnsRecord : columnsRecordList) {
-                    FieldDescription fieldDescription = new FieldDescription();
-                    fieldDescription.setFieldDefault(columnsRecord.columnDefault);
-                    fieldDescription.setFieldKey(columnsRecord.columnKey);
-                    fieldDescription.setFieldName(columnsRecord.columnName);
-                    fieldDescription.setFieldNull(columnsRecord.isNullable);
-                    fieldDescription.setFieldType(columnsRecord.columnType);
-                    fieldDescription.setFieldExtra(columnsRecord.extra);
-//                logicalTableMetaDbDesc.put(columnsRecord.columnName, fieldDescription);
-                    logicalMetaDesc.add(fieldDescription);
-                }
+            List<FieldDescription> logicalTableDesc = new ArrayList<>();
+            for (ColumnsRecord columnsRecord : columnsRecordList) {
+                FieldDescription fieldDescription = new FieldDescription();
+                fieldDescription.setFieldDefault(columnsRecord.columnDefault);
+                fieldDescription.setFieldKey(columnsRecord.columnKey);
+                fieldDescription.setFieldName(columnsRecord.columnName);
+                fieldDescription.setFieldNull(columnsRecord.isNullable);
+                fieldDescription.setFieldType(columnsRecord.columnType);
+                fieldDescription.setFieldExtra(columnsRecord.extra);
+                logicalTableDesc.add(fieldDescription);
             }
 
-            if (firstLogicalTableDesc.isEmptyPartition()) {
+            if (firstPhysicalTableDesc.isEmptyPartition()) {
                 String msgContent =
                     String.format("Table '%s.%s' first partition doesn't exist", schemaName, logicalTableName);
                 result.addRow(new Object[] {tableText, opText, "error", msgContent});
                 return;
             }
-            //TODO: compare covering column in gsi and logical table.
-
             TableCheckResult checkResult =
-                CheckTableUtil.verifylogicalAndPhysicalMeta(firstLogicalTableDesc, logicalMetaDesc);
+                CheckTableUtil.verifyLogicalAndPhysicalMeta(firstPhysicalTableDesc, logicalTableDesc);
             if (!isCheckResultNormal(checkResult)) {
                 statusText = "Error";
                 outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadCast);
@@ -265,7 +274,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
      * check all the files of oss tables
      */
     protected void doCheckFileStorageTable(String schemaName, String logicalTableName,
-                                             ExecutionContext executionContext, ArrayResultCursor result) {
+                                           ExecutionContext executionContext, ArrayResultCursor result) {
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
         String tableText = String.format("%s.%s", schemaName, logicalTableName);
         String opText = "check";
@@ -283,13 +292,14 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 try {
                     // check the existence of file record in oss
                     if (!fileSystemGroup.exists(fileMeta.getFileName())) {
-                        result.addRow(new Object[] {tableText, opText, MsgType.error.name(),
+                        result.addRow(new Object[] {
+                            tableText, opText, MsgType.error.name(),
                             "File " + fileMeta.getFileName() + " doesn't exist"});
                         return;
                     }
                     OSSOrcFileMeta ossOrcFileMeta = (OSSOrcFileMeta) fileMeta;
 
-                    for (ColumnMeta columnMeta : ossOrcFileMeta.getColumnMetas()) {
+                    for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
                         Map<Long, StripeColumnMeta> stripeColumnMetaMap =
                             ossOrcFileMeta.getStripeColumnMetas(columnMeta.getOriginColumnName());
                         boolean checkBf = expectBfColumns.contains(columnMeta.getName().toUpperCase());
@@ -309,14 +319,15 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                             if (checkBf && StringUtil.isEmpty(path)) {
                                 String msgContent = String.format(
                                     "Column %s of file %s should contain bloom filter for the %d-th stripe"
-                                    , columnMeta.getName(), fileMeta.getFileName(),  entry.getKey());
+                                    , columnMeta.getName(), fileMeta.getFileName(), entry.getKey());
                                 result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgContent});
                                 return;
                             }
                             // check the existence of bloom filter in oss
                             if (!StringUtil.isEmpty(path)) {
                                 if (!fileSystemGroup.exists(path)) {
-                                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(),
+                                    result.addRow(new Object[] {
+                                        tableText, opText, MsgType.error.name(),
                                         "Bloom filter " + path + " doesn't exist"});
                                     return;
                                 }
@@ -329,6 +340,76 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             }
         }
         result.addRow(new Object[] {tableText, opText, MsgType.status.name(), statusOK});
+    }
+
+    protected void doCheckForOnePartTableLocalIndex(String schemaName, String logicalTableName,
+                                                    ExecutionContext executionContext, ArrayResultCursor result) {
+        if (null == executionContext) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
+        }
+        Map<String, IndexMeta> secondaryIndexMap =
+            executionContext.getSchemaManager(schemaName).getTable(logicalTableName).getSecondaryIndexesMap();
+        for (String indexName : secondaryIndexMap.keySet()) {
+            IndexMeta indexMeta = secondaryIndexMap.get(indexName);
+            doCheckForLocalIndexTopology(schemaName, logicalTableName, indexName, executionContext, result,
+                indexMeta);
+        }
+    }
+
+    protected void doCheckForLocalIndexTopology(String schemaName, String logicalTableName, String indexName,
+                                                ExecutionContext executionContext, ArrayResultCursor result,
+                                                IndexMeta indexMeta) {
+        PartitionInfo partInfo =
+            executionContext.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager()
+                .getPartitionInfo(logicalTableName);
+        String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
+        String opText = "check";
+        String statusText = "status";
+        String msgText = statusOK;
+        Boolean flag = true;
+        if (partInfo == null) {
+            return;
+        }
+        Map<String, Set<String>> partTblTopology = partInfo.getTopology();
+        List<String> columns = indexMeta.getKeyColumns().stream().map(o -> o.getName()).collect(Collectors.toList());
+        for (String groupName : partTblTopology.keySet()) {
+            String phyDbName = buildPhysicalDbNameFromGroupName(groupName);
+            List<String> phyTableLists =
+                partTblTopology.get(groupName).stream().map(String::toLowerCase).collect(Collectors.toList());
+            Map<String, List<String>> phyColumnsMap =
+                CheckTableUtil.getTableIndexColumns(schemaName, groupName, phyTableLists, indexName,
+                    phyDbName);
+            for (String phyTable : phyTableLists) {
+                if (!phyColumnsMap.containsKey(phyTable) || phyColumnsMap.get(phyTable).isEmpty()) {
+                    flag = false;
+                    msgText = String.format(
+                        "index '%s' doesn't exist on group '%s' for physical table '%s'",
+                        indexName, groupName, phyTable);
+                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+                } else {
+                    List<String> phyColumns = phyColumnsMap.get(phyTable);
+                    List<String> redundantColumns = phyColumns.stream().filter(o -> !columns.contains(o)).collect(
+                        Collectors.toList());
+                    List<String> lackColumns =
+                        columns.stream().filter(o -> !phyColumns.contains(o)).collect(Collectors.toList());
+                    if (!lackColumns.isEmpty() || !redundantColumns.isEmpty()) {
+                        flag = false;
+                        String msgText1 = String.format(
+                            "index '%s' on group '%s' for physical table '%s' has redundant columns: '%s'. ",
+                            indexName, groupName, phyTable, StringUtils.join(redundantColumns, ","));
+                        String msgText2 = String.format(
+                            "index '%s' on group '%s' for physical table '%s' lack columns: '%s'. ",
+                            indexName, groupName, phyTable, StringUtils.join(lackColumns, ","));
+                        msgText =
+                            (redundantColumns.isEmpty() ? "" : msgText1) + (lackColumns.isEmpty() ? "" : msgText2);
+                        result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+                    }
+                }
+            }
+        }
+        if (flag) {
+            result.addRow(new Object[] {tableText, opText, statusText, msgText});
+        }
     }
 
     protected void doCheckForOnePartTableGsi(String schemaName, String logicalTableName,
@@ -346,17 +427,19 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
             if (bean.gsiMetaBean != null) {
                 GsiMetaManager.GsiIndexMetaBean gsiMetaBean = bean.gsiMetaBean;
-                doCheckForOnePartTable(schemaName, gsiMetaBean.indexTableName, executionContext, result,
+                doCheckForOnePartTableTopology(schemaName, gsiMetaBean.indexTableName, executionContext, result,
                     logicalTableName);
-                doCheckTableWithGsi(schemaName, gsiMetaBean.indexTableName, logicalTableName, executionContext, result);
+                doCheckTableGsiCoveringColumns(schemaName, gsiMetaBean.indexTableName, logicalTableName,
+                    executionContext, result);
             }
         }
     }
 
-    protected void doCheckTableWithGsi(String schemaName, String gsiName, String logicalTableName,
-                                       ExecutionContext executionContext, ArrayResultCursor result) {
+    // compare physical meta between logical table and gsi.
+    protected void doCheckTableGsiCoveringColumns(String schemaName, String gsiName, String logicalTableName,
+                                                  ExecutionContext executionContext, ArrayResultCursor result) {
 
-        String tableText = String.format("%s.%s.%s:reference", schemaName, logicalTableName, gsiName);
+        String tableText = String.format("%s.%s.%s:Covering Columns", schemaName, logicalTableName, gsiName);
         String opText = "check";
         String statusText = "status";
         //No broadcast and single table would reach here.
@@ -365,30 +448,35 @@ public class LogicalCheckTableHandler extends HandlerCommon {
 
         PartitionInfo logicalTablePartInfo =
             tddlRuleManager.getPartitionInfoManager().getPartitionInfo(logicalTableName);
-        Map<String, Set<String>> logicalTablePartTopology = logicalTablePartInfo.getTopology();
-        PartitionSpec firstLogicalTablePartSpec = logicalTablePartInfo.getPartitionBy().getPartitions().get(0);
+        PartitionSpec firstPartSpec = logicalTablePartInfo.getPartitionBy().getPartitions().get(0);
         // referenceGroup: it's default values is the first partition.groupName
-        String firstLogicalTablereferenceGroupName = firstLogicalTablePartSpec.getLocation().getGroupKey();
+        if (logicalTablePartInfo.getPartitionBy().getSubPartitionBy() != null) {
+            firstPartSpec = firstPartSpec.getSubPartitions().get(0);
+        }
+        String firstPhysicalGroupName = firstPartSpec.getLocation().getGroupKey();
         // referenceTable: it default values is the first partition.phyTableName
-        String firstLogicalTablereferenceTableName = firstLogicalTablePartSpec.getLocation().getPhyTableName();
+        String firstPhysicalTableName = firstPartSpec.getLocation().getPhyTableName();
 
         TableDescription firstLogicalTableDesc = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-            firstLogicalTablereferenceGroupName,
-            firstLogicalTablereferenceTableName,
+            firstPhysicalGroupName,
+            firstPhysicalTableName,
             false,
             schemaName);
 
         PartitionInfo gsiPartInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(gsiName);
         Map<String, Set<String>> gsiPartTopology = gsiPartInfo.getTopology();
         PartitionSpec firstGsiPartSpec = gsiPartInfo.getPartitionBy().getPartitions().get(0);
+        if (gsiPartInfo.getPartitionBy().getSubPartitionBy() != null) {
+            firstGsiPartSpec = firstGsiPartSpec.getSubPartitions().get(0);
+        }
         // referenceGroup: it's default values is the first partition.groupName
-        String firstGsieferenceGroupName = firstGsiPartSpec.getLocation().getGroupKey();
+        String firstGsiGroupName = firstGsiPartSpec.getLocation().getGroupKey();
         // referenceTable: it default values is the first partition.phyTableName
-        String firstGsireferenceTableName = firstGsiPartSpec.getLocation().getPhyTableName();
+        String firstGsiTableName = firstGsiPartSpec.getLocation().getPhyTableName();
 
         TableDescription firstGsiTableDesc = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-            firstGsieferenceGroupName,
-            firstGsireferenceTableName,
+            firstGsiGroupName,
+            firstGsiTableName,
             false,
             schemaName);
 
@@ -434,12 +522,12 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         if (!hasTableRule) {
             // 如果不是拆分表，检查默认库是否存在这个单表
             // 如果单表，则获取defaultDbIndex, 并获取单表的schema
-            doCheckForSingleTable(appName, defaultDbIndex, logicalTableName, logicalTableName, result);
+            doCheckForSingleTable(schemaName, defaultDbIndex, logicalTableName, logicalTableName, result);
 
         } else {
 
             final String physicalTableName = tableRule.getTbNamePattern();
-            String tableText = String.format("%s.%s", appName, logicalTableName);
+            String tableText = String.format("%s.%s", schemaName, logicalTableName);
             String opText = "check";
             String statusText = "Error";
 
@@ -508,7 +596,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             } else {
                 if (isSingleTable) {
                     // A single table only exists in the single group in PolarDB-X mode.
-                    doCheckForSingleTable(appName,
+                    doCheckForSingleTable(schemaName,
                         groupNameForSingleTable,
                         logicalTableName,
                         tableNameForSingleTable,
@@ -616,7 +704,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
     }
 
     protected void doCheckForPartitionGroup(String schemaName, ExecutionContext executionContext,
-                                            ArrayResultCursor result, List<String> tableNameList) {
+                                            ArrayResultCursor result, List<Pair<String, String>> tableNameList) {
         String tableText = String.format("%s:partition_group", schemaName);
         String opText = "check";
         String statusText = "status";
@@ -633,7 +721,13 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
             tablePartitionAccessor.setConnection(connection);
             List<TablePartitionRecord> tablePartitionRecordList =
-                tablePartitionAccessor.getTablePartitionsByDbNameLevel(schemaName, 1);
+                tablePartitionAccessor.getTablePartitionsByDbNameLevel(schemaName,
+                    TablePartitionRecord.PARTITION_LEVEL_PARTITION);
+            if (GeneralUtil.isNotEmpty(tablePartitionRecordList) && tablePartitionRecordList.get(0).getNextLevel()
+                != TablePartitionRecord.PARTITION_LEVEL_NO_NEXT_PARTITION) {
+                tablePartitionRecordList = tablePartitionAccessor.getTablePartitionsByDbNameLevel(schemaName,
+                    TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
+            }
             List<TablePartitionRecord> unexpectedTablePartitionRecordList = tablePartitionRecordList.stream()
                 .filter(tablePartitionRecord -> !groupIds.contains(tablePartitionRecord.groupId))
                 .collect(Collectors.toList());
@@ -655,7 +749,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             List<TablesRecord> tablesRecordList = tablesAccessor.query(schemaName);
             for (TablesRecord tablesRecord : tablesRecordList) {
                 if (!schemaManager.getTable(tablesRecord.tableName).isGsi()) {
-                    tableNameList.add(tablesRecord.tableName);
+                    tableNameList.add(Pair.of(tablesRecord.tableSchema, tablesRecord.tableName));
                 }
             }
         } catch (SQLException e) {
@@ -665,17 +759,17 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         }
     }
 
-    protected void doCheckForOnePartTable(String schemaName, String logicalTableName,
-                                          ExecutionContext executionContext, ArrayResultCursor result) {
-        doCheckForOnePartTable(schemaName, logicalTableName, executionContext, result, null);
+    protected void doCheckForOnePartTableTopology(String schemaName, String logicalTableName,
+                                                  ExecutionContext executionContext, ArrayResultCursor result) {
+        doCheckForOnePartTableTopology(schemaName, logicalTableName, executionContext, result, null);
     }
 
     /**
      * do check for one partition table
      */
-    protected void doCheckForOnePartTable(String schemaName, String logicalTableName,
-                                          ExecutionContext executionContext, ArrayResultCursor result,
-                                          String tableName) {
+    protected void doCheckForOnePartTableTopology(String schemaName, String logicalTableName,
+                                                  ExecutionContext executionContext, ArrayResultCursor result,
+                                                  String tableName) {
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
         PartitionInfo partInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(logicalTableName);
         if (partInfo == null) {
@@ -688,125 +782,135 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         PartitionSpec firstPartSpec = partInfo.getPartitionBy().getPartitions().get(0);
 
         // =============获取库表的元数据=============
-        if (isSingleTable) {
-            doCheckForSingleTable(schemaName, firstPartSpec.getLocation().getGroupKey(), logicalTableName,
-                firstPartSpec.getLocation().getPhyTableName(), result);
+
+        String tableText = String.format("%s.%s:Topology", schemaName, logicalTableName);
+        if (isGsiTable) {
+            tableText = String.format("%s.%s.%s:Topology", schemaName, tableName, logicalTableName);
+        }
+        String opText = "check";
+        String statusText = "Error";
+
+        // < groupName, < tableName, TableDescription > >
+        Map<String, Map<String, TableDescription>> groupTableDescMaps =
+            new HashMap<String, Map<String, TableDescription>>();
+
+        if (partInfo.getPartitionBy().getSubPartitionBy() != null) {
+            firstPartSpec = firstPartSpec.getSubPartitions().get(0);
+        }
+
+        // referenceGroup: it's default values is the first partition.groupName
+        String referenceGroupName = firstPartSpec.getLocation().getGroupKey();
+
+        // referenceTable: it default values is the first partition.phyTableName
+        String referenceTableName = firstPartSpec.getLocation().getPhyTableName();
+
+        Map<String, Set<String>> dbTbActualTopology = partTblTopology;
+
+        List<TableCheckResult> abnormalTableCheckResultList = new ArrayList<TableCheckResult>();
+        // We should check each group for broadcast table or single
+        if (isBroadcastTable) {
+            // Fetch table descriptions from all group for broadcast table
+            for (Map.Entry<String, Set<String>> tbTopologyInOneDb : dbTbActualTopology.entrySet()) {
+                String grpName = tbTopologyInOneDb.getKey();
+                String phyTbl = tbTopologyInOneDb.getValue().iterator().next();
+                TableDescription tableDescription = CheckTableUtil.getTableDescription((MyRepository) this.repo,
+                    grpName,
+                    phyTbl,
+                    false,
+                    schemaName);
+                Map<String, TableDescription> tableNameDescMaps = new HashMap<String, TableDescription>();
+                tableNameDescMaps.put(phyTbl, tableDescription);
+                groupTableDescMaps.put(grpName, tableNameDescMaps);
+            }
         } else {
-            String tableText = String.format("%s.%s", schemaName, logicalTableName);
-            if (isGsiTable) {
-                tableText = String.format("%s.%s.%s", schemaName, tableName, logicalTableName);
-            }
-            String opText = "check";
-            String statusText = "Error";
-
-            // < groupName, < tableName, TableDescription > >
-            Map<String, Map<String, TableDescription>> groupTableDescMaps =
-                new HashMap<String, Map<String, TableDescription>>();
-
-            // referenceGroup: it's default values is the first partition.groupName
-            String referenceGroupName = firstPartSpec.getLocation().getGroupKey();
-
-            // referenceTable: it default values is the first partition.phyTableName
-            String referenceTableName = firstPartSpec.getLocation().getPhyTableName();
-
-            Map<String, Set<String>> dbTbActualTopology = partTblTopology;
-
-            // We should check each group for broadcast table or single
-            if (isBroadcastTable) {
-                // Fetch table descriptions from all group for broadcast table
-                for (Map.Entry<String, Set<String>> tbTopologyInOneDb : dbTbActualTopology.entrySet()) {
-                    String grpName = tbTopologyInOneDb.getKey();
-                    String phyTbl = tbTopologyInOneDb.getValue().iterator().next();
-                    TableDescription tableDescription = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-                        grpName,
-                        phyTbl,
-                        false,
-                        schemaName);
-                    Map<String, TableDescription> tableNameDescMaps = new HashMap<String, TableDescription>();
-                    tableNameDescMaps.put(phyTbl, tableDescription);
-                    groupTableDescMaps.put(grpName, tableNameDescMaps);
-                }
-            } else {
-                // Fetch table descriptions from all group for partition table
-                for (Map.Entry<String, Set<String>> tbTopologyInOneDb : dbTbActualTopology.entrySet()) {
-                    String targetGroup = tbTopologyInOneDb.getKey();
-                    Set<String> tableSet = tbTopologyInOneDb.getValue();
-                    Iterator<String> tableSetItor = tableSet.iterator();
-                    Map<String, TableDescription> tableNameDescMaps = new HashMap<String, TableDescription>();
-                    while (tableSetItor.hasNext()) {
-                        // 首先获取各个group的分表的description
-                        String targetTable = tableSetItor.next();
-                        TableDescription tableDescription = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-                            targetGroup,
-                            targetTable,
-                            false,
-                            schemaName);
+            // Fetch table descriptions from all group for partition table
+            for (Map.Entry<String, Set<String>> tbTopologyInOneDb : dbTbActualTopology.entrySet()) {
+                String targetGroup = tbTopologyInOneDb.getKey();
+                Set<String> tableSet = tbTopologyInOneDb.getValue();
+                Iterator<String> tableSetItor = tableSet.iterator();
+                Map<String, TableDescription> tableNameDescMaps = new HashMap<String, TableDescription>();
+                while (tableSetItor.hasNext()) {
+                    // 首先获取各个group的分表的description
+                    String targetTable = tableSetItor.next();
+                    try {
+                        TableDescription tableDescription =
+                            CheckTableUtil.getTableDescription((MyRepository) this.repo,
+                                targetGroup,
+                                targetTable,
+                                false,
+                                schemaName);
                         tableNameDescMaps.put(targetTable, tableDescription);
-                    }
-                    groupTableDescMaps.put(targetGroup, tableNameDescMaps);
-                }
-            }
-
-            // =============校验库表元数据=============
-
-            // 1. 1检查各分库的各个表的存在性；
-            boolean isStatusOK = true;
-            List<TableCheckResult> abnormalTableCheckResultList = new ArrayList<TableCheckResult>();
-            for (Map.Entry<String, Map<String, TableDescription>> groupTableItems : groupTableDescMaps.entrySet()) {
-                Map<String, TableDescription> tableNameAndDescMap = groupTableItems.getValue();
-                for (Map.Entry<String, TableDescription> tableDescItem : tableNameAndDescMap.entrySet()) {
-                    TableDescription tableDesc = tableDescItem.getValue();
-                    if (tableDesc.getFields() == null) {
+                    } catch (Exception e) {
                         TableCheckResult abnormalTable = new TableCheckResult();
-                        abnormalTable.setTableDesc(tableDesc);
+                        abnormalTable.setTableDesc(new TableDescription(targetGroup, targetTable));
                         abnormalTable.setExist(false);
                         abnormalTable.setFieldCountTheSame(false);
                         abnormalTable.setFieldDescTheSame(false);
                         abnormalTableCheckResultList.add(abnormalTable);
                     }
                 }
+                groupTableDescMaps.put(targetGroup, tableNameDescMaps);
             }
+        }
 
-            // 1.2 检查是否目标不存在
-            if (abnormalTableCheckResultList.size() > 0) {
-                TableCheckResult checkResult = abnormalTableCheckResultList.get(0);
-                boolean isBroadcast = isBroadcastTable;
-                for (int i = 0; i < abnormalTableCheckResultList.size(); i++) {
-                    checkResult = abnormalTableCheckResultList.get(i);
-                    outputExistCheckResults(result, tableText, opText, statusText, checkResult, isBroadcast);
-                }
-                isStatusOK = false;
-                return;
-            }
+        // =============校验库表元数据=============
 
-            // 2.1 根据参考库与参照表，检查各分库的各个分表的表定义是否一致
-            Map<String, TableDescription> tableDescsOfReferGroup = groupTableDescMaps.get(referenceGroupName);
-            TableDescription referTableDesc = tableDescsOfReferGroup.get(referenceTableName);
-            for (Map.Entry<String, Map<String, TableDescription>> groupTableItems : groupTableDescMaps.entrySet()) {
-                Map<String, TableDescription> tableNameAndDescMap = groupTableItems.getValue();
-                for (Map.Entry<String, TableDescription> tableDescItem : tableNameAndDescMap.entrySet()) {
-                    TableDescription tableDesc = tableDescItem.getValue();
-                    TableCheckResult checkResult = CheckTableUtil.verifyTableMeta(referTableDesc, tableDesc);
-                    if (!isCheckResultNormal(checkResult)) {
-                        abnormalTableCheckResultList.add(checkResult);
-                    }
+        // 1. 1检查各分库的各个表的存在性；
+        boolean isStatusOK = true;
+        for (Map.Entry<String, Map<String, TableDescription>> groupTableItems : groupTableDescMaps.entrySet()) {
+            Map<String, TableDescription> tableNameAndDescMap = groupTableItems.getValue();
+            for (Map.Entry<String, TableDescription> tableDescItem : tableNameAndDescMap.entrySet()) {
+                TableDescription tableDesc = tableDescItem.getValue();
+                if (tableDesc.getFields() == null) {
+                    TableCheckResult abnormalTable = new TableCheckResult();
+                    abnormalTable.setTableDesc(tableDesc);
+                    abnormalTable.setExist(false);
+                    abnormalTable.setFieldCountTheSame(false);
+                    abnormalTable.setFieldDescTheSame(false);
+                    abnormalTableCheckResultList.add(abnormalTable);
                 }
             }
+        }
 
-            // 2.2 检查是否有分表的schema不一致; 如果不一致，则要报告哪个库的哪些表的哪个列不一致
-            if (abnormalTableCheckResultList.size() > 0) {
-                boolean isBroadcast = isBroadcastTable;
-                for (int i = 0; i < abnormalTableCheckResultList.size(); i++) {
-                    TableCheckResult checkResult = abnormalTableCheckResultList.get(i);
-                    outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadcast);
+        // 1.2 检查是否目标不存在
+        if (abnormalTableCheckResultList.size() > 0) {
+            TableCheckResult checkResult = abnormalTableCheckResultList.get(0);
+            boolean isBroadcast = isBroadcastTable;
+            for (int i = 0; i < abnormalTableCheckResultList.size(); i++) {
+                checkResult = abnormalTableCheckResultList.get(i);
+                outputExistCheckResults(result, tableText, opText, statusText, checkResult, isBroadcast);
+            }
+            isStatusOK = false;
+            return;
+        }
+
+        // 2.1 根据参考库与参照表，检查各分库的各个分表的表定义是否一致
+        Map<String, TableDescription> tableDescsOfReferGroup = groupTableDescMaps.get(referenceGroupName);
+        TableDescription referTableDesc = tableDescsOfReferGroup.get(referenceTableName);
+        for (Map.Entry<String, Map<String, TableDescription>> groupTableItems : groupTableDescMaps.entrySet()) {
+            Map<String, TableDescription> tableNameAndDescMap = groupTableItems.getValue();
+            for (Map.Entry<String, TableDescription> tableDescItem : tableNameAndDescMap.entrySet()) {
+                TableDescription tableDesc = tableDescItem.getValue();
+                TableCheckResult checkResult = CheckTableUtil.verifyTableMeta(referTableDesc, tableDesc);
+                if (!isCheckResultNormal(checkResult)) {
+                    abnormalTableCheckResultList.add(checkResult);
                 }
-                isStatusOK = false;
             }
+        }
 
-            if (isStatusOK) {
-                statusText = "status";
-                result.addRow(new Object[] {tableText, opText, statusText, "OK"});
+        // 2.2 检查是否有分表的schema不一致; 如果不一致，则要报告哪个库的哪些表的哪个列不一致
+        if (abnormalTableCheckResultList.size() > 0) {
+            boolean isBroadcast = isBroadcastTable;
+            for (int i = 0; i < abnormalTableCheckResultList.size(); i++) {
+                TableCheckResult checkResult = abnormalTableCheckResultList.get(i);
+                outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadcast);
             }
+            isStatusOK = false;
+        }
+
+        if (isStatusOK) {
+            statusText = "status";
+            result.addRow(new Object[] {tableText, opText, statusText, statusOK});
         }
     }
 
@@ -884,23 +988,20 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         return false;
     }
 
-    protected void doCheckForSingleTable(String appName, String groupName,
+    protected void doCheckForSingleTable(String schemaName, String groupName,
                                          String logicalTableName,
                                          String physicalTableName,
                                          ArrayResultCursor result) {
 
-        MyRepository myRepository = (MyRepository) this.repo;
-        TGroupDataSource groupDataSource = (TGroupDataSource) myRepository.getDataSource(groupName);
-        TAtomDataSource atomDataSource = CheckTableUtil.findMasterAtomForGroup(groupDataSource);
+        TGroupDataSource tGroupDataSource =
+            (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                .getGroupExecutor(groupName).getDataSource();
         StringBuilder targetSql = new StringBuilder("check table ");
         targetSql.append("`" + physicalTableName + "`");
-        Connection conn = null;
-        ResultSet rs = null;
         Throwable ex = null;
-        try {
-            conn = (Connection) atomDataSource.getConnection();
-            rs = conn.createStatement().executeQuery(targetSql.toString());
-            String tableText = String.format("%s.%s", appName, logicalTableName);
+        try (Connection conn = (Connection) tGroupDataSource.getConnection();
+            ResultSet rs = conn.createStatement().executeQuery(targetSql.toString())) {
+            String tableText = String.format("%s.%s", schemaName, logicalTableName);
             if (rs.next()) {
                 String opText = rs.getString(2);
                 String statusText = rs.getString(3);
@@ -913,21 +1014,90 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             ex = e;
 
         } finally {
-            try {
-                if (rs != null) {
-                    rs.close();
-                }
-                if (conn != null) {
-                    conn.close();
-                }
-
-            } catch (SQLException e) {
-                logger.error(e);
-            }
-
             if (ex != null) {
                 GeneralUtil.nestedException(ex);
             }
+        }
+    }
+
+    protected void doCheckForOnePartTableForeignKeys(String schemaName, String logicalTableName,
+                                                     ExecutionContext executionContext, ArrayResultCursor result) {
+        if (null == executionContext) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
+        }
+        Map<String, ForeignKeyData> foreignKeyData =
+            executionContext.getSchemaManager(schemaName).getTable(logicalTableName).getForeignKeys();
+        for (ForeignKeyData data : foreignKeyData.values()) {
+            if (data.isPushDown()) {
+                doCheckForForeignKeyTopology(schemaName, logicalTableName, executionContext, result, data);
+            }
+        }
+    }
+
+    protected void doCheckForForeignKeyTopology(String schemaName, String logicalTableName,
+                                                ExecutionContext executionContext,
+                                                ArrayResultCursor result, ForeignKeyData data) {
+        PartitionInfo partInfo =
+            executionContext.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager()
+                .getPartitionInfo(logicalTableName);
+        String tableText = String.format("%s.%s.%s:Foreign Key", schemaName, logicalTableName, data.constraint);
+        String opText = "check";
+        String statusText = "status";
+        String msgText = statusOK;
+        boolean flag = true;
+        if (partInfo == null) {
+            return;
+        }
+        Map<String, Set<String>> partTblTopology = partInfo.getTopology();
+        List<String> columns = data.columns;
+        for (String groupName : partTblTopology.keySet()) {
+            String phyDbName = buildPhysicalDbNameFromGroupName(groupName);
+            List<String> phyTableLists =
+                partTblTopology.get(groupName).stream().map(String::toLowerCase).collect(Collectors.toList());
+            List<String> phyRefTable = new ArrayList<>();
+            Map<String, List<String>> phyColumnsMap =
+                CheckTableUtil.getTableForeignKeyColumns(schemaName, groupName, phyTableLists, data.constraint,
+                    phyDbName, phyRefTable);
+
+            boolean allEqual = phyRefTable.stream().distinct().limit(2).count() <= 1;
+            if (!allEqual || !phyRefTable.get(0).startsWith(data.refTableName)) {
+                msgText = String.format(
+                    "foreign key '%s' doesn't match on group '%s' referencing physical table '%s'",
+                    data.constraint, groupName, phyRefTable.get(0));
+                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+            }
+            for (String phyTable : phyTableLists) {
+                if (!phyColumnsMap.containsKey(phyTable) || phyColumnsMap.get(phyTable).isEmpty()) {
+                    flag = false;
+                    msgText = String.format(
+                        "foreign key '%s' doesn't exist on group '%s' for physical table '%s'",
+                        data.constraint, groupName, phyTable);
+                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+                } else {
+                    List<String> phyColumns = phyColumnsMap.get(phyTable);
+                    List<String> redundantColumns =
+                        phyColumns.stream().filter(o -> !columns.stream().anyMatch(o::equalsIgnoreCase)).collect(
+                            Collectors.toList());
+                    List<String> lackColumns =
+                        columns.stream().filter(o -> !phyColumns.stream().anyMatch(o::equalsIgnoreCase))
+                            .collect(Collectors.toList());
+                    if (!lackColumns.isEmpty() || !redundantColumns.isEmpty()) {
+                        flag = false;
+                        String msgText1 = String.format(
+                            "foreign key '%s' on group '%s' for physical table '%s' has redundant columns: '%s'. ",
+                            data.constraint, groupName, phyTable, StringUtils.join(redundantColumns, ","));
+                        String msgText2 = String.format(
+                            "foreign key '%s' on group '%s' for physical table '%s' lack columns: '%s'. ",
+                            data.constraint, groupName, phyTable, StringUtils.join(lackColumns, ","));
+                        msgText =
+                            (redundantColumns.isEmpty() ? "" : msgText1) + (lackColumns.isEmpty() ? "" : msgText2);
+                        result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+                    }
+                }
+            }
+        }
+        if (flag) {
+            result.addRow(new Object[] {tableText, opText, statusText, msgText});
         }
     }
 }

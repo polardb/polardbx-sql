@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -29,16 +31,24 @@ import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Getter
 @TaskName(name = "AlterTableGroupRenamePartitionChangeMetaTask")
@@ -48,63 +58,67 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
 
     protected String tableGroupName;
     protected List<Pair<String, String>> changePartitionsPair;
+    protected boolean subPartitionRename;
 
     @JSONCreator
     public AlterTableGroupRenamePartitionChangeMetaTask(String schemaName, String tableGroupName,
-                                                        List<Pair<String, String>> changePartitionsPair) {
+                                                        List<Pair<String, String>> changePartitionsPair,
+                                                        boolean subPartitionRename) {
         super(schemaName);
         this.tableGroupName = tableGroupName;
         this.changePartitionsPair = changePartitionsPair;
-
+        this.subPartitionRename = subPartitionRename;
     }
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        final TableGroupInfoManager tableGroupInfoManager =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-        final TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
 
         PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
         TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
         partitionGroupAccessor.setConnection(metaDbConnection);
         tablePartitionAccessor.setConnection(metaDbConnection);
+
+        final TableGroupInfoManager tableGroupInfoManager =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        final TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
+        final List<TablePartRecordInfoContext> tablePartitionInfoRecords = tableGroupConfig.getAllTables();
+        String firstTableInTg = tablePartitionInfoRecords.get(0).getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(firstTableInTg);
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        PartitionByDefinition subPartBy = partitionInfo.getPartitionBy().getSubPartitionBy();
+
+        boolean hasSubPart = false;
+        if (subPartBy != null) {
+            hasSubPart = true;
+        }
+
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
-        List<TablePartitionRecord> tablePartitionRecords = new ArrayList<>();
-        for (Pair<String, String> pair : changePartitionsPair) {
-            PartitionGroupRecord partitionGroupRecord =
-                partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(pair.getKey())).findFirst()
-                    .orElse(null);
-            partitionGroupAccessor.deletePartitionGroupById(partitionGroupRecord.id);
-            List<TablePartitionRecord> tbps =
-                tablePartitionAccessor.getTablePartitionsByDbNamePartGroupId(schemaName, partitionGroupRecord.id);
-            if (GeneralUtil.isNotEmpty(tbps)) {
-                for (TablePartitionRecord tb : tbps) {
-                    tb.partName = pair.getValue();
-                }
-                tablePartitionRecords.addAll(tbps);
-            }
-            tablePartitionAccessor.deleteTablePartitions(schemaName, partitionGroupRecord.id);
-            //partitionGroupAccessor.updatePartitioNameById(partitionGroupRecord.id, pair.getValue());
-            //tablePartitionAccessor
-            //    .updatePartitionNameByGroupId(partitionGroupRecord.id, pair.getKey(), pair.getValue());
+        List<TablePartitionRecord> newTablePartitionRecords = new ArrayList<>();
+        List<PartitionGroupRecord> newPartitionGroupRecords = new ArrayList<>();
+
+        if (subPartitionRename) {
+            processRenameSubPartition(partitionInfo, partitionGroupRecords, newTablePartitionRecords,
+                newPartitionGroupRecords, metaDbConnection);
+        } else if (hasSubPart) {
+            processRenameFirstLevelLogicalPartition(tableGroupConfig, partitionInfo, partitionGroupRecords,
+                newTablePartitionRecords,
+                newPartitionGroupRecords, metaDbConnection);
+        } else {
+            processRenameFirstLevelPhysicalPartition(partitionGroupRecords, newTablePartitionRecords,
+                newPartitionGroupRecords, metaDbConnection);
         }
 
-        for (Pair<String, String> pair : changePartitionsPair) {
-            PartitionGroupRecord partitionGroupRecord =
-                partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(pair.getKey())).findFirst()
-                    .orElse(null);
-            PartitionGroupRecord copy = partitionGroupRecord.copy();
-            copy.setPartition_name(pair.getValue());
-            partitionGroupAccessor.addNewPartitionGroupWithId(copy);
+        for (PartitionGroupRecord prd : newPartitionGroupRecords) {
+            partitionGroupAccessor.addNewPartitionGroupWithId(prd);
         }
 
-        tablePartitionAccessor.addNewTablePartitionsWithId(tablePartitionRecords);
+        tablePartitionAccessor.addNewTablePartitionsWithId(newTablePartitionRecords);
 
         SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
-        if (!GeneralUtil.isEmpty(tableGroupConfig.getAllTables())) {
-            for (TablePartRecordInfoContext recordInfoContext : tableGroupConfig.getAllTables()) {
+        if (!GeneralUtil.isEmpty(tablePartitionInfoRecords)) {
+            for (TablePartRecordInfoContext recordInfoContext : tablePartitionInfoRecords) {
                 try {
                     String tableName = recordInfoContext.getLogTbRec().tableName;
-                    TableMeta tableMeta = schemaManager.getTable(tableName);
+                    tableMeta = schemaManager.getTable(tableName);
                     if (tableMeta.isGsi()) {
                         //all the gsi table version change will be behavior by primary table
                         assert
@@ -125,6 +139,156 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
         updateSupportedCommands(true, false, null);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+    }
+
+    private void processRenameSubPartition(
+        PartitionInfo partitionInfo,
+        List<PartitionGroupRecord> partitionGroupRecords,
+        List<TablePartitionRecord> newTablePartitionRecords,
+        List<PartitionGroupRecord> newpartitionGroupRecords,
+        Connection conn) {
+        PartitionByDefinition partBy = partitionInfo.getPartitionBy();
+        PartitionByDefinition subPartBy = partBy.getSubPartitionBy();
+        boolean useSubPartTemplate = subPartBy.isUseSubPartTemplate();
+        PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
+        TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
+        partitionGroupAccessor.setConnection(conn);
+        tablePartitionAccessor.setConnection(conn);
+
+        for (PartitionSpec partitionSpec : partBy.getPartitions()) {
+            for (PartitionSpec subPartitionSpec : partitionSpec.getSubPartitions()) {
+                for (Pair<String, String> pair : changePartitionsPair) {
+                    String partitionGroupName;
+                    if (useSubPartTemplate) {
+                        if (pair.getKey().equalsIgnoreCase(subPartitionSpec.getTemplateName())) {
+                            partitionGroupName = subPartitionSpec.getName();
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        if (pair.getKey().equalsIgnoreCase(subPartitionSpec.getName())) {
+                            partitionGroupName = pair.getKey();
+                        } else {
+                            continue;
+                        }
+
+                    }
+                    PartitionGroupRecord partitionGroupRecord =
+                        partitionGroupRecords.stream()
+                            .filter(o -> o.partition_name.equalsIgnoreCase(partitionGroupName))
+                            .findFirst().orElse(null);
+                    partitionGroupAccessor.deletePartitionGroupById(partitionGroupRecord.id);
+                    List<TablePartitionRecord> tbps =
+                        tablePartitionAccessor.getTablePartitionsByDbNamePartGroupId(schemaName,
+                            partitionGroupRecord.id);
+                    if (GeneralUtil.isNotEmpty(tbps)) {
+                        for (TablePartitionRecord tb : tbps) {
+                            if (useSubPartTemplate) {
+                                tb.partTempName = pair.getValue();
+                                tb.partName = partitionSpec.getName() + tb.partTempName;
+                            } else {
+                                tb.partName = pair.getValue();
+                            }
+                        }
+                        newTablePartitionRecords.addAll(tbps);
+                    }
+                    PartitionGroupRecord newPartitionGroupRecord = partitionGroupRecord.copy();
+                    newPartitionGroupRecord.partition_name =
+                        useSubPartTemplate ? partitionSpec.getName() + pair.getValue() : pair.getValue();
+                    newpartitionGroupRecords.add(newPartitionGroupRecord);
+                    tablePartitionAccessor.deleteTablePartitions(schemaName, partitionGroupRecord.id);
+                }
+            }
+        }
+    }
+
+    private void processRenameFirstLevelLogicalPartition(TableGroupConfig tableGroupConfig,
+                                                         PartitionInfo partitionInfo,
+                                                         List<PartitionGroupRecord> partitionGroupRecords,
+                                                         List<TablePartitionRecord> newTablePartitionRecords,
+                                                         List<PartitionGroupRecord> newPartitionGroupRecords,
+                                                         Connection conn) {
+        PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
+        TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
+        partitionGroupAccessor.setConnection(conn);
+        tablePartitionAccessor.setConnection(conn);
+
+        PartitionByDefinition partBy = partitionInfo.getPartitionBy();
+        PartitionByDefinition subPartBy = partBy.getSubPartitionBy();
+        boolean useSubPartTemplate = subPartBy.isUseSubPartTemplate();
+
+        Map<String, List<TablePartitionRecord>> firstLevelPartitionRecords = new TreeMap<>(String::compareToIgnoreCase);
+        for (TablePartRecordInfoContext tablePartInfo : tableGroupConfig.getTables()) {
+            tablePartInfo.getPartitionRecList().stream().forEach(
+                o -> firstLevelPartitionRecords.computeIfAbsent(o.partName, k -> new ArrayList<>()).add(o.copy()));
+        }
+
+        for (Pair<String, String> pair : changePartitionsPair) {
+            if (firstLevelPartitionRecords.containsKey(pair.getKey())) {
+                List<TablePartitionRecord> tpRecords = firstLevelPartitionRecords.get(pair.getKey());
+                if (useSubPartTemplate) {
+                    PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitions().stream()
+                        .filter(o -> o.getName().equalsIgnoreCase(pair.getKey())).findFirst().orElse(null);
+                    for (PartitionSpec subPartSpec : partitionSpec.getSubPartitions()) {
+                        String partitionGroupName = subPartSpec.getName();
+                        PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
+                            .filter(o -> o.getPartition_name().equalsIgnoreCase(partitionGroupName)).findFirst()
+                            .orElse(null);
+                        List<TablePartitionRecord> tbps =
+                            tablePartitionAccessor.getTablePartitionsByDbNamePartGroupId(schemaName,
+                                partitionGroupRecord.id);
+                        for (TablePartitionRecord tbp : tbps) {
+                            tbp.partName = pair.getValue() + tbp.getPartTempName();
+                            newTablePartitionRecords.add(tbp);
+                        }
+                        PartitionGroupRecord newPartitionGroupRecord = partitionGroupRecord.copy();
+                        newPartitionGroupRecord.partition_name = tbps.get(0).partName;
+                        newPartitionGroupRecords.add(newPartitionGroupRecord);
+
+                        tablePartitionAccessor.deleteTablePartitions(schemaName, partitionGroupRecord.id);
+                        partitionGroupAccessor.deletePartitionGroupById(partitionGroupRecord.id);
+                    }
+
+                }
+                for (TablePartitionRecord tpRecord : tpRecords) {
+                    tpRecord.partName = pair.getValue();
+                    newTablePartitionRecords.add(tpRecord);
+                    tablePartitionAccessor.deleteTablePartitionsById(tpRecord.id);
+                }
+            }
+        }
+
+    }
+
+    private void processRenameFirstLevelPhysicalPartition(List<PartitionGroupRecord> partitionGroupRecords,
+                                                          List<TablePartitionRecord> newTablePartitionRecords,
+                                                          List<PartitionGroupRecord> newPartitionGroupRecords,
+                                                          Connection conn) {
+
+        PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
+        TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
+        partitionGroupAccessor.setConnection(conn);
+        tablePartitionAccessor.setConnection(conn);
+
+        for (Pair<String, String> pair : changePartitionsPair) {
+            String partitionGroupName = pair.getKey();
+            PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
+                .filter(o -> o.getPartition_name().equalsIgnoreCase(partitionGroupName)).findFirst()
+                .orElse(null);
+            List<TablePartitionRecord> tbps =
+                tablePartitionAccessor.getTablePartitionsByDbNamePartGroupId(schemaName,
+                    partitionGroupRecord.id);
+            for (TablePartitionRecord tbp : tbps) {
+                tbp.partName = pair.getValue();
+                newTablePartitionRecords.add(tbp);
+            }
+            PartitionGroupRecord newPartitionGroupRecord = partitionGroupRecord.copy();
+            newPartitionGroupRecord.partition_name = tbps.get(0).partName;
+            newPartitionGroupRecords.add(newPartitionGroupRecord);
+
+            tablePartitionAccessor.deleteTablePartitions(schemaName, partitionGroupRecord.id);
+            partitionGroupAccessor.deletePartitionGroupById(partitionGroupRecord.id);
+        }
     }
 
     @Override

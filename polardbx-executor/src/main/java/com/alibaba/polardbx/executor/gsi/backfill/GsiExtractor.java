@@ -49,12 +49,12 @@ public class GsiExtractor extends Extractor {
 
     @Override
     public Map<String, Set<String>> getSourcePhyTables() {
-        return GsiUtils.getPhyTables(schemaName, sourceTableName);
+        return GsiUtils.getPhyTablesForBackFill(schemaName, sourceTableName);
     }
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                                    long speedMin, long speedLimit, long parallelism, ExecutionContext ec) {
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName);
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         return new GsiExtractor(schemaName,

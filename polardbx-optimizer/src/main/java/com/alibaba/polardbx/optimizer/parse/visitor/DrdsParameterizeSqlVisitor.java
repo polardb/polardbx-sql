@@ -47,13 +47,20 @@ import com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime.Now;
 import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.util.NlsString;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeSet;
 
 public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
@@ -134,6 +141,35 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
         super(appender, parameterized);
         this.executionContext = executionContext;
         this.isMySQL80 = InstanceVersion.isMYSQL80();
+        this.isMySQL80 = InstanceVersion.isMYSQL80();
+
+        /*
+         * We only consider session timezone variable, because currently it does not work for PolarDB-X
+         * to set a global timezone variable.
+         */
+        String sessionTimezone;
+        if (null != executionContext
+            && MapUtils.isNotEmpty(executionContext.getServerVariables())
+            && null != (sessionTimezone = (String) executionContext.getServerVariables().get("time_zone"))) {
+            if ("SYSTEM".equalsIgnoreCase(sessionTimezone)) {
+                sessionTimezone = (String) executionContext.getServerVariables().get("system_time_zone");
+                if ("CST".equalsIgnoreCase(sessionTimezone)) {
+                    sessionTimezone = "GMT+08:00";
+                }
+            }
+
+            if (null != sessionTimezone) {
+                final String trimmed = sessionTimezone.trim();
+                if (trimmed.length() > 0 && ('+' == trimmed.charAt(0) || '-' == trimmed.charAt(0))) {
+                    // Convert '+08:00' to 'GMT+08:00'
+                    sessionTimezone = "GMT" + trimmed;
+                } else if (!sessionTimezone.equals(trimmed)) {
+                    sessionTimezone = trimmed;
+                }
+            }
+
+            this.timezone = sessionTimezone;
+        }
     }
 
     @Override

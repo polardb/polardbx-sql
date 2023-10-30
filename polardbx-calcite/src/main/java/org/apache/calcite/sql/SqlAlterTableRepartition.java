@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
@@ -22,24 +38,36 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
     private boolean alignToTableGroup = false;
     private SqlIdentifier tableGroupName;
 
+    public SqlNode getLocality() {
+        return locality;
+    }
+
+    public void setLocality(SqlNode locality) {
+        this.locality = locality;
+    }
+
+    private SqlNode locality;
+
     public SqlAlterTableRepartition(SqlIdentifier tableName,
                                     String sql, List<SqlAlterSpecification> alters,
                                     SqlNode sqlPartition,
                                     boolean alignToTableGroup,
-                                    SqlIdentifier tableGroupName) {
+                                    SqlIdentifier tableGroupName,
+                                    SqlNode locality) {
         super(null, tableName, null, sql, null, alters, SqlParserPos.ZERO);
         this.sourceSql = sql;
         this.sqlPartition = sqlPartition;
         this.originTableName = tableName;
         this.tableGroupName = tableGroupName;
         this.alignToTableGroup = alignToTableGroup;
+        this.locality = locality;
     }
 
     static public SqlAlterTableRepartition create(SqlAlterTablePartitionKey sqlAlterTablePartitionKey) {
         SqlAlterTableRepartition sqlAlterPartitionTableRepartition =
             new SqlAlterTableRepartition(sqlAlterTablePartitionKey.getOriginTableName(),
                 sqlAlterTablePartitionKey.getSourceSql() ,
-                sqlAlterTablePartitionKey.getAlters(), null, false, null);
+                sqlAlterTablePartitionKey.getAlters(), null, false, null, null);
         sqlAlterPartitionTableRepartition.setBroadcast(sqlAlterTablePartitionKey.isBroadcast());
         sqlAlterPartitionTableRepartition.setSingle(sqlAlterTablePartitionKey.isSingle());
         return sqlAlterPartitionTableRepartition;

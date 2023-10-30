@@ -25,7 +25,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import java.util.List;
 
 public class SQLShowIndexesStatement extends SQLStatementImpl implements SQLShowStatement {
-    private SQLExprTableSource   table;
+    private SQLExprTableSource table;
     private List<SQLCommentHint> hints;
     private SQLExpr where;
     private String type;

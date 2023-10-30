@@ -1,0 +1,1124 @@
+## DISABLE_FAST_SQL_PARSER
+# template: list, algorithm=default
+create table tb1(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb1 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb1 values(5, '9'),(6,'10');
+alter table tb1 add subpartition(subpartition sp3 values in("5", "6"));
+select b from tb1 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb1 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb1 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb1 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb1 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb1 partition(p2spd) order by b;
+b
+7
+8
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION sp3 VALUES IN ('5','6'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# template: list, algorithm=instant
+create table tb2(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb2 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb2 values(5, '9'),(6,'10');
+alter table tb2 add subpartition(subpartition sp3 values in("5", "6")) algorithm=instant;
+select b from tb2 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb2 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb2 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb2 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb2 partition(p2sp3) order by b;
+b
+select b from tb2 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb2;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION sp3 VALUES IN ('5','6'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# template: list columns, algorithm=default
+create table tb3(
+a int,
+b varchar(20),
+c int
+)partition by list(c) subpartition by list columns(a, b)
+subpartitions template(
+subpartition sp1 values in((1, "1"),(2, "2")),
+subpartition sp2 values in((3, "3"),(4, "4")),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb3 values(1,'1',3),(2,'2',3),(3,'3',3),(4,'4',3),(5,'5',3),(6,'6',3),(7,'7',3),(8,'8',3);
+insert into tb3 values(9,'9',5),(10,'10',5);
+alter table tb3 add subpartition(subpartition sp3 values in((5,"5"), (6,"6"))) algorithm=default;
+select b from tb3 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb3 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb3 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb3 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb3 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb3 partition(p2spd) order by b;
+b
+7
+8
+show create table tb3;
+Table,Create Table
+tb3,CREATE TABLE `tb3` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp1 VALUES IN ((1,'1'),(2,'2')),
+ SUBPARTITION sp2 VALUES IN ((3,'3'),(4,'4')),
+ SUBPARTITION sp3 VALUES IN ((5,'5'),(6,'6')),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# template: list columns, algorithm=instant
+create table tb4(
+a int,
+b varchar(20),
+c int
+)partition by list(c) subpartition by list columns(a, b)
+subpartitions template(
+subpartition sp1 values in((1, "1"),(2, "2")),
+subpartition sp2 values in((3, "3"),(4, "4")),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb4 values(1,'1',3),(2,'2',3),(3,'3',3),(4,'4',3),(5,'5',3),(6,'6',3),(7,'7',3),(8,'8',3);
+insert into tb4 values(9,'9',5),(10,'10',5);
+alter table tb4 add subpartition(subpartition sp3 values in((5,"5"), (6,"6"))) algorithm=instant;
+select b from tb4 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb4 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb4 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb4 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb4 partition(p2sp3) order by b;
+b
+select b from tb4 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb4;
+Table,Create Table
+tb4,CREATE TABLE `tb4` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp1 VALUES IN ((1,'1'),(2,'2')),
+ SUBPARTITION sp2 VALUES IN ((3,'3'),(4,'4')),
+ SUBPARTITION sp3 VALUES IN ((5,'5'),(6,'6')),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# template: list columns(single), algorithm=default
+create table tb5(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb5 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb5 values(5, '9'),(6,'10');
+alter table tb5 add subpartition(subpartition sp3 values in("5", "6"));
+select b from tb5 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb5 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb5 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb5 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb5 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb5 partition(p2spd) order by b;
+b
+7
+8
+show create table tb5;
+Table,Create Table
+tb5,CREATE TABLE `tb5` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION sp3 VALUES IN ('5','6'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# template: list columns(single), algorithm=instant
+create table tb6(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb6 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb6 values(5, '9'),(6,'10');
+alter table tb6 add subpartition(subpartition sp3 values in("5", "6")) algorithm=instant;
+select b from tb6 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb6 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb6 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb6 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb6 partition(p2sp3) order by b;
+b
+select b from tb6 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb6;
+Table,Create Table
+tb6,CREATE TABLE `tb6` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION sp3 VALUES IN ('5','6'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION pd VALUES IN (DEFAULT))
+# non-template: list, algorithm=default
+create table tb7(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb7 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+alter table tb7 modify partition p2 add subpartition (subpartition p2sp3 values in("5", "6"));
+select b from tb7 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb7 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb7 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb7 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb7 partition(p2spd) order by b;
+b
+7
+8
+show create table tb7;
+Table,Create Table
+tb7,CREATE TABLE `tb7` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ('5','6') ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (3)
+ (SUBPARTITION p3sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p3spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# non-template: list, algorithm=instant
+create tablegroup tg8;
+create table tb8(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb8 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+alter table tb8 modify partition p2 add subpartition (subpartition p2sp3 values in("5", "6"))  algorithm=instant;
+select b from tb8 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb8 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb8 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb8 partition(p2sp3) order by b;
+b
+select b from tb8 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb8;
+Table,Create Table
+tb8,CREATE TABLE `tb8` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ('5','6') ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (3)
+ (SUBPARTITION p3sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p3spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# non-template: list columns, algorithm=default
+create table tb9(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2spd VALUES IN (default)
+)
+);
+insert into tb9 values(1, '1', 2),(2,'2', 2),(3,'3', 2),(4,'4', 2),(5,'5', 2),(6,'6', 2),(7,"7", 2),(8,"8",2);
+alter table tb9 modify partition p2 add subpartition(subpartition p2sp3 values in ((5,"5"), (6, "6")));
+select b from tb9 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb9 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb9 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb9 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb9 partition(p2spd) order by b;
+b
+7
+8
+show create table tb9;
+Table,Create Table
+tb9,CREATE TABLE `tb9` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# non-template: list columns, algorithm=default
+create table tb10(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2spd VALUES IN (default)
+)
+);
+insert into tb10 values(1, '1', 2),(2,'2', 2),(3,'3', 2),(4,'4', 2),(5,'5', 2),(6,'6', 2),(7,"7", 2),(8,"8",2);
+alter table tb10 modify partition p2 add subpartition(subpartition p2sp3 values in((5,"5"), (6, "6"))) algorithm=instant;
+select b from tb10 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb10 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb10 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb10 partition(p2sp3) order by b;
+b
+select b from tb10 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb10;
+Table,Create Table
+tb10,CREATE TABLE `tb10` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ((5,'5'),(6,'6')) ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# non-template: list columns(single), algorithm=default
+create table tb11(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST columns(b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb11 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+alter table tb11 modify partition p2 add subpartition (subpartition p2sp3 values in("5", "6")) algorithm=default;
+select b from tb11 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb11 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb11 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb11 partition(p2sp3) order by b;
+b
+5
+6
+select b from tb11 partition(p2spd) order by b;
+b
+7
+8
+show create table tb11;
+Table,Create Table
+tb11,CREATE TABLE `tb11` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ('5','6') ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (3)
+ (SUBPARTITION p3sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p3spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# non-template: list columns(single), algorithm=instant
+create table tb12(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST columns(b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb12 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+alter table tb12 modify partition p2 add subpartition (subpartition p2sp3 values in("5", "6")) algorithm=instant;
+select b from tb12 partition(p2) order by b;
+b
+1
+2
+3
+4
+5
+6
+7
+8
+select b from tb12 partition(p2sp1) order by b;
+b
+1
+2
+select b from tb12 partition(p2sp2) order by b;
+b
+3
+4
+select b from tb12 partition(p2sp3) order by b;
+b
+select b from tb12 partition(p2spd) order by b;
+b
+5
+6
+7
+8
+show create table tb12;
+Table,Create Table
+tb12,CREATE TABLE `tb12` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(PARTITION p1 VALUES IN (1)
+ (SUBPARTITION p1sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2)
+ (SUBPARTITION p2sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN ('5','6') ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (3)
+ (SUBPARTITION p3sp1 VALUES IN ('1','2') ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN ('3','4') ENGINE = InnoDB,
+  SUBPARTITION p3spd VALUES IN (DEFAULT) ENGINE = InnoDB))
+# logical partition: list, algorithm=default
+create table tb13(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb13 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+insert into tb13 values(9, '9'),(10,'10');
+alter table tb13 add partition(partition p3 values in("5", "6"));
+select b from tb13 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb13 partition(p1) order by b;
+b
+1
+2
+select b from tb13 partition(p2) order by b;
+b
+3
+4
+select b from tb13 partition(p3) order by b;
+b
+5
+6
+select b from tb13 partition(pd) order by b;
+b
+10
+7
+8
+9
+show create table tb13;
+Table,Create Table
+tb13,CREATE TABLE `tb13` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION p3 VALUES IN (5,6),
+ PARTITION pd VALUES IN (DEFAULT))
+# logical partition: list, algorithm=instant
+create table tb14(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb14 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+insert into tb14 values(9, '9'),(10,'10');
+alter table tb14 add partition(partition p3 values in("5", "6")) algorithm=instant;
+select b from tb14 order by b;
+b
+1
+10
+2
+3
+4
+5
+6
+7
+8
+9
+select b from tb14 partition(p1) order by b;
+b
+1
+2
+select b from tb14 partition(p2) order by b;
+b
+3
+4
+select b from tb14 partition(p3) order by b;
+b
+select b from tb14 partition(pd) order by b;
+b
+10
+5
+6
+7
+8
+9
+show create table tb14;
+Table,Create Table
+tb14,CREATE TABLE `tb14` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+SUBPARTITION BY LIST COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES IN ('1','2'),
+ SUBPARTITION sp2 VALUES IN ('3','4'),
+ SUBPARTITION spd VALUES IN (DEFAULT))
+(PARTITION p1 VALUES IN (1,2),
+ PARTITION p2 VALUES IN (3,4),
+ PARTITION p3 VALUES IN (5,6),
+ PARTITION pd VALUES IN (DEFAULT))
+# logical partition: list, algorithm=default
+create table tb15(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1,2) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (3,4) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION pdsp1 VALUES IN ((100,"100"),(200,"200")),
+SUBPARTITION pdsp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION pdspd VALUES IN (default)
+)
+);
+insert into tb15 values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4),(5,'5', 5),(6,'6', 6),(7,"7", 7),(8,"8",8);
+alter table tb15 add partition (partition p3 values in (5,6));
+select b from tb15 partition(p1) order by b;
+b
+1
+2
+select b from tb15 partition(p2) order by b;
+b
+3
+4
+select b from tb15 partition(p3) order by b;
+b
+5
+6
+select b from tb15 partition(pd) order by b;
+b
+7
+8
+show create table tb15;
+Table,Create Table
+tb15,CREATE TABLE `tb15` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN (1,2)
+ (SUBPARTITION p1sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (3,4)
+ (SUBPARTITION p2sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (5,6)
+ (SUBPARTITION sp3 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION sp4 VALUES IN ((100,'100'),(200,'200')) ENGINE = InnoDB,
+  SUBPARTITION sp5 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION pd VALUES IN (DEFAULT)
+ (SUBPARTITION sp6 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION sp7 VALUES IN ((100,'100'),(200,'200')) ENGINE = InnoDB,
+  SUBPARTITION sp8 VALUES IN (DEFAULT) ENGINE = InnoDB))
+# logical partition: list, algorithm=instant
+create table tb16(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1,2) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (3,4) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION pdsp1 VALUES IN ((100,"100"),(200,"200")),
+SUBPARTITION pdsp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION pdspd VALUES IN (default)
+)
+);
+insert into tb16 values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4),(5,'5', 5),(6,'6', 6),(7,"7", 7),(8,"8",8);
+alter table tb16 add partition (partition p3 values in (5,6)) algorithm=instant;
+select b from tb16 partition(p1) order by b;
+b
+1
+2
+select b from tb16 partition(p2) order by b;
+b
+3
+4
+select b from tb16 partition(p3) order by b;
+b
+select b from tb16 partition(pd) order by b;
+b
+5
+6
+7
+8
+show create table tb16;
+Table,Create Table
+tb16,CREATE TABLE `tb16` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN (1,2)
+ (SUBPARTITION p1sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p1spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (3,4)
+ (SUBPARTITION p2sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION p2spd VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (5,6)
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION pd VALUES IN (DEFAULT)
+ (SUBPARTITION pdsp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB,
+  SUBPARTITION pdsp1 VALUES IN ((100,'100'),(200,'200')) ENGINE = InnoDB,
+  SUBPARTITION pdspd VALUES IN (DEFAULT) ENGINE = InnoDB))

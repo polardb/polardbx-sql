@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -37,12 +37,14 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import java.util.Locale;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_HANDLE_DATA;
+
 public class ShowStatistic {
 
     private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -54,20 +56,15 @@ public class ShowStatistic {
 
         fields[i] = PacketUtil.getField("table_rows", Fields.FIELD_TYPE_LONG);
         fields[i++].packetId = ++packetId;
-        ;
 
         fields[i] = PacketUtil.getField("column_name", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
-        ;
 
         fields[i] = PacketUtil.getField("cardinality", Fields.FIELD_TYPE_LONG);
         fields[i++].packetId = ++packetId;
-        ;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -80,17 +77,21 @@ public class ShowStatistic {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
         String charset = c.getCharset();
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + c.getSchema() + "'");
-            return;
+            return false;
         }
 
         TDataSource ds = schema.getDataSource();
@@ -99,7 +100,7 @@ public class ShowStatistic {
                 ds.init();
             } catch (Throwable e) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
+                return false;
             }
         }
 
@@ -107,7 +108,7 @@ public class ShowStatistic {
             StatisticManager.getInstance().getStatisticCache().get(schema.getName().toLowerCase(Locale.ROOT));
         if (statisticCache == null) {
             c.writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "no statistic '" + c.getSchema() + "'");
-            return;
+            return false;
         }
         for (Map.Entry<String, StatisticManager.CacheLine> entry : statisticCache.entrySet()) {
             Map<String, Long> cardinalityMap = entry.getValue().getCardinalityMap();
@@ -117,7 +118,7 @@ public class ShowStatistic {
                 row.add(LongUtil.toBytes(DataTypes.LongType.convertFrom(entry.getValue().getRowCount())));
                 row.add(null);
                 row.add(null);
-                row.packetId = ++packetId;
+                row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);
             } else {
                 for (Map.Entry<String, Long> columnCardinality : cardinalityMap.entrySet()) {
@@ -126,7 +127,7 @@ public class ShowStatistic {
                     row.add(LongUtil.toBytes(DataTypes.LongType.convertFrom(entry.getValue().getRowCount())));
                     row.add(StringUtil.encode(DataTypes.StringType.convertFrom(columnCardinality.getKey()), charset));
                     row.add(LongUtil.toBytes(DataTypes.LongType.convertFrom(columnCardinality.getValue())));
-                    row.packetId = ++packetId;
+                    row.packetId = ++tmpPacketId;
                     proxy = row.write(proxy);
                 }
             }
@@ -134,10 +135,11 @@ public class ShowStatistic {
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 }

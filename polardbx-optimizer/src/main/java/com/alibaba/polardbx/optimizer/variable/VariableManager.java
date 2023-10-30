@@ -26,10 +26,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.biv.MockUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.google.common.collect.ImmutableMap;
-import org.apache.calcite.sql.SqlCreate;
-import org.apache.calcite.sql.SqlCreateTable;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;

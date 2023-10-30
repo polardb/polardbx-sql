@@ -16,15 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.utils.mppchecker;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.ExplainResult;
+import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.core.RecursiveCTE;
+import org.apache.calcite.rel.logical.LogicalExpand;
+import org.apache.calcite.rel.logical.LogicalOutFile;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.core.RecursiveCTE;
+import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.sql.SqlKind;
 
 import java.util.Arrays;
@@ -58,6 +66,8 @@ public class MppPlanCheckers {
         .getSqlKind()
         .belongsTo(SqlKind.QUERY);
 
+    public static final MppPlanChecker CTE_CHECKER = input -> !input.getPlannerContext().isHasRecursiveCte();
+
     public static final MppPlanChecker SIMPLE_QUERY_PLAN_CHECKER =
         input -> !RelUtils.isSimpleQueryPlan(input.getOriginalPlan());
 
@@ -66,9 +76,12 @@ public class MppPlanCheckers {
             .map(c -> !ExplainResult.isExplainExecute(c.getExplain()))
             .orElse(true);
 
+    public static final MppPlanChecker SELECT_INTO_OUT_STATISTICS_CHECKER =
+        input -> !(input.getOriginalPlan() instanceof LogicalOutFile);
+
     public static final MppPlanChecker BASIC_CHECKERS =
         input -> Lists.newArrayList(MPP_ENABLED_CHECKER, SUBQUERY_CHECKER, QUERY_CHECKER, INTERNAL_SYSTEM_SQL_CHECKER,
-                EXPLAIN_EXECUTE_CHECKER)
+                EXPLAIN_EXECUTE_CHECKER, CTE_CHECKER, SELECT_INTO_OUT_STATISTICS_CHECKER)
             .stream()
             .allMatch(c -> c.supportsMpp(input));
 

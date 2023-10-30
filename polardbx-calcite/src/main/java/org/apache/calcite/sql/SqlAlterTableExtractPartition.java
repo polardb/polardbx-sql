@@ -1,7 +1,25 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -22,13 +40,24 @@ public class SqlAlterTableExtractPartition extends SqlAlterSpecification {
     private final List<SqlNode> hotKeys;
     private final List<SqlPartition> newPartitions;
 
+    private final List<SqlNode> parentPartitions = new ArrayList<>();
+
     private String extractPartitionName;
     private final SQLName hotKeyPartitionName;
 
-    public SqlAlterTableExtractPartition(SqlParserPos pos, List<SqlNode> hotKeys, SQLName hotKeyPartitionName) {
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    private final SQLExpr locality;
+
+    protected boolean isExtractSubPartition = false;
+
+    public SqlAlterTableExtractPartition(SqlParserPos pos, List<SqlNode> hotKeys, SQLName hotKeyPartitionName, SQLExpr locality) {
         super(pos);
         this.hotKeys = hotKeys;
         this.hotKeyPartitionName = hotKeyPartitionName;
+        this.locality = locality;
         newPartitions = new ArrayList<>();
     }
 
@@ -38,6 +67,14 @@ public class SqlAlterTableExtractPartition extends SqlAlterSpecification {
 
     public void setExtractPartitionName(String extractPartitionName) {
         this.extractPartitionName = extractPartitionName;
+    }
+
+    public boolean isExtractSubPartition() {
+        return isExtractSubPartition;
+    }
+
+    public void setExtractSubPartition(boolean extractSubPartition) {
+        isExtractSubPartition = extractSubPartition;
     }
 
     public SQLName getHotKeyPartitionName() {
@@ -60,6 +97,10 @@ public class SqlAlterTableExtractPartition extends SqlAlterSpecification {
 
     public List<SqlPartition> getNewPartitions() {
         return newPartitions;
+    }
+
+    public List<SqlNode> getParentPartitions() {
+        return parentPartitions;
     }
 
     @Override

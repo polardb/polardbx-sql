@@ -38,7 +38,7 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
 
     private String literal;
 
-    public SQLDateExpr(){
+    public SQLDateExpr() {
 
     }
 
@@ -85,7 +85,7 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
     }
 
     public Date getDate() {
-       return getDate(null);
+        return getDate(null);
     }
 
     public Date getDate(TimeZone timeZone) {
@@ -211,7 +211,8 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
         return Collections.emptyList();
     }
 
-    public static long supportDbTypes = DbType.of(DbType.mysql);
+    public static long supportDbTypes =
+        DbType.of(DbType.mysql);
 
     public static boolean isSupport(DbType dbType) {
         return (dbType.mask & supportDbTypes) != 0;
@@ -250,7 +251,7 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
             return false;
         }
 
-        if(c4 != '-') {
+        if (c4 != '-') {
             return false;
         }
 
@@ -316,32 +317,32 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
         }
 
         switch (month) {
-            case 1:
-            case 3:
-            case 5:
-            case 7:
-            case 8:
-            case 10:
-            case 12:
-                if (day > 31) {
-                    return false;
-                }
-                return true;
-            case 2:
-                if (day > 29) {
-                    return false;
-                }
-                return true;
-            case 4:
-            case 6:
-            case 9:
-            case 11:
-                if (day > 30) {
-                    return false;
-                }
-                return true;
-            default:
+        case 1:
+        case 3:
+        case 5:
+        case 7:
+        case 8:
+        case 10:
+        case 12:
+            if (day > 31) {
                 return false;
+            }
+            return true;
+        case 2:
+            if (day > 29) {
+                return false;
+            }
+            return true;
+        case 4:
+        case 6:
+        case 9:
+        case 11:
+            if (day > 30) {
+                return false;
+            }
+            return true;
+        default:
+            return false;
         }
     }
 
@@ -355,16 +356,16 @@ public class SQLDateExpr extends SQLExprImpl implements SQLLiteralExpr, SQLValua
         int dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH);
 
         char[] chars = new char[10];
-        chars[0] = (char) (year/1000 + '0');
-        chars[1] = (char) ((year/100)%10 + '0');
-        chars[2] = (char) ((year/10)%10 + '0');
-        chars[3] = (char) (year%10 + '0');
+        chars[0] = (char) (year / 1000 + '0');
+        chars[1] = (char) ((year / 100) % 10 + '0');
+        chars[2] = (char) ((year / 10) % 10 + '0');
+        chars[3] = (char) (year % 10 + '0');
         chars[4] = '-';
-        chars[5] = (char) (month/10 + '0');
-        chars[6] = (char) (month%10 + '0');
+        chars[5] = (char) (month / 10 + '0');
+        chars[6] = (char) (month % 10 + '0');
         chars[7] = '-';
-        chars[8] = (char) (dayOfMonth/10 + '0');
-        chars[9] = (char) (dayOfMonth%10 + '0');
+        chars[8] = (char) (dayOfMonth / 10 + '0');
+        chars[9] = (char) (dayOfMonth % 10 + '0');
 
         return new String(chars);
     }

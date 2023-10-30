@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.parse;
 
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
@@ -23,7 +26,6 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import com.alibaba.polardbx.druid.sql.visitor.ParameterizedVisitor;
@@ -44,13 +46,6 @@ import java.util.Map;
  * Created by hongxi.chx on 2017/12/1.
  */
 public class SqlParameterizeUtils {
-
-    public final static SQLParserFeature[] parserFeatures = {
-        SQLParserFeature.EnableSQLBinaryOpExprGroup, SQLParserFeature.OptimizedForParameterized,
-        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
-        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
-    };
-
     public final static VisitorFeature[] parameterizeFeatures = {
 //        VisitorFeature.OutputParameterizedQuesUnMergeInList,
         VisitorFeature.OutputParameterizedSpecialNameWithBackTick,
@@ -113,14 +108,24 @@ public class SqlParameterizeUtils {
                                                 Map<Integer, ParameterContext> parameters,
                                                 ExecutionContext executionContext, boolean isPrepare) {
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, JdbcConstants.MYSQL,
-            SqlParameterizeUtils.parserFeatures);
+            SQLUtils.parserFeatures);
 
-        List<SQLStatement> statements = parser.parseStatementList();
-        if (statements.size() == 0) {
-            return null;
+        try {
+            List<SQLStatement> statements = parser.parseStatementList();
+            if (statements.size() == 0) {
+                return null;
+            }
+            int lineNum = parser.getLexer().getLine();
+            sql.setMultiLine(lineNum >= 1);
+            final SQLStatement statement = statements.get(0);
+            return parameterize(sql, statement, parameters, executionContext, isPrepare);
+        } catch (Throwable t) {
+            if (ErrorCode.match(t.getMessage())) {
+                throw t;
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARSER, t.getMessage());
+            }
         }
-        final SQLStatement statement = statements.get(0);
-        return parameterize(sql, statement, parameters, executionContext, isPrepare);
     }
 
     public static SqlParameterized parameterize(ByteString sql, SQLStatement statement,

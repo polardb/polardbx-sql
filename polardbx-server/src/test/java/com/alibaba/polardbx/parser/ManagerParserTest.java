@@ -159,6 +159,13 @@ public class ManagerParserTest {
     }
 
     @Test
+    public void testShowServerExecutor() {
+        Assert.assertEquals(ManagerParseShow.SERVER_EXECUTOR, ManagerParseShow.parse("show @@server_executor", 5));
+        Assert.assertEquals(ManagerParseShow.SERVER_EXECUTOR, ManagerParseShow.parse("SHOW @@SERVER_EXECUTOR", 5));
+        Assert.assertEquals(ManagerParseShow.SERVER_EXECUTOR, ManagerParseShow.parse("show @@SERVER_EXECUTOR", 5));
+    }
+
+    @Test
     public void testShowBackend() {
         Assert.assertEquals(ManagerParseShow.BACKEND, ManagerParseShow.parse("show @@backend", 5));
         Assert.assertEquals(ManagerParseShow.BACKEND, ManagerParseShow.parse("SHOW @@BACkend;", 5));
@@ -193,6 +200,22 @@ public class ManagerParserTest {
         Assert.assertEquals(ManagerParseShow.SQL, ManagerParseShow.parse("show @@Sql WHERE ID = -1079800749", 5));
         Assert.assertEquals(ManagerParseShow.SQL, ManagerParseShow.parse("show @@sql where id=-1079800749", 5));
         Assert.assertEquals(ManagerParseShow.SQL, ManagerParseShow.parse("show @@sql where id   =-1079800749 ", 5));
+    }
+
+    @Test
+    public void testShowSQLLOG() {
+        Assert.assertEquals(ManagerParseShow.SQL_LOG, ManagerParseShow.parse("show @@sql.log", 5));
+        Assert.assertEquals(ManagerParseShow.SQL_LOG, ManagerParseShow.parse("show @@sql.log ", 5));
+        Assert.assertEquals(ManagerParseShow.SQL_LOG, ManagerParseShow.parse("show @@sql.lOG ", 5));
+        Assert.assertEquals(ManagerParseShow.SQL_LOG, ManagerParseShow.parse("show @@sql.LOG ", 5));
+    }
+
+    @Test
+    public void testShowSQLDisard() {
+        Assert.assertEquals(ManagerParseShow.DISCARD_COUNT, ManagerParseShow.parse("show @@sql.discard", 5));
+        Assert.assertEquals(ManagerParseShow.DISCARD_COUNT, ManagerParseShow.parse("show @@sql.discard ", 5));
+        Assert.assertEquals(ManagerParseShow.DISCARD_COUNT, ManagerParseShow.parse("show @@sql.discArd ", 5));
+        Assert.assertEquals(ManagerParseShow.DISCARD_COUNT, ManagerParseShow.parse("show @@sql.DisCArd ", 5));
     }
 
     @Test

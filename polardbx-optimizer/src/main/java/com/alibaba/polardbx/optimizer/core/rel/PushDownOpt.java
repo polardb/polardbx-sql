@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRul
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinSemiJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinCorrToSubQueryRule;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartPruneStepType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
@@ -99,6 +100,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_IN_PRUNE_CACHE_SIZE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_IN_PRUNE_CACHE_TABLE_SIZE;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.deriveJoinType;
 import static com.alibaba.polardbx.optimizer.utils.PushDownUtils.pushAgg;
 import static com.alibaba.polardbx.optimizer.utils.PushDownUtils.pushFilter;
@@ -462,11 +465,14 @@ public class PushDownOpt {
 
     public void optimizeOSS() {
         HepProgramBuilder builder = new HepProgramBuilder();
+
         builder.addGroupBegin();
         builder.addRuleCollection(RuleToUse.RULE_FOR_NATIVE_SQL);
         builder.addRuleInstance(FilterProjectTransposeRule.INSTANCE);
         builder.addRuleInstance(FilterSortTransposeRule.INSTANCE);
+
         builder.addGroupEnd();
+
         builder.addGroupBegin();
         builder.addRuleInstance(FilterMergeRule.INSTANCE);
         builder.addRuleInstance(ProjectMergeRule.INSTANCE);
@@ -479,8 +485,10 @@ public class PushDownOpt {
         planner.stopOptimizerTrace();
         planner.setRoot(getPushedRelNode());
         RelNode optimizedNode = planner.findBestExp();
+
         optimizedNode = optimizedNode.accept(new RelCastRemover());
         RelNode optNode = optimizedNode;
+
         this.builder.clear();
         this.builder.push(optNode);
     }
@@ -559,11 +567,12 @@ public class PushDownOpt {
                 // just add full table scan. for sql like column subquery
                 ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
                 partStep =
-                    PartitionPruneStepBuilder.generateFullScanPruneStepInfo(tableScan.getSchemaName(), tbName, ec);
+                    PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(tableScan.getSchemaName(),
+                        tbName, ec);
             }
             allPartPruneSteps.add(partStep);
         }
-        String key = OptimizerUtils.buildInexprKey(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
+        String key = OptimizerUtils.buildInExprKey(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
 
         this.allPartPruneSteps.put(key, allPartPruneSteps);
     }
@@ -578,9 +587,10 @@ public class PushDownOpt {
             PartitionPruneStep partStep = partRoutingPlanInfo.allPartPruningSteps.get(tbName);
             allPartPruneSteps.add(partStep);
         }
-        String key = OptimizerUtils.buildInexprKey(ec);
+        String key = OptimizerUtils.buildInExprKey(ec);
         // cache prune steps for the key
-        if (allPartPruneSteps.size() < 10) {
+        if (this.allPartPruneSteps.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_SIZE) &&
+            allPartPruneSteps.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_TABLE_SIZE)) {
             this.allPartPruneSteps.put(key, allPartPruneSteps);
         }
         return allPartPruneSteps;
@@ -610,21 +620,25 @@ public class PushDownOpt {
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(dbName);
         if (isNewPartDb) {
             relShardInfo.setPartPruneStepInfo(
-                PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
+                PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(dbName, logTbName, ec));
         }
-        if (comparatives.size() > tableIndex) {
+
+        if (!isNewPartDb) {
             relShardInfo.setUsePartTable(false);
-            relShardInfo.setAllComps(comparatives.get(tableIndex));
-            relShardInfo.setAllFullComps(fullComparatives.get(tableIndex));
+            if (comparatives.size() > tableIndex) {
+                relShardInfo.setAllComps(comparatives.get(tableIndex));
+                relShardInfo.setAllFullComps(fullComparatives.get(tableIndex));
+            }
         } else {
             relShardInfo.setUsePartTable(true);
-            String key = OptimizerUtils.buildInexprKey(ec);
+            String key = OptimizerUtils.buildInExprKey(ec);
             if (this.allPartPruneSteps.containsKey(key) && this.allPartPruneSteps.get(key).size() > tableIndex) {
                 if (this.allPartPruneSteps.get(key).get(tableIndex) != null) {
                     relShardInfo.setPartPruneStepInfo(this.allPartPruneSteps.get(key).get(tableIndex));
                 } else {
                     relShardInfo.setPartPruneStepInfo(
-                        PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
+                        PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(dbName, logTbName,
+                            ec));
                 }
             } else {
                 List<PartitionPruneStep> list = buildNewPartPruneSteps(ec);
@@ -633,6 +647,28 @@ public class PushDownOpt {
                 }
             }
         }
+
+//        if (comparatives.size() > tableIndex) {
+//            relShardInfo.setUsePartTable(false);
+//            relShardInfo.setAllComps(comparatives.get(tableIndex));
+//            relShardInfo.setAllFullComps(fullComparatives.get(tableIndex));
+//        } else {
+//            relShardInfo.setUsePartTable(true);
+//            String key = OptimizerUtils.buildInexprKey(ec);
+//            if (this.allPartPruneSteps.containsKey(key) && this.allPartPruneSteps.get(key).size() > tableIndex) {
+//                if (this.allPartPruneSteps.get(key).get(tableIndex) != null) {
+//                    relShardInfo.setPartPruneStepInfo(this.allPartPruneSteps.get(key).get(tableIndex));
+//                } else {
+//                    relShardInfo.setPartPruneStepInfo(
+//                        PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(dbName, logTbName, ec));
+//                }
+//            } else {
+//                List<PartitionPruneStep> list = buildNewPartPruneSteps(ec);
+//                if (list.size() > tableIndex) {
+//                    relShardInfo.setPartPruneStepInfo(list.get(tableIndex));
+//                }
+//            }
+//        }
 
         return relShardInfo;
     }
@@ -890,6 +926,24 @@ public class PushDownOpt {
             }
         } else if (allPartPruneSteps.size() >= 1 && !allPartPruneSteps.containsKey(OptimizerUtils.EMPTY_KEY)) {
             return true;
+        }
+        return false;
+    }
+
+    public boolean dynamicPruningContainsPartitionKey() {
+        if (allPartPruneSteps == null || allPartPruneSteps.size() == 0) {
+            return true;
+        } else if (!allPartPruneSteps.containsKey(OptimizerUtils.EMPTY_KEY)) {
+            for (Map.Entry<String, List<PartitionPruneStep>> pruneSteps : allPartPruneSteps.entrySet()) {
+                if (!pruneSteps.getKey().equals(OptimizerUtils.EMPTY_KEY)) {
+                    for (PartitionPruneStep pruneStep : pruneSteps.getValue()) {
+                        // TODO(siyun): to be optimized for PartitionPruneStepCombine
+                        if (pruneStep.getStepType() != PartPruneStepType.PARTPRUNE_OP_MISMATCHED_PART_KEY) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         return false;
     }

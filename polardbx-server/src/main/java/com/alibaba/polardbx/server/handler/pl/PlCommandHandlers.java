@@ -46,9 +46,9 @@ public class PlCommandHandlers {
         }
     }
 
-    public static void handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore) {
+    public static boolean handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore) {
         PlCommandHandler handler = getHandler(commandCode);
-        handler.handle(sql, conn, hasMore);
+        return handler.handle(sql, conn, hasMore);
     }
 
     private static PlCommandHandler getHandler(int commandCode) {

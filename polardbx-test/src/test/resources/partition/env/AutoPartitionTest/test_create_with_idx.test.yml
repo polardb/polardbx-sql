@@ -32,6 +32,17 @@ INDEX (`seller_id`),
 UNIQUE INDEX (`order_id`)
 );
 show full create table `t_order`;
+  
+# more test
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`X` int PRIMARY KEY,
+`ORDER_ID` varchar(20) DEFAULT NULL,
+`SELLER_ID` varchar(20) DEFAULT NULL,
+INDEX (`SELLER_ID`),
+UNIQUE INDEX (`ORDER_ID`)
+);
+show full create table `t_order`;
 
 # cleanup
 drop table if exists `t_order`;

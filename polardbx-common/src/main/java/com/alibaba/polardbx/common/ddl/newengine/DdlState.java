@@ -30,7 +30,8 @@ public enum DdlState {
     COMPLETED,
     ROLLBACK_RUNNING,
     ROLLBACK_PAUSED,
-    ROLLBACK_COMPLETED;
+    ROLLBACK_COMPLETED,
+    ROLLBACK_TO_READY;
 
     public static final Set<DdlState> ALL_STATES = EnumSet.of(
         QUEUED,
@@ -39,16 +40,18 @@ public enum DdlState {
         COMPLETED,
         ROLLBACK_RUNNING,
         ROLLBACK_PAUSED,
-        ROLLBACK_COMPLETED
+        ROLLBACK_COMPLETED,
+        ROLLBACK_TO_READY
     );
 
-    public static final Set<DdlState> RUNNABLE = EnumSet.of(QUEUED, RUNNING, ROLLBACK_RUNNING);
+    public static final Set<DdlState> RUNNABLE = EnumSet.of(QUEUED, RUNNING, ROLLBACK_RUNNING, ROLLBACK_TO_READY);
 
     public static final Set<DdlState> TERMINATED = EnumSet.of(ROLLBACK_PAUSED, PAUSED);
 
     public static final Set<DdlState> FINISHED = EnumSet.of(ROLLBACK_COMPLETED, COMPLETED);
 
-    public static final Set<DdlState> PAUSED_POLICY_VALUES = EnumSet.of(PAUSED, RUNNING, ROLLBACK_RUNNING);
+    public static final Set<DdlState> PAUSED_POLICY_VALUES =
+        EnumSet.of(PAUSED, RUNNING, ROLLBACK_RUNNING, ROLLBACK_TO_READY);
 
     public static final Set<DdlState> ROLLBACK_PAUSED_POLICY_VALUES = EnumSet.of(ROLLBACK_PAUSED, ROLLBACK_RUNNING);
 
@@ -94,5 +97,9 @@ public enum DdlState {
         } catch (Exception e) {
             return defaultState;
         }
+    }
+
+    public static boolean isRollBackRunning(DdlState state) {
+        return ROLLBACK_RUNNING == state || ROLLBACK_TO_READY == state;
     }
 }

@@ -16,12 +16,10 @@
 
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
-import com.alibaba.polardbx.druid.sql.ast.SQLObject;
-
 /**
  * Created by luoyanxin.
  *
  * @author luoyanxin
  */
-public interface SQLAlterTableGroupItem extends SQLObject {
+public interface SQLAlterTableGroupItem extends SQLAlterTableItem {
 }

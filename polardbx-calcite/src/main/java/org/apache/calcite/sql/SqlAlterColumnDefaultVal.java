@@ -16,39 +16,39 @@
 
 package org.apache.calcite.sql;
 
+import org.apache.calcite.sql.parser.SqlParserPos;
+
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.calcite.sql.parser.SqlParserPos;
-
 /**
  * @author chenmo.cm
- * @date 2019/1/23 12:07 AM
  */
 // | ALTER [COLUMN] col_name {SET DEFAULT literal | DROP DEFAULT}
 public class SqlAlterColumnDefaultVal extends SqlAlterSpecification {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("ALTER COLUMN", SqlKind.ALTER_COLUMN_DEFAULT_VAL);
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("ALTER COLUMN", SqlKind.ALTER_COLUMN_DEFAULT_VAL);
     private final SqlIdentifier originTableName;
     private final SqlIdentifier columnName;
-    private final SqlLiteral    defaultVal;
-    private final boolean       dropDefault;
-    private final String        sourceSql;
-    private SqlNode             tableName;
+    private final SqlLiteral defaultVal;
+    private final SqlCall defaultExpr;
+    private final boolean dropDefault;
+    private final String sourceSql;
+    private SqlNode tableName;
+
     /**
      * Creates a SqlAlterColumnDefaultVal.
-     *
-     * @param columnName
-     * @param tableName
-     * @param pos
      */
-    public SqlAlterColumnDefaultVal(SqlIdentifier tableName, SqlIdentifier columnName, SqlLiteral defultVal,
-                                    boolean dropDefault, String sql, SqlParserPos pos){
+    public SqlAlterColumnDefaultVal(SqlIdentifier tableName, SqlIdentifier columnName, SqlLiteral defaultVal,
+                                    SqlCall defaultExpr,
+                                    boolean dropDefault, String sql, SqlParserPos pos) {
         super(pos);
         this.tableName = tableName;
         this.originTableName = tableName;
         this.columnName = columnName;
-        this.defaultVal = defultVal;
+        this.defaultVal = defaultVal;
+        this.defaultExpr = defaultExpr;
         this.dropDefault = dropDefault;
         this.sourceSql = sql;
     }
@@ -77,7 +77,14 @@ public class SqlAlterColumnDefaultVal extends SqlAlterSpecification {
             writer.keyword("DROP DEFAULT");
         } else {
             writer.keyword("SET DEFAULT");
-            defaultVal.unparse(writer, leftPrec, rightPrec);
+            if (defaultVal != null) {
+                defaultVal.unparse(writer, leftPrec, rightPrec);
+            } else {
+                final SqlWriter.Frame frameExpr = writer.startList(SqlWriter.FrameTypeEnum.FUN_CALL, "(", ")");
+                defaultExpr.unparse(writer, leftPrec, rightPrec);
+                writer.endList(frameExpr);
+            }
+
         }
 
         writer.endList(frame);
@@ -104,6 +111,7 @@ public class SqlAlterColumnDefaultVal extends SqlAlterSpecification {
         return new SqlAlterColumnDefaultVal(newTableName,
             columnName,
             defaultVal,
+            defaultExpr,
             dropDefault,
             sourceSql,
             getParserPosition());
@@ -111,5 +119,14 @@ public class SqlAlterColumnDefaultVal extends SqlAlterSpecification {
 
     public SqlLiteral getDefaultVal() {
         return defaultVal;
+    }
+
+    public SqlCall getDefaultExpr() {
+        return defaultExpr;
+    }
+
+    @Override
+    public boolean supportFileStorage() {
+        return true;
     }
 }

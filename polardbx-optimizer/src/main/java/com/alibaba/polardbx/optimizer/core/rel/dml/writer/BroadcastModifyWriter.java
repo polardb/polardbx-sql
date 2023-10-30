@@ -54,7 +54,7 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
      * Mapping for source value of SET in input row
      * Null if type is DELETE
      */
-    protected final Mapping updateSetMapping;
+    protected Mapping updateSetMapping;
     /**
      * Mapping for columns used to group input rows, normally identical to pkMapping
      * if pkMapping and skMapping are identical, then groupingMapping is also identical to them
@@ -89,7 +89,7 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec);
+            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec, true);
 
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
@@ -100,6 +100,14 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());
         }
+    }
+
+    public Mapping getUpdateSetMapping() {
+        return updateSetMapping;
+    }
+
+    public void setUpdateSetMapping(Mapping updateSetMapping) {
+        this.updateSetMapping = updateSetMapping;
     }
 
     @Override

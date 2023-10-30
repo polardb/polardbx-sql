@@ -21,6 +21,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
@@ -34,22 +35,22 @@ public class SQLSetStatement extends SQLStatementImpl {
     private Option option;
 
     private List<SQLAssignItem> items = new ArrayList<SQLAssignItem>();
-    
+
     private List<SQLCommentHint> hints;
 
-    public SQLSetStatement(){
+    public SQLSetStatement() {
     }
-    
-    public SQLSetStatement(DbType dbType){
-        super (dbType);
+
+    public SQLSetStatement(DbType dbType) {
+        super(dbType);
     }
-    
-    public SQLSetStatement(SQLExpr target, SQLExpr value){
+
+    public SQLSetStatement(SQLExpr target, SQLExpr value) {
         this(target, value, null);
     }
 
-    public SQLSetStatement(SQLExpr target, SQLExpr value, DbType dbType){
-        super (dbType);
+    public SQLSetStatement(SQLExpr target, SQLExpr value, DbType dbType) {
+        super(dbType);
         SQLAssignItem item = new SQLAssignItem(target, value);
         item.setParent(this);
         this.items.add(item);
@@ -143,5 +144,10 @@ public class SQLSetStatement extends SQLStatementImpl {
         GLOBAL,
         SESSION,
         LOCAL
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

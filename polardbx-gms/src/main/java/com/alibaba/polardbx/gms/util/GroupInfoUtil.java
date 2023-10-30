@@ -110,6 +110,9 @@ public class GroupInfoUtil {
     }
 
     public static String buildPhysicalDbNameFromGroupName(String groupName) {
+        if (groupName == null) {
+            return null;
+        }
         String physicalDbName = groupName.substring(0, groupName.length() - "_group".length());
         return physicalDbName.toLowerCase();
     }

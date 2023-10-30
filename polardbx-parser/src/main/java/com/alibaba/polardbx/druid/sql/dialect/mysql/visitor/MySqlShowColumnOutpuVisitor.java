@@ -71,7 +71,8 @@ public class MySqlShowColumnOutpuVisitor extends MySqlOutputVisitor {
                     defaultValues.add(null);
                 } else {
                     String defaultVal = SQLUtils.toMySqlString(column.getDefaultExpr());
-                    if (defaultVal.length() > 2 && defaultVal.charAt(0) == '\'' && defaultVal.charAt(defaultVal.length() - 1) == '\'') {
+                    if (defaultVal.length() > 2 && defaultVal.charAt(0) == '\''
+                        && defaultVal.charAt(defaultVal.length() - 1) == '\'') {
                         defaultVal = defaultVal.substring(1, defaultVal.length() - 1);
                     }
                     defaultValues.add(defaultVal);
@@ -176,12 +177,12 @@ public class MySqlShowColumnOutpuVisitor extends MySqlOutputVisitor {
         print("-+-");
         print('-', extra_len);
         print("-+\n");
-        
+
         return false;
     }
 
     void print(char ch, int count) {
-        for (int i = 0; i < count; ++i)  {
+        for (int i = 0; i < count; ++i) {
             print(ch);
         }
     }

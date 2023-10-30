@@ -1,0 +1,362 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+CREATE TABLE `y1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`d`))
+PARTITIONS 16;
+show create table y1;
+Table,Create Table
+y1,CREATE TABLE `y1` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`d`))
+PARTITIONS 16
+## prepare data
+insert into y1 values('2021-07-01'), ('2022-01-01'), ('2022-07-01'), ('2023-02-01');
+## check point select
+select * from y1 where d = '2021-07-01';
+d
+2021-07-01
+select * from y1 where d = '2022-01-01';
+d
+2022-01-01
+select * from y1 where d = '2022-07-01';
+d
+2022-07-01
+select * from y1 where d = '2023-02-01';
+d
+2023-02-01
+## explain
+explain select * from y1 where d = '2021-07-01';
+Logical ExecutionPlan
+LogicalView(tables="y1[p5]", sql="SELECT `d` FROM `y1` AS `y1` WHERE (`d` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: da083947
+explain select * from y1 where d = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="y1[p1]", sql="SELECT `d` FROM `y1` AS `y1` WHERE (`d` = ?)")
+explain select * from y1 where d = '2022-07-01';
+Logical ExecutionPlan
+LogicalView(tables="y1[p5]", sql="SELECT `d` FROM `y1` AS `y1` WHERE (`d` = ?)")
+explain select * from y1 where d = '2023-02-01';
+Logical ExecutionPlan
+LogicalView(tables="y1[p14]", sql="SELECT `d` FROM `y1` AS `y1` WHERE (`d` = ?)")
+## range select
+select * from y1 where (d > '2022-01-01' and d < '2023-02-01') or d between '2021-07-01' and '2022-01-01' order by d;
+d
+2021-07-01
+2022-01-01
+2022-07-01
+## full scan
+select * from y1 where d > '2021-07-01' order by d;
+d
+2022-01-01
+2022-07-01
+2023-02-01
+explain select * from y1 where d > '2021-07-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `y1` AS `y1` WHERE (`d` > ?) ORDER BY `d`")
+select * from y1 where d > '2021-07-01' and d < '2022-07-01' order by d;
+d
+2022-01-01
+explain select * from y1 where d > '2021-07-01' and d < '2022-07-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `y1` AS `y1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## partition enumeration
+select * from y1 where d > '2022-06-29' and d < '2022-07-02' order by d;
+d
+2022-07-01
+explain select * from y1 where d > '2022-06-29' and d < '2022-07-02' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y1[p4,p5,p15,p16]", shardCount=4, sql="SELECT `d` FROM `y1` AS `y1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## test datetime
+CREATE TABLE `y2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`dt`))
+PARTITIONS 16;
+show create table y2;
+Table,Create Table
+y2,CREATE TABLE `y2` (
+	`dt` datetime DEFAULT NULL,
+	KEY `auto_shard_key_dt` USING BTREE (`dt`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`dt`))
+PARTITIONS 16
+## prepare data
+insert into y2 values('2021-07-01 00:00:00'), ('2022-01-01 00:00:00'), ('2022-07-01 00:00:00'), ('2023-02-01 00:00:00');
+## check point select
+select * from y2 where dt = '2021-07-01 00:00:00';
+dt
+2021-07-01 00:00:00.0
+select * from y2 where dt = '2022-01-01 00:00:00';
+dt
+2022-01-01 00:00:00.0
+select * from y2 where dt = '2022-07-01 00:00:00';
+dt
+2022-07-01 00:00:00.0
+select * from y2 where dt = '2023-02-01 00:00:00';
+dt
+2023-02-01 00:00:00.0
+## explain
+explain select * from y2 where dt = '2021-07-01 00:00:00';
+Logical ExecutionPlan
+LogicalView(tables="y2[p5]", sql="SELECT `dt` FROM `y2` AS `y2` WHERE (`dt` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 4d6faa24
+explain select * from y2 where dt = '2022-01-01 00:00:00';
+Logical ExecutionPlan
+LogicalView(tables="y2[p1]", sql="SELECT `dt` FROM `y2` AS `y2` WHERE (`dt` = ?)")
+explain select * from y2 where dt = '2022-07-01 00:00:00';
+Logical ExecutionPlan
+LogicalView(tables="y2[p5]", sql="SELECT `dt` FROM `y2` AS `y2` WHERE (`dt` = ?)")
+explain select * from y2 where dt = '2023-02-01 00:00:00';
+Logical ExecutionPlan
+LogicalView(tables="y2[p14]", sql="SELECT `dt` FROM `y2` AS `y2` WHERE (`dt` = ?)")
+## range select
+select * from y2 where (dt > '2022-01-01 00:00:00' and dt < '2023-02-01 00:00:00') or dt between '2021-07-01 00:00:00' and '2022-01-01 00:00:00' order by dt;
+dt
+2021-07-01 00:00:00.0
+2022-01-01 00:00:00.0
+2022-07-01 00:00:00.0
+## full scan
+select * from y2 where dt > '2021-07-01 00:00:00' order by dt;
+dt
+2022-01-01 00:00:00.0
+2022-07-01 00:00:00.0
+2023-02-01 00:00:00.0
+explain select * from y2 where dt > '2021-07-01 00:00:00' order by dt;
+Logical ExecutionPlan
+MergeSort(sort="dt ASC")
+  LogicalView(tables="y2[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `dt` FROM `y2` AS `y2` WHERE (`dt` > ?) ORDER BY `dt`")
+select * from y2 where dt > '2021-07-01 00:00:00' and dt < '2022-07-01 00:00:00' order by dt;
+dt
+2022-01-01 00:00:00.0
+explain select * from y2 where dt > '2021-07-01 00:00:00' and dt < '2022-07-01 00:00:00' order by dt;
+Logical ExecutionPlan
+MergeSort(sort="dt ASC")
+  LogicalView(tables="y2[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `dt` FROM `y2` AS `y2` WHERE ((`dt` > ?) AND (`dt` < ?)) ORDER BY `dt`")
+## partition enumeration
+select * from y2 where dt > '2022-06-29 00:00:00' and dt < '2022-07-02 00:00:00' order by dt;
+dt
+2022-07-01 00:00:00.0
+explain select * from y2 where dt > '2022-06-29 00:00:00' and dt < '2022-07-02 00:00:00' order by dt;
+Logical ExecutionPlan
+MergeSort(sort="dt ASC")
+  LogicalView(tables="y2[p4,p5,p15,p16]", shardCount=4, sql="SELECT `dt` FROM `y2` AS `y2` WHERE ((`dt` > ?) AND (`dt` < ?)) ORDER BY `dt`")
+## test range
+CREATE TABLE `y3` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES LESS THAN(10),
+PARTITION p1 VALUES LESS THAN(20),
+PARTITION p2 VALUES LESS THAN(30),
+PARTITION p3 VALUES LESS THAN(MAXVALUE));
+show create table y3;
+Table,Create Table
+y3,CREATE TABLE `y3` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES LESS THAN (10) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (20) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (30) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+## prepare data
+insert into y3 values('2022-01-01'), ('2021-01-10'),('2023-01-20'),('2020-01-30');
+## check point select
+select * from y3 where d = '2022-01-01';
+d
+2022-01-01
+select * from y3 where d = '2021-01-10';
+d
+2021-01-10
+select * from y3 where d = '2023-01-20';
+d
+2023-01-20
+select * from y3 where d = '2020-01-30';
+d
+2020-01-30
+## explain
+explain select * from y3 where d = '2022-01-01';
+Logical ExecutionPlan
+LogicalView(tables="y3[p0]", sql="SELECT `d` FROM `y3` AS `y3` WHERE (`d` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: b70e4649
+explain select * from y3 where d = '2021-01-10';
+Logical ExecutionPlan
+LogicalView(tables="y3[p1]", sql="SELECT `d` FROM `y3` AS `y3` WHERE (`d` = ?)")
+explain select * from y3 where d = '2023-01-20';
+Logical ExecutionPlan
+LogicalView(tables="y3[p2]", sql="SELECT `d` FROM `y3` AS `y3` WHERE (`d` = ?)")
+explain select * from y3 where d = '2020-01-30';
+Logical ExecutionPlan
+LogicalView(tables="y3[p3]", sql="SELECT `d` FROM `y3` AS `y3` WHERE (`d` = ?)")
+## range select
+select * from y3 where (d > '2021-01-10' and d < '2023-01-20') or d between '2021-01-10' and '2022-01-01' order by d;
+d
+2021-01-10
+2022-01-01
+## full scan
+select * from y3 where d > '2020-01-30' order by d;
+d
+2021-01-10
+2022-01-01
+2023-01-20
+explain select * from y3 where d > '2020-01-30' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y3[p0,p1,p2,p3]", shardCount=4, sql="SELECT `d` FROM `y3` AS `y3` WHERE (`d` > ?) ORDER BY `d`")
+select * from y3 where d > '2020-01-30' and d < '2023-01-21' order by d;
+d
+2021-01-10
+2022-01-01
+2023-01-20
+explain select * from y3 where d > '2020-01-30' and d < '2023-01-21' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y3[p0,p1,p2,p3]", shardCount=4, sql="SELECT `d` FROM `y3` AS `y3` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## partition enumeration
+select * from y3 where d > '2021-01-08' and d < '2021-01-21';
+d
+2021-01-10
+explain select * from y3 where d > '2021-01-08' and d < '2021-01-21';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="y3[p0,p1,p2]", shardCount=3, sql="SELECT `d` FROM `y3` AS `y3` WHERE ((`d` > ?) AND (`d` < ?))")
+## test list
+CREATE TABLE `y4` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES IN(1,2,3,4,5),
+PARTITION p1 VALUES IN(6,7,8,9,10),
+PARTITION p2 VALUES IN(11,12,13,14,15),
+PARTITION pd VALUES IN(default));
+show create table y4;
+Table,Create Table
+y4,CREATE TABLE `y4` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES IN (1,2,3,4,5) ENGINE = InnoDB,
+ PARTITION p1 VALUES IN (6,7,8,9,10) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (11,12,13,14,15) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+## prepare data
+insert into y4 values ('2021-01-01'),('2020-01-10'),('2022-01-15'),('2023-01-31');
+## check point select
+select * from y4 where d = '2021-01-01';
+d
+2021-01-01
+select * from y4 where d = '2020-01-10';
+d
+2020-01-10
+select * from y4 where d = '2022-01-15';
+d
+2022-01-15
+select * from y4 where d = '2023-01-31';
+d
+2023-01-31
+## explain
+explain select * from y4 where d = '2021-01-01';
+Logical ExecutionPlan
+LogicalView(tables="y4[p0]", sql="SELECT `d` FROM `y4` AS `y4` WHERE (`d` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: a5914cca
+explain select * from y4 where d = '2020-01-10';
+Logical ExecutionPlan
+LogicalView(tables="y4[p1]", sql="SELECT `d` FROM `y4` AS `y4` WHERE (`d` = ?)")
+explain select * from y4 where d = '2022-01-15';
+Logical ExecutionPlan
+LogicalView(tables="y4[p2]", sql="SELECT `d` FROM `y4` AS `y4` WHERE (`d` = ?)")
+explain select * from y4 where d = '2023-01-31';
+Logical ExecutionPlan
+LogicalView(tables="y4[pd]", sql="SELECT `d` FROM `y4` AS `y4` WHERE (`d` = ?)")
+## range select
+select * from y4 where (d > '2020-01-10' and d < '2022-01-15') or d between '2021-01-01' and '2022-01-15' order by d;
+d
+2021-01-01
+2022-01-15
+## full scan
+select * from y4 where d > '2021-01-01' order by d;
+d
+2022-01-15
+2023-01-31
+explain select * from y4 where d > '2021-01-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y4[p0,p1,p2,pd]", shardCount=4, sql="SELECT `d` FROM `y4` AS `y4` WHERE (`d` > ?) ORDER BY `d`")
+select * from y4 where d > '2020-01-10' and d < '2023-01-31' order by d;
+d
+2021-01-01
+2022-01-15
+explain select * from y4 where d > '2020-01-10' and d < '2023-01-31' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y4[p0,p1,p2,pd]", shardCount=4, sql="SELECT `d` FROM `y4` AS `y4` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## partition enumeration
+select * from y4 where d > '2020-01-08' and d < '2020-01-21' order by d;
+d
+2020-01-10
+explain select * from y4 where d > '2020-01-08' and d < '2020-01-21' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y4[p1,p2,pd]", shardCount=3, sql="SELECT `d` FROM `y4` AS `y4` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## test leap year and spanning years
+create table `y5` (
+`d` date default null
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by hash(dayofyear(`d`)) partitions 366;
+#prepare data
+insert into y5 values('2020-02-28'),('2020-02-29'),('2020-03-01'),('2021-02-28'),('2021-03-01'),('2022-12-30'),('2022-12-31'),('2023-01-01');
+# range select on leap year
+select * from y5 where d >= '2020-02-28' and d < '2020-03-02' order by d;
+d
+2020-02-28
+2020-02-29
+2020-03-01
+select * from y5 where d > '2020-02-28' and d < '2020-03-01' order by d;
+d
+2020-02-29
+select * from y5 where d >= '2021-02-28' and d < '2021-03-02' order by d;
+d
+2021-02-28
+2021-03-01
+# empty result
+select * from y5 where d >= '2021-02-28' and d < '2020-03-01' order by d;
+d
+# span years
+select * from y5 where d >= '2022-12-30' and d < '2023-01-02' order by d;
+d
+2022-12-30
+2022-12-31
+2023-01-01
+# partition enumeration
+explain select * from y5 where d >= '2020-02-28' and d < '2020-03-02' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y5[p28,p268,p304,p350]", shardCount=4, sql="SELECT `d` FROM `y5` AS `y5` WHERE ((`d` >= ?) AND (`d` < ?)) ORDER BY `d`")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: b3ce44af
+explain select * from y5 where d > '2020-02-28' and d < '2020-03-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y5[p28,p268,p304]", shardCount=3, sql="SELECT `d` FROM `y5` AS `y5` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+explain select * from y5 where d >= '2022-12-30' and d < '2023-01-02' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="y5[p21,p117,p249,p266]", shardCount=4, sql="SELECT `d` FROM `y5` AS `y5` WHERE ((`d` >= ?) AND (`d` < ?)) ORDER BY `d`")

@@ -209,7 +209,7 @@ public class GroupSequenceCatchUpTest extends BaseSequenceTestCase {
     }
 
     private void inspectRange(int index, long value) {
-        final String sql = "inspect group sequence range for AUTO_SEQ_%s";
+        final String sql = "inspect sequence range for AUTO_SEQ_%s";
 
         StringBuilder buf = new StringBuilder();
         buf.append("\n").append(index).append("------------------------\n");

@@ -1,0 +1,131 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists single_t1;
+drop database if exists single_t2;
+drop database if exists single_t3;
+drop database if exists drds_single_t4;
+drop database if exists drds_single_t5;
+create database if not exists single_t1 mode='auto';
+create database if not exists single_t2 mode='auto';
+create database if not exists single_t3 mode='auto';
+create database if not exists drds_single_t4 mode='drds';
+create database if not exists drds_single_t5 mode='drds';
+use single_t1;
+CREATE TABLE IF NOT EXISTS `single_t1_s1` (
+`a1` bigint(20) UNSIGNED NOT NULL,
+`b1` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single locality='dn=$dn1';
+insert into single_t1_s1 values ('1','1'),('2','2'),('3','3'),('4','4');
+CREATE TABLE IF NOT EXISTS `single_t1_s2` (
+`x1` bigint(20) UNSIGNED NOT NULL,
+`y1` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
+insert into single_t1_s2 values ('1','1'),('2','2'),('3','3'),('4','4');
+use single_t2;
+CREATE TABLE IF NOT EXISTS `single_t2_s1` (
+`a2` bigint(20) UNSIGNED NOT NULL,
+`b2` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
+insert into single_t2_s1 values ('1','1'),('2','2'),('3','3'),('4','4');
+CREATE TABLE IF NOT EXISTS `single_t2_s2` (
+`x2` bigint(20) UNSIGNED NOT NULL,
+`y2` bigint(20) UNSIGNED NOT NULL,
+primary key(`x2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 partition by key(`x2`) partitions 4;
+insert into single_t2_s2 values ('1','1'),('2','2'),('3','3'),('4','4');
+use single_t3;
+CREATE TABLE IF NOT EXISTS `single_t3_s1` (
+`a3` bigint(20) UNSIGNED NOT NULL,
+`b3` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
+CREATE TABLE IF NOT EXISTS `single_t3_s2` (
+`a3` bigint(20) UNSIGNED NOT NULL,
+`b3` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 broadcast;
+use drds_single_t4;
+/*+TDDL:ENABLE_RANDOM_PHY_TABLE_NAME=false*/CREATE TABLE IF NOT EXISTS `single_t4_s1` (
+`a3` bigint(20) UNSIGNED NOT NULL,
+`b3` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
+use drds_single_t5;
+/*+TDDL:ENABLE_RANDOM_PHY_TABLE_NAME=false*/CREATE TABLE IF NOT EXISTS `single_t5_s1` (
+`a3` bigint(20) UNSIGNED NOT NULL,
+`b3` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
+Logical ExecutionPlan
+LogicalView(tables=[single_t1.single_t1_s1, single_t2.single_t2_s1], sql="")
+select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
+a1,b1,a2,b2
+1,1,1,1
+2,2,2,2
+3,3,3,3
+4,4,4,4
+explain LOGIC select * from drds_single_t4.single_t4_s1 as t1 inner join drds_single_t5.single_t5_s1 t2 on t1.a3=t2.a3;
+Logical ExecutionPlan
+HashJoin(condition="a3 = a3", type="inner")
+  LogicalView(tables="DRDS_SINGLE_T4_000000_GROUP.single_t4_s1", sql="SELECT `a3`, `b3` FROM `single_t4_s1` AS `single_t4_s1`")
+  LogicalView(tables="DRDS_SINGLE_T5_000000_GROUP.single_t5_s1", sql="SELECT `a3`, `b3` FROM `single_t5_s1` AS `single_t5_s1`")
+explain LOGIC select * from single_t1.single_t1_s1 as t1 inner join drds_single_t5.single_t5_s1 t2 on t1.a1=t2.a3;
+Logical ExecutionPlan
+HashJoin(condition="a3 = a1", type="inner")
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1`, `b1` FROM `single_t1_s1` AS `single_t1_s1`")
+  LogicalView(tables="DRDS_SINGLE_T5_000000_GROUP.single_t5_s1", sql="SELECT `a3`, `b3` FROM `single_t5_s1` AS `single_t5_s1`")
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s2 t2 on t1.a1=t2.x2;
+Logical ExecutionPlan
+BKAJoin(condition="a1 = x2", type="inner")
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1`, `b1` FROM `single_t1_s1` AS `single_t1_s1`")
+  Gather(concurrent=true)
+    LogicalView(tables="single_t2_s2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `x2`, `y2` FROM `single_t2_s2` AS `single_t2_s2` WHERE (`x2` IN (...))")
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select count(*) from (select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2
+union all select * from single_t1.single_t1_s1 as t3 inner join single_t3.single_t3_s1 t4 on t3.a1=t4.a3) as xx;
+Logical ExecutionPlan
+LogicalView(tables=[single_t1.single_t1_s1, single_t2.single_t2_s1, single_t1.single_t1_s1, single_t3.single_t3_s1], sql="")
+select count(*) from (select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2
+union all select * from single_t1.single_t1_s1 as t3 inner join single_t3.single_t3_s1 t4 on t3.a1=t4.a3) as xx;
+count(*)
+4
+begin;
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
+Logical ExecutionPlan
+HashJoin(condition="a1 = a2", type="inner")
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1`, `b1` FROM `single_t1_s1` AS `single_t1_s1`")
+  LogicalView(tables="single_t2_s1[p1]", sql="SELECT `a2`, `b2` FROM `single_t2_s1` AS `single_t2_s1`")
+commit;
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
+Logical ExecutionPlan
+LogicalView(tables=[single_t1.single_t1_s1, single_t2.single_t2_s1], sql="")
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
+Logical ExecutionPlan
+LogicalView(tables=[single_t3.single_t3_s1, single_t1.single_t1_s1], sql="")
+begin;
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
+Logical ExecutionPlan
+LogicalInsert(table="single_t3_s1", columns=RecordType(BIGINT_UNSIGNED a3, BIGINT_UNSIGNED b3, BIGINT _drds_implicit_id_), mode=MULTI)
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1` AS `a3`, `b1` AS `b3`, NULL AS `_drds_implicit_id_` FROM `single_t1_s1` AS `single_t1_s1`")
+commit;
+insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
+select * from single_t3.single_t3_s1;
+a3,b3
+1,1
+2,2
+3,3
+4,4
+use single_t1;
+alter table `single_t1_s1` partition by key(`a1`);
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
+Logical ExecutionPlan
+Project(a1="a1", b1="b1", a2="a2", b2="b2")
+  BKAJoin(condition="a1 = a2", type="inner")
+    LogicalView(tables="single_t2_s1[p1]", sql="SELECT `a2`, `b2` FROM `single_t2_s1` AS `single_t2_s1`")
+    Gather(concurrent=true)
+      LogicalView(tables="single_t1_s1[p1,p2,p3]", shardCount=3, sql="SELECT `a1`, `b1` FROM `single_t1_s1` AS `single_t1_s1` WHERE (`a1` IN (...))")
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t2.single_t2_s1 as t1 inner join single_t3.single_t3_s1 t2 on t1.a2=t2.a3;
+Logical ExecutionPlan
+LogicalView(tables=[single_t2.single_t2_s1, single_t3.single_t3_s1], sql="")
+use single_t3;
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t2.single_t2_s1 as t1 inner join single_t3.single_t3_s2 t2 on t1.a2=t2.a3;
+Logical ExecutionPlan
+HashJoin(condition="a3 = a2", type="inner")
+  LogicalView(tables="single_t2_s1[p1]", sql="SELECT `a2`, `b2` FROM `single_t2_s1` AS `single_t2_s1`")
+  Gather(concurrent=true)
+    LogicalView(tables="single_t3_s2", shardCount=0, sql="SELECT `a3`, `b3` FROM `single_t3_s2` AS `single_t3_s2`")

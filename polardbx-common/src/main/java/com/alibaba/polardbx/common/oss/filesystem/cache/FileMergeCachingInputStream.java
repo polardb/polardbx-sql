@@ -30,6 +30,8 @@
 
 package com.alibaba.polardbx.common.oss.filesystem.cache;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 
@@ -41,6 +43,9 @@ import static java.util.Objects.requireNonNull;
 
 public final class FileMergeCachingInputStream
     extends FSDataInputStream {
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileMergeCachingInputStream.class);
+    private static final String LOG_FORMAT = "%s: [ %s, %s ] size: %s time: %s file: %s";
+
     private final FSDataInputStream inputStream;
     private final CacheManager cacheManager;
     private final Path path;
@@ -70,18 +75,55 @@ public final class FileMergeCachingInputStream
     @Override
     public void readFully(long position, byte[] buffer, int offset, int length)
         throws IOException {
+        long s = System.currentTimeMillis();
         FileReadRequest key = new FileReadRequest(path, position, length);
         switch (cacheManager.get(key, buffer, offset, cacheQuota)) {
         case HIT_HOT_CACHE:
+            LOGGER.info(String.format(
+                LOG_FORMAT,
+                "HIT_HOT_CACHE",
+                position,
+                position + length,
+                length,
+                System.currentTimeMillis() - s,
+                key.getPath()
+            ));
             return;
         case HIT:
+            LOGGER.info(String.format(
+                LOG_FORMAT,
+                "HIT_CACHE",
+                position,
+                position + length,
+                length,
+                System.currentTimeMillis() - s,
+                key.getPath()
+                ));
             break;
         case MISS:
             inputStream.readFully(position, buffer, offset, length);
             cacheManager.put(key, wrappedBuffer(buffer, offset, length), cacheQuota);
+            LOGGER.info(String.format(
+                LOG_FORMAT,
+                "OSS_READ",
+                position,
+                position + length,
+                length,
+                System.currentTimeMillis() - s,
+                key.getPath()
+            ));
             return;
         case CACHE_QUOTA_EXCEED:
             inputStream.readFully(position, buffer, offset, length);
+            LOGGER.info(String.format(
+                LOG_FORMAT,
+                "CACHE_EXCEED",
+                position,
+                position + length,
+                length,
+                System.currentTimeMillis() - s,
+                key.getPath()
+            ));
             return;
         }
 

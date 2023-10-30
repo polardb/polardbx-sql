@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -26,25 +27,23 @@ import java.util.List;
 public class SQLGrantStatement extends SQLPrivilegeStatement {
 
     // mysql
-    private SQLExpr         maxQueriesPerHour;
-    private SQLExpr         maxUpdatesPerHour;
-    private SQLExpr         maxConnectionsPerHour;
-    private SQLExpr         maxUserConnections;
+    private SQLExpr maxQueriesPerHour;
+    private SQLExpr maxUpdatesPerHour;
+    private SQLExpr maxConnectionsPerHour;
+    private SQLExpr maxUserConnections;
 
-    private boolean         adminOption;
+    private boolean adminOption;
 
-    private SQLExpr         identifiedBy;
-    private String          identifiedByPassword;
+    private SQLExpr identifiedBy;
+    private String identifiedByPassword;
 
-    private boolean         withGrantOption;
+    private boolean withGrantOption;
 
-
-
-    public SQLGrantStatement(){
+    public SQLGrantStatement() {
 
     }
 
-    public SQLGrantStatement(DbType dbType){
+    public SQLGrantStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -145,5 +144,10 @@ public class SQLGrantStatement extends SQLPrivilegeStatement {
 
     public void setWithGrantOption(boolean withGrantOption) {
         this.withGrantOption = withGrantOption;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

@@ -127,7 +127,7 @@ public class AlterTableWithGsiBuilder {
 
             final SqlAlterTable alterTable = ((SqlAlterTable) originalSqlNode);
             final String orgSql = alterTable.getSourceSql();
-            final List<SQLStatement> stmts = SQLUtils.parseStatements(orgSql, JdbcConstants.MYSQL);
+            final List<SQLStatement> stmts = SQLUtils.parseStatementsWithDefaultFeatures(orgSql, JdbcConstants.MYSQL);
             final SQLAlterTableStatement stmt = ((SQLAlterTableStatement) stmts.get(0));
             if (stmt.getItems().get(0) instanceof SQLAlterTableAddIndex) {
                 ((SQLAlterTableAddIndex) stmt.getItems().get(0)).getIndexDefinition().setGlobal(false);

@@ -190,7 +190,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableAddPartitionVal1() {
-        String sql = "ALTER TABLE T_PART_LIST\n\t MODIFY PARTITION P2 ADD VALUES ('USERS')";
+        String sql = "ALTER TABLE T_PART_LIST\n\tMODIFY PARTITION P2 ADD VALUES ('USERS')";
         MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement result = statementList.get(0);
@@ -198,7 +198,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableAddPartitionVal2() {
-        String sql = "ALTER TABLE T_PART_LIST\n\t MODIFY PARTITION P3 DROP VALUES ('A')";
+        String sql = "ALTER TABLE T_PART_LIST\n\tMODIFY PARTITION P3 DROP VALUES ('A')";
         MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement result = statementList.get(0);
@@ -341,7 +341,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupDropPartition() {
-        String sql = "alter tablegroup tg34 drop partition p1,p2 ;";
+        String sql = "alter tablegroup tg34 drop partition p1, p2 ;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 

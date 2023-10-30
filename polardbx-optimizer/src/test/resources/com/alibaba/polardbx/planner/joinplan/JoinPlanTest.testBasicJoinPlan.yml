@@ -1,4 +1,51 @@
 -
+  sql: |    
+    SELECT 1 FROM 
+       (single_a a, single_b b)
+    JOIN single_c c ON a.id=b.id and c.id = a.int_col1;
+
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c", sql="select 1 from (`single_a` as `a`, `single_b` as `b`) inner join `single_c` as `c` on ((`a`.`id` = `b`.`id`) and (`c`.`id` = `a`.`int_col1`))")
+-
+  sql: |
+    SELECT 1 FROM 
+       single_a a join single_b b
+    JOIN single_c c ON a.id=b.id and c.id = a.int_col1;
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c", sql="select 1 from `single_a` as `a` inner join `single_b` as `b` inner join `single_c` as `c` on ((`a`.`id` = `b`.`id`) and (`c`.`id` = `a`.`int_col1`))")
+
+-
+  sql: |
+    SELECT 1 FROM 
+       (single_a a, single_b b) left join single_c c ON a.id=c.id 
+    JOIN single_d d on d.id = a.int_col1;
+
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c,single_d", sql="select 1 from (`single_a` as `a`, `single_b` as `b`) left join `single_c` as `c` on (`a`.`id` = `c`.`id`) inner join `single_d` as `d` on (`d`.`id` = `a`.`int_col1`)")
+-
+  sql: |
+    SELECT 1 FROM 
+      single_a a left join single_b b ON a.id=b.id 
+    JOIN single_c c on c.id = a.int_col1;
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c", sql="select 1 from `single_a` as `a` left join `single_b` as `b` on (`a`.`id` = `b`.`id`) inner join `single_c` as `c` on (`c`.`id` = `a`.`int_col1`)")
+-
+  sql: |
+    SELECT 1 FROM 
+       (single_a a, single_b b)
+    left JOIN (single_c c, single_d d) ON a.id=b.id and c.id = a.int_col1;
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c,single_d", sql="select 1 from (`single_a` as `a`, `single_b` as `b`) left join (`single_c` as `c`, `single_d` as `d`) on ((`a`.`id` = `b`.`id`) and (`c`.`id` = `a`.`int_col1`))")
+-
+  sql: |
+    
+    SELECT 1 FROM 
+       ((select * from single_a where 1=1)a, (select * from single_b) b)
+    left JOIN (single_c c left join single_d d on c.int_col1 = d.int_col2) ON a.id=b.id and c.id = a.int_col1;
+
+  plan: |
+    logicalview(tables="optest_0000.single_a,single_b,single_c,single_d", sql="select 1 from ((select `single_a`.`id`, `single_a`.`int_col1`, `single_a`.`int_col2`, `single_a`.`int_col3`, `single_a`.`int_col4` from `single_a` as `single_a` where (1 = 1)) as `a`, (select `single_b`.`id`, `single_b`.`int_col1`, `single_b`.`int_col2`, `single_b`.`int_col3`, `single_b`.`int_col4` from `single_b` as `single_b`) as `b`) left join (`single_c` as `c` left join `single_d` as `d` on (`c`.`int_col1` = `d`.`int_col2`)) on ((`a`.`id` = `b`.`id`) and (`c`.`id` = `a`.`int_col1`))")
+-
   sql: |
     select * from test_hash_tb a join test_hash_tb b where a.id=b.id and a.name="xx";
 

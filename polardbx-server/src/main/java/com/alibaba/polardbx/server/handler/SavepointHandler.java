@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.handler;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 

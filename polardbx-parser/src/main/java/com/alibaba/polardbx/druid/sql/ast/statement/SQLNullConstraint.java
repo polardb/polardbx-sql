@@ -19,7 +19,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLNullConstraint extends SQLConstraintImpl implements SQLColumnConstraint {
 
-    public SQLNullConstraint(){
+    public SQLNullConstraint() {
     }
 
     @Override

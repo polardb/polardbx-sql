@@ -101,7 +101,7 @@ public class ReplicateBroadcastInsertWriter extends BroadcastInsertWriter implem
             return result;
         }
         BaseTableOperation baseTableOperation = (BaseTableOperation) relNodes.get(0);
-        for (PartitionSpec partitionSpec : tableMeta.getNewPartitionInfo().getPartitionBy().getPartitions()) {
+        for (PartitionSpec partitionSpec : tableMeta.getNewPartitionInfo().getPartitionBy().getPhysicalPartitions()) {
             if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
                 .canWrite(tableMeta, partitionSpec.getName()) && !ComplexTaskPlanUtils
                 .isDeleteOnly(tableMeta, partitionSpec.getName())) {

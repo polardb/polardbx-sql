@@ -21,12 +21,14 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowFilesStatement extends MySqlStatementImpl implements MySqlShowStatement {
     private SQLName name;
+
     public SQLName getName() {
         return name;
     }
     public void setName(SQLName name) {
         this.name = name;
     }
+
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, name);

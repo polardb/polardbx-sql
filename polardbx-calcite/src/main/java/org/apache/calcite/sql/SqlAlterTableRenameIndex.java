@@ -33,6 +33,8 @@ public class SqlAlterTableRenameIndex extends SqlAlterSpecification {
     final private SqlIdentifier      indexName;
     final private SqlIdentifier      newIndexName;
     final private String             sourceSql;
+
+    final private boolean onGsi;
     private SqlNode                  tableName;
 
     /**
@@ -43,13 +45,14 @@ public class SqlAlterTableRenameIndex extends SqlAlterSpecification {
      * @param pos
      */
     public SqlAlterTableRenameIndex(SqlIdentifier tableName, SqlIdentifier indexName, SqlIdentifier newIndexName,
-                                    String sql, SqlParserPos pos){
+                                    String sql, Boolean onGsi, SqlParserPos pos){
         super(pos);
         this.tableName = tableName;
         this.originIndexName = indexName;
         this.originNewIndexName = newIndexName;
         this.indexName = indexName;
         this.newIndexName = newIndexName;
+        this.onGsi = onGsi;
         this.sourceSql = sql;
     }
 
@@ -103,4 +106,8 @@ public class SqlAlterTableRenameIndex extends SqlAlterSpecification {
     public String getNewIndexNameStr() {
         return newIndexName.getLastName();
     }
+
+    @Override
+    public boolean supportFileStorage() {
+        return !onGsi; }
 }

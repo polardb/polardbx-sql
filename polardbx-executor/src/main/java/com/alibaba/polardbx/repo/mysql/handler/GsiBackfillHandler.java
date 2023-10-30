@@ -35,9 +35,11 @@ import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -61,6 +63,7 @@ public class GsiBackfillHandler extends HandlerCommon {
         String baseTableName = backfill.getBaseTableName();
         List<String> indexNames = backfill.getIndexNames();
         List<String> columnsName = backfill.getColumns();
+        Map<String, String> virtualColumnMap = backfill.getVirtualColumnMap();
 
         BackfillExecutor backfillExecutor = new BackfillExecutor((List<RelNode> inputs,
                                                                   ExecutionContext executionContext1) -> {
@@ -70,7 +73,10 @@ public class GsiBackfillHandler extends HandlerCommon {
             return inputCursors;
         });
 
-        executionContext = clearSqlMode(executionContext.copy());
+        // modify partition key column type, do not clear sql_mode
+        if (MapUtils.isEmpty(virtualColumnMap)) {
+            executionContext = clearSqlMode(executionContext.copy());
+        }
 
         upgradeEncoding(executionContext, schemaName, baseTableName);
 
@@ -110,7 +116,7 @@ public class GsiBackfillHandler extends HandlerCommon {
 
             CheckGsiTask checkTask =
                 new CheckGsiTask(schemaName, baseTableName, indexName, lockMode, lockMode, params, false, "",
-                    isPrimaryBroadCast, isGsiBroadCast);
+                    isPrimaryBroadCast, isGsiBroadCast, virtualColumnMap);
 
             checkTask.checkInBackfill(executionContext);
         }

@@ -114,6 +114,7 @@ public class Lexer {
     private boolean lexSingleColon = false;
 
     protected final Charset charset;
+    protected boolean meetPolarxOriginSql = false;
 
     public Lexer(ByteString input) {
         this(input, (CommentHandler) null);
@@ -895,6 +896,12 @@ public class Lexer {
         for (; ; ) {
             if (isWhitespace(ch)) {
                 if (ch == '\n') {
+                    if (meetPolarxOriginSql) {
+                        meetPolarxOriginSql = false;
+                        token = EOF;
+                        return;
+                    }
+
                     line++;
 
                     lines = line - startLine;
@@ -1004,7 +1011,10 @@ public class Lexer {
                 }
                 return;
             case '#':
-                scanSharp();
+                scanSharp();if (meetPolarxOriginSql) {
+                    ch = charAt(pos);
+                    continue;
+                }
                 if ((token == Token.LINE_COMMENT || token == Token.MULTI_LINE_COMMENT) && skipComment) {
                     bufPos = 0;
                     continue;
@@ -3422,5 +3432,10 @@ public class Lexer {
 
     public int getStartPos() {
         return startPos;
+    }
+
+    public Token getNextToken() {
+        nextToken();
+        return token;
     }
 }

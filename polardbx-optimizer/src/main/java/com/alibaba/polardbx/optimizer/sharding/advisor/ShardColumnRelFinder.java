@@ -108,10 +108,10 @@ public class ShardColumnRelFinder extends RelVisitor {
                 }
 
                 // if the primary key don't support hash, don't consider the key
-                if (AdvisorUtil.columnHashable(tableMeta,column)) {
+                if (AdvisorUtil.columnHashable(tableMeta, column)) {
                     return;
                 }
-                long rowCount = (long) tableMeta.getRowCount();
+                long rowCount = (long) tableMeta.getRowCount(null);
                 shardColumnEdges.addPrimeKey(schema, table, columnName, column, rowCount);
                 return;
             }

@@ -79,6 +79,16 @@ public class PolicyMergePartition implements BalancePolicy {
         return actions;
     }
 
+    @Override
+    public List<BalanceAction> applyToTable(ExecutionContext ec,
+                                            BalanceOptions options,
+                                            BalanceStats stats,
+                                            String schemaName,
+                                            String tableName) {
+        return applyToPartitionDb(ec, options, stats, schemaName);
+
+    }
+
     static class MergeContext {
 
         private String schema;

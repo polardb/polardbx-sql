@@ -35,12 +35,11 @@ public class SQLDateTimeExpr extends SQLExprImpl implements SQLLiteralExpr, SQLV
 
     private SQLExpr literal;
 
-    public SQLDateTimeExpr(){
+    public SQLDateTimeExpr() {
 
     }
 
-
-    public SQLDateTimeExpr(Date now, TimeZone timeZone){
+    public SQLDateTimeExpr(Date now, TimeZone timeZone) {
         setLiteral(now, timeZone);
     }
 

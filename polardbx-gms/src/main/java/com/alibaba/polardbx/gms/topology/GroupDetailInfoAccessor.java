@@ -78,12 +78,12 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where db_name =? and storage_inst_id=?";
 
     private static final String SELECT_ALL_PHY_DB_NAME_BY_DB_NAME_AND_STORAGE_INST_ID =
-            "select t2.* from " + GROUP_DETAIL_INFO_TABLE + " as t1 " +
-                    "join " + GmsSystemTables.DB_GROUP_INFO + " as t2 " +
-                    "on t1.group_name = t2.group_name " +
-                    "and t1.db_name=t2.db_name " +
-                    "where t1.storage_inst_id = ? " +
-                    "and t1.db_name=?";
+        "select t2.* from " + GROUP_DETAIL_INFO_TABLE + " as t1 " +
+            "join " + GmsSystemTables.DB_GROUP_INFO + " as t2 " +
+            "on t1.group_name = t2.group_name " +
+            "and t1.db_name=t2.db_name " +
+            "where t1.storage_inst_id = ? " +
+            "and t1.db_name=?";
 
     private static final String SELECT_GROUP_DETAILS_BY_DB_NAME_AND_GROUP =
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where db_name =? and group_name=?";
@@ -117,6 +117,10 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
     private static final String SELECT_GROUP_DETAIL_INFO_CNT_BY_STORAGE_INST_ID_AND_DB_NAME_AND_GROUP_NAMES =
         "select count(1) from `"
             + GROUP_DETAIL_INFO_TABLE + "` where storage_inst_id=? and db_name=? and group_name in (%s);";
+
+    private static final String SELECT_STORAGE_ID_BY_GROUP_NAME =
+        "select group_name, storage_inst_id  from `"
+            + GROUP_DETAIL_INFO_TABLE + "` where inst_id=? and db_name=? and group_name in (%s);";
 
     private static final String SELECT_GROUP_DETAIL_PHY_DB_INFO_BY_INST_ID_FOR_PARTITION_TABLE =
         "select group_detail.storage_inst_id as storage_inst_id, group_detail.db_name as db_name, group_detail.group_name as group_name, db_group.phy_db_name as phy_db_name from db_group_info db_group inner join group_detail_info group_detail on db_group.db_name = group_detail.db_name and db_group.group_name = group_detail.group_name where  group_detail.inst_id=? and db_group.group_type=? order by   storage_inst_id,   db_name,  group_name,  phy_db_name;\n";
@@ -169,7 +173,6 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
                 GROUP_DETAIL_INFO_TABLE,
                 e.getMessage());
         }
-
 
     }
 
@@ -254,13 +257,14 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, storageInstId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
-            return MetaDbUtil.query(SELECT_ALL_PHY_DB_NAME_BY_DB_NAME_AND_STORAGE_INST_ID, params, DbGroupInfoRecord.class,
-                            connection);
+            return MetaDbUtil.query(SELECT_ALL_PHY_DB_NAME_BY_DB_NAME_AND_STORAGE_INST_ID, params,
+                DbGroupInfoRecord.class,
+                connection);
         } catch (Exception e) {
             logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
-                    GROUP_DETAIL_INFO_TABLE,
-                    e.getMessage());
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
         }
     }
 
@@ -327,6 +331,36 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         instIdList.add(rs.getString(1));
+                    }
+                }
+            }
+            return instIdList;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public Map<String, String> getStorageInstIdMappingByDbNameAndGroupName(
+        String instIds, String dbName, Set<String> groupNames) {
+        try {
+            Map<String, String> instIdList = new HashMap();
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, instIds);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
+
+            try (PreparedStatement ps = connection.prepareStatement(
+                String.format(SELECT_STORAGE_ID_BY_GROUP_NAME, concat(groupNames)))) {
+                if (params != null && params.size() > 0) {
+                    for (ParameterContext param : params.values()) {
+                        param.getParameterMethod().setParameter(ps, param.getArgs());
+                    }
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        instIdList.put(rs.getString(1), rs.getString(2));
                     }
                 }
             }

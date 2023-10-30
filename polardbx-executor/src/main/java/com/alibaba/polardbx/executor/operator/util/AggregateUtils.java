@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.accumulator.CheckSumAccumulator;
 import com.alibaba.polardbx.executor.accumulator.CheckSumMergeAccumulator;
@@ -98,12 +99,14 @@ import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMax;
 import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMin;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
 import org.apache.calcite.rel.core.WindowAggregateCall;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.sql.Date;
@@ -117,6 +120,9 @@ import java.util.List;
  * Abstract AggHandler
  */
 public abstract class AggregateUtils {
+
+    public static final int MAX_HASH_TABLE_SIZE = 131064;
+    public static final int MIN_HASH_TABLE_SIZE = 1024;
 
     public static List<Aggregator> convertAggregators(List<DataType> inputTypes,
                                                       List<DataType> aggOutputTypes,
@@ -328,21 +334,13 @@ public abstract class AggregateUtils {
             case GROUP_CONCAT: {
                 assert call instanceof GroupConcatAggregateCall;
                 GroupConcatAggregateCall groupConcatAggregateCall = (GroupConcatAggregateCall) call;
-                int groupConcatMaxLen = 1024;
-                if (executionContext.getServerVariables() != null) {
-                    Object v = executionContext.getServerVariables()
-                        .get(ConnectionProperties.GROUP_CONCAT_MAX_LEN.toLowerCase());
-                    if (v != null) {
-                        groupConcatMaxLen = (int) v;
-                    }
-                }
-
+                int groupConcatMaxLen = executionContext.getParamManager().getInt(
+                    ConnectionParams.GROUP_CONCAT_MAX_LEN);
                 List<String> ascOrDescList = groupConcatAggregateCall.getAscOrDescList();
                 List<Boolean> isAscList = new ArrayList<>(ascOrDescList.size());
                 for (int j = 0; j < ascOrDescList.size(); j++) {
                     isAscList.add("ASC".equals(ascOrDescList.get(j)));
                 }
-
                 aggList.add(new GroupConcat(GroupConcat.toIntArray(groupConcatAggregateCall.getArgList()),
                     isDistinct,
                     groupConcatAggregateCall.getSeparator(),
@@ -365,7 +363,8 @@ public abstract class AggregateUtils {
                 break;
             }
             case CHECK_SUM_MERGE: {
-                aggList.add(new CheckSumMergeAccumulator(index, outputType, filterArg, inputTypes));
+                aggList.add(
+                    new CheckSumMergeAccumulator(index, outputType, filterArg, inputTypes));
                 break;
             }
             default:
@@ -392,8 +391,7 @@ public abstract class AggregateUtils {
         }
         case PERCENT_RANK: {
             return new PercentRank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
-        }
-        case CUME_DIST: {
+        } case CUME_DIST: {
             return new CumeDist(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
         }
         case FIRST_VALUE: {
@@ -434,6 +432,47 @@ public abstract class AggregateUtils {
         }
     }
 
+    public static int[] convertBitSet(ImmutableBitSet gp) {
+        List<Integer> list = gp.asList();
+        int[] groups = new int[list.size()];
+        for (int i = 0, n = list.size(); i < n; i++) {
+            groups[i] = list.get(i);
+        }
+        return groups;
+    }
+
+    public static DataType[] collectDataTypes(List<DataType> columns, int[] indexes) {
+        DataType[] result = new DataType[indexes.length];
+        for (int i = 0; i < indexes.length; i++) {
+            result[i] = columns.get(indexes[i]);
+        }
+        return result;
+    }
+
+    public static DataType[] collectDataTypes(List<DataType> columns) {
+        return collectDataTypes(columns, 0, columns.size());
+    }
+
+    public static DataType[] collectDataTypes(List<DataType> columns, int start, int end) {
+        DataType[] result = new DataType[end - start];
+        for (int i = start; i < end; i++) {
+            result[i - start] = columns.get(i);
+        }
+        return result;
+    }
+
+    public static int estimateHashTableSize(int expectedOutputRowCount, ExecutionContext context) {
+        int maxHashTableSize =
+            MAX_HASH_TABLE_SIZE * context.getParamManager().getInt(ConnectionParams.AGG_MAX_HASH_TABLE_FACTOR);
+        int minHashTableSize =
+            MIN_HASH_TABLE_SIZE / context.getParamManager().getInt(ConnectionParams.AGG_MIN_HASH_TABLE_FACTOR);
+        if (expectedOutputRowCount > maxHashTableSize) {
+            expectedOutputRowCount = maxHashTableSize;
+        } else if (expectedOutputRowCount < minHashTableSize) {
+            expectedOutputRowCount = minHashTableSize;
+        }
+        return expectedOutputRowCount;
+    }
     public static boolean supportSpill(Aggregator aggregator) {
         return !(aggregator instanceof Avg) && !(aggregator instanceof SpecificType2DecimalAvg)
             && !(aggregator instanceof SpecificType2DoubleAvgV2) && !(aggregator instanceof GroupConcat);

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -37,8 +36,10 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.util.TableMetaFetcher;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import lombok.val;
 import org.apache.commons.lang.StringUtils;
@@ -143,6 +144,9 @@ public class PartitionInfoManager extends AbstractLifecycle {
         return tableNames;
     }
 
+    /**
+     * 注意：这里拿到的都是最新的 partition info，没有双版本。除非真的需要拿最新的，还是建议从 TableMeta 中获取 partition info
+     */
     public PartitionInfo getPartitionInfo(String tbName) {
         if (!StringUtils.isEmpty(tbName)) {
             tbName = tbName.toLowerCase();
@@ -199,21 +203,16 @@ public class PartitionInfoManager extends AbstractLifecycle {
         }
 
         PartitionInfo partInfo = partInfoCtx.getPartInfo();
-
-        if (partInfo.getSubPartitionBy() == null) {
-            PartitionSpec part = partInfo.getPartitionBy().getPartitions().get(0);
-            PartitionLocation location = part.getLocation();
-            PhysicalPartitionInfo prunedPartInfo = new PhysicalPartitionInfo();
-            prunedPartInfo.setGroupKey(location.getGroupKey());
-            prunedPartInfo.setPhyTable(location.getPhyTableName());
-            prunedPartInfo.setPartBitSetIdx(0);
-            prunedPartInfo.setPartId(part.getId());
-            prunedPartInfo.setPartLevel(PartKeyLevel.PARTITION_KEY);
-            prunedPartInfo.setPartName(part.getName());
-            return prunedPartInfo;
-        } else {
-            throw GeneralUtil.nestedException(new NotSupportException());
-        }
+        PartitionSpec part = partInfo.getPartitionBy().getPhysicalPartitions().get(0);
+        PartitionLocation location = part.getLocation();
+        PhysicalPartitionInfo prunedPartInfo = new PhysicalPartitionInfo();
+        prunedPartInfo.setGroupKey(location.getGroupKey());
+        prunedPartInfo.setPhyTable(location.getPhyTableName());
+        prunedPartInfo.setPartBitSetIdx(0);
+        prunedPartInfo.setPartId(part.getId());
+        prunedPartInfo.setPartLevel(part.getPartLevel());
+        prunedPartInfo.setPartName(part.getName());
+        return prunedPartInfo;
     }
 
     /**
@@ -399,6 +398,13 @@ public class PartitionInfoManager extends AbstractLifecycle {
 
     public void putPartInfoCtx(String tableName, PartInfoCtx partInfoCtx) {
         partInfoCtxCache.put(tableName, partInfoCtx);
+    }
+
+    public void putNewPartitionInfo(String tableName, PartitionInfo partitionInfo) {
+        partInfoCtxCache.put(tableName, new PartitionInfoManager.PartInfoCtx(this,
+            tableName.toLowerCase(),
+            partitionInfo.getTableGroupId(),
+            partitionInfo));
     }
 
     /**

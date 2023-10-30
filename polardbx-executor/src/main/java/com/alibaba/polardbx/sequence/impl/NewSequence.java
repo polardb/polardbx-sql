@@ -28,16 +28,16 @@ import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class NewSequence extends BaseSequence {
+public class NewSequence extends FunctionalSequence {
 
     private final NewSequenceDao newSequenceDao;
     private final NewSequenceScheduler newSequenceScheduler;
-    private final List<Integer> activeQueueIndexes;
+    private final List<Pair<Integer, Boolean>> activeQueueIndexes;
 
     private boolean groupingEnabled = true;
 
     private final static int MAX_RETRY_TIMES_ON_SAME_QUEUE = 3;
-    private final static int REQUEST_COUNTER_THRESHOLD = 100000000;
+    private final static int REQUEST_COUNTER_THRESHOLD = Integer.MAX_VALUE;
     private final AtomicInteger requestCounter = new AtomicInteger(0);
 
     public NewSequence(String name, NewSequenceDao newSequenceDao, NewSequenceScheduler newSequenceScheduler) {
@@ -53,6 +53,7 @@ public class NewSequence extends BaseSequence {
         if (!newSequenceDao.isInited()) {
             newSequenceDao.init();
         }
+        newSequenceDao.validate(this);
     }
 
     @Override
@@ -74,9 +75,8 @@ public class NewSequence extends BaseSequence {
 
         Pair<Integer, List<NewSeqValueTask>> queueInfo = getTaskQueue(true);
 
-        int queueIndex = queueInfo.getKey();
         synchronized (activeQueueIndexes) {
-            activeQueueIndexes.add(queueIndex);
+            activeQueueIndexes.add(Pair.of(queueInfo.getKey(), Boolean.TRUE));
             activeQueueIndexes.notify();
         }
 
@@ -110,9 +110,8 @@ public class NewSequence extends BaseSequence {
 
         Pair<Integer, List<NewSeqSkipTask>> queueInfo = getTaskQueue(false);
 
-        int queueIndex = queueInfo.getKey();
         synchronized (activeQueueIndexes) {
-            activeQueueIndexes.add(queueIndex);
+            activeQueueIndexes.add(Pair.of(queueInfo.getKey(), Boolean.FALSE));
             activeQueueIndexes.notify();
         }
 

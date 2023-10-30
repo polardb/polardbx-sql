@@ -31,8 +31,10 @@ import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 
 /**
  * @author chenzilin
+ * @date 2022/2/14 17:08
  */
 public class LogicalAlterFileStoragHandler extends LogicalCommonDdlHandler {
+
     public LogicalAlterFileStoragHandler(IRepository repo) {
         super(repo);
     }
@@ -40,16 +42,14 @@ public class LogicalAlterFileStoragHandler extends LogicalCommonDdlHandler {
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         LogicalAlterFileStorage logicalAlterFileStorage =
-            (LogicalAlterFileStorage) logicalDdlPlan;
+                (LogicalAlterFileStorage) logicalDdlPlan;
         logicalAlterFileStorage.preparedData();
         // god privilege check.
         TableValidator.checkGodPrivilege(executionContext);
         if (logicalAlterFileStorage.relDdl instanceof AlterFileStorageAsOfTimestamp) {
-            return new AlterFileStorageAsOfTimestampJobFactory(logicalAlterFileStorage.getPreparedData(),
-                executionContext).create();
+            return new AlterFileStorageAsOfTimestampJobFactory(logicalAlterFileStorage.getPreparedData(), executionContext).create();
         } else if (logicalAlterFileStorage.relDdl instanceof AlterFileStoragePurgeBeforeTimestamp) {
-            return new AlterFileStoragePurgeBeforeTimestampJobFactory(logicalAlterFileStorage.getPreparedData(),
-                executionContext).create();
+            return new AlterFileStoragePurgeBeforeTimestampJobFactory(logicalAlterFileStorage.getPreparedData(), executionContext).create();
         } else if (logicalAlterFileStorage.relDdl instanceof AlterFileStorageBackup) {
             return new AlterFileStorageBackupJobFactory(logicalAlterFileStorage.getPreparedData(),
                 executionContext).create();

@@ -32,12 +32,12 @@ import java.util.List;
  * @author chenghui.lch
  */
 @Ignore
-
 public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
     public PartitionColumnTypeTestBase.TestParameter parameter;
     protected boolean testQueryByPrepStmt = false;
     protected String testDbName;
+    protected boolean usePartOnMysql = true;
 
     public PartitionColumnTypeTestBase(PartitionColumnTypeTestBase.TestParameter parameter) {
         this.parameter = parameter;
@@ -100,6 +100,10 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
             String createTbl =
                 String.format("create table if not exists %s (%s) %s", tblName, colDefs, partDefs);
+            String createTblMySql = createTbl;
+            if (!usePartOnMysql) {
+                createTblMySql = String.format("create table if not exists %s (%s)", tblName, colDefs);
+            }
 
             String valuesStr = String.join(",", parameter.insertValues);
             String insertSql = String.format("insert into %s(%s) values %s", tblName, cols, valuesStr);
@@ -222,7 +226,7 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
             logSql(castStr, "create", createTbl);
             JdbcUtil.executeUpdateSuccess(polarConn, createTbl);
-            JdbcUtil.executeUpdateSuccess(mysqlConn, createTbl);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, createTblMySql);
 
             if (!StringUtil.isEmpty(insertPrepStmt)) {
                 logSql(castStr, "insertPrepStmt", insertPrepStmt);

@@ -18,13 +18,23 @@ package com.alibaba.polardbx.executor.mpp.split;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.SerializeUtils;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.executor.archive.predicate.OSSPredicateBuilder;
+import com.alibaba.polardbx.executor.archive.pruning.AggPruningResult;
+import com.alibaba.polardbx.executor.archive.pruning.OrcFilePruningResult;
 import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
+import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.archive.reader.OSSReadOption;
+import com.alibaba.polardbx.executor.archive.reader.TypeComparison;
+import com.alibaba.polardbx.executor.archive.schemaevolution.ColumnMetaWithTs;
+import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
@@ -32,12 +42,12 @@ import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
-import com.alibaba.polardbx.optimizer.utils.TypeUtils;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -47,23 +57,29 @@ import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexDynamicParam;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.orc.ColumnStatistics;
 import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.SearchArgument;
+import org.apache.orc.sarg.SearchArgumentFactory;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
 
 import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -80,14 +96,18 @@ public class OssSplit implements ConnectorSplit {
     private TypeDescription readSchema;
 
     // search argument / columns
-    // all physical tables in a logical table share the search arguments / columns.
+    // all files in a ossSplit share the search arguments / columns.
     private SearchArgument searchArgument;
     private String[] columns;
 
+    private boolean enableAggPruner;
+
     private String logicalTableName;
     private List<String> phyTableNameList;
+
+    // all fileMetas share the same version of schema
     private List<List<FileMeta>> allFileMetas;
-    private String designatedFile;
+    private List<String> designatedFile;
     private byte[] paramsBytes;
 
     private boolean isInit = false;
@@ -96,7 +116,7 @@ public class OssSplit implements ConnectorSplit {
                     Map<Integer, ParameterContext> params,
                     String logicalTableName,
                     List<String> phyTableNameList,
-                    String designatedFile) {
+                    List<String> designatedFile) {
         this.logicalSchema = logicalSchema;
         this.physicalSchema = physicalSchema;
         this.params = params;
@@ -112,7 +132,7 @@ public class OssSplit implements ConnectorSplit {
         @JsonProperty("paramsBytes") byte[] paramsBytes,
         @JsonProperty("logicalTableName") String logicalTableName,
         @JsonProperty("phyTableNameList") List<String> phyTableNameList,
-        @JsonProperty("designatedFile") String designatedFile) {
+        @JsonProperty("designatedFile") List<String> designatedFile) {
         this.logicalSchema = logicalSchema;
         this.physicalSchema = physicalSchema;
         this.paramsBytes = paramsBytes;
@@ -133,21 +153,54 @@ public class OssSplit implements ConnectorSplit {
         return null;
     }
 
-    public static OssSplit getTableConcurrencySplit(OSSTableScan ossTableScan, RelNode relNode,
-                                                    ExecutionContext executionContext) {
+    /**
+     * group file meta by version
+     *
+     * @param relNode the physical operation
+     * @return list of OssSplit, each split has the same version of meta
+     */
+    public static List<OssSplit> getTableConcurrencySplit(RelNode relNode,
+                                                          ExecutionContext executionContext) {
         Preconditions.checkArgument(relNode instanceof PhyTableOperation);
         PhyTableOperation phyTableOperation = (PhyTableOperation) relNode;
         String logicalSchema = phyTableOperation.getSchemaName();
         String physicalSchema = phyTableOperation.getDbIndex();
+        String logicalTableName = phyTableOperation.getLogicalTableNames().get(0);
 
         PhyTableScanBuilder phyOperationBuilder =
             (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
 
-        Map<Integer, ParameterContext> params =
-            phyOperationBuilder.buildSplitParamMap(phyTableOperation.getTableNames().get(0));
-        return new OssSplit(
-            logicalSchema, physicalSchema, params,
-            phyTableOperation.getLogicalTableNames().get(0), phyTableOperation.getTableNames().get(0), null);
+        TableMeta tableMeta = executionContext.getSchemaManager(logicalSchema).getTable(logicalTableName);
+        Map<String, List<FileMeta>> flatFileMetas = FileMeta.getFlatFileMetas(tableMeta);
+
+        List<OssSplit> splits = new ArrayList<>();
+        // for each physical table
+        for (String phyTable : phyTableOperation.getTableNames().get(0)) {
+            List<FileMeta> fileMetas = flatFileMetas.get(phyTable);
+            if (fileMetas.isEmpty()) {
+                continue;
+            }
+            //map version to files
+            Map<Long, List<String>> fileNamesMap = new HashMap<>();
+            for (FileMeta fileMeta : fileMetas) {
+                List<String> list = fileNamesMap.computeIfAbsent(fileMeta.getCommitTs(), aLong -> new ArrayList<>());
+                list.add(fileMeta.getFileName());
+            }
+
+            // build single physical table list and params,
+            // and split for each file group.
+            List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+            Map<Integer, ParameterContext> params =
+                phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+            for (List<String> names : fileNamesMap.values()) {
+                OssSplit ossSplit = new OssSplit(logicalSchema, physicalSchema, params,
+                    logicalTableName, singlePhyTableNameList, names);
+                splits.add(ossSplit);
+            }
+        }
+        return splits;
     }
 
     public static List<OssSplit> getFileConcurrencySplit(OSSTableScan ossTableScan, RelNode relNode,
@@ -185,7 +238,7 @@ public class OssSplit implements ConnectorSplit {
 
             for (FileMeta fileMeta : fileMetas) {
                 OssSplit ossSplit = new OssSplit(logicalSchema, physicalSchema, params,
-                    logicalTableName, singlePhyTableNameList, fileMeta.getFileName());
+                    logicalTableName, singlePhyTableNameList, ImmutableList.of(fileMeta.getFileName()));
                 splits.add(ossSplit);
             }
         }
@@ -209,7 +262,7 @@ public class OssSplit implements ConnectorSplit {
     }
 
     @JsonProperty
-    public String getDesignatedFile() {
+    public List<String> getDesignatedFile() {
         return designatedFile;
     }
 
@@ -259,8 +312,9 @@ public class OssSplit implements ConnectorSplit {
         return columns;
     }
 
-    public void init(OSSTableScan ossTableScan, ExecutionContext executionContext, SearchArgument searchArgument,
-                     String[] columns) {
+    public void init(OSSTableScan ossTableScan, ExecutionContext executionContext,
+                     SessionProperties sessionProperties, Map<Integer, BloomFilterInfo> bloomFilterInfos,
+                     RexNode bloomFilterCondition) {
         if (isInit) {
             return;
         }
@@ -278,45 +332,126 @@ public class OssSplit implements ConnectorSplit {
         List<List<FileMeta>> allFileMetas = new ArrayList<>();
 
         TableMeta tableMeta = executionContext.getSchemaManager(logicalSchema).getTable(logicalTableName);
+        Parameters parameters = executionContext.getParams();
         // physical table name -> file metas
         Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
         Engine tableEngine = tableMeta.getEngine();
 
         List<ColumnMeta> columnMetas = new ArrayList<>();
+        List<ColumnMeta> fileColumnMetas = new ArrayList<>();
+        List<ColumnMeta> initColumnMetas = new ArrayList<>();
+        List<Timestamp> timestamps = new ArrayList<>();
 
         // init allFileMetas and readSchema
         for (int j = 0; j < phyTableNameList.size(); j++) {
             String phyTable = phyTableNameList.get(j);
-            List<FileMeta> fileMetas = flatFileMetas.get(phyTable);
+            List<FileMeta> fileMetas = flatFileMetas.get(phyTable).stream()
+                .filter(x -> (filterSet == null || filterSet.contains(x.getFileName()))).collect(
+                    Collectors.toList());
+
             if (fileMetas.isEmpty()) {
                 continue;
             }
             allFileMetas.add(fileMetas);
 
             if (this.readSchema == null) {
-                OSSOrcFileMeta fileMeta = (OSSOrcFileMeta) fileMetas.get(0);
                 TypeDescription typeDescription = TypeDescription.createStruct();
-                for (Integer columnIndex : ossTableScan.getOrcNode().getInProjects()) {
-                    typeDescription.addField(
-                        fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
-                        fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
-                    columnMetas.add(fileMeta.getColumnMetas().get(columnIndex));
+                OSSOrcFileMeta fileMeta = (OSSOrcFileMeta) fileMetas.get(0);
+                if (fileMeta.getCommitTs() == null) {
+                    continue;
+                }
+                for (String column : ossTableScan.getOrcNode().getInputProjectName()) {
+                    String fieldId = tableMeta.getColumnFieldId(column);
+                    columnMetas.add(tableMeta.getColumn(column));
+                    if (tableMeta.isOldFileStorage()) {
+                        Integer columnIndex = fileMeta.getColumnNameToIdx(fieldId);
+                        typeDescription.addField(
+                            fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
+                            fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
+                        fileColumnMetas.add(tableMeta.getColumn(fieldId));
+                        initColumnMetas.add(null);
+                        timestamps.add(null);
+                        continue;
+                    }
+                    ColumnMetaWithTs meta = OrcColumnManager.getHistoryWithTs(fieldId, fileMeta.getCommitTs());
+                    if (meta != null) {
+                        Integer columnIndex = fileMeta.getColumnNameToIdx(fieldId);
+                        typeDescription.addField(
+                            fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
+                            fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
+                        fileColumnMetas.add(meta.getMeta());
+                        initColumnMetas.add(null);
+                        timestamps.add(meta.getCreate());
+                    } else {
+                        // new column after the file was created, use default value when the column was created
+                        fileColumnMetas.add(null);
+                        ColumnMetaWithTs versionColumnMeta = OrcColumnManager.getFirst(fieldId);
+                        initColumnMetas.add(versionColumnMeta.getMeta());
+                        timestamps.add(versionColumnMeta.getCreate());
+                    }
                 }
                 this.readSchema = typeDescription;
             }
         }
         this.allFileMetas = allFileMetas;
 
+        OSSColumnTransformer ossColumnTransformer = new OSSColumnTransformer(columnMetas,
+            fileColumnMetas,
+            initColumnMetas,
+            timestamps);
         // init readOptions
         List<OSSReadOption> phyTableReadOptions = new ArrayList<>();
 
-        this.searchArgument = searchArgument;
-        this.columns = columns;
+        if (this.readSchema == null) {
+            this.readOptions = phyTableReadOptions;
+            this.isInit = true;
+            return;
+        }
+
+        List<RexNode> conditions = new ArrayList<>();
+        if (!ossTableScan.getOrcNode().getFilters().isEmpty()) {
+            conditions.add(ossTableScan.getOrcNode().getFilters().get(0));
+        }
+        if (bloomFilterCondition != null) {
+            conditions.add(bloomFilterCondition);
+        }
+        switch (conditions.size()) {
+        case 0:
+            buildSearchArgumentAndColumns();
+            break;
+        case 1:
+            buildSearchArgumentAndColumns(
+                ossTableScan,
+                conditions.get(0),
+                parameters,
+                sessionProperties,
+                ossColumnTransformer,
+                bloomFilterInfos,
+                (OSSOrcFileMeta) allFileMetas.get(0).get(0));
+            break;
+        case 2:
+            RexBuilder rexBuilder = ossTableScan.getCluster().getRexBuilder();
+            buildSearchArgumentAndColumns(
+                ossTableScan,
+                rexBuilder.makeCall(TddlOperatorTable.AND, conditions),
+                parameters,
+                sessionProperties,
+                ossColumnTransformer,
+                bloomFilterInfos,
+                (OSSOrcFileMeta) allFileMetas.get(0).get(0));
+        }
 
         Long readTs = null;
         if (ossTableScan.getFlashback() instanceof RexDynamicParam) {
-            Timestamp timestamp = Timestamp.valueOf(executionContext.getParams().getCurrentParameter().get(((RexDynamicParam) ossTableScan.getFlashback()).getIndex() +1).getValue().toString());
-            readTs = timestamp.getTime() << BITS_LOGICAL_TIME;
+            String timestampString = executionContext.getParams().getCurrentParameter()
+                .get(((RexDynamicParam) ossTableScan.getFlashback()).getIndex() + 1).getValue().toString();
+            TimeZone fromTimeZone;
+            if (executionContext.getTimeZone() != null) {
+                fromTimeZone = executionContext.getTimeZone().getTimeZone();
+            } else {
+                fromTimeZone = TimeZone.getDefault();
+            }
+            readTs = OSSTaskUtils.getTsFromTimestampWithTimeZone(timestampString, fromTimeZone);
         }
 
         for (int j = 0; j < allFileMetas.size(); j++) {
@@ -325,44 +460,62 @@ public class OssSplit implements ConnectorSplit {
             List<FileMeta> afterPruningFileMetas = new ArrayList<>();
             List<PruningResult> pruningResultList = new ArrayList<>();
 
-            // bloomFilter pruning
+            // filter pruning
             for (FileMeta fileMeta : phyTableFileMetas) {
                 OssOrcFilePruner ossOrcFilePruner = new OssOrcFilePruner((OSSOrcFileMeta) fileMeta, searchArgument,
-                    filterSet, complied, readTs);
+                    filterSet, complied, readTs, tableMeta);
                 PruningResult pruningResult = ossOrcFilePruner.prune();
                 if (pruningResult.skip()) {
                     continue;
                 }
                 afterPruningFileMetas.add(fileMeta);
-
-                // with agg, choose statistics or orc file for each stripe
-                if (ossTableScan.withAgg()) {
-                    if (pruneAgg(ossTableScan, (OSSOrcFileMeta) fileMeta)) {
-                        // a pass should be transformed to a part with all stripes
-                        if (pruningResult.pass()) {
-                            pruningResult = new PruningResult(
-                                ((OSSOrcFileMeta) fileMeta)
-                                    .getStripeColumnMetas(fileMeta.getColumnMetas().get(0).getName()));
-                        }
-                    }
-                    // prune all the stripe
-                    if (pruningResult.part()) {
-                        OssAggPruner ossAggPruner =
-                            new OssAggPruner((OSSOrcFileMeta) fileMeta, searchArgument, pruningResult);
-                        ossAggPruner.prune();
-                        pruneStripe((OSSOrcFileMeta) fileMeta, ossTableScan, pruningResult);
-                        // all stripes can use statistics, use file statistics instead
-                        if (pruningResult.fullAgg()) {
-                            if (pruningResult.getStripeMap().size() == ((OSSOrcFileMeta) fileMeta)
-                                .getStripeColumnMetas(fileMeta.getColumnMetas().get(0).getName()).size()) {
-                                pruningResult = PruningResult.PASS;
-                            }
-                        }
-                        pruningResult.log();
-                    }
+                if (!ossTableScan.withAgg()) {
+                    pruningResultList.add(pruningResult);
+                    continue;
                 }
 
-                pruningResultList.add(pruningResult);
+                // with agg, choose statistics or orc file for each stripe
+                AggPruningResult aggPruningResult = ((OrcFilePruningResult) pruningResult).toStatistics();
+                //get column stripe
+                String primaryCol = tableMeta.getPrimaryIndex().getKeyColumns().get(0).getName();
+                String fieldId = tableMeta.getColumnFieldId(primaryCol);
+
+                Map<Long, StripeColumnMeta> stripeMap = ((OSSOrcFileMeta) fileMeta).getStripeColumnMetas(fieldId);
+
+                // filter on missing column or converted column, don't use statistics
+                if (!enableAggPruner || stripeMap == null) {
+                    pruningResultList.add(aggPruningResult);
+                    continue;
+                }
+                if (pruneAgg(ossTableScan, (OSSOrcFileMeta) fileMeta, ossColumnTransformer)) {
+                    // a pass should be transformed to a part with all stripes
+                    if (aggPruningResult.pass()) {
+                        aggPruningResult = new AggPruningResult(stripeMap);
+                    }
+                } else {
+                    aggPruningResult = AggPruningResult.NO_SCAN;
+                }
+                // prune all the stripe
+                if (aggPruningResult.part()) {
+                    OssAggPruner ossAggPruner =
+                        new OssAggPruner((OSSOrcFileMeta) fileMeta, searchArgument, aggPruningResult,
+                            tableMeta);
+                    ossAggPruner.prune();
+                    pruneStripe((OSSOrcFileMeta) fileMeta, ossTableScan, aggPruningResult,
+                        ossColumnTransformer,
+                        tableMeta);
+                    // all stripes can use statistics, use file statistics instead
+                    if (aggPruningResult.getStripeMap().size() == stripeMap.size()) {
+                        if (aggPruningResult.getNonStatisticsStripeSize() == 0) {
+                            aggPruningResult = AggPruningResult.NO_SCAN;
+                        }
+                        if (aggPruningResult.getNonStatisticsStripeSize() == stripeMap.size()) {
+                            aggPruningResult = AggPruningResult.PASS;
+                        }
+                    }
+                    aggPruningResult.log();
+                }
+                pruningResultList.add(aggPruningResult);
             }
 
             if (afterPruningFileMetas.isEmpty()) {
@@ -376,7 +529,7 @@ public class OssSplit implements ConnectorSplit {
 
             OSSReadOption readOption = new OSSReadOption(
                 getReadSchema(),
-                columnMetas,
+                ossColumnTransformer,
                 searchArgument,
                 columns,
                 phyTable,
@@ -394,13 +547,17 @@ public class OssSplit implements ConnectorSplit {
     }
 
     /**
-     * check whether to prune agg in stripe-level using statistics
+     * check whether to prune agg in stripe-level using statistics.
+     * Currently, don't support agg for column Type change.
+     * In this case, return true directly.
      *
      * @param ossTableScan the table scan which the agg belongs to
      * @param fileMeta the meta of current file
      * @return true if we should try to prune each stripe
      */
-    private boolean pruneAgg(OSSTableScan ossTableScan, OSSOrcFileMeta fileMeta) {
+    private boolean pruneAgg(OSSTableScan ossTableScan,
+                             OSSOrcFileMeta fileMeta,
+                             OSSColumnTransformer ossColumnTransformer) {
         // with filter, should prune stripes
         if (!ossTableScan.getOrcNode().getFilters().isEmpty()) {
             return true;
@@ -409,21 +566,40 @@ public class OssSplit implements ConnectorSplit {
         LogicalAggregate agg = ossTableScan.getAgg();
         for (int i = 0; i < ossTableScan.getAggColumns().size(); i++) {
             SqlKind kind = agg.getAggCallList().get(i).getAggregation().getKind();
+            RelColumnOrigin columnOrigin = ossTableScan.getAggColumns().get(i);
+            // no column specified
+            if (columnOrigin == null) {
+                continue;
+            }
+            TypeComparison ossColumnCompare = ossColumnTransformer.compare(columnOrigin.getColumnName());
+
             if (kind == SqlKind.COUNT) {
-                RelColumnOrigin columnOrigin = ossTableScan.getAggColumns().get(i);
-                if (columnOrigin == null) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    return true;
+                }
+
+                // missing column, using 0 is null or rowCount if not null
+                if (TypeComparison.isMissing(ossColumnCompare)) {
                     continue;
                 }
+
                 if (CBOUtil.getTableMeta(columnOrigin.getOriginTable()).
                     getColumn(columnOrigin.getColumnName()).isNullable()) {
                     return true;
                 }
             }
-            if (kind == SqlKind.SUM) {
-                RelColumnOrigin columnOrigin = ossTableScan.getAggColumns().get(i);
-                if (columnOrigin == null) {
-                    continue;
+            if (kind == SqlKind.SUM || kind == SqlKind.SUM0) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    return true;
                 }
+
+                // can't deal with missing column
+                if (TypeComparison.isMissing(ossColumnCompare)) {
+                    return true;
+                }
+
                 ColumnStatistics columnStatistics = fileMeta.getStatisticsMap().get(columnOrigin.getColumnName());
                 if (columnStatistics instanceof IntegerColumnStatistics) {
                     // sum overflow, can't use statistics
@@ -432,40 +608,84 @@ public class OssSplit implements ConnectorSplit {
                     }
                 }
             }
+
+            if (kind == SqlKind.MIN || kind == SqlKind.MAX) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    return true;
+                }
+            }
         }
         return false;
     }
 
-    private void pruneStripe(OSSOrcFileMeta fileMeta, OSSTableScan ossTableScan, PruningResult pruningResult) {
+    private void pruneStripe(OSSOrcFileMeta fileMeta,
+                             OSSTableScan ossTableScan,
+                             AggPruningResult pruningResult,
+                             OSSColumnTransformer ossColumnTransformer,
+                             TableMeta tableMeta) {
         LogicalAggregate agg = ossTableScan.getAgg();
         for (int i = 0; i < ossTableScan.getAggColumns().size(); i++) {
             SqlKind kind = agg.getAggCallList().get(i).getAggregation().getKind();
             RelColumnOrigin columnOrigin = ossTableScan.getAggColumns().get(i);
             // any stripe can't use statistics
             if (kind == SqlKind.COUNT || kind == SqlKind.CHECK_SUM) {
-                if (!pruningResult.fullAgg()) {
+                if (!(pruningResult.getNonStatisticsStripeSize() == 0)) {
                     pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
                 }
             }
             if (columnOrigin == null) {
                 continue;
             }
-            // for count, null can't use statistics
+
+            TypeComparison ossColumnCompare = ossColumnTransformer.compare(columnOrigin.getColumnName());
+
             if (kind == SqlKind.COUNT) {
-                if (fileMeta.getStatisticsMap().get(columnOrigin.getColumnName()).hasNull()) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
+                    continue;
+                }
+
+                // can deal with missing column
+                if (TypeComparison.isMissing(ossColumnCompare)) {
+                    continue;
+                }
+                // for count, null can't use statistics
+                String fieldId = tableMeta.getColumnFieldId(columnOrigin.getColumnName());
+                if (fileMeta.getStatisticsMap().get(fieldId).hasNull()) {
                     pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
                 }
             }
             // for sum, overflow can't use statistics
-            if (kind == SqlKind.SUM) {
-                Map<Long, StripeColumnMeta> columnMetaMap = fileMeta.getStripeColumnMetas(columnOrigin.getColumnName());
+            if (kind == SqlKind.SUM || kind == SqlKind.SUM0) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
+                    continue;
+                }
+
+                // can't deal with missing column
+                if (TypeComparison.isMissing(ossColumnCompare)) {
+                    pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
+                    continue;
+                }
+
+                String fieldId = tableMeta.getColumnFieldId(columnOrigin.getColumnName());
+                Map<Long, StripeColumnMeta> columnMetaMap = fileMeta.getStripeColumnMetas(fieldId);
                 for (Long index : pruningResult.getStripeMap().keySet()) {
                     ColumnStatistics columnStatistics = columnMetaMap.get(index).getColumnStatistics();
                     if (columnStatistics instanceof IntegerColumnStatistics) {
-                        if (!((IntegerColumnStatistics)columnStatistics).isSumDefined()) {
+                        if (!((IntegerColumnStatistics) columnStatistics).isSumDefined()) {
                             pruningResult.addNotAgg(index);
                         }
                     }
+                }
+            }
+            if (kind == SqlKind.MIN || kind == SqlKind.MAX) {
+                // can't deal with type conversion
+                if (ossColumnCompare == TypeComparison.IS_EQUAL_NO) {
+                    pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
                 }
             }
         }
@@ -483,13 +703,51 @@ public class OssSplit implements ConnectorSplit {
 
         if (this.designatedFile != null) {
             if (filterSet != null) {
-                filterSet = ImmutableSet.<String>builder().addAll(filterSet).add(designatedFile).build();
+                filterSet = ImmutableSet.<String>builder().addAll(filterSet).addAll(designatedFile).build();
             } else {
-                filterSet = ImmutableSet.of(designatedFile);
+                filterSet = ImmutableSet.copyOf(designatedFile);
             }
         }
 
         return filterSet;
+    }
+
+    private void buildSearchArgumentAndColumns() {
+        searchArgument = SearchArgumentFactory
+            .newBuilder()
+            .literal(SearchArgument.TruthValue.YES_NO)
+            .build();
+        columns = null;
+        this.enableAggPruner = true;
+    }
+
+    private void buildSearchArgumentAndColumns(OSSTableScan ossTableScan,
+                                               RexNode rexNode,
+                                               Parameters parameters,
+                                               SessionProperties sessionProperties,
+                                               OSSColumnTransformer ossColumnTransformer,
+                                               Map<Integer, BloomFilterInfo> bloomFilterInfos,
+                                               OSSOrcFileMeta fileMeta) {
+        // init searchArgument and columns
+        OSSPredicateBuilder predicateBuilder =
+            new OSSPredicateBuilder(parameters,
+                ossTableScan.getOrcNode().getInputProjectRowType().getFieldList(),
+                bloomFilterInfos, ossTableScan.getOrcNode().getRowType().getFieldList(),
+                CBOUtil.getTableMeta(ossTableScan.getTable()), sessionProperties,
+                ossColumnTransformer, fileMeta);
+        Boolean valid = rexNode.accept(predicateBuilder);
+        this.enableAggPruner = predicateBuilder.isEnableAggPruner();
+        if (valid != null && valid.booleanValue()) {
+            searchArgument = predicateBuilder.build();
+            columns = predicateBuilder.columns();
+        } else {
+            // full scan
+            searchArgument = SearchArgumentFactory
+                .newBuilder()
+                .literal(SearchArgument.TruthValue.YES_NO)
+                .build();
+            columns = null;
+        }
     }
 
     @JsonIgnore

@@ -25,24 +25,21 @@ import com.alibaba.polardbx.server.response.ResizeProcedureCache;
 import com.alibaba.polardbx.server.util.LogUtils;
 
 public final class ResizeHandler {
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
         boolean recordSql = true;
         Throwable sqlEx = null;
         try {
             int rs = ServerParseResize.parse(stmt, offset);
             switch (rs & 0xff) {
             case ServerParseResize.PLANCACHE:
-                ResizePlanCache.response(stmt, c, rs >>> 8, hasMore);
-                break;
+                return ResizePlanCache.response(stmt, c, rs >>> 8, hasMore);
             case ServerParseResize.PROCEDURE_CACHE:
-                ResizeProcedureCache.response(stmt, c, rs >>> 8, hasMore);
-                break;
+                return ResizeProcedureCache.response(stmt, c, rs >>> 8, hasMore);
             case ServerParseResize.FUNCTION_CACHE:
-                ResizeStoredFunctionCache.response(stmt, c, rs >>> 8, hasMore);
-                break;
+                return ResizeStoredFunctionCache.response(stmt, c, rs >>> 8, hasMore);
             default:
-                c.execute(stmt, hasMore);
                 recordSql = false;
+                return c.execute(stmt, hasMore);
             }
         } catch (Throwable ex) {
             sqlEx = ex;

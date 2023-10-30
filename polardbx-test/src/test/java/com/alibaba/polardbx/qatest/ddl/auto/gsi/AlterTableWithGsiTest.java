@@ -5,6 +5,12 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import static com.google.common.truth.Truth.assertThat;
+
 public class AlterTableWithGsiTest extends BaseAutoPartitionNewPartition {
 
     private String tableName = "wumu";
@@ -100,5 +106,20 @@ public class AlterTableWithGsiTest extends BaseAutoPartitionNewPartition {
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "not supported yet");
 
         dropTableIfExists(primaryTable);
+    }
+
+    public String showCreateTable(Connection conn, String tbName) {
+        String sql = "show create table " + tbName;
+
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            assertThat(rs.next()).isTrue();
+            return rs.getString("Create Table");
+        } catch (SQLException e) {
+            logger.error(e.getMessage(), e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return null;
     }
 }

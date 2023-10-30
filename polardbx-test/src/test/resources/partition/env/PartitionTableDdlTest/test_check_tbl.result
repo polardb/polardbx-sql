@@ -1,3 +1,5 @@
+CREATE DATABASE d_check_table_test MODE 'auto';
+USE d_check_table_test;
 DROP TABLE IF EXISTS tbl1;
 DROP TABLE IF EXISTS tbl2;
 DROP TABLE IF EXISTS tbl3;
@@ -20,12 +22,27 @@ CREATE TABLE IF NOT EXISTS tbl3 (
 ) BROADCAST;
 CHECK TABLE tbl1;
 Table,Op,Msg_type,Msg_text
-part_mtr.tbl1,check,status,OK
-part_mtr.tbl1:columns,check,status,OK
+d_check_table_test.tbl1:Topology,check,status,OK
+d_check_table_test.tbl1:Columns,check,status,OK
 CHECK TABLE tbl2;
 Table,Op,Msg_type,Msg_text
-part_mtr.tbl2,check,status,OK
+d_check_table_test.tbl2:Topology,check,status,OK
+d_check_table_test.tbl2:Columns,check,status,OK
 CHECK TABLE tbl3;
 Table,Op,Msg_type,Msg_text
-part_mtr.tbl3,check,status,OK
-part_mtr.tbl3:columns,check,status,OK
+d_check_table_test.tbl3:Topology,check,status,OK
+d_check_table_test.tbl3:Columns,check,status,OK
+USE polardbx;
+CHECK TABLE d_check_table_test.tbl1;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl1:Topology,check,status,OK
+d_check_table_test.tbl1:Columns,check,status,OK
+CHECK TABLE d_check_table_test.tbl2;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl2:Topology,check,status,OK
+d_check_table_test.tbl2:Columns,check,status,OK
+CHECK TABLE d_check_table_test.tbl3;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl3:Topology,check,status,OK
+d_check_table_test.tbl3:Columns,check,status,OK
+DROP DATABASE d_check_table_test;

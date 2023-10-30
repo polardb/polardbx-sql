@@ -1,0 +1,83 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists t1;
+drop table if exists t2;
+create table t1 (
+  a int primary key,
+  b varchar(10),
+  hash int,
+  key hash (hash)
+);
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`hash` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `hash` (`hash`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+show full create table t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`hash` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* hash_$ */ `hash` (`hash`)
+		PARTITION BY KEY(`hash`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_hash` (`hash`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+create table t2 (
+a int primary key,
+b varchar(10),
+hash int
+);
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`hash` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+alter table t2 add key hash(hash);
+alter table t2 add key (hash);
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`hash` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `hash` (`hash`),
+	INDEX `hash_2` (`hash`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+show full create table t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`hash` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* hash_$ */ `hash` (`hash`)
+		PARTITION BY KEY(`hash`,`a`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* hash_2_$ */ `hash_2` (`hash`)
+		PARTITION BY KEY(`hash`,`a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_hash` (`hash`),
+	LOCAL KEY `_local_hash_2` (`hash`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+## error_msg: $# syntax error #$
+alter table t2 add sbfkdgb abdisage abhigk(hash);
+syntax error
+## error_msg: $# syntax error #$
+alter table t2 add hash hash hashmap(hash);
+syntax error

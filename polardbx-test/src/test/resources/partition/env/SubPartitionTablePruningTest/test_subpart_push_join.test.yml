@@ -1,0 +1,142 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists t1;
+create table if not exists t1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b)
+(
+partition p1 values less than(10,1000),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+drop table if exists t2;
+create table if not exists t2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (b,a)
+(
+partition p1 values less than(10,1000),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+explain select * from t1 join t2 on t1.a=t2.a and t1.b=t2.b;
+explain select * from t1 join t2 on t1.a=t2.b and t1.b=t2.a;
+
+create table if not exists rc_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b,c,d)
+subpartition by range columns (b,c)
+(
+subpartition sp1 values less than(10,100),
+subpartition spm values less than(maxvalue,maxvalue)
+)
+(
+partition p1 values less than(10,100,1000,10000),
+partition pm values less than(maxvalue,maxvalue,maxvalue,maxvalue)
+);
+
+create table if not exists rc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b,c,d)
+subpartition by range columns (b,d)
+(
+subpartition sp1 values less than(10,100),
+subpartition spm values less than(maxvalue,maxvalue)
+)
+(
+partition p1 values less than(10,100,1000,10000),
+partition pm values less than(maxvalue,maxvalue,maxvalue,maxvalue)
+);
+
+explain select * from rc_rc_tp t1 join rc_rc_tp2 t2 on
+t1.a=t2.a
+and t1.b=t2.b
+and t1.c=t2.c
+and t1.d=t2.d;
+
+create table if not exists rc_rc1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (a)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+create table if not exists rc_rc2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+explain select * from rc_rc1 t1 join rc_rc2 t2 on t1.a=t2.a and t1.b=t2.b;
+
+create table if not exists rc_rc3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+create table if not exists rc_rc4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+
+explain select * from rc_rc3 t1 join rc_rc4 t2 on t1.a=t2.a and t1.b=t2.b;

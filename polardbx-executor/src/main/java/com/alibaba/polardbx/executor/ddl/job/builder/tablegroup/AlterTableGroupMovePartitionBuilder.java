@@ -17,8 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -35,6 +38,26 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
     }
 
     @Override
+    public void buildTablesPhysicalPlans() {
+        List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
+        List<String> allTables = getAllTableNames();
+        generateNewPhysicalTableNames(allTables);
+        for (String tableName : allTables) {
+            AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
+                createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
+            AlterTableGroupItemBuilder itemBuilder =
+                new AlterTableGroupMovePartitionItemBuilder(relDdl, alterTableGroupItemPreparedData, executionContext);
+            List<PhyDdlTableOperation> phyDdlTableOperations = itemBuilder.build().getPhysicalPlans();
+            tablesTopologyMap.put(tableName, itemBuilder.getTableTopology());
+            sourceTablesTopology.put(tableName, itemBuilder.getSourcePhyTables());
+            targetTablesTopology.put(tableName, itemBuilder.getTargetPhyTables());
+            newPartitionsPhysicalPlansMap.put(tableName, phyDdlTableOperations);
+            tablesPreparedData.put(tableName, alterTableGroupItemPreparedData);
+            orderedTargetTablesLocations.put(tableName, itemBuilder.getOrderedTargetTableLocations());
+        }
+    }
+
+    @Override
     public List<String> getNewPhyTables(String tableName) {
         List<String> newPhyTables = new ArrayList<>();
         PartitionInfo partitionInfo =
@@ -45,6 +68,16 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
             PartitionSpec partitionSpec =
                 partitionSpecs.stream().filter(o -> o.getName().equalsIgnoreCase(partitionGroupRecord.partition_name))
                     .findFirst().orElse(null);
+            if (partitionSpec == null && partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+                for (PartitionSpec ps : partitionSpecs) {
+                    partitionSpec = ps.getSubPartitions().stream()
+                        .filter(sp -> sp.getName().equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst()
+                        .orElse(null);
+                    if (partitionSpec != null) {
+                        break;
+                    }
+                }
+            }
             assert partitionSpec != null;
             newPhyTables.add(partitionSpec.getLocation().getPhyTableName());
         }

@@ -21,10 +21,11 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -32,17 +33,23 @@ import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalSort;
+import org.apache.calcite.sql.SqlDelete;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlUpdate;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyBroadcast;
-import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkOnlineModifyColumnDdl;
+import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyFkReferenced;
+import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyFkReferencing;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyGsi;
+import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkOnlineModifyColumnDdl;
 
 /**
  * @author lingce.ldm 2018-01-30 19:36
@@ -72,12 +79,30 @@ public abstract class PushModifyRule extends RelOptRule {
         final boolean modifyScaleoutTable = !CheckModifyLimitation
             .isAllTablesCouldPushDown(modify, context.getExecutionContext());
 
+        ExecutionContext ec = context.getExecutionContext();
+
+        boolean containsUpdateFks =
+            modify.isUpdate() && (checkModifyFkReferenced(modify, context.getExecutionContext())
+                || checkModifyFkReferencing(modify, context.getExecutionContext()));
+        boolean containsDeleteFks =
+            modify.isDelete() && (checkModifyFkReferenced(modify, context.getExecutionContext())
+                || checkModifyFkReferencing(modify, context.getExecutionContext()));
+
         if (modifyBroadcastTable || checkModifyGsi(modify, context.getExecutionContext()) || modifyScaleoutTable ||
-            (modify.isUpdate() && checkOnlineModifyColumnDdl(modify, context.getExecutionContext()))) {
+            (modify.isUpdate() && checkOnlineModifyColumnDdl(modify, context.getExecutionContext())) ||
+            CheckModifyLimitation.checkHasLogicalGeneratedColumns(modify, context.getExecutionContext()) ||
+            (ec.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK) && modify.isUpdate()) ||
+            (ec.foreignKeyChecks() && (containsUpdateFks || containsDeleteFks))
+        ) {
             // 1. Do not pushdown multi table UPDATE/DELETE modifying broadcast table
             // 2. Do not pushdown UPDATE/DELETE if modifying gsi table
             // 3. Do not pushdown the table which is in scaleout writable phase
             // 4. Do not pushdown the table which is doing online column ddl
+            // 5. Do not pushdown UPDATE if we need to check primary key
+            // 6. Do not pushdown UPDATE if we need to check foreign key and
+            //    the table which is referenced by or referencing foreign constraint of other table
+            // 7. Do not pushdown DELETE if we need to check foreign key and
+            //    the table which is referenced by foreign constraint of other table
             return false;
         }
 
@@ -99,7 +124,7 @@ public abstract class PushModifyRule extends RelOptRule {
             TableModify modify = (TableModify) call.rels[0];
             LogicalView lv = (LogicalView) call.rels[1];
 
-            if (forbidPushdownForDelete(modify, lv)) {
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
                 return;
             }
 
@@ -125,7 +150,7 @@ public abstract class PushModifyRule extends RelOptRule {
             final LogicalView lv = (LogicalView) call.rels[2];
             final PlannerContext context = PlannerContext.getPlannerContext(call);
 
-            if (forbidPushdownForDelete(modify, lv)) {
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
                 return;
             }
 
@@ -166,7 +191,7 @@ public abstract class PushModifyRule extends RelOptRule {
             final LogicalView lv = (LogicalView) call.rels[2];
             final PlannerContext context = PlannerContext.getPlannerContext(call);
 
-            if (forbidPushdownForDelete(modify, lv)) {
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
                 return;
             }
 
@@ -226,6 +251,22 @@ public abstract class PushModifyRule extends RelOptRule {
             logger.error("unexpected exception while trying to forbidPushdownForDelete", e);
             return true;
         }
+    }
+
+    /**
+     * Update / Delete limit m,n 时，由于mysql 不支持 limit m,n; 所以禁止下推
+     */
+    private static boolean forbidPushDownForDeleteOrUpdate(final TableModify modify) {
+        if (modify instanceof LogicalModify && ((LogicalModify) modify).getOriginalSqlNode() != null) {
+            SqlNode originalNode = ((LogicalModify) modify).getOriginalSqlNode();
+            if (originalNode instanceof SqlDelete && ((SqlDelete) originalNode).getOffset() != null) {
+                return true;
+            }
+            if (originalNode instanceof SqlUpdate && ((SqlUpdate) originalNode).getOffset() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -41,21 +42,21 @@ public class MySqlSetDefaultRoleStatement extends MySqlStatementImpl {
         /**
          * For statements like:
          * <code>
-         *     SET DEFAULT ROLE NONE TO a;
+         * SET DEFAULT ROLE NONE TO a;
          * </code>
          */
         NONE,
         /**
          * For statements like:
          * <code>
-         *     SET DEFAULT ROLE ALL TO a;
+         * SET DEFAULT ROLE ALL TO a;
          * </code>
          */
         ALL,
         /**
          * For statements like:
          * <code>
-         *     SET DEFAULT ROLE c TO a;
+         * SET DEFAULT ROLE c TO a;
          * </code>
          */
         ROLES
@@ -98,5 +99,10 @@ public class MySqlSetDefaultRoleStatement extends MySqlStatementImpl {
         }
 
         v.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

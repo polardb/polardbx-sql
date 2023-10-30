@@ -18,15 +18,23 @@ package com.alibaba.polardbx.common.utils.logger.logback;
 
 import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.UnsynchronizedAppenderBase;
+import ch.qos.logback.core.encoder.Encoder;
 import ch.qos.logback.core.spi.AppenderAttachable;
 import ch.qos.logback.core.spi.AppenderAttachableImpl;
 import ch.qos.logback.core.util.InterruptUtil;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 
 import java.util.Iterator;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implements AppenderAttachable<E> {
+    /**
+     * The default maximum queue flush time allowed during appender stop. If the
+     * worker takes longer than this time it will exit, discarding any remaining
+     * items in the queue
+     */
+    public static final int DEFAULT_MAX_FLUSH_TIME = 1000;
 
     AppenderAttachableImpl<E> aai = new AppenderAttachableImpl<E>();
     BlockingQueue<E> blockingQueue;
@@ -40,18 +48,45 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
     static final int UNDEFINED = -1;
     int discardingThreshold = UNDEFINED;
     boolean neverBlock = false;
+    boolean supportRemoteConsume = false;
 
     Worker worker = new Worker();
 
-
-    public static final int DEFAULT_MAX_FLUSH_TIME = 1000;
     int maxFlushTime = DEFAULT_MAX_FLUSH_TIME;
 
+    protected Encoder<E> encoder;
+    public long discardCount;
+
+    /**
+     * Is the eventObject passed as parameter discardable? The base class's implementation of this method always returns
+     * 'false' but sub-classes may (and do) override this method.
+     * <p/>
+     * <p>Note that only if the buffer is nearly full are events discarded. Otherwise, when the buffer is "not full"
+     * all events are logged.
+     *
+     * @return - true if the event can be discarded, false otherwise
+     */
     protected boolean isDiscardable(E eventObject) {
         return false;
     }
 
     protected void preprocess(E eventObject) {
+    }
+
+    protected void loadAppender() {
+
+    }
+
+    protected void unLoadAppender() {
+
+    }
+
+    public Encoder<E> getEncoder() {
+        return encoder;
+    }
+
+    public void setEncoder(Encoder<E> encoder) {
+        this.encoder = encoder;
     }
 
     @Override
@@ -78,6 +113,7 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
 
         super.start();
         worker.start();
+        loadAppender();
     }
 
     @Override
@@ -89,6 +125,8 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
         super.stop();
 
         worker.interrupt();
+
+        unLoadAppender();
 
         InterruptUtil interruptUtil = new InterruptUtil(context);
 
@@ -127,8 +165,13 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
     }
 
     private void put(E eventObject) {
-        if (neverBlock) {
-            blockingQueue.offer(eventObject);
+        if (neverBlock || (supportRemoteConsume && DynamicConfig.getInstance().enableRemoteConsumeLog())) {
+            //allow event miss when it enable remote consume logs, or here maybe block!
+            boolean ret = blockingQueue.offer(eventObject);
+            if (!ret) {
+                //there is a concurrency issue here, but it doesn't matter because it is mainly for performance.
+                discardCount++;
+            }
         } else {
             putUninterruptibly(eventObject);
         }
@@ -188,6 +231,20 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
         return neverBlock;
     }
 
+    public boolean isSupportRemoteConsume() {
+        return supportRemoteConsume;
+    }
+
+    public void setSupportRemoteConsume(boolean supportRemoteConsume) {
+        this.supportRemoteConsume = supportRemoteConsume;
+    }
+
+    /**
+     * The remaining capacity available in the blocking queue.
+     *
+     * @return the remaining capacity
+     * @see {@link java.util.concurrent.BlockingQueue#remainingCapacity()}
+     */
     public int getRemainingCapacity() {
         return blockingQueue.remainingCapacity();
     }
@@ -234,6 +291,10 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
         return aai.detachAppender(name);
     }
 
+    public BlockingQueue<E> getBlockingQueue() {
+        return blockingQueue;
+    }
+
     class Worker extends Thread {
 
         @Override
@@ -243,6 +304,10 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
 
             while (parent.isStarted()) {
                 try {
+                    if (supportRemoteConsume && DynamicConfig.getInstance().enableRemoteConsumeLog()) {
+                        Thread.sleep(1000);
+                        continue;
+                    }
                     E e = parent.blockingQueue.take();
                     aai.appendLoopOnAppenders(e);
                 } catch (InterruptedException ie) {
@@ -268,4 +333,5 @@ public class AsyncAppenderBase<E> extends UnsynchronizedAppenderBase<E> implemen
             aai.detachAndStopAllAppenders();
         }
     }
+
 }

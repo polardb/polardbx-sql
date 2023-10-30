@@ -37,7 +37,7 @@ public class SqlConvertFunction extends SqlFunction {
         SqlKind.OTHER_FUNCTION,
         ReturnTypes.ARG1,
         null,
-        OperandTypes.ANY_ANY,
+        OperandTypes.ANY_ANY_OR_ANY_ANY_ANY,
         SqlFunctionCategory.STRING);
   }
 
@@ -53,13 +53,19 @@ public class SqlConvertFunction extends SqlFunction {
     writer.sep("USING");
     call.operand(1).unparse(writer, leftPrec, rightPrec);
     writer.endFunCall(frame);
+    if (call.getOperandList().size() == 3) {
+      writer.print(" collate ");
+      call.operand(2).unparse(writer, leftPrec, rightPrec);
+    }
   }
 
   public String getSignatureTemplate(final int operandsCount) {
     switch (operandsCount) {
     case 2:
+    case 3:
       return "{0}({1} USING {2})";
     }
+
     assert false;
     return null;
   }

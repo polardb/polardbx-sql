@@ -24,7 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import lombok.Getter;
 
 import java.util.List;
@@ -34,7 +34,7 @@ import java.util.List;
  */
 @Getter
 @TaskName(name = "UnArchiveValidateTask")
-public class UnArchiveValidateTask  extends BaseValidateTask {
+public class UnArchiveValidateTask extends BaseValidateTask {
     private List<String> tables;
 
     @JSONCreator
@@ -48,13 +48,14 @@ public class UnArchiveValidateTask  extends BaseValidateTask {
         // make sure all tables are valid local partition table
         SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         for (String table : tables) {
-            LocalPartitionDefinitionInfo localPartitionDefinitionInfo = sm.getTable(table).getLocalPartitionDefinitionInfo();
+            LocalPartitionDefinitionInfo localPartitionDefinitionInfo =
+                sm.getTable(table).getLocalPartitionDefinitionInfo();
             if (localPartitionDefinitionInfo == null) {
                 throw new TddlNestableRuntimeException(String.format(
                     "table %s.%s is not a local partition table", schemaName, table));
             }
             if (StringUtils.isEmpty(localPartitionDefinitionInfo.getArchiveTableSchema()) ||
-            StringUtils.isEmpty(localPartitionDefinitionInfo.getArchiveTableName())) {
+                StringUtils.isEmpty(localPartitionDefinitionInfo.getArchiveTableName())) {
                 throw new TddlNestableRuntimeException(String.format(
                     "table %s.%s has no archive table", schemaName, table));
             }

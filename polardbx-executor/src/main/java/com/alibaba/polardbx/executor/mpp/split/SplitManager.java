@@ -89,6 +89,7 @@ public class SplitManager {
             return logicalViewSingleSplit(logicalView, executionContext);
         }
     }
+
     public SplitInfo logicalViewSingleSplit(LogicalView logicalView, ExecutionContext executionContext) {
         List<Split> splitList = new ArrayList<>();
         String schemaName = logicalView.getSchemaName();
@@ -109,15 +110,17 @@ public class SplitManager {
             rw = ITransaction.RW.WRITE;
         }
 
-        boolean useParameterDelegate = ExecUtils.useParameterDelegate(executionContext);
-
         List<List<String>> phyTableNames = new ArrayList<>();
+        boolean useParameterDelegate = ExecUtils.useParameterDelegate(executionContext);
         if (queryOperation instanceof PhyTableOperation) {
             PhyTableScanBuilder phyOperationBuilder =
                 (PhyTableScanBuilder) ((PhyTableOperation) queryOperation).getPhyOperationBuilder();
             if (phyOperationBuilder != null) {
                 List<List<String>> groupTables = ((PhyTableOperation) queryOperation).getTableNames();
                 params = new ArrayList<>(groupTables.size());
+                for (List<String> tables : groupTables) {
+                    params.add(phyOperationBuilder.buildSplitParams(dbIndex, tables, useParameterDelegate));
+                }
                 dbIndex = queryOperation.getDbIndex();
                 for (List<String> tables : groupTables) {
                     params.add(phyOperationBuilder.buildSplitParams(dbIndex, tables, useParameterDelegate));
@@ -302,7 +305,7 @@ public class SplitManager {
                         }
                     }
                     return new SplitInfo(logicalView.getRelatedId(), logicalView.isExpandView(), concurrencyPolicy,
-                        outList, shardSet,
+                        outList.isEmpty() ? ImmutableList.of(new ArrayList<>()) : outList, shardSet,
                         instSet.size(),
                         splitCount, underSort, grpConnSet);
                 } else {
@@ -356,7 +359,7 @@ public class SplitManager {
                         outList.add(splits);
                     }
                     return new SplitInfo(logicalView.getRelatedId(), logicalView.isExpandView(), concurrencyPolicy,
-                        outList, shardSet,
+                        outList.isEmpty() ? ImmutableList.of(new ArrayList<>()) : outList, shardSet,
                         instSet.size(),
                         splitCount, underSort, grpConnSet);
                 } else {
@@ -405,18 +408,23 @@ public class SplitManager {
         if (ossTableScan == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_GENERATE_SPLIT, "logicalView is null");
         }
+
         QueryConcurrencyPolicy concurrencyPolicy =
             ExecUtils.getQueryConcurrencyPolicy(executionContext, ossTableScan);
+
         List<RelNode> inputs = ExecUtils.getInputs(
             ossTableScan, executionContext, !ExecUtils.isMppMode(executionContext));
+
         String schemaName = ossTableScan.getSchemaName();
         if (StringUtils.isEmpty(schemaName)) {
             schemaName = executionContext.getSchemaName();
         }
+
         if (inputs.size() > 1) {
             // record full table scan
             executionContext.setHasScanWholeTable(true);
         }
+
         HashMap<String, String> shardSet = new HashMap<>();
         int splitCount = 0;
         List<RelNode> sortInputs = ExecUtils.zigzagInputsByMysqlInst(inputs, schemaName, executionContext);
@@ -428,8 +436,8 @@ public class SplitManager {
         case GROUP_CONCURRENT_BLOCK:
             // split according to physical table operations.
             for (RelNode input : sortInputs) {
-                OssSplit split = OssSplit.getTableConcurrencySplit(ossTableScan, input, executionContext);
-                if (split != null) {
+                List<OssSplit> splits = OssSplit.getTableConcurrencySplit(input, executionContext);
+                for (OssSplit split : splits) {
                     shardSet.put(split.getPhysicalSchema(), split.getLogicalSchema());
                     splitList.add(new Split(false, split));
                     splitCount++;
@@ -462,8 +470,8 @@ public class SplitManager {
             break;
         }
         throw new TddlRuntimeException(ErrorCode.ERR_GENERATE_SPLIT, "getSplits error:" + concurrencyPolicy);
-    }
 
+    }
 
     private JdbcSplit parseRelNode(LogicalView logicalView, TopologyHandler topology, RelNode input,
                                    String schemaName, byte[] hint, ITransaction.RW rw, ExecutionContext executionContext) {

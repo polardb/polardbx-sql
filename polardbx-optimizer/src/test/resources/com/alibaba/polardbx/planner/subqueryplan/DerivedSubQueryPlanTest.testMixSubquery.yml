@@ -10,4 +10,4 @@
 
   plan: |
 
-    ERR-CODE: [PXC-4518][ERR_VALIDATE] ERR-CODE: [PXC-4006][ERR_TABLE_NOT_EXIST] Table 'drds1' doesn't exist.
+    err-code: [pxc-4006][err_table_not_exist] table 'drds1' doesn't exist.

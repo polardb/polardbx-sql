@@ -19,6 +19,7 @@ package com.alibaba.polardbx.server;
 import com.alibaba.polardbx.CobarPrivileges;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.PolarPrivileges;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -47,7 +48,7 @@ public class ServerConnectionFactory extends FrontendConnectionFactory {
         c.setPrivileges(new PolarPrivileges(c));
         c.setQueryHandler(new ServerQueryHandler(c));
         c.setStmtHandler(new ServerPrepareStatementHandler(c));
-        c.setTxIsolation(ConfigDataMode.getTxIsolation());
+        c.setTxIsolation(DynamicConfig.getInstance().getTxIsolation());
         c.setSession(new ServerSession(c));
         if (sys.isSslEnable()) {
             initSslHandler(c);

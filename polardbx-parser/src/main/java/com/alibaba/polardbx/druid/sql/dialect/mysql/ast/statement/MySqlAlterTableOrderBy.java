@@ -26,10 +26,6 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName MySqlAlterTableOrderBy
- * @description
- * @Author zzy
- * @Date 2019-06-03 15:59
  */
 public class MySqlAlterTableOrderBy extends MySqlObjectImpl implements SQLAlterTableItem {
 

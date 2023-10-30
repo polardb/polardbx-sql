@@ -60,12 +60,14 @@ public enum HintType {
      */
     CMD_MASTER(Values.CMD_MASTER),
     CMD_SLAVE(Values.CMD_SLAVE),
+    CMD_FOLLOWER(Values.CMD_FOLLOWER),
     CMD_SOCKET_TIMEOUT(Values.CMD_SOCKET_TIMEOUT),
     CMD_DYNAMIC_BROADCAST_JOIN(Values.CMD_DYNAMIC_BROADCAST_JOIN),
     CMD_SQL_DELAY_CUTOFF(Values.CMD_SQL_DELAY_CUTOFF),
     CMD_EXTRA(Values.CMD_EXTRA),
     CMD_NODE(Values.CMD_NODE),
     CMD_SCAN(Values.CMD_SCAN),
+    CMD_RANDOM_NODE(Values.CMD_RANDOM_NODE),
     CMD_CORONADB_JSON(Values.CMD_CORONADB_JSON),
     CMD_MPP(Values.CMD_MPP),
     CMD_MERGE_UNION_SIZE(Values.CMD_MERGE_UNION_SIZE),
@@ -113,11 +115,13 @@ public enum HintType {
         ADD_UN);
     public static final EnumSet<HintType> CMD_HINT = EnumSet.of(CMD_MASTER,
         CMD_SLAVE,
+        CMD_FOLLOWER,
         CMD_SOCKET_TIMEOUT,
         CMD_SQL_DELAY_CUTOFF,
         CMD_EXTRA,
         CMD_NODE,
-        CMD_NODE,
+        CMD_SCAN,
+        CMD_RANDOM_NODE,
         CMD_CORONADB_JSON,
         CMD_MERGE_UNION_SIZE,
         CMD_QUERY_BLOCK_NAME,
@@ -154,11 +158,13 @@ public enum HintType {
         VALUE_TO_OPERATOR.put(Values.CONSTRUCT, CONSTRUCT);
         VALUE_TO_OPERATOR.put(Values.CMD_MASTER, CMD_MASTER);
         VALUE_TO_OPERATOR.put(Values.CMD_SLAVE, CMD_SLAVE);
+        VALUE_TO_OPERATOR.put(Values.CMD_FOLLOWER, CMD_FOLLOWER);
         VALUE_TO_OPERATOR.put(Values.CMD_SOCKET_TIMEOUT, CMD_SOCKET_TIMEOUT);
         VALUE_TO_OPERATOR.put(Values.CMD_DYNAMIC_BROADCAST_JOIN, CMD_DYNAMIC_BROADCAST_JOIN);
         VALUE_TO_OPERATOR.put(Values.CMD_SQL_DELAY_CUTOFF, CMD_SQL_DELAY_CUTOFF);
         VALUE_TO_OPERATOR.put(Values.CMD_EXTRA, CMD_EXTRA);
         VALUE_TO_OPERATOR.put(Values.CMD_NODE, CMD_NODE);
+        VALUE_TO_OPERATOR.put(Values.CMD_RANDOM_NODE, CMD_RANDOM_NODE);
         VALUE_TO_OPERATOR.put(Values.CMD_SCAN, CMD_SCAN);
         VALUE_TO_OPERATOR.put(Values.CMD_CORONADB_JSON, CMD_CORONADB_JSON);
         VALUE_TO_OPERATOR.put(Values.CMD_MERGE_UNION_SIZE, CMD_MERGE_UNION_SIZE);
@@ -227,12 +233,14 @@ public enum HintType {
         static final String CONSTRUCT = "CONSTRUCT";
         static final String CMD_MASTER = "MASTER";
         static final String CMD_SLAVE = "SLAVE";
+        static final String CMD_FOLLOWER = "FOLLOWER";
         static final String CMD_SOCKET_TIMEOUT = "SOCKET_TIMEOUT";
         static final String CMD_DYNAMIC_BROADCAST_JOIN = "DBJ";
         static final String CMD_SQL_DELAY_CUTOFF = "SQL_DELAY_CUTOFF";
         static final String CMD_EXTRA = "CMD_EXTRA";
         static final String CMD_NODE = "NODE";
         static final String CMD_SCAN = "SCAN";
+        static final String CMD_RANDOM_NODE = "RANDOM_NODE";
         static final String CMD_CORONADB_JSON = "__CDB_JSON_HINT__";
         static final String CMD_MERGE_UNION_SIZE = "MERGE_UNION_SIZE";
         static final String CMD_MPP = "MPP";

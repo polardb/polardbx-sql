@@ -23,6 +23,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTOutputVisitor;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import junit.framework.TestCase;
+import org.junit.Assert;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +54,31 @@ public class ExportParameterInTest extends TestCase {
 
         System.out.println(out);
         System.out.println(JSON.toJSONString(parameters));
+
+        restore(out.toString(), parameters);
+    }
+
+    public void testExportHexParameter() throws Exception {
+        String sql = "select * from t_user where (blob1, blob2) in ((x'626C6F62206461746134',x'01'))";
+
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql, dbType);
+
+        assertEquals(1, stmtList.size());
+
+        SQLStatement stmt = stmtList.get(0);
+
+        StringBuilder out = new StringBuilder();
+        List<Object> parameters = new ArrayList<Object>();
+        SQLASTOutputVisitor visitor = SQLUtils.createOutputVisitor(out, dbType);
+        visitor.setParameterized(true);
+        visitor.setParameterizedMergeInList(true);
+        visitor.setParameters(parameters);
+
+        stmt.accept(visitor);
+
+        System.out.println(out);
+        System.out.println(JSON.toJSONString(parameters));
+        Assert.assertEquals("[[[\"YmxvYiBkYXRhNA==\",\"AQ==\"]]]", JSON.toJSONString(parameters));
 
         restore(out.toString(), parameters);
     }

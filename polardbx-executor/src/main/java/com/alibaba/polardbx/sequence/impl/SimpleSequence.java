@@ -22,29 +22,19 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_MAX_VALUE;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_START_WITH;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.NOCYCLE;
-
 /**
  * A simple implementation for global sequence with no cache.
  *
  * @author chensr 2016/04/12 11:14:55
  * @since 5.0.0
  */
-public class SimpleSequence extends BaseSequence {
+public class SimpleSequence extends FunctionalSequence {
 
     private static final Logger logger = LoggerFactory.getLogger(SimpleSequence.class);
 
     private SimpleSequenceDao simpleSequenceDao;
 
     private volatile boolean initialized = false;
-
-    private int incrementBy = DEFAULT_INCREMENT_BY;
-    private long startWith = DEFAULT_START_WITH;
-    private long maxValue = DEFAULT_MAX_VALUE;
-    private int cycle = NOCYCLE;
 
     public void init() throws TddlRuntimeException {
         if (initialized) {
@@ -113,47 +103,6 @@ public class SimpleSequence extends BaseSequence {
 
     public void setSimpleSequenceDao(SimpleSequenceDao simpleSequenceDao) {
         this.simpleSequenceDao = simpleSequenceDao;
-    }
-
-    public int getIncrementBy() {
-        return incrementBy;
-    }
-
-    public void setIncrementBy(int incrementBy) {
-        if (incrementBy <= 0 || incrementBy > Integer.MAX_VALUE) {
-            incrementBy = 1;
-        }
-        this.incrementBy = incrementBy;
-    }
-
-    public long getStartWith() {
-        return startWith;
-    }
-
-    public void setStartWith(long startWith) {
-        if (startWith <= 0 || startWith > Long.MAX_VALUE) {
-            startWith = 1;
-        }
-        this.startWith = startWith;
-    }
-
-    public long getMaxValue() {
-        return maxValue;
-    }
-
-    public void setMaxValue(long maxValue) {
-        if (maxValue <= 0 || maxValue > Long.MAX_VALUE) {
-            maxValue = Long.MAX_VALUE;
-        }
-        this.maxValue = maxValue;
-    }
-
-    public int getCycle() {
-        return cycle;
-    }
-
-    public void setCycle(int cycle) {
-        this.cycle = cycle;
     }
 
 }

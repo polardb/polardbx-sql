@@ -1,0 +1,107 @@
+## DISABLE_FAST_SQL_PARSER
+create table l_uh_sp_tp (
+  c1 bigint not null,
+  c2 bigint not null,
+  c3 bigint not null
+)
+partition by list(myplus2(c1,0))
+subpartition by udf_hash(myplus2(c2,0))
+(
+  subpartition sp1 values less than(1000),
+  subpartition spm values less than(maxvalue)
+)
+(
+  partition p1 values in(1),
+  partition pm values in(default)
+);
+insert into l_uh_sp_tp values (1,1,1);
+insert into l_uh_sp_tp values (10000,1,1);
+insert into l_uh_sp_tp values (1,10000,1);
+insert into l_uh_sp_tp values (10000,10000,1);
+select part_route('','l_uh_sp_tp', c1,c2) as route_rs from l_uh_sp_tp order by c1,c2;
+route_rs
+p1sp1
+p1spm
+pmsp1
+pmspm
+create table r_uh_sp_ntp (
+  c1 bigint not null,
+  c2 bigint not null,
+  c3 bigint not null
+)
+partition by range(myplus2(c1,0))
+subpartition by udf_hash(myplus2(c2,0))
+(
+  partition p1 values less than(1000) (
+    subpartition p1sp1 values less than(1000),
+    subpartition p1spm values less than(maxvalue)
+  ),
+  partition pm values less than(maxvalue) (
+    subpartition pmsp1 values less than(1000),
+    subpartition pmspm values less than(maxvalue)
+  )
+);
+insert into r_uh_sp_ntp values (1,1,1);
+insert into r_uh_sp_ntp values (10000,1,1);
+insert into r_uh_sp_ntp values (1,10000,1);
+insert into r_uh_sp_ntp values (10000,10000,1);
+select part_route('','r_uh_sp_ntp', c1,c2) as route_rs from r_uh_sp_ntp order by c1,c2;
+route_rs
+p1sp1
+p1spm
+pmsp1
+pmspm
+create table uh_r_sp_ntp (
+  c1 bigint not null,
+  c2 bigint not null,
+  c3 bigint not null
+)
+partition by udf_hash(myplus2(c1,0))
+subpartition by range(myplus2(c2,0))
+(
+partition p1 values less than(1000) (
+subpartition p1sp1 values less than(1000),
+subpartition p1spm values less than(maxvalue)
+),
+partition pm values less than(maxvalue) (
+subpartition pmsp1 values less than(1000),
+subpartition pmspm values less than(maxvalue)
+)
+);
+insert into uh_r_sp_ntp values (1,1,1);
+insert into uh_r_sp_ntp values (10000,1,1);
+insert into uh_r_sp_ntp values (1,10000,1);
+insert into uh_r_sp_ntp values (10000,10000,1);
+select part_route('','uh_r_sp_ntp', c1,c2) as route_rs from uh_r_sp_ntp order by c1,c2;
+route_rs
+p1sp1
+p1spm
+pmsp1
+pmspm
+create table uh_l_sp_ntp (
+c1 bigint not null,
+c2 bigint not null,
+c3 bigint not null
+)
+partition by udf_hash(myplus2(c1,0))
+subpartition by list(myplus2(c2,0))
+(
+partition p1 values less than(1000) (
+subpartition p1sp1 values in(1),
+subpartition p1spm values in(default)
+),
+partition pm values less than(maxvalue) (
+subpartition pmsp1 values in(1),
+subpartition pmspm values in(default)
+)
+);
+insert into uh_l_sp_ntp values (1,1,1);
+insert into uh_l_sp_ntp values (10000,1,1);
+insert into uh_l_sp_ntp values (1,10000,1);
+insert into uh_l_sp_ntp values (10000,10000,1);
+select part_route('','uh_l_sp_ntp', c1,c2) as route_rs from uh_l_sp_ntp order by c1,c2;
+route_rs
+p1sp1
+p1spm
+pmsp1
+pmspm

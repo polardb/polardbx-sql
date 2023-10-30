@@ -23,7 +23,7 @@ import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReOrganizePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -42,7 +42,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.ReorganizeLocalPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import org.apache.calcite.rel.core.DDL;
@@ -82,21 +82,23 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
     @Override
     protected void validate() {
         //校验local partition对齐
-        LocalPartitionValidateTask localPartitionValidateTask = new LocalPartitionValidateTask(schemaName, primaryTableName);
+        LocalPartitionValidateTask localPartitionValidateTask =
+            new LocalPartitionValidateTask(schemaName, primaryTableName);
         localPartitionValidateTask.executeImpl(executionContext);
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        final TableMeta primaryTableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
+        final TableMeta primaryTableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
         final LocalPartitionDefinitionInfo definitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
-        if(definitionInfo == null){
+        if (definitionInfo == null) {
             throw new TddlNestableRuntimeException(String.format(
                 "table %s.%s is not a local partition table", schemaName, primaryTableName));
         }
 
         MysqlDateTime pivotDate = definitionInfo.evalPivotDate(executionContext);
-        FailPoint.injectFromHint(FP_OVERRIDE_NOW, executionContext, (k, v)->{
+        FailPoint.injectFromHint(FP_OVERRIDE_NOW, executionContext, (k, v) -> {
             MysqlDateTime parseDatetime = StringTimeParser.parseDatetime(v.getBytes());
             pivotDate.setYear(parseDatetime.getYear());
             pivotDate.setMonth(parseDatetime.getMonth());
@@ -104,26 +106,26 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
         });
 
         IRepository repository = ExecutorContext.getContext(schemaName)
-                .getTopologyHandler()
-                .getRepositoryHolder()
-                .get(Group.GroupType.MYSQL_JDBC.toString());
+            .getTopologyHandler()
+            .getRepositoryHolder()
+            .get(Group.GroupType.MYSQL_JDBC.toString());
         List<TableDescription> tableDescriptionList = LocalPartitionManager.getLocalPartitionInfoList(
-                (MyRepository) repository,
-                schemaName,
-                primaryTableName,
+            (MyRepository) repository,
+            schemaName,
+            primaryTableName,
             true);
         MysqlDateTime newestPartitionDate = LocalPartitionManager.getNewestPartitionDate(tableDescriptionList.get(0));
-        if(newestPartitionDate == null){
+        if (newestPartitionDate == null) {
             newestPartitionDate = definitionInfo.evalPivotDate(executionContext);
         }
         Optional<SQLPartitionByRange> partitionByRange = LocalPartitionDefinitionInfo
             .generatePreAllocateLocalPartitionStmt(definitionInfo, newestPartitionDate, pivotDate);
-        if(!partitionByRange.isPresent()){
+        if (!partitionByRange.isPresent()) {
             return new TransientDdlJob();
         }
 
         SQLAlterTableStatement alterTableStatement = new SQLAlterTableStatement();
-        SQLAlterTableReOrganizePartition reOrganizeStmt = new SQLAlterTableReOrganizePartition();
+        SQLAlterTableReorgPartition reOrganizeStmt = new SQLAlterTableReorgPartition();
         reOrganizeStmt.getNames().add(new SQLIdentifierExpr(PMAX));
         partitionByRange.get().getPartitions().forEach(reOrganizeStmt::addPartition);
 
@@ -132,14 +134,15 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
         alterTableStatement.setDbType(DbType.mysql);
         final String phySql = alterTableStatement.toString();
 
-        LocalPartitionValidateTask localPartitionValidateTask = new LocalPartitionValidateTask(schemaName, primaryTableName);
+        LocalPartitionValidateTask localPartitionValidateTask =
+            new LocalPartitionValidateTask(schemaName, primaryTableName);
         Map<String, GsiMetaManager.GsiIndexMetaBean> publishedGsi = primaryTableMeta.getGsiPublished();
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
         taskList.add(localPartitionValidateTask);
         taskList.add(genPhyDdlTask(schemaName, primaryTableName, phySql));
-        if(publishedGsi != null){
+        if (publishedGsi != null) {
             publishedGsi.forEach((gsiName, gsiIndexMetaBean) -> {
                 taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
             });
@@ -148,8 +151,9 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
         return executableDdlJob;
     }
 
-    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql){
-        ddl.sqlNode = SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
+    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql) {
+        ddl.sqlNode =
+            SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
         DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
             ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );
@@ -157,7 +161,6 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
         LocalPartitionPhyDdlTask phyDdlTask = new LocalPartitionPhyDdlTask(schemaName, builder.genPhysicalPlanData());
         return phyDdlTask;
     }
-
 
     @Override
     protected void excludeResources(Set<String> resources) {

@@ -18,10 +18,8 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
-import com.alibaba.polardbx.executor.archive.predicate.OSSPredicateBuilder;
 import com.alibaba.polardbx.executor.archive.reader.OSSPhysicalTableReadResult;
 import com.alibaba.polardbx.executor.archive.reader.OSSReadOption;
 import com.alibaba.polardbx.executor.archive.reader.OSSTableReader;
@@ -35,15 +33,12 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
-import org.apache.orc.sarg.SearchArgument;
-import org.apache.orc.sarg.SearchArgumentFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,9 +74,8 @@ public class OSSTableScanExec extends AbstractOSSTableScanExec {
     private int[] filterBitmap;
     private int[] outProject;
     private List<DataType<?>> inProjectDataTypeList;
-    private volatile SearchArgument searchArgument;
-    private volatile String[] columns;
 
+    RexNode bloomFilterCondition;
     private volatile SettableFuture<?> waitBloomFilterFuture = null;
     private volatile ScheduledFuture<?> monitorWaitBloomFilterFuture = null;
     private volatile boolean needWaitBloomFilter;
@@ -104,11 +98,6 @@ public class OSSTableScanExec extends AbstractOSSTableScanExec {
         this.physicalTableReadResults = new ArrayList<>();
         this.inProjectDataTypeList = ossTableScan.getOrcNode().getInProjectsDataType();
         this.sessionProperties = SessionProperties.fromExecutionContext(context);
-        if (ossTableScan.getOrcNode().getFilters().isEmpty()) {
-            buildSearchArgumentAndColumns(null);
-        } else {
-            buildSearchArgumentAndColumns(ossTableScan.getOrcNode().getFilters().get(0));
-        }
     }
 
     @Override
@@ -195,7 +184,7 @@ public class OSSTableScanExec extends AbstractOSSTableScanExec {
         OssSplit ossSplit = splits.get(splitIndex);
         if (!ossSplit.isInit()) {
             synchronized (lock) {
-                ossSplit.init(ossTableScan, context, searchArgument, columns);
+                ossSplit.init(ossTableScan, context, sessionProperties, null, null);
             }
             List<OSSReadOption> allOptions = ossSplit.getReadOptions();
             allOptions.forEach(
@@ -332,7 +321,6 @@ public class OSSTableScanExec extends AbstractOSSTableScanExec {
 
             Map<Integer, RexCall> bloomFiltersMap = ossTableScan.getBloomFiltersMap();
 
-            RexNode bloomFilterCondition;
             if (bloomFiltersMap.size() == 1) {
                 bloomFilterCondition = bloomFiltersMap.values().iterator().next();
             } else {
@@ -340,46 +328,8 @@ public class OSSTableScanExec extends AbstractOSSTableScanExec {
                     .makeCall(TddlOperatorTable.AND, bloomFiltersMap.values().stream().collect(Collectors.toList()));
             }
 
-            if (ossTableScan.getOrcNode().getFilters().isEmpty()) {
-                buildSearchArgumentAndColumns(bloomFilterCondition);
-            } else {
-                buildSearchArgumentAndColumns(rexBuilder
-                    .makeCall(TddlOperatorTable.AND, ossTableScan.getOrcNode().getFilters().get(0),
-                        bloomFilterCondition));
-            }
-
         } catch (Throwable t) {
             throw new TddlNestableRuntimeException(t);
-        }
-    }
-
-    void buildSearchArgumentAndColumns(RexNode rexNode) {
-        // init searchArgument and columns
-        if (rexNode == null) {
-            // full scan
-            this.searchArgument = SearchArgumentFactory
-                .newBuilder()
-                .literal(SearchArgument.TruthValue.YES_NO)
-                .build();
-            columns = null;
-        } else {
-            Parameters parameters = context.getParams();
-            OSSPredicateBuilder predicateBuilder =
-                new OSSPredicateBuilder(parameters, ossTableScan.getOrcNode().getInputProjectRowType().getFieldList(),
-                    bloomFilterInfos, ossTableScan.getOrcNode().getRowType().getFieldList(),
-                    CBOUtil.getTableMeta(ossTableScan.getTable()), sessionProperties);
-            Boolean valid = rexNode.accept(predicateBuilder);
-            if (valid != null && valid.booleanValue()) {
-                this.searchArgument = predicateBuilder.build();
-                this.columns = predicateBuilder.columns();
-            } else {
-                // full scan
-                this.searchArgument = SearchArgumentFactory
-                    .newBuilder()
-                    .literal(SearchArgument.TruthValue.YES_NO)
-                    .build();
-                this.columns = null;
-            }
         }
     }
 

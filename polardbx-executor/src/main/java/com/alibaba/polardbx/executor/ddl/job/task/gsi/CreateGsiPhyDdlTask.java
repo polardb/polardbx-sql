@@ -71,4 +71,14 @@ public class CreateGsiPhyDdlTask extends BasePhyDdlTask {
         List<PhyDdlTableOperation> physicalPlans = dropPhyTableBuilder.getPhysicalPlans();
         return convertToRelNodes(physicalPlans);
     }
+
+    @Override
+    public List<String> explainInfo() {
+        if (this.physicalPlanData != null) {
+            return this.physicalPlanData.explainInfo();
+        } else {
+            return new ArrayList<>();
+
+        }
+    }
 }

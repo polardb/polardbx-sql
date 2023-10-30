@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.LookupJoin;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.google.common.collect.ImmutableList;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.LookupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
@@ -56,9 +58,12 @@ import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.core.rel.TopN;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.view.ViewPlan;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
@@ -166,7 +171,18 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         double memory = driveSideRowCount * MemoryEstimator.estimateRowSizeInHashTable(driveRowType);
         double net = Math.ceil(driveSideRowCount / batchSize);
 
-        return planner.getCostFactory().makeCost(rowCount, cpu, memory, 0, net);
+        Double io = 0D;
+        Index index = IndexUtil.selectJoinIndex(rel.getJoin(), true);
+        if (index != null) {
+            RelOptTable table = rel.getPrimaryTable();
+            double size =
+                TableScanIOEstimator.estimateRowSize(table.getRowType()) * table.getRowCount()
+                    * index.getTotalSelectivity();
+            double lookupIo = Math.ceil(size / CostModelWeight.RAND_IO_PAGE_SIZE);
+            io = Math.ceil(driveSideRowCount * lookupIo / CostModelWeight.LOOKUP_NUM_PER_IO);
+        }
+
+        return planner.getCostFactory().makeCost(rowCount, cpu, memory, io, net);
     }
 
     public Double getPercentageOriginalRows(LogicalView rel, RelMetadataQuery mq) {
@@ -676,6 +692,17 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
     }
 
     public RelOptCost getStartUpCost(SortWindow rel, RelMetadataQuery mq) {
+        if (rel.getFixedCost() != null) {
+            if (rel.getFixedCost().isHuge() || rel.getFixedCost().isInfinite()) {
+                return rel.getFixedCost();
+            } else {
+                return rel.getFixedCost().plus(mq.getStartUpCost(rel.getInput()));
+            }
+        }
+        return mq.getCumulativeCost(rel.getInput());
+    }
+
+    public RelOptCost getStartUpCost(HashWindow rel, RelMetadataQuery mq) {
         if (rel.getFixedCost() != null) {
             if (rel.getFixedCost().isHuge() || rel.getFixedCost().isInfinite()) {
                 return rel.getFixedCost();

@@ -28,9 +28,6 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 
-/**
- *
- */
 public class CdcResultCursor extends ArrayResultCursor {
 
     private Function<Object, Row> function = obj -> {

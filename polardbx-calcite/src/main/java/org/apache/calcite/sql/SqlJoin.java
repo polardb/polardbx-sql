@@ -197,10 +197,16 @@ public class SqlJoin extends SqlCall {
 
       final SqlWriter.Frame joinFrame =
           writer.startList(SqlWriter.FrameTypeEnum.JOIN);
+
+      final SqlWriter.Frame leftFrame = shouldUseParentheses(join) ?
+          writer.startList("(",")") : null;
       join.left.unparse(
           writer,
           leftPrec,
           getLeftPrec());
+      if (leftFrame != null) {
+        writer.endList(leftFrame);
+      }
       String natural = "";
       if (join.isNatural()) {
         natural = "NATURAL ";
@@ -252,6 +258,20 @@ public class SqlJoin extends SqlCall {
       }
       writer.endList(joinFrame);
     }
+  }
+
+  // for "(A, B) join C on A.x=C.y", don't transform to "A, B join C on A.x = C.y"
+  private static boolean shouldUseParentheses(SqlJoin join) {
+    if (join.condition == null) {
+      return false;
+    }
+    if (join.left instanceof SqlJoin) {
+      SqlJoin child = (SqlJoin) join.left;
+      if (child.getJoinType() == JoinType.COMMA && child.condition == null) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

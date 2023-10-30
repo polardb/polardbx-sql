@@ -22,12 +22,12 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowRuleStatusStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
-    private boolean    lite = true;
+    private boolean lite = true;
     private SQLOrderBy orderBy;
-    private SQLExpr    where;
-    private SQLLimit   limit;
-    private boolean    full = false;
-    private boolean    version = false;
+    private SQLExpr where;
+    private SQLLimit limit;
+    private boolean full = false;
+    private boolean version = false;
 
     public SQLLimit getLimit() {
         return limit;

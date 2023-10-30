@@ -26,10 +26,10 @@ import java.util.List;
 
 public class SQLExtractExpr extends SQLExprImpl implements SQLReplaceable {
 
-    private SQLExpr         value;
+    private SQLExpr value;
     private SQLIntervalUnit unit;
 
-    public SQLExtractExpr(){
+    public SQLExtractExpr() {
     }
 
     public SQLExtractExpr clone() {

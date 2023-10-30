@@ -18,10 +18,9 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropProcedureStatement;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.DropProcedureDropMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.DropProcedureSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -30,7 +29,6 @@ import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.executor.pl.ProcedureManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropProcedure;
-import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlDropProcedure;
 
@@ -41,9 +39,12 @@ public class DropProcedureJobFactory extends AbstractProcedureJobFactory {
 
     private final LogicalDropProcedure dropProcedure;
 
-    public DropProcedureJobFactory(LogicalDropProcedure dropProcedure, String executionSchema) {
+    private final boolean forceDrop;
+
+    public DropProcedureJobFactory(LogicalDropProcedure dropProcedure, String executionSchema, boolean forceDrop) {
         super(executionSchema);
         this.dropProcedure = dropProcedure;
+        this.forceDrop = forceDrop;
     }
 
     @Override
@@ -52,7 +53,8 @@ public class DropProcedureJobFactory extends AbstractProcedureJobFactory {
         SQLName procedureName = sqlDropProcedure.getProcedureName();
         String procedureSchema = PLUtils.getProcedureSchema(procedureName, executionSchema);
 
-        if (!sqlDropProcedure.isIfExists() && !procedureExists(procedureSchema, procedureName.getSimpleName())) {
+        if (!forceDrop && !sqlDropProcedure.isIfExists() && !procedureExists(procedureSchema,
+            procedureName.getSimpleName())) {
             throw new TddlRuntimeException(ErrorCode.ERR_PROCEDURE_NOT_FOUND,
                 String.format("procedure: %s.%s not exist", procedureSchema, procedureName));
         }
@@ -63,7 +65,7 @@ public class DropProcedureJobFactory extends AbstractProcedureJobFactory {
         SQLName procedureName = dropProcedure.getSqlDropProcedure().getProcedureName();
         String procedureSchema = PLUtils.getProcedureSchema(procedureName, executionSchema);
         String simpleName = SQLUtils.normalize(procedureName.getSimpleName());
-        if (ProcedureManager.getInstance().search(procedureSchema, simpleName) == null) {
+        if (!forceDrop && ProcedureManager.getInstance().notFound(procedureSchema, simpleName)) {
             return new ArrayList<>();
         }
 
@@ -75,6 +77,7 @@ public class DropProcedureJobFactory extends AbstractProcedureJobFactory {
     public static ExecutableDdlJob dropProcedure(LogicalDropProcedure logicalDropProcedure,
                                                  ExecutionContext ec) {
 
-        return new DropProcedureJobFactory(logicalDropProcedure, ec.getSchemaName()).create();
+        return new DropProcedureJobFactory(logicalDropProcedure, ec.getSchemaName(), ec.getParamManager().getBoolean(
+            ConnectionParams.FORCE_DROP_PROCEDURE)).create();
     }
 }

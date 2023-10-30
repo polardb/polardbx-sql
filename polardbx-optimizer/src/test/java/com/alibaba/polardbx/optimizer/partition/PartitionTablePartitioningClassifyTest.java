@@ -26,7 +26,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.planner.common.BasePlannerTest;
+import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
 import org.junit.Test;
@@ -51,17 +53,19 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
 
     public static class PartitioningClassifyTestParameter {
         public Pair<String[][], String[]> createTablePair;
+
         public PartitioningClassifyTestParameter(Pair<String[][], String[]> createTablePair) {
             this.createTablePair = createTablePair;
         }
 
         @Override
         public String toString() {
-            return String.format("%s", String.join(",", Arrays.asList(createTablePair.getValue())) );
+            return String.format("%s", String.join(",", Arrays.asList(createTablePair.getValue())));
         }
     }
 
     protected PartitioningClassifyTestParameter testParameter;
+
     public PartitionTablePartitioningClassifyTest(PartitioningClassifyTestParameter testParameter) {
         super(dbName);
         this.testParameter = testParameter;
@@ -77,7 +81,6 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
         return parameters;
     }
 
-
     @Override
     protected void initBasePlannerTestEnv() {
         this.useNewPartDb = true;
@@ -87,7 +90,6 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
     protected String getPlan(String testSql) {
         return null;
     }
-
 
     @Test
     public void testPartitionInfoEqualsByParams() throws SQLException {
@@ -116,16 +118,18 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
 
         Map<Long, List<PartitionInfo>> outputPartInfoGrouping = new TreeMap<>();
         Map<String, Long> outputTblNameToGrpIdMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        PartitionInfoUtil.classifyTablesByPrefixPartitionColumns(partInfoList, nPrefixPartColCnt, outputPartInfoGrouping, outputTblNameToGrpIdMap);
+        PartitionInfoUtil.classifyTablesByPrefixPartitionColumns(partInfoList, Lists.newArrayList(nPrefixPartColCnt),
+            outputPartInfoGrouping, outputTblNameToGrpIdMap);
 
         Assert.assertTrue(outputPartInfoGrouping.size() == expectGroupingRs.length);
-        for ( Map.Entry<Long, List<PartitionInfo>> grpInfoItem : outputPartInfoGrouping.entrySet() ) {
+        for (Map.Entry<Long, List<PartitionInfo>> grpInfoItem : outputPartInfoGrouping.entrySet()) {
             Long grpId = grpInfoItem.getKey();
             List<PartitionInfo> partInfos = grpInfoItem.getValue();
 
             Assert.assertTrue(partInfos.size() == expectGroupingRs[grpId.intValue() - 1].length);
             for (int j = 0; j < partInfos.size(); j++) {
-                Assert.assertTrue(partInfos.get(j).getTableName().equalsIgnoreCase(expectGroupingRs[grpId.intValue() - 1][j]));
+                Assert.assertTrue(
+                    partInfos.get(j).getTableName().equalsIgnoreCase(expectGroupingRs[grpId.intValue() - 1][j]));
             }
         }
     }
@@ -157,16 +161,18 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
             int nPrefixPartColCnt = 1;
             Map<Long, List<PartitionInfo>> outputPartInfoGrouping = new TreeMap<>();
             Map<String, Long> outputTblNameToGrpIdMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            PartitionInfoUtil.classifyTablesByPrefixPartitionColumns(partInfoList, nPrefixPartColCnt, outputPartInfoGrouping, outputTblNameToGrpIdMap);
+            PartitionInfoUtil.classifyTablesByPrefixPartitionColumns(partInfoList,
+                Lists.newArrayList(nPrefixPartColCnt), outputPartInfoGrouping, outputTblNameToGrpIdMap);
 
             Assert.assertTrue(outputPartInfoGrouping.size() == expectGroupingRs.length);
-            for ( Map.Entry<Long, List<PartitionInfo>> grpInfoItem : outputPartInfoGrouping.entrySet() ) {
+            for (Map.Entry<Long, List<PartitionInfo>> grpInfoItem : outputPartInfoGrouping.entrySet()) {
                 Long grpId = grpInfoItem.getKey();
                 List<PartitionInfo> partInfos = grpInfoItem.getValue();
 
                 Assert.assertTrue(partInfos.size() == expectGroupingRs[grpId.intValue() - 1].length);
                 for (int j = 0; j < partInfos.size(); j++) {
-                    Assert.assertTrue(partInfos.get(j).getTableName().equalsIgnoreCase(expectGroupingRs[grpId.intValue() - 1][j]));
+                    Assert.assertTrue(
+                        partInfos.get(j).getTableName().equalsIgnoreCase(expectGroupingRs[grpId.intValue() - 1][j]));
                 }
             }
         }
@@ -175,7 +181,7 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
     static List<Pair<String[][], String[]>> createTablePairs = Arrays.asList(
         new Pair<>(new String[][]
             {
-                new String[] {"t4","t5","t6"}
+                new String[] {"t4", "t5", "t6"}
             },
             new String[] {
                 "create table t4(a DATETIME(3), b int ) partition by range columns(a,b) ( partition p1 values less than ('2021-11-11 00:00:00',maxvalue), partition p2 values less than ('2021-11-12 00:00:00',maxvalue),partition p3 values less than ('2021-11-13 00:00:00',maxvalue))",
@@ -242,7 +248,7 @@ public class PartitionTablePartitioningClassifyTest extends BasePlannerTest {
         ,
         new Pair<>(new String[][]
             {
-                new String[] {"t1","t2","t3"},
+                new String[] {"t1", "t2", "t3"},
             },
             new String[] {
                 "create table t1(a int, b int) partition by key(a) partitions 4",

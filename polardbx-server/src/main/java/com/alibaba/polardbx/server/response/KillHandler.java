@@ -17,8 +17,13 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -41,8 +46,11 @@ import java.util.Map;
  * @author xianmao.hexm 2011-5-18 下午05:59:02
  */
 public final class KillHandler {
+    private static final Logger logger = LoggerFactory.getLogger(KillHandler.class);
 
-    public static void response(ByteString stmt, int offset, boolean killQuery, ServerConnection c, boolean hasMore) {
+    public static boolean response(ByteString stmt, int offset, boolean killQuery, ServerConnection c,
+                                   boolean hasMore) {
+        // this may cause problem when kill is in multi statements
         ServerThreadPool killExecutor = CobarServer.getInstance().getKillExecutor();
         killExecutor.submit(c.getSchema(), c.getTraceId(), () -> {
             try {
@@ -51,6 +59,8 @@ public final class KillHandler {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
             }
         });
+
+        return true;
     }
 
     public static void runKill(ByteString stmt, int offset, boolean killQuery, ServerConnection c, boolean hasMore) {
@@ -83,13 +93,37 @@ public final class KillHandler {
 
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
 
-        List<List<Map<String, Object>>> results = SyncManagerHelper
-            .sync(new KillSyncAction(c.getUser(), Long.parseLong(id), killQuery, c.isSuperUser(),
-                com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_USER_CANCELED), c.getSchema());
+        long connId = Long.parseLong(id);
 
-        for (List<Map<String, Object>> result : results) {
-            if (result != null) {
-                count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
+        KillSyncAction action = new KillSyncAction(c.getUser(), connId, killQuery, c.isSuperUserOrAllPrivileges(),
+            com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_USER_CANCELED);
+
+        if (connId >= 0 && ConfigDataMode.isPolarDbX()) {
+            int nodeIndex = ClusterAcceptIdGenerator.getInstance().extractNodeIndexFromConnId(connId);
+            GmsNodeManager.GmsNode node = null;
+
+            if (nodeIndex >= 0) {
+                node = GmsNodeManager.getInstance().getAllNodes().get(nodeIndex);
+            }
+
+            if (node != null) {
+                List<Map<String, Object>> result = SyncManagerHelper
+                    .sync(action, c.getSchema(),
+                        node.getServerKey());
+                if (result != null) {
+                    count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
+                }
+            }
+        }
+
+        if (count == 0) {
+            List<List<Map<String, Object>>> results = SyncManagerHelper
+                .sync(action, c.getSchema());
+
+            for (List<Map<String, Object>> result : results) {
+                if (result != null) {
+                    count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
+                }
             }
         }
 

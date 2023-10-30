@@ -83,7 +83,10 @@ public class ForceIndexPrimaryAsOfTest extends ReadBaseTestCase {
                     Assert.assertTrue(found, "not found force index in explain result.");
                 }
 
-                JdbcUtil.executeQueryFaied(tddlConnection, sql, "Snapshot too old");
+                JdbcUtil.executeQueryFaied(tddlConnection, sql,
+                    new String[] {
+                        "The definition of the table required by the flashback query has changed",
+                        "Snapshot too old"});
             }
         }
     }

@@ -74,6 +74,8 @@ public class CleanRemovedDbLocalityMetaTask extends BaseDdlTask {
                 removedLocalityPgIds.add(localityDetailInfoRecord.getObjectId());
             } else if (objectType == LocalityDetailInfoRecord.LOCALITY_TYPE_TABLE) {
                 tableNames.add(localityDetailInfoRecord.objectName);
+                tablePartitionAccessor.setTableLocalityByTableName(schemaName,
+                    localityDetailInfoRecord.getObjectName(), "");
             } else if (objectType == LocalityDetailInfoRecord.LOCALITY_TYPE_DATABASE) {
                 LocalityManager.getInstance().setLocalityOfDb(localityDetailInfoRecord.getObjectId(), "");
             }

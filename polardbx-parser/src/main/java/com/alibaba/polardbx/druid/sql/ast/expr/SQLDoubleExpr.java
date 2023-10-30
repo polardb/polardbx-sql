@@ -28,16 +28,16 @@ public class SQLDoubleExpr extends SQLNumericLiteralExpr implements SQLValuableE
 
     private double value;
 
-    public SQLDoubleExpr(){
+    public SQLDoubleExpr() {
 
     }
 
-    public SQLDoubleExpr(String value){
+    public SQLDoubleExpr(String value) {
         super();
         this.value = Double.parseDouble(value);
     }
 
-    public SQLDoubleExpr(double value){
+    public SQLDoubleExpr(double value) {
         super();
         this.value = value;
     }
@@ -72,8 +72,12 @@ public class SQLDoubleExpr extends SQLNumericLiteralExpr implements SQLValuableE
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLDoubleExpr that = (SQLDoubleExpr) o;
 

@@ -16,6 +16,9 @@
  */
 package org.apache.calcite.sql.type;
 
+import com.google.common.base.Predicate;
+import com.google.common.base.Predicates;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeComparability;
 import org.apache.calcite.runtime.PredicateImpl;
@@ -25,10 +28,6 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperandCountRange;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlUtil;
-
-import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
-import com.google.common.collect.ImmutableList;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -170,6 +169,9 @@ public abstract class OperandTypes {
    */
   public static final SqlOperandTypeChecker ZERO_OR_ONE =
       variadic(SqlOperandCountRanges.between(0, 1));
+
+  public static final SqlOperandTypeChecker ONE =
+      variadic(SqlOperandCountRanges.of(1));
 
   public static SqlOperandTypeChecker variadic(
       final SqlOperandCountRange range) {

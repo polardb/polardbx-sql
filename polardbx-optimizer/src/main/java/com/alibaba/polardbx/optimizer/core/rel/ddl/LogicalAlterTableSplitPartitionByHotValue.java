@@ -18,25 +18,27 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionByHotValuePreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
@@ -57,6 +59,8 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -75,6 +79,17 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
     public LogicalAlterTableSplitPartitionByHotValue(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + tableName);
     }
 
     public void preparedData(ExecutionContext executionContext) {
@@ -113,12 +128,42 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
 
         int i = insertPos[1];
         Set<String> oldPartitionNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        do {
-            String oldPartitionName = partitionInfo.getPartitionBy().getNthPartition(i).getName();
-            oldPartitions.add(oldPartitionName);
-            oldPartitionNameSet.add(oldPartitionName);
-            i--;
-        } while (i > insertPos[0]);
+        PartitionSpec splitPartitionSpec = null;
+        boolean subPartitionSplit = sqlAlterTableSplitPartitionByHotValue.isSubPartitionsSplit();
+        boolean modifyNonTemplateSubPartition =
+            subPartitionSplit && (sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName() != null);
+        if (sqlAlterTableSplitPartitionByHotValue.isSubPartitionsSplit()) {
+            if (modifyNonTemplateSubPartition) {
+                String parentPartName =
+                    SQLUtils.normalizeNoTrim(
+                        sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName().getSimpleName());
+                PartitionSpec parentPartitionSpec =
+                    partitionInfo.getPartitionBy().getPartitionByPartName(parentPartName);
+                do {
+                    String oldPartitionName = parentPartitionSpec.getNthSubPartition(i).getName();
+                    splitPartitionSpec = parentPartitionSpec.getNthSubPartition(i);
+                    oldPartitions.add(oldPartitionName);
+                    oldPartitionNameSet.add(oldPartitionName);
+                    i--;
+                } while (i > insertPos[0]);
+            } else {
+                PartitionSpec parentPartitionSpec = partitionInfo.getPartitionBy().getNthPartition(1);
+                do {
+                    String oldPartitionName = parentPartitionSpec.getNthSubPartition(i).getTemplateName();
+                    oldPartitionNameSet.add(oldPartitionName);
+                    oldPartitions.add(oldPartitionName);
+                    i--;
+                } while (i > insertPos[0]);
+            }
+        } else {
+            do {
+                String oldPartitionName = partitionInfo.getPartitionBy().getNthPartition(i).getName();
+                splitPartitionSpec = partitionInfo.getPartitionBy().getNthPartition(i);
+                oldPartitions.add(oldPartitionName);
+                oldPartitionNameSet.add(oldPartitionName);
+                i--;
+            } while (i > insertPos[0]);
+        }
 
         OptimizerContext oc =
             Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
@@ -126,8 +171,26 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             oc.getTableGroupInfoManager().getTableGroupConfigById(partitionInfo.getTableGroupId());
 
         List<String> newPartitionNames =
-            generateNewPartitionNames(tableGroupConfig, oldPartitionNameSet, hotKeyPartNamePrefix, splitPoints.size(),
+            generateNewPartitionNames(tableGroupConfig, subPartitionSplit, oldPartitionNameSet, hotKeyPartNamePrefix,
+                splitPoints.size(),
                 flag);
+        PartitionByDefinition partBy = partitionInfo.getPartitionBy();
+        boolean hasSubPartition = partBy.getSubPartitionBy() != null;
+        boolean useTemplateSubPartition = hasSubPartition && partBy.getSubPartitionBy().isUseSubPartTemplate();
+        List<String> newSubPartitionNames = new ArrayList();
+        if (!subPartitionSplit && hasSubPartition) {
+            assert splitPartitionSpec != null && GeneralUtil.isNotEmpty(splitPartitionSpec.getSubPartitions());
+            if (!useTemplateSubPartition) {
+                newSubPartitionNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
+                    newPartitionNames.size() * splitPartitionSpec.getSubPartitions().size(),
+                    new HashSet<>(), true));
+            } else {
+                for (PartitionSpec subPartitionSpec : splitPartitionSpec.getSubPartitions()) {
+                    assert subPartitionSpec.isUseSpecTemplate();
+                    newSubPartitionNames.add(subPartitionSpec.getTemplateName());
+                }
+            }
+        }
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
             LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName,
@@ -135,16 +198,46 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
         Map<String, List<Long[]>> splitPointInfos = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         splitPointInfos.put(logicalTableName, splitPoints);
 
+        Map<String, String> newPartitionLocalities = new HashMap<>();
+        if (sqlAlterTableSplitPartitionByHotValue.getLocality() != null) {
+            String locality = sqlAlterTableSplitPartitionByHotValue.getLocality().toString();
+            final String finalPrefix = hotKeyPartNamePrefix;
+            newPartitionNames.stream().filter(o -> o.startsWith(finalPrefix))
+                .forEach(o -> newPartitionLocalities.put(o, locality));
+        }
         preparedData =
             new AlterTableSplitPartitionByHotValuePreparedData();
 
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(logicalTableName);
         preparedData.setWithHint(targetTablesHintCache != null);
+        preparedData.setNewPartitionLocalities(newPartitionLocalities);
 
         Collections.reverse(oldPartitions);
         preparedData.setOldPartitionNames(oldPartitions);
-        preparedData.setNewPartitionNames(newPartitionNames);
+        if (!subPartitionSplit && hasSubPartition) {
+            preparedData.setLogicalParts(newPartitionNames);
+            preparedData.setNewPartitionNames(newSubPartitionNames);
+        } else if (subPartitionSplit && !modifyNonTemplateSubPartition) {
+            List<String> logicalParts = new ArrayList<>();
+            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+                logicalParts.add(partitionSpec.getName());
+            }
+            preparedData.setLogicalParts(logicalParts);
+            preparedData.setNewPartitionNames(newPartitionNames);
+        } else {
+            if (modifyNonTemplateSubPartition) {
+                String parentPartName =
+                    SQLUtils.normalizeNoTrim(
+                        sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName().getSimpleName());
+                preparedData.setParentPartitionName(parentPartName);
+            }
+            preparedData.setNewPartitionNames(newPartitionNames);
+        }
+        preparedData.setUseTemplatePart(useTemplateSubPartition);
+        preparedData.setSplitSubPartition(subPartitionSplit);
+        preparedData.setOperateOnSubPartition(subPartitionSplit);
+        preparedData.setHasSubPartition(hasSubPartition);
         preparedData.setTableGroupName(tableGroupConfig.getTableGroupRecord().getTg_name());
         preparedData.setInsertPos(insertPos);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
@@ -157,30 +250,34 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
         List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        List<Pair<String, String>> mockOrderedTargetTableLocations = new ArrayList<>(newPartitionGroups.size());
+        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
 
         if (ignoreNameAndLocality) {
             for (int j = 0; j < newPartitionGroups.size(); j++) {
                 Pair<String, String> pair = new Pair<>("", "");
-                mockOrderedTargetTableLocations.add(pair);
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
             }
         } else {
-            i = 0;
             for (int j = 0; j < newPartitionGroups.size(); j++) {
-                GroupDetailInfoExRecord groupDetailInfoExRecord =
-                    preparedData.getTargetGroupDetailInfoExRecords().get(i++);
-
                 String mockTableName = "";
-                mockOrderedTargetTableLocations.add(new Pair<>(mockTableName, groupDetailInfoExRecord.getGroupName()));
-                if (i >= preparedData.getTargetGroupDetailInfoExRecords().size()) {
-                    i = 0;
-                }
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
+                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
             }
         }
 
         PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForSplitPartitionByHotValue(curPartitionInfo, preparedData,
-                mockOrderedTargetTableLocations, executionContext);
+            .getNewPartitionInfo(
+                preparedData,
+                partitionInfo,
+                false,
+                sqlAlterTableSplitPartitionByHotValue,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                preparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                mockOrderedTargetTableLocations,
+                executionContext);
 
         preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
             hotKeyPartNamePrefix,
@@ -188,21 +285,23 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             executionContext);
     }
 
-    public List<String> generateNewPartitionNames(TableGroupConfig tableGroupConfig, Set<String> oldPartitionNames,
+    public List<String> generateNewPartitionNames(TableGroupConfig tableGroupConfig, boolean forSubPart,
+                                                  Set<String> oldPartitionNames,
                                                   String hotKeyPartNamePrefix,
                                                   int splitSize, int flag) {
         List<String> newPartitionNames = null;
-        Set<String> newPartitionNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         if (hotKeyPartNamePrefix.isEmpty() || PartitionNameUtil.isDefaultPartNamePattern(hotKeyPartNamePrefix)) {
             newPartitionNames =
-                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, splitSize + 1);
+                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, splitSize + 1,
+                    new TreeSet<>(String::compareToIgnoreCase), forSubPart);
         } else {
             if (flag == 2) {
                 newPartitionNames = PartitionNameUtil
                     .autoGeneratePartitionNamesWithUserDefPrefix(hotKeyPartNamePrefix, splitSize + 1);
             } else if (flag == -1) {
                 newPartitionNames =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1);
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                        new TreeSet<>(String::compareToIgnoreCase), forSubPart);
                 newPartitionNames.addAll(PartitionNameUtil
                     .autoGeneratePartitionNamesWithUserDefPrefix(hotKeyPartNamePrefix, splitSize));
             } else if (flag == 1) {
@@ -211,7 +310,8 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
                 //newPartitionNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1));
             } else if (flag == 0) {
                 newPartitionNames = new ArrayList<>();
-                List<String> boundPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2);
+                List<String> boundPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2,
+                    new TreeSet<>(String::compareToIgnoreCase), forSubPart);
                 newPartitionNames.add(boundPartNames.get(0));
                 newPartitionNames.addAll(PartitionNameUtil
                     .autoGeneratePartitionNamesWithUserDefPrefix(hotKeyPartNamePrefix, splitSize + 1 - 2));
@@ -220,7 +320,6 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
                 assert false;
             }
         }
-        newPartitionNames.forEach(o -> newPartitionNameSet.add(o));
 
         for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
             if (newPartitionNames.contains(record.partition_name) && !oldPartitionNames
@@ -240,6 +339,8 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
         List<Long[]> splitPoints,
         int[] insertPos) {
 
+        boolean splitSubPartition = sqlAlterTableSplitPartitionByHotValue.isSubPartitionsSplit();
+
         List<SqlNode> hotKeys = sqlAlterTableSplitPartitionByHotValue.getHotKeys();
         List<RexNode> hotKeysRexNode = new ArrayList<>();
         for (SqlNode hotKey : hotKeys) {
@@ -247,17 +348,23 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             hotKeysRexNode.add(rexNode);
         }
 
+        if (splitSubPartition && partitionInfo.getPartitionBy().getSubPartitionBy() == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "subpartition is not exists");
+        }
         String schemaName = partitionInfo.getTableSchema();
         String tblName = partitionInfo.getTableName();
-        int partColCnt = partitionInfo.getPartitionColumns().size();
-        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
+        PartitionByDefinition partByDef =
+            splitSubPartition ? partitionInfo.getPartitionBy().getSubPartitionBy() : partitionInfo.getPartitionBy();
+        int partColCnt = partByDef.getPartitionColumnNameList().size();
+        PartitionStrategy strategy = partByDef.getStrategy();
         int hotKeyValColCnt = hotKeys.size();
         SqlNumericLiteral splitPartCntLiteral =
             (SqlNumericLiteral) sqlAlterTableSplitPartitionByHotValue.getPartitions();
         int splitPartCnt = splitPartCntLiteral.intValue(true);
         if (!(strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.RANGE_COLUMNS)) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                "only support for key/range column partition to split partition by hot value");
+                "only support for key/range column partition to split partition/subpartition by hot value");
         }
 
         if (hotKeyValColCnt > partColCnt) {
@@ -272,7 +379,7 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             }
         }
 
-        return getSplitPointsForHotValue(hotKeysRexNode, sqlAlterTableSplitPartitionByHotValue.getPartitions(),
+        return getSplitPointsForHotValue(sqlAlterTableSplitPartitionByHotValue, hotKeysRexNode,
             partitionInfo, executionContext, splitPoints, insertPos);
 
     }
@@ -432,18 +539,23 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
      *
      * </pre>
      */
-    private int getSplitPointsForHotValue(List<RexNode> hotKeys,
-                                          SqlNode partitions,
+    private int getSplitPointsForHotValue(SqlAlterTableSplitPartitionByHotValue sqlAlterTableSplitPartitionByHotValue,
+                                          List<RexNode> hotKeys,
                                           PartitionInfo partitionInfo,
                                           ExecutionContext ec,
                                           List<Long[]> outputFinalSplitPoints,
                                           int[] outputInsertPos) {
 
-        List<RelDataType> relDataTypes = partitionInfo.getPartitionBy().getPartitionExprTypeList();
-        PartitionIntFunction partIntFunc = partitionInfo.getPartitionBy().getPartIntFunc();
-        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
+        boolean splitSubPartition = sqlAlterTableSplitPartitionByHotValue.isSubPartitionsSplit();
+        SqlNode partitions = sqlAlterTableSplitPartitionByHotValue.getPartitions();
+        PartitionByDefinition partByDef =
+            splitSubPartition ? partitionInfo.getPartitionBy().getSubPartitionBy() : partitionInfo.getPartitionBy();
+
+        List<RelDataType> relDataTypes = partByDef.getPartitionExprTypeList();
+        PartitionIntFunction partIntFunc = partByDef.getPartIntFunc();
+        PartitionStrategy strategy = partByDef.getStrategy();
         List<PartitionBoundVal> oneBndVal = new ArrayList<>();
-        int partColCnt = partitionInfo.getPartitionColumns().size();
+        int partColCnt = partByDef.getPartitionColumnNameList().size();
         int hotKeyValColCnt = hotKeys.size();
         int splitIntoParts = ((SqlNumericLiteral) partitions).intValue(true);
 
@@ -460,7 +572,7 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             oneBndVal.add(bndVal);
         }
         SearchDatumInfo datum = new SearchDatumInfo(oneBndVal);
-        Long[] hotValHashCodeArr = partitionInfo.getPartitionBy().getHasher().calcHashCodeForKeyStrategy(datum);
+        Long[] hotValHashCodeArr = partByDef.getHasher().calcHashCodeForKeyStrategy(datum);
 
         /**
          * Compute the delta range for each new split partitions of hot value
@@ -523,7 +635,8 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
             splitPoints.add(newPartBndValue);
         }
         splitPoints.add(upperBndHashCodeArr);
-        return generateFinalSplitPoints(partitionInfo, splitPoints, ec, outputFinalSplitPoints, outputInsertPos);
+        return generateFinalSplitPoints(sqlAlterTableSplitPartitionByHotValue, partitionInfo, splitPoints, ec,
+            outputFinalSplitPoints, outputInsertPos);
     }
 
     /**
@@ -532,22 +645,50 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
      * 1: only the last new part not include hot value
      * 0: neither of first new part and last new part is hot value
      */
-    private int generateFinalSplitPoints(PartitionInfo partitionInfo, List<Long[]> splitPoints,
+    private int generateFinalSplitPoints(SqlAlterTableSplitPartitionByHotValue sqlAlterTableSplitPartitionByHotValue,
+                                         PartitionInfo partitionInfo, List<Long[]> splitPoints,
                                          ExecutionContext ec, List<Long[]> finalSplitPoints, int[] insertPos) {
         boolean firstPartIsNotHotValue = false;
         boolean lastPartIsNotHotValue = false;
+        boolean splitSubPartition = sqlAlterTableSplitPartitionByHotValue.isSubPartitionsSplit();
+        boolean isModifyPartition =
+            splitSubPartition && sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName() != null;
+        PartKeyLevel pkl = splitSubPartition ? PartKeyLevel.SUBPARTITION_KEY : PartKeyLevel.PARTITION_KEY;
+        Integer parentPartPosi = 1;
+        if (isModifyPartition) {
+            String parentPartName =
+                SQLUtils.normalizeNoTrim(
+                    sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName().getSimpleName());
+            PartitionSpec parentPartSpec = partitionInfo.getPartitionBy()
+                .getPartitionByPartName(parentPartName);
+            parentPartPosi = parentPartSpec.getPosition().intValue();
+        }
         for (int i = 0; i < splitPoints.size(); i++) {
             SearchDatumInfo searchDatumInfo = SearchDatumInfo.createFromHashCodes(splitPoints.get(i));
             PartitionSpec partitionSpec =
-                PartitionTupleRouteInfoBuilder.getPartitionSpecByHashCode(splitPoints.get(i), partitionInfo, ec);
+                PartitionTupleRouteInfoBuilder.getPartitionSpecByHashCode(splitPoints.get(i),
+                    pkl, parentPartPosi, partitionInfo, ec);
             if (partitionSpec == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     "can't find the correct split point");
             }
-            if (i == 0 || i == splitPoints.size() - 1) {
-                if (partitionSpec.getPosition() != 1) {
-                    PartitionSpec prePartSpec =
+            PartitionSpec prePartSpec = null;
+            boolean isNotFirstPartition = partitionSpec.getPosition() != 1;
+
+            if (splitSubPartition) {
+                if (isNotFirstPartition) {
+                    prePartSpec =
+                        partitionInfo.getPartitionBy().getNthPartition(parentPartPosi)
+                            .getNthSubPartition(partitionSpec.getPosition().intValue() - 1);
+                }
+            } else {
+                if (isNotFirstPartition) {
+                    prePartSpec =
                         partitionInfo.getPartitionBy().getNthPartition(partitionSpec.getPosition().intValue() - 1);
+                }
+            }
+            if (i == 0 || i == splitPoints.size() - 1) {
+                if (isNotFirstPartition) {
                     if (prePartSpec.getBoundSpaceComparator()
                         .compare(prePartSpec.getBoundSpec().getSingleDatum(), searchDatumInfo) != 0) {
                         finalSplitPoints.add(splitPoints.get(i));

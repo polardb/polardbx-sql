@@ -1,0 +1,26 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+
+DROP TABLE IF EXISTS `hash_to_months`;
+CREATE TABLE IF NOT EXISTS `hash_to_months` (
+`dt` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_MONTHS(`dt`))
+PARTITIONS 8;
+show create table hash_to_months;
+
+explain select dt from hash_to_months where dt = '2021-12-01';
+explain select dt from hash_to_months where dt = '2021-11-01';
+select part_route('', 'hash_to_months', '2022-01-01');
+select part_route('', 'hash_to_months', '2022-02-01');
+select part_route('', 'hash_to_months', '2022-03-01');
+select part_route('', 'hash_to_months', '2022-04-01');
+select part_route('', 'hash_to_months', '2022-05-01');
+select part_route('', 'hash_to_months', '2022-06-01');
+select part_route('', 'hash_to_months', '2022-07-01');
+select part_route('', 'hash_to_months', '2022-08-01');
+select part_route('', 'hash_to_months', '2022-09-01');
+select part_route('', 'hash_to_months', '2022-10-01');
+select part_route('', 'hash_to_months', '2022-11-01');
+select part_route('', 'hash_to_months', '2022-12-01');
+explain select dt from hash_to_months where dt between '2022-05-01' and '2022-11-1' ;

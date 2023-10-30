@@ -30,9 +30,33 @@ public class SQLShowPartitionsStmt extends SQLStatementImpl implements SQLShowSt
     private List<SQLAssignItem> partition = new ArrayList<SQLAssignItem>();
 
     private SQLExpr where;
-    
+
+    private boolean showPartMeta = true;
+    private SQLExpr indexName = null;
+    private boolean showIndexPartMeta = false;
+
+    public void setPartition(List<SQLAssignItem> partition) {
+        this.partition = partition;
+    }
+
+    public SQLExpr getIndexName() {
+        return indexName;
+    }
+
+    public void setIndexName(SQLExpr indexName) {
+        this.indexName = indexName;
+    }
+
+    public boolean isShowIndexPartMeta() {
+        return showIndexPartMeta;
+    }
+
+    public void setShowIndexPartMeta(boolean showIndexPartMeta) {
+        this.showIndexPartMeta = showIndexPartMeta;
+    }
+
     public SQLShowPartitionsStmt() {
-        super (DbType.mysql);
+        super(DbType.mysql);
     }
 
     public SQLExprTableSource getTableSource() {
@@ -74,5 +98,13 @@ public class SQLShowPartitionsStmt extends SQLStatementImpl implements SQLShowSt
             acceptChild(visitor, where);
         }
         visitor.endVisit(this);
+    }
+
+    public boolean isShowPartMeta() {
+        return showPartMeta;
+    }
+
+    public void setShowPartMeta(boolean showPartMeta) {
+        this.showPartMeta = showPartMeta;
     }
 }

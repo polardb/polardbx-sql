@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.util.Pair;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +52,7 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
         this.exprInfo = ((PartPredicateRouteFunction) opStep.getPredRouteFunc()).getSearchExprInfo();
         int partCol = partInfo.getPartitionBy().getPartitionColumnNameList().size();
         ComparisonKind cmpKind = exprInfo.getCmpKind();
+        PartKeyLevel partLevel = this.opStep.getPartLevel();
         if (cmpKind == ComparisonKind.LESS_THAN || cmpKind == ComparisonKind.LESS_THAN_OR_EQUAL) {
             StepIntervalInfo range = new StepIntervalInfo();
             range.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
@@ -72,6 +74,7 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
                 ComparisonKind.GREATER_THAN, false, 0, false, true);
 
             range.setMinVal(minVal);
+            range.setPartLevel(partLevel);
 
             this.opRawRange = range;
 
@@ -87,7 +90,6 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             RangeInterval rangeInterval = RangeInterval.buildRangeInterval(null,
                 cmpKind, cmpKind.containEqual(), 0, false, false);
 
-
             /**
              * col <  const | col <= const
              */
@@ -99,9 +101,9 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             RangeInterval maxVal = RangeInterval.buildRangeInterval(SearchDatumInfo.createMaxValDatumInfo(partCol),
                 ComparisonKind.LESS_THAN, false, 0, true, false);
 
-
             range.setMaxVal(maxVal);
 
+            range.setPartLevel(partLevel);
             this.opRawRange = range;
         } else {
 
@@ -143,6 +145,8 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             range.setMinValStep(newMinValStep);
 
             range.setBuildFromSingePointInterval(true);
+
+            range.setPartLevel(partLevel);
             this.opRawRange = range;
         }
     }
@@ -153,10 +157,12 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
         List<Pair<SearchExprEvalResult, Integer>> exprEvalRsInfos = null;
         List<StepIntervalInfo> ranges = new ArrayList<>();
 
+        PartKeyLevel partLevel = this.opStep.getPartLevel();
         if (this.opStep.isDynamicSubQueryInStep()) {
             StepIntervalInfo rng = new StepIntervalInfo();
             rng.setForbidMerging(true);
             rng.setFinalStep(this.opStep);
+            rng.setPartLevel(partLevel);
             ranges.add(rng);
             return ranges;
         }
@@ -171,6 +177,7 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
              * so current opStep should be treated as Always-True expr and generate a Always-True range
              */
             StepIntervalInfo range = PartitionPruneStepIntervalAnalyzer.buildTautologyRange();
+            range.setPartLevel(partLevel);
             ranges.add(range);
             return ranges;
         }

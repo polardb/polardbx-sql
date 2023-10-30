@@ -19,7 +19,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLPartitionByList extends SQLPartitionBy {
 
-    protected boolean       isColumns = false;
+    protected boolean isColumns = false;
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {

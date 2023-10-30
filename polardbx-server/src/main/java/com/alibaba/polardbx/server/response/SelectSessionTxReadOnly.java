@@ -39,7 +39,7 @@ public final class SelectSessionTxReadOnly {
     private static final int FIELD_COUNT = 1;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -48,11 +48,9 @@ public final class SelectSessionTxReadOnly {
 
         fields[i] = PacketUtil.getField("SESSION.TX_READ_ONLY", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
 
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
@@ -66,16 +64,20 @@ public final class SelectSessionTxReadOnly {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // get value
         boolean v = getValue(c);
 
         // write rows
-        byte packetId = eof.packetId;
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        row.packetId = ++packetId;
+        row.packetId = ++tmpPacketId;
         if (v) {
             row.add(LongUtil.toBytes(1));
         } else {
@@ -85,7 +87,7 @@ public final class SelectSessionTxReadOnly {
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -93,6 +95,7 @@ public final class SelectSessionTxReadOnly {
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 
     private static boolean getValue(ServerConnection c) {

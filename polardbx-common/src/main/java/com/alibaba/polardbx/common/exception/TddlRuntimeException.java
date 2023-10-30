@@ -40,6 +40,7 @@ public class TddlRuntimeException extends TddlNestableRuntimeException {
         }
     }
 
+    @Deprecated
     public TddlRuntimeException(ErrorCode errorCode, String message, Throwable cause) {
         super(message, cause);
         this.errorCode = errorCode;

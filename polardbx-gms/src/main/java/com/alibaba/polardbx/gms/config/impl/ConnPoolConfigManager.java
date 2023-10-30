@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.gms.config.impl;
 
-import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -179,14 +179,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
             XConnectionManager.getInstance()
                 .setMaxPacketSize(newConnConf.xprotoMaxPacketSize);
         }
-        if (newConnConf.xprotoQueryToken != null) {
-            XConnectionManager.getInstance()
-                .setDefaultQueryToken(newConnConf.xprotoQueryToken);
-        }
-        if (newConnConf.xprotoPipeBufferSize != null) {
-            XConnectionManager.getInstance()
-                .setDefaultPipeBufferSize(newConnConf.xprotoPipeBufferSize);
-        }
 
         // apply new config for conn pools
         for (String dbKeyStr : atomConnPoolConfigHandlerMap.keySet()) {
@@ -228,8 +220,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         Boolean xprotoFeedback = null;
         Boolean xprotoChecker = null;
         Long xprotoMaxPacketSize = null;
-        Integer xprotoQueryToken = null;
-        Long xprotoPipeBufferSize = null;
 
         String propVal = null;
         propVal = properties.getProperty(ConnectionProperties.CONN_POOL_PROPERTIES);
@@ -377,16 +367,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
             xprotoMaxPacketSize = Long.valueOf(propVal);
         }
 
-        propVal = properties.getProperty(ConnectionProperties.CONN_POOL_XPROTO_QUERY_TOKEN);
-        if (propVal != null) {
-            xprotoQueryToken = Integer.valueOf(propVal);
-        }
-
-        propVal = properties.getProperty(ConnectionProperties.CONN_POOL_XPROTO_PIPE_BUFFER_SIZE);
-        if (propVal != null) {
-            xprotoPipeBufferSize = Long.valueOf(propVal);
-        }
-
         ConnPoolConfig connPoolConfig = new ConnPoolConfig();
         connPoolConfig.connProps = connProps;
         connPoolConfig.minPoolSize = minPoolSize;
@@ -417,14 +397,7 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         connPoolConfig.xprotoFeedback = xprotoFeedback;
         connPoolConfig.xprotoChecker = xprotoChecker;
         connPoolConfig.xprotoMaxPacketSize = xprotoMaxPacketSize;
-        connPoolConfig.xprotoQueryToken = xprotoQueryToken;
-        connPoolConfig.xprotoPipeBufferSize = xprotoPipeBufferSize;
-
-        IsolationLevel isolation =
-            IsolationLevel.parse(properties.getProperty(ConnectionProperties.TRANSACTION_ISOLATION));
-        if (isolation != null) {
-            connPoolConfig.defaultTransactionIsolation = isolation.getCode();
-        }
+        connPoolConfig.defaultTransactionIsolation = DynamicConfig.getInstance().getTxIsolation();
 
         return connPoolConfig;
     }
@@ -460,8 +433,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         tmpConnPoolConfig.xprotoFeedback = globalConnPoolConfig.xprotoFeedback;
         tmpConnPoolConfig.xprotoChecker = globalConnPoolConfig.xprotoChecker;
         tmpConnPoolConfig.xprotoMaxPacketSize = globalConnPoolConfig.xprotoMaxPacketSize;
-        tmpConnPoolConfig.xprotoQueryToken = globalConnPoolConfig.xprotoQueryToken;
-        tmpConnPoolConfig.xprotoPipeBufferSize = globalConnPoolConfig.xprotoPipeBufferSize;
         tmpConnPoolConfig.defaultTransactionIsolation = globalConnPoolConfig.defaultTransactionIsolation;
 
         boolean isChanged = false;
@@ -636,18 +607,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
             tmpConnPoolConfig.xprotoMaxPacketSize = connPoolConfig.xprotoMaxPacketSize;
         }
 
-        if (connPoolConfig.xprotoQueryToken != null &&
-            !tmpConnPoolConfig.xprotoQueryToken.equals(connPoolConfig.xprotoQueryToken)) {
-            isChanged = true;
-            tmpConnPoolConfig.xprotoQueryToken = connPoolConfig.xprotoQueryToken;
-        }
-
-        if (connPoolConfig.xprotoPipeBufferSize != null &&
-            !tmpConnPoolConfig.xprotoPipeBufferSize.equals(connPoolConfig.xprotoPipeBufferSize)) {
-            isChanged = true;
-            tmpConnPoolConfig.xprotoPipeBufferSize = connPoolConfig.xprotoPipeBufferSize;
-        }
-
         if (connPoolConfig.defaultTransactionIsolation != null &&
             !connPoolConfig.defaultTransactionIsolation.equals(tmpConnPoolConfig.defaultTransactionIsolation)) {
             isChanged = true;
@@ -692,8 +651,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         Boolean xprotoFeedback;
         Boolean xprotoChecker;
         Long xprotoMaxPacketSize;
-        Integer xprotoQueryToken;
-        Long xprotoPipeBufferSize;
 
         Map<String, String> emptyExtraCmds = new HashMap<>();
         ParamManager paramManager = new ParamManager(emptyExtraCmds);
@@ -728,8 +685,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         xprotoFeedback = paramManager.getBoolean(ConnectionParams.CONN_POOL_XPROTO_FEEDBACK);
         xprotoChecker = paramManager.getBoolean(ConnectionParams.CONN_POOL_XPROTO_CHECKER);
         xprotoMaxPacketSize = paramManager.getLong(ConnectionParams.CONN_POOL_XPROTO_MAX_PACKET_SIZE);
-        xprotoQueryToken = paramManager.getInt(ConnectionParams.CONN_POOL_XPROTO_QUERY_TOKEN);
-        xprotoPipeBufferSize = paramManager.getLong(ConnectionParams.CONN_POOL_XPROTO_PIPE_BUFFER_SIZE);
 
         ConnPoolConfig connPoolConfig = new ConnPoolConfig();
         connPoolConfig.connProps = connProps;
@@ -761,8 +716,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         connPoolConfig.xprotoFeedback = xprotoFeedback;
         connPoolConfig.xprotoChecker = xprotoChecker;
         connPoolConfig.xprotoMaxPacketSize = xprotoMaxPacketSize;
-        connPoolConfig.xprotoQueryToken = xprotoQueryToken;
-        connPoolConfig.xprotoPipeBufferSize = xprotoPipeBufferSize;
         return connPoolConfig;
     }
 
@@ -856,14 +809,6 @@ public class ConnPoolConfigManager extends AbstractLifecycle {
         if (connPoolConfig.xprotoMaxPacketSize != null) {
             XConnectionManager.getInstance()
                 .setMaxPacketSize(connPoolConfig.xprotoMaxPacketSize);
-        }
-        if (connPoolConfig.xprotoQueryToken != null) {
-            XConnectionManager.getInstance()
-                .setDefaultQueryToken(connPoolConfig.xprotoQueryToken);
-        }
-        if (connPoolConfig.xprotoPipeBufferSize != null) {
-            XConnectionManager.getInstance()
-                .setDefaultPipeBufferSize(connPoolConfig.xprotoPipeBufferSize);
         }
     }
 

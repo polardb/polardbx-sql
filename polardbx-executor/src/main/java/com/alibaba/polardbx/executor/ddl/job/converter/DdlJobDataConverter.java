@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -42,7 +43,6 @@ import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +59,7 @@ public class DdlJobDataConverter {
     public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
                                                              boolean isGsi, boolean isAutoPartition) {
-        return convertToPhysicalPlanData(tableTopology, physicalPlans, isGsi, isAutoPartition, false);
+        return convertToPhysicalPlanData(tableTopology, physicalPlans, isGsi, isAutoPartition, false, false);
     }
 
     /**
@@ -68,7 +68,8 @@ public class DdlJobDataConverter {
      */
     public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
-                                                             boolean isGsi, boolean isAutoPartition, boolean isOSS) {
+                                                             boolean isGsi, boolean isAutoPartition, boolean isOSS,
+                                                             boolean pushDownFk) {
         PhysicalPlanData data = new PhysicalPlanData();
 
         PhyDdlTableOperation physicalPlan = physicalPlans.get(0);
@@ -80,7 +81,11 @@ public class DdlJobDataConverter {
         data.setNewLogicalTableName(physicalPlan.getNewLogicalTableName());
 
         data.setDefaultDbIndex(physicalPlan.getDbIndex());
-        data.setDefaultPhyTableName(Util.last(Util.last(physicalPlan.getTableNames())));
+        if (!pushDownFk) {
+            data.setDefaultPhyTableName(Util.last(Util.last(physicalPlan.getTableNames())));
+        } else {
+            data.setDefaultPhyTableName(Util.last(physicalPlan.getTableNames()).get(0));
+        }
 
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (!isNewPartDb) {
@@ -97,9 +102,10 @@ public class DdlJobDataConverter {
             if (partitionInfo != null || isOSS) {
                 TableGroupConfig tableGroupConfig = buildTableGroupConfig(partitionInfo, isOSS);
                 data.setTableGroupConfig(tableGroupConfig);
-                Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology = physicalPlan.getPartitionInfo().getPhysicalPartitionTopology(null, false);
+                Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology =
+                    physicalPlan.getPartitionInfo().getPhysicalPartitionTopology(null, false);
                 data.setPhysicalPartitionTopology(physicalPartitionTopology);
-                data.setLocalityDesc(LocalityDesc.parse(partitionInfo.getLocality()));
+                data.setLocalityDesc(LocalityInfoUtils.parse(partitionInfo.getLocality()));
             }
         }
         data.setTableTopology(tableTopology);
@@ -204,13 +210,15 @@ public class DdlJobDataConverter {
         }
 
         partitionGroupRecords =
-            PartitionInfoUtil.prepareRecordForPartitionGroups(partitionInfo.getPartitionBy().getPartitions());
+            PartitionInfoUtil.prepareRecordForPartitionGroups(partitionInfo.getPartitionBy().getPhysicalPartitions());
         partitionGroupRecords.forEach(o -> o.tg_id = partitionInfo.getTableGroupId());
 
         TablePartRecordInfoContext tablePartRecordInfoContext = new TablePartRecordInfoContext();
         tablePartRecordInfoContext.setLogTbRec(logTableRec);
         tablePartRecordInfoContext.setPartitionRecList(partRecList);
         tablePartRecordInfoContext.setSubPartitionRecMap(subPartRecInfos);
+        tablePartRecordInfoContext.setSubPartitionRecList(
+            TablePartRecordInfoContext.buildAllSubPartitionRecList(subPartRecInfos));
         List<TablePartRecordInfoContext> tablePartRecordInfoContexts = new ArrayList<>();
         tablePartRecordInfoContexts.add(tablePartRecordInfoContext);
 

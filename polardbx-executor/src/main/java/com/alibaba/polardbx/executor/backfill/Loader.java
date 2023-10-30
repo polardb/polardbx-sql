@@ -44,7 +44,7 @@ import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-import static com.alibaba.polardbx.ErrorCode.ER_DUP_ENTRY;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_DUP_ENTRY;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DUP_ENTRY;
 
 /**
@@ -192,6 +192,9 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                 // Duplicated row in index table has identical primary key, primary sharding key
                 // and index sharding key with primary table, which means this row is identical
                 // with primary table, just skip.
+                while (checkerCursor.next() != null) {
+                    // do nothing
+                }
                 return;
             }
 

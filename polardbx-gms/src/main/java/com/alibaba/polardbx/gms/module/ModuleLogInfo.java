@@ -138,6 +138,8 @@ public class ModuleLogInfo implements ModuleInfo {
                              Throwable t) {
         Logger logger = getLogger(m.getLoggerName());
         String logLine = String.format(lp.getPattern(), (Object[]) params) + "#" + traceInfo;
+        // remove /n
+        logLine = logLine.replaceAll("\n", " ").trim();
         try {
             switch (level) {
             case NORMAL:

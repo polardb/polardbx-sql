@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.join;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
@@ -42,7 +43,13 @@ public class LookupPredicateBuilder {
         Set<Integer> lookupColumnSet = new HashSet<>();
         for (LookupEquiJoinKey key : joinKeys) {
             if (key.isNullSafeEqual()) {
-                continue; // '<=>' semantics can not be represented as IN expression
+                RelDataType relDataTypeInner =
+                    join.getInner().getRowType().getFieldList().get(key.getInnerIndex()).getType();
+                RelDataType relDataTypeOuter =
+                    join.getOuter().getRowType().getFieldList().get(key.getOuterIndex()).getType();
+                if (relDataTypeInner.isNullable() || relDataTypeOuter.isNullable()) {
+                    continue; // '<=>' semantics can not be represented as IN expression unless both join key are not nullable
+                }
             }
             if (!key.isCanFindOriginalColumn()) {
                 continue; // can not be represented as IN expression, because column origin is null

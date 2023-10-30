@@ -23,6 +23,7 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Date;
 import java.util.Map;
 
 public class IndexesRecord extends IndexesInfoSchemaRecord {
@@ -37,6 +38,9 @@ public class IndexesRecord extends IndexesInfoSchemaRecord {
     public long indexStatus;
     public long version;
     public long flag;
+    public long visible;
+    public Long visitFrequency;
+    public Date lastAccessTime;
 
     @Override
     public IndexesRecord fill(ResultSet rs) throws SQLException {
@@ -47,6 +51,9 @@ public class IndexesRecord extends IndexesInfoSchemaRecord {
         this.indexStatus = rs.getLong("index_status");
         this.version = rs.getLong("version");
         this.flag = rs.getLong("flag");
+        this.visible = rs.getLong("visible");
+        this.visitFrequency = rs.getLong("visit_frequency");
+        this.lastAccessTime = rs.getTimestamp("last_access_time");
         return this;
     }
 

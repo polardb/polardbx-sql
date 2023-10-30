@@ -110,6 +110,8 @@ public abstract class NodeStatusManager {
 
     protected abstract void checkLeader(Connection conn, String leaderId);
 
+    public abstract boolean forceToBeLeader();
+
     public boolean isInactiveNode(InternalNode node) {
         try (Connection conn = getConnection(); Statement statement = conn.createStatement()) {
             String sql = String.format(
@@ -233,7 +235,6 @@ public abstract class NodeStatusManager {
                     leaderId = ret;
                 }
             }
-            StorageStatusManager.getInstance().allowedReadLearnerIds(htapInstIds);
             checkLeader(conn, leaderId);
 
             if (localNode.isWorker()) {

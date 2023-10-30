@@ -125,6 +125,8 @@ public class LogicalShowStatsHandler extends HandlerCommon {
         long transCountTSO = 0;
 
         long backfillRows = 0;
+        long changeSetDeleteRows = 0;
+        long changeSetReplaceRows = 0;
         long checkedRows = 0;
 
         for (List<Map<String, Object>> nodeRows : results) {
@@ -232,12 +234,9 @@ public class LogicalShowStatsHandler extends HandlerCommon {
             transCountTSO += DataTypes.LongType.convertFrom(currentRow.get("transCountTSO"));
 
             backfillRows += DataTypes.LongType.convertFrom(currentRow.get("backfillRows"));
+            changeSetDeleteRows += DataTypes.LongType.convertFrom(currentRow.get("changeSetDeleteRows"));
+            changeSetReplaceRows += DataTypes.LongType.convertFrom(currentRow.get("changeSetReplaceRows"));
             checkedRows += DataTypes.LongType.convertFrom(currentRow.get("checkedRows"));
-        }
-
-        // show full qps (all db) in mock mode
-        if (ConfigDataMode.isFastMock()) {
-            qps = MatrixStatistics.requestAllDB.get();
         }
 
         cpu = cpu / size * 100D;
@@ -286,6 +285,8 @@ public class LogicalShowStatsHandler extends HandlerCommon {
             result.addColumn("DDL_JOB_COUNT", DataTypes.IntegerType);
 
             result.addColumn("BACKFILL_ROWS", DataTypes.IntegerType);
+            result.addColumn("CHANGE_SET_DELETE_ROWS", DataTypes.IntegerType);
+            result.addColumn("CHANGE_SET_REPLACE_ROWS", DataTypes.IntegerType);
             result.addColumn("CHECKED_ROWS", DataTypes.IntegerType);
 
             result.initMeta();
@@ -305,7 +306,7 @@ public class LogicalShowStatsHandler extends HandlerCommon {
                 new DecimalFormat("0.00").format(multiDbJoinQPS), totalMultiDbJoinQuery,
                 new DecimalFormat("0.00").format(cpu) + "%", new DecimalFormat("0.00").format(mem) + "%",
                 fullgcCount, fullgcTime, transCountXA, transCountBestEffort, transCountTSO, ddlJobCount,
-                backfillRows, checkedRows});
+                backfillRows, changeSetDeleteRows, changeSetReplaceRows, checkedRows});
         } else {
             result = new ArrayResultCursor("STATS");
             result.addColumn("QPS", DataTypes.DoubleType);
@@ -324,6 +325,8 @@ public class LogicalShowStatsHandler extends HandlerCommon {
             result.addColumn("DDL_JOB_COUNT", DataTypes.IntegerType);
 
             result.addColumn("BACKFILL_ROWS", DataTypes.LongType);
+            result.addColumn("CHANGE_SET_DELETE_ROWS", DataTypes.IntegerType);
+            result.addColumn("CHANGE_SET_REPLACE_ROWS", DataTypes.IntegerType);
             result.addColumn("CHECKED_ROWS", DataTypes.LongType);
 
             result.initMeta();
@@ -335,8 +338,8 @@ public class LogicalShowStatsHandler extends HandlerCommon {
                 new DecimalFormat("0.00").format(errorPerSecond), new DecimalFormat("0.00").format(mergeQPS),
                 activeConnection, new DecimalFormat("0.00").format(rt),
                 new DecimalFormat("0.00").format(physicalRt), new DecimalFormat("0.00").format(netIn / 1000),
-                new DecimalFormat("0.00").format(netOut / 1000), threadRunning, ddlJobCount, backfillRows,
-                checkedRows});
+                new DecimalFormat("0.00").format(netOut / 1000), threadRunning, ddlJobCount,
+                backfillRows, changeSetDeleteRows, changeSetReplaceRows, checkedRows});
         }
         return result;
     }

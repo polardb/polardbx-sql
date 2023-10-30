@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.transaction;
 
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.group.jdbc.TSavepoint;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -59,6 +60,11 @@ public class AllowReadTransaction extends BaseTransaction {
         this.ch = new ConnectionHolderCombiner(readConnectionHolder, writeConnectionHolder);
     }
 
+    @Override
+    public TransactionType getType() {
+        return TransactionType.ALLOW_READ;
+    }
+
     /**
      * 策略两种：1. 强一致策略，事务中不允许跨机查询。2.弱一致策略，事务中允许跨机查询；
      *
@@ -80,7 +86,6 @@ public class AllowReadTransaction extends BaseTransaction {
             }
 
             if (!begun) {
-                beginTransaction();
                 begun = true;
             }
 

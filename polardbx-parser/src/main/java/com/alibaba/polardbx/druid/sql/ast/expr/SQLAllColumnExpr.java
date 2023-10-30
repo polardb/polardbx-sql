@@ -27,7 +27,7 @@ import java.util.List;
 public final class SQLAllColumnExpr extends SQLExprImpl {
     private transient SQLTableSource resolvedTableSource;
 
-    public SQLAllColumnExpr(){
+    public SQLAllColumnExpr() {
 
     }
 

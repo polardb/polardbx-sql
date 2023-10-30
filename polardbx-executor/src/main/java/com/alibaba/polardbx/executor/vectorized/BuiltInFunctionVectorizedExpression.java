@@ -97,9 +97,4 @@ public class BuiltInFunctionVectorizedExpression extends AbstractVectorizedExpre
             }
         }
     }
-
-    public void setInFilter() {
-        this.executionContext = executionContext.copy();
-        this.executionContext.setIsInFilter(true);
-    }
 }

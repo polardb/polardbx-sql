@@ -15,5 +15,12 @@
  */
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+
 public interface SQLCreateStatement extends SQLDDLStatement {
+
+    @Override
+    default SqlType getSqlType() {
+        return SqlType.CREATE;
+    }
 }

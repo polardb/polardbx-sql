@@ -18,6 +18,8 @@ package com.alibaba.polardbx.qatest.dml.sharding.broadcast;
 
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
+import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
@@ -26,7 +28,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare;
 
 /**
  * Insert broadcast table with functions.
@@ -48,25 +50,103 @@ public class BroadcastWriteWithFuncTest extends CrudBasedLockTestCase {
 
     @Before
     public void initData() throws Exception {
-        final String sql = "DELETE FROM " + baseOneTableName;
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+        tableDataPrepare(baseOneTableName, 20,
+            TableColumnGenerator.getAllTypeColum(), PK_COLUMN_NAME, mysqlConnection,
+            tddlConnection, columnDataGenerator);
     }
 
     @Test
     public void testFunc() {
         String sql = "INSERT INTO " + baseOneTableName + " (pk, date_test) VALUES ("
-            + "1, DATE(DATE_ADD(NOW(), INTERVAL 1 DAY)))";
+            + "123456, DATE(DATE_ADD(NOW(), INTERVAL 1 DAY)))";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, false);
 
         sql = "INSERT INTO " + baseOneTableName + " (pk, datetime_test) VALUES ("
-            + "2, DATE(DATE_SUB(NOW(), INTERVAL 1 DAY)))";
+            + "32908082, DATE(DATE_SUB(NOW(), INTERVAL 1 DAY)))";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, false);
 
         sql = "INSERT INTO " + baseOneTableName + " (pk, integer_test) VALUES ("
-            + "3, HOUR(TIMEDIFF(NOW(), DATE_SUB(NOW(), INTERVAL 5 DAY))))";
+            + "483084027, HOUR(TIMEDIFF(NOW(), DATE_SUB(NOW(), INTERVAL 5 DAY))))";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, false);
 
-        sql = "SELECT * FROM " + baseOneTableName;
-        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        assertBroadcastTableSame(baseOneTableName, tddlConnection, mysqlConnection);
+    }
+
+    @Test
+    public void testRandomInsert() {
+        String sql = "INSERT INTO " + baseOneTableName + " (pk, double_test) VALUES ("
+            + "327346, rand())";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "INSERT INTO " + baseOneTableName + " (pk, timestamp_test) VALUES ("
+            + "43563, now())";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "INSERT INTO " + baseOneTableName + " (pk, timestamp_test) VALUES ("
+            + "4872639, CURRENT_TIMESTAMP())";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "INSERT INTO " + baseOneTableName + " (pk, datetime_test) VALUES ("
+            + "3780628, now())";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+    }
+
+    @Test
+    public void testUpdate() {
+        String sql = "UPDATE " + baseOneTableName + " set integer_test = 12983 order by rand() limit 1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set double_test = rand() order by rand() limit 1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set double_test = rand() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set timestamp_test = CURRENT_TIMESTAMP() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set datetime_test = now() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set varchar_test = uuid() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set time_test = curTime() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set date_test = curDate() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set integer_test = CONNECTION_ID() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "UPDATE " + baseOneTableName + " set integer_test = UNIX_TIMESTAMP() where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+    }
+
+    @Test
+    public void testDelete() {
+        String sql = "DELETE from " + baseOneTableName + " where rand() < 0.5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
+
+        sql = "DELETE from " + baseOneTableName + " order by rand() limit 1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        assertBroadcastTableSelfSame(baseOneTableName, tddlConnection);
     }
 }

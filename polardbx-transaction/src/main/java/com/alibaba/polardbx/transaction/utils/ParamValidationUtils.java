@@ -33,11 +33,17 @@ import java.util.Set;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_PURGE_TRANS_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TIMER_TASK_PARAM;
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TRANSACTION_STATISTICS_PARAM;
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_DEADLOCK_DETECTION;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.DEADLOCK_DETECTION_INTERVAL;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRANSACTION_STATISTICS;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRX_IDLE_TIMEOUT_TASK;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_BEFORE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_START_TIME;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRANSACTION_STATISTICS_TASK_INTERVAL;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRX_IDLE_TIMEOUT_TASK_INTERVAL;
 
 /**
  * @author wuzhe
@@ -93,6 +99,50 @@ public class ParamValidationUtils {
         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown deadlock detection parameter " + parameter);
     }
 
+    public static void validateTransactionStatisticsParam(String parameter, String value) {
+        if (TRANSACTION_STATISTICS_TASK_INTERVAL.equals(parameter)) {
+            final long longVal = Long.parseLong(value);
+            if (longVal < 1000) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should >= 1000(ms)");
+            }
+            return;
+        }
+
+        if (ENABLE_TRANSACTION_STATISTICS.equals(parameter)) {
+            final Boolean boolVal = GeneralUtil.convertStringToBoolean(value);
+            if (boolVal == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should be TRUE/FALSE");
+            }
+            return;
+        }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown transaction statistics parameter " + parameter);
+    }
+
+    public static void validateTransactionIdleTimeoutParam(String parameter, String value) {
+        if (TRX_IDLE_TIMEOUT_TASK_INTERVAL.equals(parameter)) {
+            final long longVal = Long.parseLong(value);
+            if (longVal < 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should >= 1s");
+            }
+            return;
+        }
+
+        if (ENABLE_TRX_IDLE_TIMEOUT_TASK.equals(parameter)) {
+            final Boolean boolVal = GeneralUtil.convertStringToBoolean(value);
+            if (boolVal == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should be TRUE/FALSE");
+            }
+            return;
+        }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown transaction statistics parameter " + parameter);
+    }
+
     public static boolean isIdentical(Map<String, String> newParam, Map<String, String> oldParam,
                                       Set<String> paramNames) {
         for (String paramName : paramNames) {
@@ -105,13 +155,21 @@ public class ParamValidationUtils {
 
     public static boolean isTimerTaskParam(String parameter, String value) {
         if (MODIFIABLE_PURGE_TRANS_PARAM.contains(parameter)) {
-            ParamValidationUtils.validateTrxLogPurgeParam(parameter, value);
+            validateTrxLogPurgeParam(parameter, value);
             return true;
         }
 
         if (MODIFIABLE_DEADLOCK_DETECTION_PARAM.contains(parameter)) {
-            ParamValidationUtils.validateDeadlockDetectionParam(parameter, value);
+            validateDeadlockDetectionParam(parameter, value);
             return true;
+        }
+
+        if (MODIFIABLE_TRANSACTION_STATISTICS_PARAM.contains(parameter)) {
+            validateTransactionStatisticsParam(parameter, value);
+        }
+
+        if (MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM.contains(parameter)) {
+            validateTransactionIdleTimeoutParam(parameter, value);
         }
 
         return false;

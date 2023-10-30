@@ -36,7 +36,7 @@ public class SQLAlterOutlineStatement extends SQLStatementImpl implements SQLAlt
     }
 
     public SQLAlterOutlineStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

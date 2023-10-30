@@ -26,6 +26,7 @@ import org.junit.Test;
 import java.util.List;
 
 /**
+ * @author bairui.lrj@alibaba-inc.com
  * @author bairui.lrj
  * @see <a href="https://dev.mysql.com/doc/refman/8.0/en/create-role.html">Create Role</a>
  * @see com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateRoleStatement

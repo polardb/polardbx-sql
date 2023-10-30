@@ -59,8 +59,17 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
     public static final String INVALID_ADDRESS = "127.0.0.1:3306";
 
     public static final String VERSION = "2.4.1";
+
+    public static final String PREFIX = "com.taobao.tddl.jdbc.group_V" + VERSION + "_";
+
     private OptimizedGroupConfigManager configManager;
 
+    public boolean mock = false;
+
+    /**
+     * 下面三个为一组，支持本地配置
+     */
+    private String dsKeyAndWeightCommaArray;
     private DataSourceFetcher dataSourceFetcher;
     private DBType dbType = DBType.MYSQL;
     private String schemaName;
@@ -79,10 +88,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     private String url = null;
 
-    private MasterSlave masterSlave = MasterSlave.MASTER_ONLY;
-
-    private String masterDNId = null;
-
     @Deprecated
     public TGroupDataSource() {
     }
@@ -95,9 +100,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             unitName = unitName.trim();
         }
         this.unitName = unitName;
-        if (ConfigDataMode.isPolarDbX() && !ConfigDataMode.isMasterMode()) {
-            masterSlave = MasterSlave.SLAVE_ONLY;
-        }
     }
 
     /**
@@ -144,7 +146,8 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     @Override
     public TGroupDirectConnection getConnection() throws SQLException {
-        return getConnection(masterSlave);
+        return getConnection(
+            ConfigDataMode.isMasterMode() ? MasterSlave.MASTER_ONLY : MasterSlave.SLAVE_ONLY);
     }
 
     @Override
@@ -213,7 +216,8 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     @Override
     public IConnection getConnection(String username, String password) throws SQLException {
-        return getConnection(username, password, masterSlave);
+        return getConnection(username, password,
+            ConfigDataMode.isMasterMode() ? MasterSlave.MASTER_ONLY : MasterSlave.SLAVE_ONLY);
     }
 
     public IConnection getConnection(String username, String password, MasterSlave master) throws SQLException {
@@ -274,6 +278,14 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     public String getDbGroupKey() {
         return dbGroupKey;
+    }
+
+    public String getFullDbGroupKey() {
+        if (fullDbGroupKey == null) {
+            fullDbGroupKey = PREFIX + getDbGroupKey();
+        }
+
+        return fullDbGroupKey;
     }
 
     public void setDbGroupKey(String dbGroupKey) {
@@ -445,6 +457,9 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
     }
 
     public boolean isXDataSource() {
+        if (this.configManager.getDataSourceWrapperMap().isEmpty()) {
+            return false;
+        }
         for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
             if (!(wrapper.getWrappedDataSource().getDataSource() instanceof XDataSource)) {
                 throw new AssertionError("unreachable");
@@ -471,15 +486,17 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         return instanceId;
     }
 
+    /**
+     * Don't cache the masterDNID, because the {@link TGroupDataSource} don't rebuild in scale-out.
+     */
     @Override
     public String getMasterDNId() {
-        if (masterDNId == null) {
-            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
-                Weight w = wrapper.getWeight();
-                if (w != null && w.w != 0) {
-                    masterDNId = wrapper.getWrappedDataSource().getDnId();
-                    break;
-                }
+        String masterDNId = null;
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            Weight w = wrapper.getWeight();
+            if (w != null && w.w != 0) {
+                masterDNId = wrapper.getWrappedDataSource().getDnId();
+                break;
             }
         }
         return masterDNId;

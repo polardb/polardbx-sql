@@ -43,7 +43,7 @@ public class DefaultServerConfigManager implements IServerConfigManager {
     }
 
     @Override
-    public Pair<String, String> findGroupByUniqueId(long uniqueId) {
+    public Pair<String, String> findGroupByUniqueId(long uniqueId, Map<String, List<String>> schemaAndGroupsCache) {
         return null;
     }
 

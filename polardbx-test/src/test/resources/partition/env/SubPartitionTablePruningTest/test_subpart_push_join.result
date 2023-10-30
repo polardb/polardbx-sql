@@ -1,0 +1,154 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists t1;
+create table if not exists t1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b)
+(
+partition p1 values less than(10,1000),
+partition pm values less than(maxvalue,maxvalue)
+);
+drop table if exists t2;
+create table if not exists t2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (b,a)
+(
+partition p1 values less than(10,1000),
+partition pm values less than(maxvalue,maxvalue)
+);
+explain select * from t1 join t2 on t1.a=t2.a and t1.b=t2.b;
+Logical ExecutionPlan
+BKAJoin(condition="a = a AND b = b", type="inner")
+  Gather(concurrent=true)
+    LogicalView(tables="t1[p1,pm]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `t1` AS `t1`")
+  Gather(concurrent=true)
+    LogicalView(tables="t2[p1,pm]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `t2` AS `t2` WHERE (((`a`, `b`)) IN (...))")
+explain select * from t1 join t2 on t1.a=t2.b and t1.b=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,pm],t2[p1,pm]", shardCount=2, sql="SELECT `t1`.`a`, `t1`.`b`, `t1`.`c`, `t1`.`d`, `t1`.`e`, `t2`.`a` AS `a0`, `t2`.`b` AS `b0`, `t2`.`c` AS `c0`, `t2`.`d` AS `d0`, `t2`.`e` AS `e0` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON ((`t1`.`b` = `t2`.`a`) AND (`t1`.`a` = `t2`.`b`))")
+create table if not exists rc_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b,c,d)
+subpartition by range columns (b,c)
+(
+subpartition sp1 values less than(10,100),
+subpartition spm values less than(maxvalue,maxvalue)
+)
+(
+partition p1 values less than(10,100,1000,10000),
+partition pm values less than(maxvalue,maxvalue,maxvalue,maxvalue)
+);
+create table if not exists rc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null,
+d bigint unsigned not null,
+e bigint unsigned not null
+)
+partition by range columns (a,b,c,d)
+subpartition by range columns (b,d)
+(
+subpartition sp1 values less than(10,100),
+subpartition spm values less than(maxvalue,maxvalue)
+)
+(
+partition p1 values less than(10,100,1000,10000),
+partition pm values less than(maxvalue,maxvalue,maxvalue,maxvalue)
+);
+explain select * from rc_rc_tp t1 join rc_rc_tp2 t2 on
+t1.a=t2.a
+and t1.b=t2.b
+and t1.c=t2.c
+and t1.d=t2.d;
+Logical ExecutionPlan
+BKAJoin(condition="a = a AND b = b AND c = c AND d = d", type="inner")
+  Gather(concurrent=true)
+    LogicalView(tables="rc_rc_tp[p1sp1,p1spm,pmsp1,pmspm]", shardCount=4, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `rc_rc_tp` AS `rc_rc_tp`")
+  Gather(concurrent=true)
+    LogicalView(tables="rc_rc_tp2[p1sp1,p1spm,pmsp1,pmspm]", shardCount=4, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `rc_rc_tp2` AS `rc_rc_tp2` WHERE (((`a`, `b`, `c`, `d`)) IN (...))")
+create table if not exists rc_rc1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (a)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+create table if not exists rc_rc2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+explain select * from rc_rc1 t1 join rc_rc2 t2 on t1.a=t2.a and t1.b=t2.b;
+Logical ExecutionPlan
+BKAJoin(condition="a = a AND b = b", type="inner")
+  Gather(concurrent=true)
+    LogicalView(tables="rc_rc1[p1sp1,p1spm,pmsp1,pmspm]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `rc_rc1` AS `rc_rc1`")
+  Gather(concurrent=true)
+    LogicalView(tables="rc_rc2[p1sp1,p1spm,pmsp1,pmspm]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `rc_rc2` AS `rc_rc2` WHERE (((`a`, `b`)) IN (...))")
+create table if not exists rc_rc3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+create table if not exists rc_rc4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c bigint unsigned not null
+)
+partition by range columns (a,b)
+subpartition by range columns (b)
+(
+subpartition sp1 values less than(10),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(10,100),
+partition pm values less than(maxvalue,maxvalue)
+);
+explain select * from rc_rc3 t1 join rc_rc4 t2 on t1.a=t2.a and t1.b=t2.b;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc_rc3[p1sp1,p1spm,pmsp1,pmspm],rc_rc4[p1sp1,p1spm,pmsp1,pmspm]", shardCount=4, sql="SELECT `rc_rc3`.`a`, `rc_rc3`.`b`, `rc_rc3`.`c`, `rc_rc4`.`a` AS `a0`, `rc_rc4`.`b` AS `b0`, `rc_rc4`.`c` AS `c0` FROM `rc_rc3` AS `rc_rc3` INNER JOIN `rc_rc4` AS `rc_rc4` ON ((`rc_rc3`.`a` = `rc_rc4`.`a`) AND (`rc_rc3`.`b` = `rc_rc4`.`b`))")

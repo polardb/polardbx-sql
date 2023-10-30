@@ -32,6 +32,7 @@ public class PartitionModeTest extends PartitionAutoLoadSqlTestBase {
 
     @Parameterized.Parameters(name = "{index}: SubTestCase {0}")
     public static List<AutoLoadSqlTestCaseParams> parameters() {
+
         return getParameters(PartitionModeTest.class, 0, false);
     }
 

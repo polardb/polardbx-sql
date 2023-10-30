@@ -1,0 +1,8 @@
+test_create_udf
+test_udf_return_datatypes
+test_udf_params_datatypes
+test_udf_icbc
+test_udf_sp
+test_udf_sp2
+test_udf_alter
+test_hash_bound_maxvalue

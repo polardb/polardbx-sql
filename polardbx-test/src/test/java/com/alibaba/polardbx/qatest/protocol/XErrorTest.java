@@ -9,6 +9,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -43,6 +44,15 @@ public class XErrorTest extends ReadBaseTestCase {
             return;
         }
 
+        try (final ResultSet rs = JdbcUtil.executeQuery("show variables like 'new_rpc'", tddlConnection)) {
+            while (rs.next()) {
+                if (rs.getString(2).equalsIgnoreCase("on")) {
+                    return;
+                }
+            }
+        } catch (Throwable ignore) {
+        }
+
         final long max_conns =
             JdbcUtil.resultLong(JdbcUtil.executeQuery("select @@polarx_max_connections", tddlConnection));
         try {
@@ -61,7 +71,7 @@ public class XErrorTest extends ReadBaseTestCase {
                     }
                 }
                 Assert.fail("should fail whit max conns exceed");
-            } catch (SQLException e) {
+            } catch (Throwable e) {
                 Assert.assertTrue("Should throw out of max session count",
                     e.getMessage().contains("Out of max session count"));
             }

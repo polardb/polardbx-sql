@@ -1,0 +1,90 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_lsi_auto;
+create database inspect_lsi_auto mode=auto;
+use inspect_lsi_auto;
+
+# has same effect as primary key
+create table tb1(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(id, name)
+) partition by hash(id);
+
+inspect full index from tb1;
+
+# duplicate key
+create table tb2 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  local index idx2(name)
+) partition by key(id);
+
+inspect full index from tb2;
+
+create table tb3 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  local index idx2(name, id)
+) partition by key(id);
+
+inspect full index from tb3;
+
+create table tb4 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id),
+  local index idx1(name),
+  unique local index idx2(name, id)
+) partition by key(id);
+
+inspect full index from tb4;
+
+# shared index column
+create table tb5 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  pad1 varchar(10),
+  primary key(id),
+  local index idx1(name, addr, pad1),
+  local index idx2(name, addr),
+  local index idx3(name)
+) partition by key(id);
+
+inspect full index from tb5;
+
+create table tb6 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  pad1 varchar(10),
+  pad2 varchar(10),
+  primary key(id),
+  local index idx1(name, addr, pad1),
+  unique local index idx2(name, addr),
+  local index idx3(name)
+) partition by key(id);
+
+inspect full index from tb6;
+
+CREATE TABLE `tb7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `addr` varchar(20) DEFAULT NULL,
+  `pad1` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  LOCAL KEY `idx1` (`name`, `addr`, `pad1`),
+  UNIQUE LOCAL KEY `idx2` (`name`, `addr`),
+  UNIQUE LOCAL KEY `idx3` (`name`)
+) PARTITION BY KEY(`id`);
+
+inspect full index from tb7;

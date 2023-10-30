@@ -39,8 +39,7 @@ public class NullableCheckSumGroupState implements GroupState {
 
     public NullableCheckSumGroupState(int capacity) {
         this.capacity = capacity;
-        this.valueIsNull = new BooleanSegmentArrayList(capacity);
-        this.hasherList = new ObjectWithClassSegmentArrayList<>(capacity, OrderInvariantHasher.class);
+        this.valueIsNull = new BooleanSegmentArrayList(capacity);        this.hasherList = new ObjectWithClassSegmentArrayList<>(capacity, OrderInvariantHasher.class);
     }
 
     public void set(int groupId, OrderInvariantHasher value) {

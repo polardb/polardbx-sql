@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
  */
 public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger("statistics");
+    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
 
     public VirtualStatisticHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
@@ -100,7 +100,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                     objects[3] = columnName;
 
                     StatisticResult statisticResult =
-                        StatisticManager.getInstance().getCardinality(schema, tableName, columnName, false);
+                        StatisticManager.getInstance().getCardinality(schema, tableName, columnName, false, false);
                     objects[4] = statisticResult.getLongValue();
                     objects[5] = statisticResult.getSource();
 
@@ -131,7 +131,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                     objects[3] = columnsName;
 
                     StatisticResult statisticResult =
-                        StatisticManager.getInstance().getCardinality(schema, tableName, columnsName, false);
+                        StatisticManager.getInstance().getCardinality(schema, tableName, columnsName, false, false);
                     objects[4] = statisticResult.getLongValue();
                     objects[5] = statisticResult.getSource();
                     objects[6] = TopN.serializeToJson(cacheLine.getTopN(columnsName));

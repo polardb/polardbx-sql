@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -47,6 +48,7 @@ public class DrdsModifyConvertRule extends ConverterRule {
         if (Engine.isFileStore(tableMeta.getEngine())) {
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "dml in file store");
         }
+
         RelTraitSet relTraitSet = logicalModify.getTraitSet().simplify();
         return logicalModify.copy(relTraitSet.replace(DrdsConvention.INSTANCE),
             convertList(logicalModify.getInputs(), DrdsConvention.INSTANCE));

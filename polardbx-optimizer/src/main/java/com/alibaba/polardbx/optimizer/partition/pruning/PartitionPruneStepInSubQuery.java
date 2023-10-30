@@ -19,6 +19,8 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.ScalarSubQueryExecContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.BitSetLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.util.Rex2ExprStringVisitor;
 import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -45,7 +47,9 @@ public class PartitionPruneStepInSubQuery extends PartitionPruneStepOp {
     }
 
     @Override
-    public PartPrunedResult prunePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx) {
+    public PartPrunedResult prunePartitions(ExecutionContext context,
+                                            PartPruneStepPruningContext pruningCtx,
+                                            List<Integer> parentPartPosiSet) {
 
         Object subQueryVal = null;
         Object[] result = new Object[1];
@@ -53,7 +57,10 @@ public class PartitionPruneStepInSubQuery extends PartitionPruneStepOp {
         int valCnt = 0;
         boolean returnFullScan = false;
         int partCnt = partInfo.getPartitionBy().getPartitions().size();
-        boolean fetchSucc = SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(subQueryRexDynamicParam, context.getScalarSubqueryCtxMap(), false, result);
+        boolean fetchSucc = SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(subQueryRexDynamicParam,
+            context.getScalarSubqueryCtxMap(), false, result);
+        Integer parentPartPosi =
+            parentPartPosiSet == null || parentPartPosiSet.isEmpty() ? null : parentPartPosiSet.get(0);
         if (!fetchSucc) {
             returnFullScan = true;
         } else {
@@ -75,10 +82,12 @@ public class PartitionPruneStepInSubQuery extends PartitionPruneStepOp {
         }
         if (returnFullScan) {
             // subquery is not ready
-            PartPrunedResult rs = new PartPrunedResult();
-            BitSet partBitSet = PartitionPrunerUtils.buildFullScanPartitionsBitSet(partInfo);
-            rs.partBitSet = partBitSet;
-            rs.partInfo = partInfo;
+            PartitionRouter router =
+                PartRouteFunction.getRouterByPartInfo(this.partKeyMatchLevel, parentPartPosi, this.partInfo);
+            BitSet partBitSet = PartitionPrunerUtils.buildFullScanPartitionsBitSetByPartRouter(router);
+            PartPrunedResult rs =
+                PartPrunedResult.buildPartPrunedResult(partInfo, partBitSet, this.partKeyMatchLevel, parentPartPosi,
+                    false);
             PartitionPrunerUtils.collateStepExplainInfo(this, context, rs, pruningCtx);
             return rs;
         }
@@ -91,7 +100,7 @@ public class PartitionPruneStepInSubQuery extends PartitionPruneStepOp {
                 sbExecRsCtx.setSubQueryInExpr(true);
                 sbExecRsCtx.setNextPruningRowNum(i);
             }
-            PartPrunedResult tmpPrunedResult = eqExprFinalStep.prunePartitions(context, pruningCtx);
+            PartPrunedResult tmpPrunedResult = eqExprFinalStep.prunePartitions(context, pruningCtx, parentPartPosiSet);
             if (prunedResult == null) {
                 prunedResult = tmpPrunedResult;
             } else {
@@ -109,7 +118,7 @@ public class PartitionPruneStepInSubQuery extends PartitionPruneStepOp {
             digestSb.append("query=").append(subQueryRexDynamicParam.toString()).append(",");
             digestSb.append("eqExpr=").append(eqExprFinalStep.getStepDigest());
         } else {
-            String sbRexDynamicStr = Rex2ExprStringVisitor.convertRexToExprString(subQueryRexDynamicParam,ec);
+            String sbRexDynamicStr = Rex2ExprStringVisitor.convertRexToExprString(subQueryRexDynamicParam, ec);
             digestSb.append("query=").append(sbRexDynamicStr).append(",");
             digestSb.append("eqExpr=").append(eqExprFinalStep.getStepDigest());
         }

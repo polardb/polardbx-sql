@@ -51,25 +51,24 @@ public class TDDLHint extends SQLCommentHint {
             return;
         }
 
-
         lexer.nextToken();
 
         switch (lexer.token()) {
-            case COLON:
-                lexer.nextToken();
-                break;
-            case LPAREN:
-                int rp = text.lastIndexOf(')');
-                if (rp != -1) {
-                    json = text.substring(lexer.pos(), rp);
-                    type = Type.JSON;
-                }
-                return;
-            default:
-                return;
+        case COLON:
+            lexer.nextToken();
+            break;
+        case LPAREN:
+            int rp = text.lastIndexOf(')');
+            if (rp != -1) {
+                json = text.substring(lexer.pos(), rp);
+                type = Type.JSON;
+            }
+            return;
+        default:
+            return;
         }
 
-        for(;;) {
+        for (; ; ) {
             if (lexer.token() == Token.AND) {
                 lexer.nextToken();
             }
@@ -113,15 +112,15 @@ public class TDDLHint extends SQLCommentHint {
                     }
 
                     continue;
-                } else if (lexer.token() == Token.EOF){
+                } else if (lexer.token() == Token.EOF) {
                     Function function = new Function(name);
                     functions.add(function);
                     break;
                 }
             } else if (hash == FnvHash.Constants.SQL_DELAY_CUTOFF
-                    || hash == FnvHash.Constants.SOCKET_TIMEOUT
-                    || hash == FnvHash.Constants.UNDO_LOG_LIMIT
-                    || hash == FnvHash.Constants.FORBID_EXECUTE_DML_ALL) {
+                || hash == FnvHash.Constants.SOCKET_TIMEOUT
+                || hash == FnvHash.Constants.UNDO_LOG_LIMIT
+                || hash == FnvHash.Constants.FORBID_EXECUTE_DML_ALL) {
                 lexer.nextToken();
 
                 if (lexer.token() == Token.EQ) {
@@ -188,7 +187,6 @@ public class TDDLHint extends SQLCommentHint {
 
                 continue;
             }
-
 
             Function function = new Function(name);
 
@@ -297,7 +295,7 @@ public class TDDLHint extends SQLCommentHint {
     }
 
     public static class Function {
-        private final String         name;
+        private final String name;
         private final List<Argument> arguments = new ArrayList<Argument>();
 
         public Function(String name) {
@@ -314,7 +312,7 @@ public class TDDLHint extends SQLCommentHint {
     }
 
     public static class Argument {
-        private final SQLExpr  name;
+        private final SQLExpr name;
         private final SQLExpr value;
 
         public Argument(SQLExpr name, SQLExpr value) {

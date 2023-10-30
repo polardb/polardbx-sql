@@ -39,7 +39,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author chenhui
  * @since 5.1.18
  */
-@RunWith(Parameterized.class)
+
 public class TinyIntTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

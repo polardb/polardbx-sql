@@ -34,14 +34,15 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.executor.workqueue.PriorityFIFOTask;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
@@ -56,7 +57,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -72,7 +73,7 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Pair;
-
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.MessageFormat;
@@ -97,7 +98,6 @@ import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
 
@@ -367,7 +367,7 @@ public class Checker {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(checkerEc, schemaName, tableName, indexName);
+        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(checkerEc, schemaName, tableName, indexName, false);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, checkerEc);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
@@ -420,7 +420,8 @@ public class Checker {
             rowComparator);
     }
 
-    private PhyTableOperation buildSelectPlanWithParam(String logTblOrIndexTbl, String dbIndex, String phyTable, long batchSize,
+    private PhyTableOperation buildSelectPlanWithParam(String logTblOrIndexTbl, String dbIndex, String phyTable,
+                                                       long batchSize,
                                                        List<ParameterContext> params, boolean withUpperBoundOnly,
                                                        boolean primaryToGsi) {
         final Map<Integer, ParameterContext> planParams = new HashMap<>();
@@ -467,13 +468,16 @@ public class Checker {
 //        plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
 //        plan.setParam(planParams);
 
-        PhyTableOperation targetPhyOp = withUpperBoundOnly ? (primaryToGsi ? planSelectWithMaxPrimary : planSelectWithMaxGsi) : (primaryToGsi ? planSelectWithMinAndMaxPrimary : planSelectWithMinAndMaxGsi);
+        PhyTableOperation targetPhyOp =
+            withUpperBoundOnly ? (primaryToGsi ? planSelectWithMaxPrimary : planSelectWithMaxGsi) :
+                (primaryToGsi ? planSelectWithMinAndMaxPrimary : planSelectWithMinAndMaxGsi);
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
         buildParams.setLogTables(ImmutableList.of(logTblOrIndexTbl));
         buildParams.setGroupName(dbIndex);
         buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
         buildParams.setDynamicParams(planParams);
-        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         return plan;
     }
@@ -569,7 +573,6 @@ public class Checker {
         PhyTableOperation targetPhyOp = this.planSelectWithIn;
         BytesSql sql;
 
-
         // Generate template.
         synchronized (planSelectWithInTemplate) {
             planSelectWithInTemplate.setLockMode(lock);
@@ -593,7 +596,8 @@ public class Checker {
         buildParams.setDynamicParams(planParams);
         buildParams.setBytesSql(sql);
         buildParams.setLockMode(lock);
-        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         return plan;
     }
@@ -638,7 +642,7 @@ public class Checker {
                         tableMeta);
                 } else {
                     PartitionLocation location =
-                        partitionInfoManager.getPartitionInfo(indexName).getPartitionBy().getPartitions().get(0)
+                        partitionInfoManager.getPartitionInfo(indexName).getPartitionBy().getPhysicalPartitions().get(0)
                             .getLocation();
                     dbAndTable = new Pair<>(location.getGroupKey(), location.getPhyTableName());
                 }
@@ -666,7 +670,7 @@ public class Checker {
                         tableMeta);
                 } else {
                     PartitionLocation location =
-                        partitionInfoManager.getPartitionInfo(tableName).getPartitionBy().getPartitions().get(0)
+                        partitionInfoManager.getPartitionInfo(tableName).getPartitionBy().getPhysicalPartitions().get(0)
                             .getLocation();
                     dbAndTable = new Pair<>(location.getGroupKey(), location.getPhyTableName());
                 }
@@ -818,7 +822,8 @@ public class Checker {
         buildParams.setGroupName(dbIndex);
         buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
         buildParams.setDynamicParams(params);
-        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         // Execute query
         return GsiUtils.wrapWithSingleDbTrx(tm, baseEc, (ec) -> {
@@ -844,7 +849,8 @@ public class Checker {
     }
 
     // Check from one physical table to others(GSI or primary table).
-    private void foreachPhyTableCheck(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext baseEc, boolean primaryToGsi,
+    private void foreachPhyTableCheck(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext baseEc,
+                                      boolean primaryToGsi,
                                       CheckerCallback cb, AtomicIntegerArray progresses, int taskId) {
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Checker start phy for {1}[{2}][{3}]",
             baseEc.getTraceId(),
@@ -944,7 +950,8 @@ public class Checker {
 
                         checkRows.sort(rowComparator);
 
-                        if (!cb.batch(logTblOrIndexTbl, dbIndex, phyTable, selectEc, this, primaryToGsi, baseRows, checkRows)) {
+                        if (!cb.batch(logTblOrIndexTbl, dbIndex, phyTable, selectEc, this, primaryToGsi, baseRows,
+                            checkRows)) {
                             // Callback cancel the current batch of checking.
                             throw GeneralUtil.nestedException("Checker retry batch");
                         }
@@ -975,7 +982,7 @@ public class Checker {
                 if (e.getMessage().equals("Checker retry batch")) {
                     return true;
                 } else if (e.getSQLState() != null && e.getSQLState().equals(SQLSTATE_DEADLOCK)
-                    && ER_LOCK_DEADLOCK == e.getErrorCode()) {
+                    && ErrorCode.ER_LOCK_DEADLOCK.getCode() == e.getErrorCode()) {
                     // Deadlock and retry.
                     return true;
                 }
@@ -1058,7 +1065,7 @@ public class Checker {
                                      long parallelism) {
         AtomicReference<Exception> excep = new AtomicReference<>(null);
         if (parallelism <= 0) {
-            futures.forEach(task -> PriorityWorkQueue.getInstance()
+            futures.forEach(task -> BackFillThreadPool.getInstance()
                 .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_CHECK_TASK));
         } else {
             futures.forEach(task -> {
@@ -1068,7 +1075,7 @@ public class Checker {
                     excep.set(e);
                 }
                 if (null == excep.get()) {
-                    PriorityWorkQueue.getInstance()
+                    BackFillThreadPool.getInstance()
                         .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_CHECK_TASK);
                 }
             });
@@ -1138,7 +1145,8 @@ public class Checker {
                 return;
             }
             try {
-                foreachPhyTableCheck(tableName, dbIndex, phyTable, baseEc, true, cb, progresses, taskId.getAndIncrement());
+                foreachPhyTableCheck(tableName, dbIndex, phyTable, baseEc, true, cb, progresses,
+                    taskId.getAndIncrement());
             } finally {
                 taskFinishBarrier.countDown();
                 // Poll in finally to prevent dead lock on putting blockingQueue.
@@ -1149,7 +1157,8 @@ public class Checker {
         }, null))));
         gsiPhyTables.forEach((dbIndex, v) -> v.forEach(phyTable -> futuresBackward.add(new FutureTask<>(() -> {
             try {
-                foreachPhyTableCheck(indexName, dbIndex, phyTable, baseEc, false, cb, progresses, taskId.getAndIncrement());
+                foreachPhyTableCheck(indexName, dbIndex, phyTable, baseEc, false, cb, progresses,
+                    taskId.getAndIncrement());
             } finally {
                 taskFinishBarrier.countDown();
                 // Poll in finally to prevent dead lock on putting blockingQueue.

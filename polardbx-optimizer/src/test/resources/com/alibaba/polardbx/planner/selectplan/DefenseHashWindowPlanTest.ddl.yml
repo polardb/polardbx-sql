@@ -1,0 +1,6 @@
+t1:
+  CREATE TABLE `t1` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c1`)

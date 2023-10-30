@@ -40,6 +40,7 @@ import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -62,20 +63,22 @@ import static org.hamcrest.Matchers.is;
  */
 
 @FixMethodOrder(value = MethodSorters.JVM)
+
 public class PartitionTableRepartitionDdlTest extends PartitionTableRepartitionBaseTest {
     @Rule
     public ExpectedException thrown = ExpectedException.none();
 
     @Before
     public void before() {
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, "DROP TABLE IF EXISTS " + primaryTableName);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS " + primaryTableName);
+        String suffix = org.apache.commons.lang3.RandomStringUtils.randomAlphanumeric(4).toLowerCase();
+        primaryTableName = primaryTableName + "_" + suffix;
         initDatasourceInfomation();
     }
 
     @After
     public void after() {
         JdbcUtil.executeUpdateSuccess(mysqlConnection, "DROP TABLE IF EXISTS " + primaryTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS " + primaryTableName);
     }
 
     @Parameterized.Parameters(name = "{index}:primaryTableName={0}")

@@ -35,7 +35,7 @@ public class MySqlCreateRoleStatement extends MySqlStatementImpl implements SQLC
     private boolean ifNotExists = false;
 
     public List<RoleSpec> getRoleSpecs() {
-        return  roleSpecs;
+        return roleSpecs;
     }
 
     public void addRoleSpec(RoleSpec roleSpec) {
@@ -61,7 +61,7 @@ public class MySqlCreateRoleStatement extends MySqlStatementImpl implements SQLC
     public static class RoleSpec extends MySqlObjectImpl {
         private MySqlUserName username;
 
-        public MySqlUserName  getUsername() {
+        public MySqlUserName getUsername() {
             return username;
         }
 

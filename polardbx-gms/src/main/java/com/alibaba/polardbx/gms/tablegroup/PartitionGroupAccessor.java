@@ -75,6 +75,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
     private static final String GET_TABLE_GROUP_BY_TG_ID =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where tg_id=? and visible=1";
 
+    private static final String GET_TABLE_GROUP_BY_TG_ID_S =
+        "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where tg_id in (%s) and visible=1";
+
     private static final String GET_UNVISIABLE_TABLE_GROUP_BY_TG_ID =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where tg_id=? and visible=0";
 
@@ -92,7 +95,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP;
 
     private static final String GET_PHYSICAL_TB_CNT_PER_PG =
-        "select a.phy_db, a.tg_id, count(1) phy_tb_cnt from partition_group a inner join table_partitions b on a.id=b.group_id where b.next_level = -1 and a.visible=1 group by phy_db";
+        "select a.phy_db, a.tg_id, count(1) phy_tb_cnt from (select phy_db, tg_id, id from partition_group where visible=1 and tg_id in (select id from table_group where schema_name=?)) a inner join table_partitions b on a.id=b.group_id where b.next_level = -1 and b.table_schema=? group by phy_db";
 
     private static final String DELETE_PART_GROUP_BY_TG_ID =
         "delete from " + GmsSystemTables.PARTITION_GROUP + " where tg_id=?";
@@ -130,6 +133,10 @@ public class PartitionGroupAccessor extends AbstractAccessor {
     private static final String GET_TEMP_PARTITION_GROUP_BY_TGID_AND_NAME =
         " select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP_DELTA
             + " where tg_id=? and partition_name=? and type=1";
+
+    private static final String GET_TEMP_PARTITION_LIST_GROUP_BY_TGID_AND_NAME_LIST =
+        " select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP_DELTA
+            + " where tg_id=? and partition_name in (%s) and type=1";
 
     private static final String DELETE_TEMP_PART_GROUP_BY_TID_AND_NAME_FROM_DELTA =
         "delete from " + GmsSystemTables.PARTITION_GROUP_DELTA + " where tg_id=? and partition_name=? and type=1";
@@ -172,6 +179,31 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                     .query(
                         unVisiableOnly ? GET_UNVISIABLE_PARTITION_GROUP_FROM_DELTA_BY_TG_ID : GET_TABLE_GROUP_BY_TG_ID,
                         params,
+                        PartitionGroupRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<PartitionGroupRecord> getPartitionGroupsByTableGroupId(List<Long> tableGroupIds) {
+        String groupIds = "";
+        for (int i = 0; i < tableGroupIds.size(); i++) {
+            if (i > 0) {
+                groupIds += ",";
+            }
+            groupIds += String.format("%s", tableGroupIds.get(i));
+        }
+
+        try {
+            List<PartitionGroupRecord> records;
+            records =
+                MetaDbUtil
+                    .query(
+                        String.format(GET_TABLE_GROUP_BY_TG_ID, groupIds),
                         PartitionGroupRecord.class, connection);
 
             return records;
@@ -322,10 +354,13 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         }
     }
 
-    public List<PartitionGroupExtRecord> getGetPhysicalTbCntPerPg() {
+    public List<PartitionGroupExtRecord> getGetPhysicalTbCntPerPg(String tableSchema) {
         try {
             List<PartitionGroupExtRecord> records;
             Map<Integer, ParameterContext> params = new HashMap<>();
+
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, tableSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableSchema);
 
             records =
                 MetaDbUtil.query(GET_PHYSICAL_TB_CNT_PER_PG, params, PartitionGroupExtRecord.class, connection);
@@ -447,6 +482,41 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                 MetaDbUtil
                     .query(
                         GET_OUTDATED_PARTITION_GROUP_BY_TGID,
+                        params,
+                        PartitionGroupRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP_DELTA, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<PartitionGroupRecord> getTempPartitionGroupsByTableGroupIdAndNameListFromDelta(Long tableGroupId,
+                                                                                               List<String> partNameList) {
+        try {
+
+            List<PartitionGroupRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            String partNameListStr = "";
+            for (int i = 0; i < partNameList.size(); i++) {
+                if (i > 0) {
+                    partNameListStr += ",";
+                }
+                partNameListStr += String.format("'%s'", partNameList.get(i));
+            }
+
+            String querySql = String.format(GET_TEMP_PARTITION_LIST_GROUP_BY_TGID_AND_NAME_LIST, partNameListStr);
+
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tableGroupId);
+            //MetaDbUtil.setParameter(2, params, ParameterMethod.setString, partName);
+
+            records =
+                MetaDbUtil
+                    .query(
+                        querySql,
                         params,
                         PartitionGroupRecord.class, connection);
 

@@ -1,0 +1,116 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_for_secpartition"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_locality_for_secpartition"
+      - "create database test_locality_for_secpartition mode = auto"
+      - "use test_locality_for_secpartition"
+      - "CREATE TABLEGROUP sellerid_tg
+         PARTITION BY LIST COLUMNS(BIGINT)
+         SUBPARTITION BY KEY(BIGINT,BIGINT)
+         (
+
+           PARTITION p1 VALUES IN (1, 2)
+            LOCALITY='dn=$dn1' SUBPARTITIONS 1,
+           PARTITION p2 VALUES IN (3, 4)
+            LOCALITY='dn=$dn2' SUBPARTITIONS 2,
+           PARTITION p3 VALUES IN (5, 6)
+            LOCALITY='dn=$dn1' SUBPARTITIONS 4,
+           PARTITION p_default VALUES IN (DEFAULT)
+            LOCALITY='dn=$dn2' SUBPARTITIONS 4
+         );
+         "
+      - "CREATE TABLE t_orders(
+          id bigint not null auto_increment, 
+          sellerId bigint not null, 
+          buyerId bigint not null,
+          primary key(id)
+         ) 
+         PARTITION BY LIST COLUMNS(sellerId) 
+         SUBPARTITION BY KEY(sellerId,id) 
+         TABLEGROUP=sellerid_tg;
+         "
+      - "CREATE TABLE t_orders2(
+          id bigint not null auto_increment, 
+          sellerId bigint not null, 
+          buyerId bigint not null,
+          primary key(id)
+         ) 
+         PARTITION BY LIST COLUMNS(sellerId) 
+         SUBPARTITION BY KEY(sellerId,id) 
+         TABLEGROUP=sellerid_tg;
+         "
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t_orders table ""
+        - t_orders2 table ""
+      tableGroupMatchCheck:
+        - t_orders t_orders2 $tg1 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - t_orders.p1 partition $dn1
+        - t_orders.p2 partition $dn2
+        - t_orders.p3 partition $dn1
+        - t_orders.p4 partition $dn2
+        - t_orders2.p1 partition $dn1
+        - t_orders2.p2 partition $dn2
+        - t_orders2.p3 partition $dn1
+        - t_orders2.p4 partition $dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "use polardbx"
+      - "use test_locality_for_secpartition"
+      - "CREATE TABLEGROUP tg_test"
+      - "CREATE TABLE `t_orders3` (
+         	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+         	`sellerId` bigint(20) NOT NULL,
+         	`buyerId` bigint(20) NOT NULL,
+         	PRIMARY KEY (`id`),
+         	KEY `auto_shard_key_sellerid` USING BTREE (`sellerId`)
+         ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+         PARTITION BY LIST(`sellerId`)
+         SUBPARTITION BY KEY(`sellerId`)
+         (PARTITION `p2` VALUES IN (8320,8409) LOCALITY='dn=$dn1'
+          (SUBPARTITION `p2sp1` ENGINE = InnoDB,
+           SUBPARTITION `p2sp2` ENGINE = InnoDB,
+           SUBPARTITION `p2sp3` ENGINE = InnoDB,
+           SUBPARTITION `p2sp4` ENGINE = InnoDB),
+          PARTITION `p1` VALUES IN (2563613536,3982196496) LOCALITY='dn=$dn2'
+          (SUBPARTITION `p1sp1` ENGINE = InnoDB,
+           SUBPARTITION `p1sp2` ENGINE = InnoDB),
+          PARTITION `pdefault` VALUES IN (DEFAULT) LOCALITY='dn=$dn1,$dn2'
+          (SUBPARTITION `pdefaultsp1` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp2` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp3` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp4` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp5` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp6` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp7` ENGINE = InnoDB,
+           SUBPARTITION `pdefaultsp8` ENGINE = InnoDB))
+         TABLEGROUP=tg_test;
+         "
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t_orders3 table ""
+      tableGroupMatchCheck:
+        - t_orders3 tg_test ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"
+  - "use polardbx;"
+  - "drop database if exists test_locality_for_secpartition;"

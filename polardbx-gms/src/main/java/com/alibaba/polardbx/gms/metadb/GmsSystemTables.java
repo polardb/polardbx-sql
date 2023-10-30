@@ -66,9 +66,15 @@ public class GmsSystemTables {
     public static final String FILES = "files";
     public static final String COLUMN_METAS = "column_metas";
     public static final String FILE_STORAGE_INFO = "file_storage_info";
+
+    public static final String STORAGE_POOL_INFO = "storage_pool_info";
     public static final String FILE_STORAGE_FILES_META = "file_storage_files_meta";
+    public static final String FOREIGN_KEY = "foreign_key";
+    public static final String FOREIGN_KEY_COLS = "foreign_key_cols";
+
     public static final String COLUMN_MAPPING = "column_mapping";
     public static final String COLUMN_EVOLUTION = "column_evolution";
+
     public static final String TABLE_LOCAL_PARTITIONS = "table_local_partitions";
     public static final String JOIN_GROUP_INFO = "join_group_info";
     public static final String JOIN_GROUP_TABLE_DETAIL = "join_group_table_detail";
@@ -79,11 +85,21 @@ public class GmsSystemTables {
     public static final String NODE_INFO = "node_info";
 
     /**
+     * user defined java function
+     */
+    public static final String JAVA_FUNCTIONS = "java_functions";
+
+    /**
      * Global Secondary Index
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
     public static final String FILE_STORAGE_BACKFILL_OBJECTS = "file_storage_backfill_objects";
     public static final String CHECKER_REPORTS = "checker_reports";
+
+    /**
+     * Change Set for scale in/out
+     */
+    public static final String CHANGESET_OBJECT = "changeset_objects";
 
     /**
      * Plan Management
@@ -190,6 +206,8 @@ public class GmsSystemTables {
      */
     public final static String BINLOG_POLARX_COMMAND_TABLE = "binlog_polarx_command";
 
+    public final static String BINLOG_SYSTEM_CONFIG_TABLE = "binlog_system_config";
+
     public final static String DDL_PLAN = "ddl_plan";
     public final static String LEASE = "lease";
 
@@ -213,6 +231,7 @@ public class GmsSystemTables {
         register(FILES);
         register(COLUMN_METAS);
         register(FILE_STORAGE_INFO);
+        register(STORAGE_POOL_INFO);
         register(COLUMNS);
         register(INDEXES);
         register(KEY_COLUMN_USAGE);
@@ -224,8 +243,10 @@ public class GmsSystemTables {
         register(PARTITION_GROUP);
         register(REFERENTIAL_CONSTRAINTS);
         register(NODE_INFO);
+        register(JAVA_FUNCTIONS);
         register(BACKFILL_OBJECTS);
         register(FILE_STORAGE_BACKFILL_OBJECTS);
+        register(CHANGESET_OBJECT);
         register(BASELINE_INFO);
         register(CHECKER_REPORTS);
         register(COLUMN_STATISTICS);
@@ -280,9 +301,13 @@ public class GmsSystemTables {
         register(DDL_PLAN);
         register(FILE_STORAGE_FILES_META);
         register(LEASE);
+        register(COLUMN_MAPPING);
+        register(COLUMN_EVOLUTION);
         register(JOIN_GROUP_INFO);
         register(JOIN_GROUP_TABLE_DETAIL);
         register(PARTITIONS_HEATMAP);
+        register(FOREIGN_KEY);
+        register(FOREIGN_KEY_COLS);
     }
 
     private static void register(String systemTableName) {

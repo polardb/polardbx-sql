@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
@@ -24,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import lombok.Getter;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
@@ -33,6 +33,7 @@ import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Getter
 @TaskName(name = "AlterTableChangeMetaTask")
@@ -46,15 +47,16 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
     private List<String> droppedColumns;
     private List<String> addedColumns;
     private List<String> updatedColumns;
-    private Map<String, String> changedColumns;
+    private List<Pair<String, String>> changedColumns;
 
     private boolean hasTimestampColumnDefault;
-    private Map<String, String> binaryColumnDefaultValues;
+    private Map<String, String> specialDefaultValues;
+    private Map<String, Long> specialDefaultValueFlags;
 
     private List<String> droppedIndexes;
     private List<String> addedIndexes;
     private List<String> addedIndexesWithoutNames;
-    private Map<String, String> renamedIndexes;
+    private List<Pair<String, String>> renamedIndexes;
 
     private boolean primaryKeyDropped = false;
     private List<String> addedPrimaryKeyColumns;
@@ -78,13 +80,14 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
                                     List<String> droppedColumns,
                                     List<String> addedColumns,
                                     List<String> updatedColumns,
-                                    Map<String, String> changedColumns,
+                                    List<Pair<String, String>> changedColumns,
                                     boolean hasTimestampColumnDefault,
-                                    Map<String, String> binaryColumnDefaultValues,
+                                    Map<String, String> specialDefaultValues,
+                                    Map<String, Long> specialDefaultValueFlags,
                                     List<String> droppedIndexes,
                                     List<String> addedIndexes,
                                     List<String> addedIndexesWithoutNames,
-                                    Map<String, String> renamedIndexes,
+                                    List<Pair<String, String>> renamedIndexes,
                                     boolean primaryKeyDropped,
                                     List<String> addedPrimaryKeyColumns,
                                     List<Pair<String, String>> columnAfterAnother,
@@ -103,7 +106,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         this.updatedColumns = updatedColumns;
         this.changedColumns = changedColumns;
         this.hasTimestampColumnDefault = hasTimestampColumnDefault;
-        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
+        this.specialDefaultValues = specialDefaultValues;
+        this.specialDefaultValueFlags = specialDefaultValueFlags;
         this.droppedIndexes = droppedIndexes;
         this.addedIndexes = addedIndexes;
         this.addedIndexesWithoutNames = addedIndexesWithoutNames;
@@ -125,23 +129,24 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
+        boolean changeFileStore = CBOUtil.isOss(executionContext, logicalTableName);
         TableMetaChanger.changeTableMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName, sqlKind,
             isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, hasTimestampColumnDefault,
-            binaryColumnDefaultValues, droppedIndexes, addedIndexes, addedIndexesWithoutNames, renamedIndexes,
-            primaryKeyDropped, addedPrimaryKeyColumns, columnAfterAnother, requireLogicalColumnOrder, tableComment,
-            tableRowFormat, sequenceBean, onlineModifyColumnIndexTask, executionContext);
-
-        List<String> columnStatsRemoved = new ArrayList<>();
-        if (GeneralUtil.isNotEmpty(droppedColumns)) {
-            columnStatsRemoved.addAll(droppedColumns);
+            specialDefaultValues, specialDefaultValueFlags, droppedIndexes, addedIndexes, addedIndexesWithoutNames,
+            renamedIndexes, primaryKeyDropped, addedPrimaryKeyColumns,
+            columnAfterAnother, requireLogicalColumnOrder, tableComment, tableRowFormat, sequenceBean,
+            onlineModifyColumnIndexTask, changeFileStore, executionContext);
+        List<String> alterColumnList = new ArrayList<>();
+        if (updatedColumns != null) {
+            alterColumnList.addAll(updatedColumns);
         }
-        if (GeneralUtil.isNotEmpty(updatedColumns)) {
-            columnStatsRemoved.addAll(updatedColumns);
+        if (changedColumns != null) {
+            alterColumnList.addAll(changedColumns.stream().map(p -> p.getValue()).collect(Collectors.toList()));
         }
-        if (GeneralUtil.isNotEmpty(changedColumns)) {
-            changedColumns.keySet().stream().forEach(c -> columnStatsRemoved.add(c));
+        if (droppedColumns != null) {
+            alterColumnList.addAll(droppedColumns);
         }
-        CommonMetaChanger.finalOperationsOnAlterTableSuccess(schemaName, logicalTableName, columnStatsRemoved);
+        CommonMetaChanger.alterTableColumnFinalOperationsOnSuccess(schemaName, logicalTableName, alterColumnList);
     }
 
     @Override

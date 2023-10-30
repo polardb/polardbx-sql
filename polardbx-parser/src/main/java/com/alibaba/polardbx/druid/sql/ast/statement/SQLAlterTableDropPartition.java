@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -27,14 +28,20 @@ public class SQLAlterTableDropPartition extends SQLObjectImpl implements SQLAlte
     private boolean purge;
     private final List<SQLExpr> partitions = new ArrayList<SQLExpr>(4);
 
+    private boolean isSubPartition = false;
+    /**
+     * partitionName is only for drop subpartition
+     */
+    private SQLName partitionName;
+
     public SQLAlterTableDropPartition() {
-        
+
     }
-    
+
     public List<SQLExpr> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLExpr partition) {
         if (partition != null) {
             partition.setParent(this);
@@ -56,6 +63,22 @@ public class SQLAlterTableDropPartition extends SQLObjectImpl implements SQLAlte
 
     public void setPurge(boolean purge) {
         this.purge = purge;
+    }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public void setSubPartition(boolean subPartition) {
+        isSubPartition = subPartition;
+    }
+
+    public SQLName getPartitionName() {
+        return partitionName;
+    }
+
+    public void setPartitionName(SQLName partitionName) {
+        this.partitionName = partitionName;
     }
 
     @Override

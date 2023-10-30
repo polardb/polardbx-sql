@@ -49,7 +49,7 @@ public class DropGsiTableRemoveMetaTask extends BaseGmsTask {
         TableMetaChanger.removeTableMeta(metaDbConnection, schemaName, indexName, true, executionContext);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        CommonMetaChanger.finalOperationsOnSuccess(schemaName, indexName);
+        CommonMetaChanger.dropTableFinalOperationsOnSuccess(schemaName, indexName);
     }
 
     @Override

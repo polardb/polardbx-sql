@@ -16,15 +16,10 @@
 
 package org.apache.calcite.sql;
 
-import java.util.List;
-
 import org.apache.calcite.sql.parser.SqlParserPos;
-
-import com.google.common.collect.ImmutableList;
 
 /**
  * @author chenmo.cm
- * @date 2018/12/13 8:15 PM
  */
 // | ADD [CONSTRAINT [symbol]] UNIQUE [INDEX|KEY] [index_name] [index_type]
 // (index_col_name,...) [index_option] ...
@@ -32,7 +27,7 @@ public class SqlAddUniqueIndex extends SqlAddIndex {
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("ADD UNIQUE INDEX", SqlKind.ADD_UNIQUE_INDEX);
 
-    public SqlAddUniqueIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIndexDefinition indexDef){
+    public SqlAddUniqueIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIndexDefinition indexDef) {
         super(pos, indexName, indexDef);
     }
 
@@ -70,5 +65,12 @@ public class SqlAddUniqueIndex extends SqlAddIndex {
     }
 
     @Override
-    public boolean isClusteredIndex() { return indexDef.isClustered(); }
+    public boolean isClusteredIndex() {
+        return indexDef.isClustered();
+    }
+
+    @Override
+    public boolean supportFileStorage() {
+        return true;
+    }
 }

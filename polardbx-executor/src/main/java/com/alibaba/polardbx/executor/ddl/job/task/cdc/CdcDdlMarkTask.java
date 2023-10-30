@@ -1,9 +1,28 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
@@ -17,6 +36,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import lombok.Getter;
 import lombok.Setter;
@@ -30,6 +50,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.SIM_CDC_FAILED;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
@@ -40,20 +61,42 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PAR
 @Getter
 @Setter
 public class CdcDdlMarkTask extends BaseDdlTask {
+
     private final PhysicalPlanData physicalPlanData;
+    private boolean useOrginalDDl;
+    private boolean foreignKeys;
 
     @JSONCreator
-    public CdcDdlMarkTask(String schemaName, PhysicalPlanData physicalPlanData) {
+    public CdcDdlMarkTask(String schemaName, PhysicalPlanData physicalPlanData, Boolean useOrginalDDl,
+                          Boolean foreignKeys) {
         super(schemaName);
         this.physicalPlanData = physicalPlanData;
+        this.useOrginalDDl = useOrginalDDl != null && useOrginalDDl;
+        this.foreignKeys = foreignKeys != null && foreignKeys;
     }
 
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        if (executionContext.getParamManager().getBoolean(SIM_CDC_FAILED)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, "Simulation cdc mark task failed");
+        }
+
         updateSupportedCommands(true, false, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        if (CBOUtil.isGsi(schemaName, physicalPlanData.getLogicalTableName())) {
+            // gsi task should use CdcGsiDdlMarkTask
+            return;
+        }
+
+        prepareExtraCmdsKey(executionContext);
         if (physicalPlanData.getKind() == SqlKind.CREATE_TABLE) {
+            if (executionContext.getDdlContext() != null &&
+                executionContext.getDdlContext().getDdlType() == DdlType.CREATE_TABLE) {
+                useOrginalDDl = true;
+                prepareExtraCmdsKey(executionContext);
+            }
             mark4CreateTable(executionContext);
         } else if (physicalPlanData.getKind() == SqlKind.DROP_TABLE) {
             mark4DropTable(executionContext);
@@ -77,6 +120,15 @@ public class CdcDdlMarkTask extends BaseDdlTask {
             }
         } else {
             throw new RuntimeException("not supported sql kind : " + physicalPlanData.getKind());
+        }
+    }
+
+    private void prepareExtraCmdsKey(ExecutionContext executionContext) {
+        if (useOrginalDDl) {
+            executionContext.getExtraCmds().put(ICdcManager.USE_ORGINAL_DDL, "true");
+        }
+        if (foreignKeys) {
+            executionContext.getExtraCmds().put(ICdcManager.FOREIGN_KEYS_DDL, "true");
         }
     }
 
@@ -218,4 +270,5 @@ public class CdcDdlMarkTask extends BaseDdlTask {
         List<SQLStatement> list = SQLUtils.parseStatements(sql, DbType.mysql, SQL_PARSE_FEATURES);
         return !list.isEmpty() && list.get(0) instanceof SQLDropMaterializedViewStatement;
     }
+
 }

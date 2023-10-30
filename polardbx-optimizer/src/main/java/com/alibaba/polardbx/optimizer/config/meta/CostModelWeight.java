@@ -37,6 +37,8 @@ public class CostModelWeight {
 
     private double sortAggWeight = 1.0;
 
+    private double sortWindowWeight = 1.2;
+
     private double sortWeight = 1.05;
 
     private double avgTupleMatch = 10;
@@ -74,6 +76,8 @@ public class CostModelWeight {
     public static final long TUPLE_HEADER_SIZE = 24;
 
     public static final int LOOKUP_START_UP_NET = 12;
+
+    public static final int GUESS_AGG_OUTPUT_NUM = 100;
 
     private CostModelWeight() {
     }
@@ -140,6 +144,14 @@ public class CostModelWeight {
 
     public void setSortAggWeight(double sortAggWeight) {
         this.sortAggWeight = sortAggWeight;
+    }
+
+    public double getSortWindowWeight() {
+        return sortWindowWeight;
+    }
+
+    public void setSortWindowWeight(double sortWindowWeight) {
+        this.sortWindowWeight = sortWindowWeight;
     }
 
     public double getSortWeight() {

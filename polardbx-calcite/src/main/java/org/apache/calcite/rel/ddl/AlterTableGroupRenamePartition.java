@@ -20,24 +20,19 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Created by luoyanxin.
  *
  * @author luoyanxin
  */
-public class AlterTableGroupRenamePartition extends DDL {
-    final String tableGroupName;
+public class AlterTableGroupRenamePartition extends AlterTableGroupDdl {
 
     protected AlterTableGroupRenamePartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                              RelDataType rowType,
@@ -46,7 +41,6 @@ public class AlterTableGroupRenamePartition extends DDL {
         this.tableGroupName = tableGroupName;
         this.sqlNode = ddl;
         this.setTableName(new SqlIdentifier(tableGroupName, SqlParserPos.ZERO));
-
     }
 
     public static AlterTableGroupRenamePartition create(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
@@ -63,6 +57,7 @@ public class AlterTableGroupRenamePartition extends DDL {
         return new AlterTableGroupRenamePartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName);
     }
 
+    @Override
     public String getTableGroupName() {
         return tableGroupName;
     }

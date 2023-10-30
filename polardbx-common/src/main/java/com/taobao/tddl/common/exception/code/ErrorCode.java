@@ -568,12 +568,15 @@ public enum ErrorCode {
 
     ERR_REBALANCE(ErrorType.Executor, 9103),
 
+    ERR_CHANGESET(ErrorType.Executor, 9104),
+
+    // ================= concurrency control Related Exceptions ===================
+
     ERR_CCL(ErrorType.CCL, 9201),
 
     ERR_LOGICAL_TABLE_UNSUPPORTED(ErrorType.Executor, 9203),
 
     ERR_CDC_GENERIC(ErrorType.CDC, 9201),
-
     ERR_REPLICATION_RESULT(ErrorType.CDC, 9204),
 
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),

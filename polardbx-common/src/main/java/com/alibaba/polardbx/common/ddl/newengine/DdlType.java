@@ -37,6 +37,9 @@ public enum DdlType {
     ALTER_FUNCTION,
     PUSH_DOWN_UDF,
 
+    CREATE_JAVA_FUNCTION,
+    DROP_JAVA_FUNCTION,
+
     CREATE_GLOBAL_INDEX,
     ALTER_GLOBAL_INDEX,
     DROP_GLOBAL_INDEX,
@@ -49,7 +52,12 @@ public enum DdlType {
 
     ALTER_TABLEGROUP,
     REFRESH_TOPOLOGY,
-    ;
+
+    CREATE_DATABASE_LIKE_AS,
+
+    ALTER_TABLE_SET_TABLEGROUP,
+    ALTER_TABLEGROUP_ADD_TABLE,
+    MERGE_TABLEGROUP;
 
     public static boolean needDefaultDdlShareLock(DdlType type) {
         if (type == null) {

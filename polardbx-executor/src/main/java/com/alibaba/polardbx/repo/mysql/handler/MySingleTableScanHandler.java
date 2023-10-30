@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.cursor.impl.LogicalViewResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
@@ -53,6 +54,15 @@ public class MySingleTableScanHandler extends HandlerCommon {
             SqlType sqlType = executionContext.getSqlType();
             PhyTableOperationUtil
                 .enableIntraGroupParallelism(((DirectTableOperation) logicalPlan).getSchemaName(), executionContext);
+            cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
+            if (sqlType != null && SqlTypeUtils.isSelectSqlType(sqlType)) {
+                cursor = new LogicalViewResultCursor((AbstractCursor) cursor, executionContext, true);
+            }
+        } else if (logicalPlan instanceof DirectMultiDBTableOperation) {
+            SqlType sqlType = executionContext.getSqlType();
+            PhyTableOperationUtil
+                .enableIntraGroupParallelism(
+                    ((DirectMultiDBTableOperation) logicalPlan).getBaseSchemaName(executionContext), executionContext);
             cursor = repo.getCursorFactory().repoCursor(executionContext, logicalPlan);
             if (sqlType != null && SqlTypeUtils.isSelectSqlType(sqlType)) {
                 cursor = new LogicalViewResultCursor((AbstractCursor) cursor, executionContext, true);

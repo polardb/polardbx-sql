@@ -60,4 +60,8 @@ public enum Engine {
             return false;
         }
     }
+
+    public static boolean isFileStore(String engineName) {
+        return isFileStore(of(engineName));
+    }
 }

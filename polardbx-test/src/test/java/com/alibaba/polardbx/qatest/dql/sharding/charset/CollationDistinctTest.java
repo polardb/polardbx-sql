@@ -46,11 +46,37 @@ public class CollationDistinctTest extends CharsetTestBase {
         testDistinct(gbkStrings, COL_GBK_CHINESE_CI);
     }
 
+    // gbk_bin
     @Test
     public void testGBK_BIN() {
         List<byte[]> gbkStrings = CharsetTestUtils.generateGBKUnicode(STRING_SIZE, CHARACTER_SIZE, true);
 
         testDistinct(gbkStrings, COL_GBK_BIN);
+    }
+
+    // gb18030_chinese_ci
+    @Test
+    public void testGB18030_CHINESE_CI() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testDistinct(gbkStrings, COL_GB18030_CHINESE_CI);
+    }
+
+    // gb18030_bin
+    @Test
+    public void testGB18030_BIN() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testDistinct(gbkStrings, COL_GB18030_BIN);
+    }
+
+    // gb18030_unicode_520_ci
+    @Ignore
+    @Test
+    public void testGB18030_UNICODE_520_ci() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testDistinct(gbkStrings, COL_GB18030_UNICODE_520_CI);
     }
 
     // utf8mb4_general_ci
@@ -67,6 +93,22 @@ public class CollationDistinctTest extends CharsetTestBase {
         List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
 
         testDistinct(utf8Strings, COL_UTF8MB4_BIN);
+    }
+
+    // utf8mb4_unicode_ci
+    @Test
+    public void testUTF8MB4_UNICODE_CI() {
+        List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testDistinct(utf8Strings, COL_UTF8MB4_UNICODE_CI);
+    }
+
+    // utf8mb4_unicode_ci
+    @Test
+    public void testUTF8MB4_UNICODE_520_CI() {
+        List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testDistinct(utf8Strings, COL_UTF8MB4_UNICODE_520_CI);
     }
 
     // utf8_general_ci

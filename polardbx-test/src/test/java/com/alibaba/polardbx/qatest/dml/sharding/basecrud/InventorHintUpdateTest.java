@@ -41,8 +41,6 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableName.ONE_DB_MUTIL_TB_
 import static com.alibaba.polardbx.qatest.data.ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
 import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare;
 
-@Ignore
-
 public class InventorHintUpdateTest extends CrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

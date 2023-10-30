@@ -157,7 +157,9 @@ public class SingleTableOperation extends BaseTableOperation {
     @Override
     protected ExplainInfo buildExplainInfo(Map<Integer, ParameterContext> params, ExecutionContext executionContext) {
         if (MapUtils.isEmpty(params)) {
-            boolean newPartDbTbl = PartitionPlanExplainUtil.checkIfNewPartDbTbl(this.schemaName, ImmutableList.of(logicalTableName), null, executionContext);
+            boolean newPartDbTbl =
+                PartitionPlanExplainUtil.checkIfNewPartDbTbl(this.schemaName, ImmutableList.of(logicalTableName), null,
+                    executionContext);
             if (!newPartDbTbl) {
                 /**
                  * When params is empty, its predicate may contain const literal instead of dynamic params, such as pk is null,
@@ -185,18 +187,22 @@ public class SingleTableOperation extends BaseTableOperation {
         ExecutionContext execCtx = (ExecutionContext) ((RelDrdsWriter) pw).getExecutionContext();
         ExplainInfo explainInfo = buildExplainInfo(((RelDrdsWriter) pw).getParams(), execCtx);
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
-        boolean newPartDbTbl = PartitionPlanExplainUtil.checkIfNewPartDbTbl(this.schemaName, ImmutableList.of(logicalTableName), null, execCtx);
+        boolean newPartDbTbl =
+            PartitionPlanExplainUtil.checkIfNewPartDbTbl(this.schemaName, ImmutableList.of(logicalTableName), null,
+                execCtx);
         String phyTableString = null;
         if (!newPartDbTbl) {
             String groupAndTableName = explainInfo.groupName + (TStringUtil.isNotBlank(explainInfo.groupName) ? "." : "")
                 + StringUtils.join(explainInfo.tableNames, ",");
             phyTableString = groupAndTableName;
         } else {
-            PartitionInfo partInfo = execCtx.getSchemaManager(this.schemaName).getTddlRuleManager().getPartitionInfoManager().getPartitionInfo(logicalTableName);
+            PartitionInfo partInfo =
+                execCtx.getSchemaManager(this.schemaName).getTddlRuleManager().getPartitionInfoManager()
+                    .getPartitionInfo(logicalTableName);
             String phyGrp = explainInfo.groupName;
             String phyTbl = (String) explainInfo.tableNames.get(0);
             String targetPartName = "";
-            PartitionSpec ps = partInfo.getPartitionBy().getPartitionByPhyGrpAndPhyTbl(phyGrp, phyTbl);
+            PartitionSpec ps = partInfo.getPartSpecSearcher().getPartSpec(phyGrp, phyTbl);
             if (ps != null) {
                 targetPartName = ps.getName();
             }

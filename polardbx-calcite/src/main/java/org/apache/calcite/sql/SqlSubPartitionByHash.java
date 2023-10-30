@@ -24,12 +24,16 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  * @author luoyanxin
  */
 public class SqlSubPartitionByHash extends SqlSubPartitionBy {
-    protected final SqlNode expr;
     protected final boolean key;
+    protected final boolean unique;
 
-    public SqlSubPartitionByHash(SqlNode expr, boolean key, SqlNode subPartitionsCount,SqlParserPos sqlParserPos) {
-        super(subPartitionsCount, sqlParserPos);
-        this.expr = expr;
+    public SqlSubPartitionByHash(boolean key, boolean unique,SqlParserPos sqlParserPos) {
+        super(sqlParserPos);
         this.key = key;
+        this.unique = unique;
+    }
+
+    public boolean isKey() {
+        return key;
     }
 }

@@ -158,6 +158,9 @@ public class ColumnsAccessor extends AbstractAccessor {
     private static final String UPDATE_LOGICAL_POSITION =
         UPDATE_COLUMNS + "ordinal_position = ?" + WHERE_SCHEMA_TABLE_ONE_COLUMN;
 
+    private static final String UPDATE_COLUMN_DEFAULT =
+        UPDATE_COLUMNS + "column_default = ?" + WHERE_SCHEMA_TABLE_ONE_COLUMN;
+
     public int[] insert(List<ColumnsRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
         for (ColumnsRecord record : records) {
@@ -448,17 +451,18 @@ public class ColumnsAccessor extends AbstractAccessor {
         return update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, paramsBatch);
     }
 
-    public int[] change(List<ColumnsRecord> records, Map<String, String> columnNamePairs) {
-        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
-        for (ColumnsRecord record : records) {
+    public int[] change(List<ColumnsRecord> records, Map<String, String> columnNameMap) {
+        int[] affectedRows = new int[records.size()];
+        for (int i = 0; i < records.size(); i++) {
+            ColumnsRecord record = records.get(i);
             Map<Integer, ParameterContext> params = record.buildUpdateParams();
             int index = params.size();
             MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableSchema);
             MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableName);
-            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnNamePairs.get(record.columnName));
-            paramsBatch.add(params);
+            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnNameMap.get(record.columnName));
+            affectedRows[i] = update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, params);
         }
-        return update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, paramsBatch);
+        return affectedRows;
     }
 
     public int rename(String tableSchema, String tableName, String newTableName) {
@@ -526,6 +530,16 @@ public class ColumnsAccessor extends AbstractAccessor {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnName);
         update(UPDATE_LOGICAL_POSITION, COLUMNS_TABLE, params);
+    }
+
+    public void updateColumnDefault(String tableSchema, String tableName, String columnName, String defaultExpr) {
+        int index = 0;
+        final Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, defaultExpr);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableSchema);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableName);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnName);
+        update(UPDATE_COLUMN_DEFAULT, COLUMNS_TABLE, params);
     }
 
 }

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
@@ -24,6 +25,8 @@ import org.apache.calcite.rel.rel2sql.RelToSqlConverter;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,19 +51,45 @@ public class LogicalModifyView extends LogicalView {
 
     @Override
     public List<RelNode> getInput(ExecutionContext executionContext) {
-        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
-        List<String> logTbls = new ArrayList<>();
-        logTbls.addAll(this.tableNames);
+        return getInput(getSqlTemplate(executionContext), executionContext);
+    }
 
-        PhyTableModifyViewBuilder phyTableModifyBuilder =
-            new PhyTableModifyViewBuilder(getSqlTemplate(executionContext),
-                targetTables,
-                executionContext,
-                this,
-                dbType,
-                logTbls,
-                getSchemaName());
-        return phyTableModifyBuilder.build();
+    /**
+     * merge operations in the same group, excluding the following conditions:
+     * 1. explain does not support batch merge
+     * 2. intra group parallelism and batch execution may cause deadlock
+     */
+    protected List<RelNode> mergeGroupNode(List<RelNode> subNodes, ExecutionContext executionContext) {
+        if (executionContext.getExplain() != null || executionContext.getGroupParallelism() != 1) {
+            return subNodes;
+        }
+
+        List<RelNode> relNodes = new ArrayList<>();
+        Map<String, List<PhyTableOperation>> groupAndQcs = new HashMap<>();
+        for (RelNode q : subNodes) {
+            String groupName = ((PhyTableOperation) q).getDbIndex();
+            List<PhyTableOperation> qcs = groupAndQcs.computeIfAbsent(groupName, k -> new ArrayList<>());
+            qcs.add((PhyTableOperation) q);
+        }
+        for (List<PhyTableOperation> groupNode : groupAndQcs.values()) {
+            if (groupNode.size() > 1) {
+                List<List<String>> newTableNames = new ArrayList<>();
+                List<Map<Integer, ParameterContext>> batchParameters = new ArrayList<>();
+                for (PhyTableOperation queryOperation : groupNode) {
+                    batchParameters.add(queryOperation.getParam());
+                    queryOperation.setParam(null);
+                    newTableNames.addAll(queryOperation.getTableNames());
+                }
+                // 不同分表以 batch param 形式执行
+                PhyTableOperation firstPhyTableOp = groupNode.get(0);
+                firstPhyTableOp.setBatchParameters(batchParameters);
+                firstPhyTableOp.setTableNames(newTableNames);
+                relNodes.add(firstPhyTableOp);
+            } else {
+                relNodes.add(groupNode.get(0));
+            }
+        }
+        return relNodes;
     }
 
     @Override
@@ -73,22 +102,34 @@ public class LogicalModifyView extends LogicalView {
      * is put into planCache, so sqlTemplate should be recreated.
      */
     public List<RelNode> getInput(SqlNode sqlTemplate, ExecutionContext executionContext) {
-        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
-        List<String> logTbls = new ArrayList<>();
-//        if (this.getTableModify() instanceof LogicalInsert) {
-//            logTbls.addAll(this.getTableModify().getTargetTableNames());
-//        }
-//        logTbls.addAll(this.getTableModify().getSourceTableNames());
-        logTbls.addAll(this.tableNames);
-        PhyTableModifyViewBuilder phyTableModifyBuilder = new PhyTableModifyViewBuilder(sqlTemplate,
-            targetTables,
-            executionContext,
-            this,
-            dbType,
-            logTbls,
-            getSchemaName()
-        );
-        return phyTableModifyBuilder.build();
+        List<Map<Integer, ParameterContext>> params;
+        if (executionContext.getParams() == null) {
+            params = Collections.singletonList(null);
+        } else {
+            params = executionContext.getParams().getBatchParameters();
+        }
+        List<RelNode> relNodes = new ArrayList<>();
+        for (Map<Integer, ParameterContext> param : params) {
+            if (executionContext.getParams() != null) {
+                executionContext.getParams().setParams(param);
+            }
+            Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+            List<String> logTbls = new ArrayList<>();
+
+            logTbls.addAll(this.tableNames);
+            PhyTableModifyViewBuilder phyTableModifyBuilder = new PhyTableModifyViewBuilder(sqlTemplate,
+                targetTables,
+                param,
+                this,
+                dbType,
+                logTbls, getSchemaName());
+        relNodes.addAll(phyTableModifyBuilder.build(executionContext));
+        }
+        if (relNodes.size() > 1 && relNodes.get(0) instanceof PhyTableOperation) {
+            return mergeGroupNode(relNodes, executionContext);
+        } else {
+            return relNodes;
+        }
     }
 
     @Override

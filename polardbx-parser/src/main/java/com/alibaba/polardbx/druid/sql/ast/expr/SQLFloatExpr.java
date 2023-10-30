@@ -28,16 +28,16 @@ public class SQLFloatExpr extends SQLNumericLiteralExpr implements SQLValuableEx
 
     private float value;
 
-    public SQLFloatExpr(){
+    public SQLFloatExpr() {
 
     }
 
-    public SQLFloatExpr(String value){
+    public SQLFloatExpr(String value) {
         super();
         this.value = Float.parseFloat(value);
     }
 
-    public SQLFloatExpr(float value){
+    public SQLFloatExpr(float value) {
         super();
         this.value = value;
     }
@@ -72,8 +72,12 @@ public class SQLFloatExpr extends SQLNumericLiteralExpr implements SQLValuableEx
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLFloatExpr that = (SQLFloatExpr) o;
 

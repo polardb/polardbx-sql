@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rex.RexNode;
 
 import java.util.ArrayList;
@@ -72,7 +73,7 @@ public class NewGroupKey extends GroupKey {
             if (rexNodes.get(i) == null) {
                 dataType = columns.get(i).getDataType();
             } else {
-                dataType = ExecUtils.getTypeForNewGroupKey(rex, value);
+                dataType = RexUtils.getTypeFromRexNode(rex, value);
             }
             partFields.add(PartitionPrunerUtils.buildPartField(value, dataType, columns.get(i).getDataType(), null,
                 executionContext, PartFieldAccessType.DML_PRUNING));

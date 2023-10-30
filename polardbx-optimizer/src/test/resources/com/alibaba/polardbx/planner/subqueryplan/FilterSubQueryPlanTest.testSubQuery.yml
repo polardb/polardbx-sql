@@ -102,9 +102,8 @@
                 )
 
   plan: |
-
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`test_hash_tb`.`id` = `id`) and (`name` = `test_hash_tb`.`name`)) and (`test_hash_tb`.`create_time` = `create_time`))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`name` = `test_hash_tb`.`name`) and (`test_hash_tb`.`create_time` = `create_time`))))")
 
 - sql: |
     select a.id
@@ -212,8 +211,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")
-
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where ((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)))))))")
 - sql: |
     select a.id
     from
@@ -326,8 +324,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`id` = `test_hash_tb`.`id`) and (`name` = 'xx')) and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")
-
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`id` = `test_hash_tb`.`id`) and (`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where ((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)))))))")
 - sql: |
     SELECT a.name
       FROM (
@@ -361,9 +358,9 @@
   plan: |
     Project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col40", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col4", int_col50="int_col5", int_col60="int_col6")
       BKAJoin(condition="int_col4 = id AND int_col1 > f9w0$o0", type="inner")
-        SortWindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0SUM($4)", Reference Windows="window#0=window(partition {6} order by [] rows between UNBOUNDED PRECEDING and UNBOUNDED PRECEDING aggs [SUM($4)])")
-          MergeSort(sort="int_col4 ASC")
-            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` ORDER BY `int_col4`")
+        hashwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded following aggs [sum($4)])")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (...))")
 
@@ -374,9 +371,9 @@
   plan: |
     Project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col40", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col4", int_col50="int_col5", int_col60="int_col6")
       BKAJoin(condition="int_col4 = id AND int_col1 > f9w0$o0", type="inner")
-        SortWindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0SUM($4)", Reference Windows="window#0=window(partition {6} order by [] rows between UNBOUNDED PRECEDING and UNBOUNDED PRECEDING aggs [SUM($4)])")
-          MergeSort(sort="int_col4 ASC")
-            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` ORDER BY `int_col4`")
+        hashwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded following aggs [sum($4)])")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`name` <> 'a') AND (`id` IN (...)))")
 
@@ -437,9 +434,9 @@
     project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col40", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col4", int_col50="int_col5", int_col60="int_col6")
       bkajoin(condition="int_col4 = id and int_col1 > f9w0$o0", type="inner")
         filter(condition="name <> 'a'")
-          sortwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded preceding aggs [sum($4)])")
-            mergesort(sort="int_col4 asc")
-              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `int_col4`")
+          hashwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded following aggs [sum($4)])")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
 
@@ -467,9 +464,9 @@
     project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col40", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col4", int_col50="int_col5", int_col60="int_col6")
       bkajoin(condition="int_col4 = id and int_col1 > f9w0$o0", type="inner")
         filter(condition="name <> 'c' and name <> 'e'")
-          sortwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded preceding aggs [sum($4)])")
-            mergesort(sort="int_col4 asc")
-              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `int_col4`")
+          hashwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded following aggs [sum($4)])")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
 
@@ -480,9 +477,9 @@
     project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col40", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col4", int_col50="int_col5", int_col60="int_col6")
       bkajoin(condition="int_col4 = id", type="inner")
         filter(condition="int_col1 > f9w0$o0 and name <> 'c' and name <> 'e'")
-          sortwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded preceding aggs [sum($4)])")
-            mergesort(sort="int_col4 asc")
-              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` order by `int_col4`")
+          hashwindow(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6", f9w0$o0="window#0sum($4)", reference windows="window#0=window(partition {6} order by [] rows between unbounded preceding and unbounded following aggs [sum($4)])")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
 
@@ -492,10 +489,10 @@
   plan: |
     hashagg(sum(b.int_col1)="sum(sum(b.int_col1))")
       bkajoin(condition="int_col4 = id", type="inner")
-        sortagg(group="int_col4", sum(b.int_col1)="sum(int_col1)")
+        hashagg(group="int_col4", sum(b.int_col1)="sum(int_col1)")
           filter(condition="int_col1 > f9w0$o0 and name <> 'c' and name <> 'e'")
-            sortwindow(name="name", int_col1="int_col1", int_col2="int_col2", int_col4="int_col4", f4w0$o0="window#0sum($2)", reference windows="window#0=window(partition {3} order by [] rows between unbounded preceding and unbounded preceding aggs [sum($2)])")
-              mergesort(sort="int_col4 asc")
-                logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `name`, `int_col1`, `int_col2`, `int_col4` from `test_hash_tb2` as `test_hash_tb2` order by `int_col4`")
+            hashwindow(name="name", int_col1="int_col1", int_col2="int_col2", int_col4="int_col4", f4w0$o0="window#0sum($2)", reference windows="window#0=window(partition {3} order by [] rows between unbounded preceding and unbounded following aggs [sum($2)])")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `name`, `int_col1`, `int_col2`, `int_col4` from `test_hash_tb2` as `test_hash_tb2`")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")

@@ -36,7 +36,6 @@ import java.sql.Connection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -82,9 +81,15 @@ public class InspectRuleVersionSyncAction implements ISyncAction {
         GmsNodeManager.GmsNode localNode = GmsNodeManager.getInstance().getLocalNode();
 
         String isReadOnly = "";
-        if ((localNode != null && localNode.instType != ServerInfoRecord.INST_TYPE_MASTER) ||
+        if ((localNode != null && localNode.instType != ServerInfoRecord.INST_TYPE_MASTER
+            && localNode.instType != ServerInfoRecord.INST_TYPE_STANDBY) ||
             (localNode == null && ConfigDataMode.isSlaveMode())) {
             isReadOnly = "Y";
+        }
+
+        String isStandBy = "";
+        if (localNode != null && localNode.instType == ServerInfoRecord.INST_TYPE_STANDBY) {
+            isStandBy = "Y";
         }
 
         try {
@@ -134,33 +139,33 @@ public class InspectRuleVersionSyncAction implements ISyncAction {
             }
 
             buildResult(tableRulesInMemory.size(), tablesInMetaDBOnly, tablesInMemoryOnly, tablesDifferent,
-                resultCursor, serverInfo, isLeader, isReadOnly);
+                resultCursor, serverInfo, isLeader, isReadOnly, isStandBy);
 
         } catch (Exception e) {
-            resultCursor
-                .addRow(new Object[] {
-                    serverInfo, 0, e instanceof NullPointerException ? "NPE" : e.getMessage(), isLeader, isReadOnly});
+            resultCursor.addRow(new Object[] {
+                serverInfo, 0, e instanceof NullPointerException ? "NPE" : e.getMessage(), isLeader, isReadOnly,
+                isStandBy});
         }
     }
 
     private void buildResult(int size, Set<String> tablesInMetaDBOnly, Set<String> tablesInMemoryOnly,
                              Set<String> tablesDifferent, ArrayResultCursor resultCursor, String serverInfo,
-                             String isLeader, String isReadOnly) {
+                             String isLeader, String isReadOnly, String isStandby) {
         String diff = "";
         if (tablesInMetaDBOnly != null && tablesInMetaDBOnly.size() > 0) {
             diff = "- " + concat(tablesInMetaDBOnly);
-            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly});
+            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly, isStandby});
         }
         if (tablesInMemoryOnly != null && tablesInMemoryOnly.size() > 0) {
             diff = "+ " + concat(tablesInMemoryOnly);
-            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly});
+            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly, isStandby});
         }
         if (tablesDifferent != null && tablesDifferent.size() > 0) {
             diff = "! " + concat(tablesDifferent);
-            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly});
+            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly, isStandby});
         }
         if (TStringUtil.isBlank(diff)) {
-            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly});
+            resultCursor.addRow(new Object[] {serverInfo, size, diff, isLeader, isReadOnly, isStandby});
         }
     }
 

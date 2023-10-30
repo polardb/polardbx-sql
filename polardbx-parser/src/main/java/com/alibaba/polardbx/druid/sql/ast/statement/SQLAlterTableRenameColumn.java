@@ -24,7 +24,7 @@ public class SQLAlterTableRenameColumn extends SQLObjectImpl implements SQLAlter
     private SQLName column;
     private SQLName to;
 
-    public SQLAlterTableRenameColumn(){
+    public SQLAlterTableRenameColumn() {
 
     }
 

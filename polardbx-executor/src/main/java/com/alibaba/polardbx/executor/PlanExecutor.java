@@ -22,16 +22,19 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
+import com.alibaba.polardbx.executor.cursor.impl.OutFileStatisticsCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppResultCursor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.ExplainExecutorUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
+import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
@@ -43,6 +46,7 @@ import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class PlanExecutor extends AbstractLifecycle {
@@ -63,7 +67,8 @@ public class PlanExecutor extends AbstractLifecycle {
                 context.getRuntimeStatistics().setPlanTree(plan.getPlan());
             }
             if (PlanManagerUtil.useSPM(context.getSchemaName(), plan, null, context)
-                && context.getParamManager().getBoolean(ConnectionParams.PLAN_EXTERNALIZE_TEST)) {
+                && context.getParamManager().getBoolean(ConnectionParams.PLAN_EXTERNALIZE_TEST)
+                && PlanManagerUtil.serializableSpmPlan(context.getSchemaName(), plan)) {
                 String serialPlan = PlanManagerUtil.relNodeToJson(plan.getPlan());
                 byte[] compressPlan = PlanManagerUtil.compressPlan(serialPlan);
                 plan.setPlan(PlanManagerUtil.jsonToRelNode(new String(PlanManagerUtil.uncompress(compressPlan)),
@@ -98,7 +103,8 @@ public class PlanExecutor extends AbstractLifecycle {
             new RelVisitor() {
                 @Override
                 public void visit(RelNode node, int ordinal, RelNode parent) {
-                    if (node instanceof HashAgg || node instanceof SortWindow || node instanceof LogicalUnion
+                    if (node instanceof HashAgg || node instanceof SortWindow || node instanceof HashWindow
+                        || node instanceof LogicalUnion
                         || node instanceof HashGroupJoin) {
                         if (mq == null) {
                             ec.getRecordRowCnt().put(node.getRelatedId(), 100);
@@ -106,6 +112,20 @@ public class PlanExecutor extends AbstractLifecycle {
                             synchronized (mq) {
                                 int rowCount = mq.getRowCount(node).intValue();
                                 ec.getRecordRowCnt().put(node.getRelatedId(), rowCount);
+                            }
+                        }
+                    }
+                    if (node instanceof HashWindow) {
+                        if (mq == null) {
+                            ec.getDistinctKeyCnt().put(node.getRelatedId(), CostModelWeight.GUESS_AGG_OUTPUT_NUM);
+                        } else {
+                            synchronized (mq) {
+                                HashWindow window = (HashWindow) node;
+                                int distinctKeyCount =
+                                    Optional.ofNullable(mq.getDistinctRowCount(window, window.groups.get(0).keys, null))
+                                        .map(Double::intValue).orElse(
+                                            CostModelWeight.GUESS_AGG_OUTPUT_NUM);
+                                ec.getDistinctKeyCnt().put(node.getRelatedId(), distinctKeyCount);
                             }
                         }
                     }
@@ -140,6 +160,9 @@ public class PlanExecutor extends AbstractLifecycle {
             } else {
                 resultCursor.setCursorMeta(cursorMeta);
             }
+        } else if (cursor instanceof OutFileStatisticsCursor) {
+            resultCursor = new ResultCursor(cursor);
+            resultCursor.setCursorMeta(((OutFileStatisticsCursor) cursor).getCursorMeta());
         } else {
             resultCursor = new ResultCursor(cursor);
             resultCursor.setCursorMeta(cursorMeta);

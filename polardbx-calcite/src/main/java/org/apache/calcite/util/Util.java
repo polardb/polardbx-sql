@@ -16,20 +16,30 @@
  */
 package org.apache.calcite.util;
 
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator;
 import com.google.common.collect.FluentIterable;
 import com.alibaba.polardbx.common.charset.CharsetName;
+import groovy.sql.Sql;
 import org.apache.calcite.avatica.util.DateTimeUtils;
 import org.apache.calcite.avatica.util.Spaces;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.runtime.CalciteException;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlDynamicParam;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlValuesOperator;
+import org.apache.calcite.sql.fun.SqlInOperator;
 import org.apache.calcite.sql.fun.SqlRowOperator;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlBasicVisitor;
 
 import com.google.common.base.Function;
@@ -97,6 +107,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -107,6 +118,9 @@ import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.IN;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.OR;
 
 /**
  * Miscellaneous utility functions.
@@ -2519,6 +2533,222 @@ public class Util {
       }
     }
     return true;
+  }
+
+  /**
+   * transfer list of sqlNode to a balanced binary tree
+   * A or B or C ro D
+   *     to
+   *     or
+   *    /  \
+   *   or  or
+   *  / \ / \
+   *  A B C D
+   *
+   * @param call the root of the call
+   *
+   * @return a balanced binary tree containing all sqlNodes
+   */
+  private static SqlNode SqlOperatorListToTree(SqlBasicCall call) {
+    SqlOperator op = call.getOperator();
+    SqlNode[] nodeList = call.getOperands();
+    SqlParserPos pos = call.getParserPosition();
+    if (nodeList.length <= 2) {
+      return call;
+    }
+    // get the number of non-leaf node in the tree
+    int n = nodeList.length;
+    int length = 0;
+    while (n != 1) {
+      n = (n + 1) / 2;
+      length = length + n;
+    }
+    SqlNode[] nodes = new SqlNode[length];
+
+    // build 2-nd layer
+    int loc = 0;
+    for (int left = 0; left < nodeList.length; left = left + 2) {
+      int right = left + 1;
+      if (right < nodeList.length) {
+        nodes[loc++] = op.createCall(new SqlNodeList(ImmutableList.of(nodeList[left], nodeList[right]), pos));
+      } else {
+        nodes[loc++] = nodeList[left];
+      }
+    }
+
+    // build all layers to the root
+    return buildRoot(op, pos, nodes, loc);
+  }
+
+  /**
+   * transfer list of sqlNode to a balanced binary tree
+   * A or B or C or D
+   *     to
+   *     or
+   *    /  \
+   *   or  or
+   *  / \ / \
+   *  A B C D
+   *
+   * @param op the Operator of the tree
+   * @param nodeList list of sqlNodes
+   * @return a balanced binary tree containing all sqlNodes
+   */
+  public static SqlNode SqlOperatorListToTree(SqlOperator op, List<SqlNode> nodeList, SqlParserPos pos) {
+    // get the number of non-leaf node in the tree
+    int n = nodeList.size();
+    int length = 0;
+    while (n != 1) {
+      n = (n + 1) / 2;
+      length = length + n;
+    }
+    SqlNode[] nodes = new SqlNode[length];
+
+    // build 2-nd layer
+    int loc = 0;
+    for (int left = 0; left < nodeList.size(); left = left + 2) {
+      int right = left + 1;
+      if (right < nodeList.size()) {
+        nodes[loc++] = op.createCall(new SqlNodeList(ImmutableList.of(nodeList.get(left), nodeList.get(right)), pos));
+      } else {
+        nodes[loc++] = nodeList.get(left);
+      }
+    }
+
+    // build all layers to the root
+    return buildRoot(op, pos, nodes, loc);
+  }
+
+  private static SqlNode buildRoot(SqlOperator op, SqlParserPos pos, SqlNode[] nodes, int loc) {
+    int head = 0;
+    int tail = loc;
+    while (tail - head > 1) {
+      for (int left = head; left < tail; left = left + 2) {
+        int right = left + 1;
+        if (right < tail) {
+          nodes[loc++] = op.createCall(new SqlNodeList(ImmutableList.of(nodes[left], nodes[right]), pos));
+        } else {
+          nodes[loc++] = nodes[left];
+        }
+      }
+      head = tail;
+      tail = loc;
+    }
+
+    return nodes[head];
+  }
+
+  /**
+   * try to compress 'A=? or A=? or B=?' to 'A in (?,?) or B=?'
+   *
+   * @param call the 'or' sqlNode
+   * @return compressed sqlNode
+   */
+  private static SqlCall OrSqlNodeToIn(SqlBasicCall call) {
+    SqlNode[] nodeList = call.getOperands();
+    SqlParserPos pos = call.getParserPosition();
+
+    List<Integer> rest = new ArrayList<>();
+
+    // or with same SqlIdentifier should be set in the same
+    Map<SqlIdentifier, List<Integer>> inValues = new TreeMap<>((x, y) ->
+        (x.toString().compareToIgnoreCase(y.toString())));
+
+    // cluster sqlnode
+    boolean shouldCompress = false;
+
+    for (int i = 0; i < nodeList.length; i++) {
+      SqlNode node = nodeList[i];
+      if (node instanceof SqlBasicCall) {
+        SqlBasicCall child = (SqlBasicCall) node;
+        // operator should be EQUAL
+        if (child.getOperator()!= null && child.getOperator() == EQUALS) {
+          SqlNode[] operands = child.getOperands();
+          if (operands.length == 2) {
+            boolean findDynamic = false;
+            SqlIdentifier id = null;
+            // the two side should be SqlDynamicParam and SqlIdentifier
+            for (SqlNode operand : operands) {
+              if (operand instanceof SqlDynamicParam) {
+                findDynamic = true;
+              }
+              if (operand instanceof SqlIdentifier) {
+                id = (SqlIdentifier) operand;
+              }
+            }
+            if (findDynamic && (id != null)) {
+              inValues.computeIfAbsent(id, x -> new ArrayList<>());
+              inValues.get(id).add(i);
+              if (inValues.get(id).size() > 1) {
+                shouldCompress = true;
+              }
+              continue;
+            }
+          }
+        }
+      }
+      rest.add(i);
+    }
+
+    if(!shouldCompress) {
+      return call;
+    }
+    List<SqlNode> orSqlNodes = new ArrayList<>();
+
+    for (Map.Entry<SqlIdentifier, List<Integer>> entry : inValues.entrySet()) {
+      List<Integer> orPos = entry.getValue();
+      Preconditions.checkArgument(orPos.size() >= 1);
+      if (orPos.size() == 1) {
+        // add uncompressed node
+        orSqlNodes.add(nodeList[orPos.get(0)]);
+      } else {
+        // compress or to in
+        List<SqlDynamicParam> dynamicParams = new ArrayList<>(orPos.size());
+        for (int i :orPos) {
+          for (SqlNode operand : ((SqlBasicCall)nodeList[i]).getOperands()) {
+            if (operand instanceof SqlDynamicParam) {
+              dynamicParams.add((SqlDynamicParam)operand);
+            }
+          }
+        }
+
+        orSqlNodes.add(IN.createCall(pos, entry.getKey(), new SqlNodeList(dynamicParams, pos)));
+      }
+    }
+    // add uncompressed node
+    for (int i :rest) {
+      orSqlNodes.add(nodeList[i]);
+    }
+
+    if (orSqlNodes.size() == 1) {
+      return (SqlBasicCall) orSqlNodes.get(0);
+    }
+
+    return call.getOperator().createCall(new SqlNodeList(orSqlNodes, pos));
+  }
+
+  /**
+   * optimize the node, first transform 'or' to 'in', then transform flattened 'or' to balanced tree
+   *
+   * @param sqlNode the root of 'or'
+   * @return an optimized tree
+   */
+  public static SqlNode OrSqlNodeOpt(SqlNode sqlNode) {
+    if (!Util.isOrSqlNode(sqlNode)) {
+      return sqlNode;
+    }
+    SqlBasicCall call = (SqlBasicCall) sqlNode;
+
+    // optimize 'or' sql with 'in' sql
+    SqlCall sqlCall = Util.OrSqlNodeToIn(call);
+    if (Util.isOrSqlNode(sqlCall)) {
+      return Util.SqlOperatorListToTree((SqlBasicCall) sqlCall);
+    }
+    return sqlCall;
+  }
+
+  public static boolean isOrSqlNode(SqlNode sqlNode) {
+    return sqlNode instanceof SqlBasicCall && ((SqlBasicCall) sqlNode).getOperator() == SqlStdOperatorTable.OR;
   }
 }
 

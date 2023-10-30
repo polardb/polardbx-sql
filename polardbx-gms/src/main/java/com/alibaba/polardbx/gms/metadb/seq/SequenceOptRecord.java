@@ -44,6 +44,8 @@ public class SequenceOptRecord extends SequenceBaseRecord {
     public int cycle;
     public int status;
 
+    public boolean cycleReset;
+
     @Override
     public SequenceOptRecord fill(ResultSet rs) throws SQLException {
         super.fill(rs);
@@ -61,6 +63,7 @@ public class SequenceOptRecord extends SequenceBaseRecord {
         this.startWith = DEFAULT_START_WITH;
         this.maxValue = DEFAULT_MAX_VALUE;
         this.cycle = NOCYCLE;
+        this.cycleReset = true;
     }
 
     @Override
@@ -81,6 +84,10 @@ public class SequenceOptRecord extends SequenceBaseRecord {
 
     public boolean isNewSeq() {
         return cycle != NA && (cycle & NEW_SEQ) == NEW_SEQ;
+    }
+
+    public boolean isOnlyStartWithChanged() {
+        return startWith > 0 && incrementBy <= 0 && maxValue <= 0 && !cycleReset;
     }
 
 }

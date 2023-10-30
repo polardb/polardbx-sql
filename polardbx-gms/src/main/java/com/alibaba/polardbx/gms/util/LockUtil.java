@@ -16,10 +16,15 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -29,7 +34,29 @@ import java.sql.SQLException;
  */
 public class LockUtil {
 
-    public static boolean acquireMetaDbLockByForUpdate(Connection metaDbConn) throws SQLException {
+    private final static Logger logger = LoggerFactory.getLogger(LockUtil.class);
+
+    public static void waitToAcquireMetaDbLock(String opMsg, Connection metaDbLockConn) {
+        while (true) {
+            if (Thread.interrupted()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, opMsg);
+            }
+            try {
+                LockUtil.acquireMetaDbLockByForUpdate(metaDbLockConn);
+                break;
+            } catch (Throwable ex) {
+                if (ex.getMessage() != null && ex.getMessage().contains("Lock wait timeout exceeded")) {
+                    logger.warn(opMsg);
+                    continue;
+                } else {
+                    // throw exception
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex, opMsg + ",please retry");
+                }
+            }
+        }
+    }
+
+    public static boolean /**/acquireMetaDbLockByForUpdate(Connection metaDbConn) throws SQLException {
         if (metaDbConn == null) {
             return false;
         }

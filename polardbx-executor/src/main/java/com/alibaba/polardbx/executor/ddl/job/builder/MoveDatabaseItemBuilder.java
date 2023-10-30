@@ -16,16 +16,21 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabaseItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
+import com.alibaba.polardbx.rule.model.TargetDB;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShowCreateTable;
@@ -73,6 +78,7 @@ public class MoveDatabaseItemBuilder extends DdlPhyPlanBuilder {
     protected void buildTableRuleAndTopology() {
         buildExistingTableRule(preparedData.getTableName());
         buildNewTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
+        buildAlterReferenceTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
     }
 
     @Override
@@ -152,5 +158,47 @@ public class MoveDatabaseItemBuilder extends DdlPhyPlanBuilder {
             }
         }
 
+    }
+
+    public void buildAlterReferenceTableTopology(String schemaName, String tableName) {
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        for (Map.Entry<String, ForeignKeyData> fk : tableMeta.getForeignKeys().entrySet()) {
+            ForeignKeyData data = fk.getValue();
+            if (!data.isPushDown()) {
+                continue;
+            }
+            final List<List<TargetDB>> targetDBs =
+                DataNodeChooser.shardChangeTable(data.refSchema, data.refTableName, executionContext);
+            if (OptimizerContext.getContext(preparedData.getSchemaName()).getRuleManager()
+                .isBroadCast(data.refTableName)) {
+                final String phyTableName = targetDBs.get(0).get(0).getTableNames().stream().findFirst().orElse(null);
+                assert phyTableName != null;
+                for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
+                    for (List<String> l : entry.getValue()) {
+                        l.add(phyTableName);
+                    }
+                }
+            } else {
+                final Map<String, List<List<String>>> refTopo =
+                    convertTargetDBs(preparedData.getSchemaName(), targetDBs);
+
+                // push down must be single or broadcast, so only one db
+                Map.Entry<String, List<List<String>>> refTable = new ArrayList<>(refTopo.entrySet()).get(0);
+                Map.Entry<String, List<List<String>>> table = new ArrayList<>(tableTopology.entrySet()).get(0);
+                final List<List<String>> part = refTopo.remove(refTable.getKey());
+                refTopo.put(table.getKey(), part);
+
+                assert refTopo.size() == tableTopology.size();
+                for (Map.Entry<String, List<List<String>>> entry : refTopo.entrySet()) {
+                    final List<List<String>> match = tableTopology.get(entry.getKey());
+                    assert match != null;
+                    assert match.size() == entry.getValue().size();
+                    // Concat one by one.
+                    for (int i = 0; i < match.size(); ++i) {
+                        match.get(i).addAll(entry.getValue().get(i));
+                    }
+                }
+            }
+        }
     }
 }

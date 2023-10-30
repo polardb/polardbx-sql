@@ -1,0 +1,226 @@
+DROP TABLE IF EXISTS `t_order`;
+DROP TABLE IF EXISTS `t_order2`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (x),
+	GLOBAL INDEX idx_seller(`seller_id`) PARTITION BY KEY (`seller_id`),
+	UNIQUE GLOBAL INDEX idx_order (`order_id`) PARTITION BY KEY (`order_id`)
+)
+PARTITION BY KEY (x);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`x`),
+	UNIQUE GLOBAL INDEX /* idx_order_$ */ `idx_order` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_seller_$ */ `idx_seller` (`seller_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+CREATE TABLE `t_order2` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp DEFAULT CURRENT_TIMESTAMP,
+	GLOBAL INDEX idx_seller2(`seller_id`) PARTITION BY KEY (`seller_id`),
+	UNIQUE GLOBAL INDEX idx_order2 (`order_id`) PARTITION BY KEY (`order_id`)
+)
+PARTITION BY KEY (order_id);
+SHOW FULL CREATE TABLE `t_order2`;
+Table,Create Table
+t_order2,CREATE TABLE `t_order2` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE GLOBAL INDEX /* idx_order2_$ */ `idx_order2` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_seller2_$ */ `idx_seller2` (`seller_id`) COVERING (`order_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+INSERT INTO t_order (order_id, seller_id, gmt_modified)
+VALUES ('12345', '678910', '2023-05-10'),
+	('23456', '7891011', '2023-05-11'),
+	('34567', '89101112', '2023-05-12'),
+	('45678', '910111213', '2023-05-13'),
+	('56789', '101112131415', '2023-05-14');
+INSERT INTO t_order2 (order_id, seller_id, gmt_modified)
+VALUES ('12345', '678910', '2023-05-10'),
+	('23456', '7891011', '2023-05-11'),
+	('34567', '89101112', '2023-05-12'),
+	('45678', '910111213', '2023-05-13'),
+	('56789', '101112131415', '2023-05-14');
+ALTER TABLE t_order
+	DROP PRIMARY KEY,
+	ADD PRIMARY KEY (x, gmt_modified);
+SHOW FULL CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`x`, `gmt_modified`),
+	UNIQUE GLOBAL INDEX /* idx_order_$ */ `idx_order` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_seller_$ */ `idx_seller` (`seller_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#
+) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE idx_seller;
+Table,Create Table
+idx_seller_$,CREATE TABLE `idx_seller_$` (
+	`x` int(11) NOT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`x`, `gmt_modified`),
+	LOCAL KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`seller_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE idx_order;
+Table,Create Table
+idx_order_$,CREATE TABLE `idx_order_$` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`, `gmt_modified`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY x;
+x,order_id,seller_id,gmt_modified
+1,12345,678910,2023-05-10 00:00:00.0
+2,23456,7891011,2023-05-11 00:00:00.0
+3,34567,89101112,2023-05-12 00:00:00.0
+4,45678,910111213,2023-05-13 00:00:00.0
+5,56789,101112131415,2023-05-14 00:00:00.0
+SELECT *
+FROM t_order
+WHERE x = 1;
+x,order_id,seller_id,gmt_modified
+1,12345,678910,2023-05-10 00:00:00.0
+SELECT *
+FROM t_order
+WHERE x = 3;
+x,order_id,seller_id,gmt_modified
+3,34567,89101112,2023-05-12 00:00:00.0
+SELECT *
+FROM t_order
+WHERE x = 5;
+x,order_id,seller_id,gmt_modified
+5,56789,101112131415,2023-05-14 00:00:00.0
+SHOW FULL CREATE TABLE idx_seller2;
+Table,Create Table
+idx_seller2_$,CREATE TABLE `idx_seller2_$` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`seller_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE idx_order2;
+Table,Create Table
+idx_order2_$,CREATE TABLE `idx_order2_$` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+ALTER TABLE t_order2
+	ADD PRIMARY KEY (order_id, seller_id);
+SHOW FULL CREATE TABLE t_order2;
+Table,Create Table
+t_order2,CREATE TABLE `t_order2` (
+	`order_id` varchar(20) NOT NULL,
+	`seller_id` varchar(20) NOT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`order_id`, `seller_id`),
+	UNIQUE GLOBAL INDEX /* idx_order2_$ */ `idx_order2` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_seller2_$ */ `idx_seller2` (`seller_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS #@#
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE idx_seller2;
+Table,Create Table
+idx_seller2_$,CREATE TABLE `idx_seller2_$` (
+	`order_id` varchar(20) NOT NULL,
+	`seller_id` varchar(20) NOT NULL,
+	PRIMARY KEY (`order_id`, `seller_id`),
+	LOCAL KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`seller_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE idx_order2;
+Table,Create Table
+idx_order2_$,CREATE TABLE `idx_order2_$` (
+	`order_id` varchar(20) NOT NULL,
+	`seller_id` varchar(20) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`order_id`, `seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order2
+ORDER BY order_id;
+order_id,seller_id,gmt_modified
+12345,678910,2023-05-10 00:00:00.0
+23456,7891011,2023-05-11 00:00:00.0
+34567,89101112,2023-05-12 00:00:00.0
+45678,910111213,2023-05-13 00:00:00.0
+56789,101112131415,2023-05-14 00:00:00.0
+SELECT *
+FROM t_order2
+WHERE order_id = '12345';
+order_id,seller_id,gmt_modified
+12345,678910,2023-05-10 00:00:00.0
+SELECT *
+FROM t_order2
+WHERE order_id = '34567';
+order_id,seller_id,gmt_modified
+34567,89101112,2023-05-12 00:00:00.0
+SELECT *
+FROM t_order2
+WHERE order_id = '56789';
+order_id,seller_id,gmt_modified
+56789,101112131415,2023-05-14 00:00:00.0

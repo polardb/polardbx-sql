@@ -34,6 +34,7 @@ import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLocalRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexProgram;
@@ -253,6 +254,12 @@ public class JoinProjectTransposeRule extends RelOptRule {
         joinChildrenRowType.getFieldList(),
         projects);
 
+
+    // exchange only if all join conditions reference to RexInputRef
+    if (!simpleJoinCondition(joinRel, projects)){
+      return;
+    }
+
     final List<RelDataType> projTypes = new ArrayList<>();
     for (int i = 0; i < nProjExprs; i++) {
       projTypes.add(projects.get(i).left.getType());
@@ -426,6 +433,15 @@ public class JoinProjectTransposeRule extends RelOptRule {
                 field.getName()));
       }
     }
+  }
+
+  private boolean simpleJoinCondition(
+      LogicalJoin join,
+      List<Pair<RexNode, String>> projects) {
+    RelOptUtil.InputReferencedVisitor visitor = new RelOptUtil.EquivalentInputReferencedVisitor();
+    join.getCondition().accept(visitor);
+    return visitor.inputPosReferenced.stream().allMatch(
+        ref -> projects.size() > ref && projects.get(ref).left instanceof RexInputRef);
   }
 }
 

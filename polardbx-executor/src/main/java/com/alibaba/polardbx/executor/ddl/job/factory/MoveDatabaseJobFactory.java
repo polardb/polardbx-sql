@@ -27,11 +27,16 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.InitNewStorageInstTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyExecutorInitTask;
+import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
+import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -49,6 +54,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+
+import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
 
 /**
  * Created by luoyanxin.
@@ -100,12 +107,30 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
     public void constructSubTasks(ExecutableDdlJob executableDdlJob,
                                   DdlTask tailTask,
                                   List<DdlTask> bringUpMoveDatabase) {
+        ChangeSetApplyExecutorInitTask changeSetApplyExecutorInitTask =
+            new ChangeSetApplyExecutorInitTask(preparedData.getSchemaName(),
+                ScaleOutUtils.getScaleoutTaskParallelism(executionContext));
+        ChangeSetApplyFinishTask changeSetApplyFinishTask = new ChangeSetApplyFinishTask(preparedData.getSchemaName(),
+            String.format("schema %s group %s start double write ", preparedData.getSchemaName(),
+                preparedData.getSourceTargetGroupMap()));
+        final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
-            MoveDatabaseSubTaskJobFactory subTaskJobFactory =
-                new MoveDatabaseSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
+            String schemaName = tablesPrepareData.get(entry.getKey()).getSchemaName();
+            String logicalTableName = tablesPrepareData.get(entry.getKey()).getTableName();
+            TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+
+            MoveDatabaseSubTaskJobFactory subTaskJobFactory;
+            if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
+                subTaskJobFactory = new MoveDatabaseChangeSetJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
+                    logicalTablesPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
+                    changeSetApplyExecutorInitTask, changeSetApplyFinishTask, executionContext);
+            } else {
+                subTaskJobFactory = new MoveDatabaseSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
                     logicalTablesPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
                     targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
                     executionContext);
+            }
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
@@ -149,7 +174,8 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                 ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(),
                 taskType.getValue(), 0);
 
-        boolean skipValidator = executionContext.getParamManager().getBoolean(ConnectionParams.SKIP_MOVE_DATABASE_VALIDATOR);
+        boolean skipValidator =
+            executionContext.getParamManager().getBoolean(ConnectionParams.SKIP_MOVE_DATABASE_VALIDATOR);
         if (!skipValidator) {
             executableDdlJob.addSequentialTasks(Lists.newArrayList(
                 /*the parent job of rebalance will acquire the Xlock of current schemaName before exec*/
@@ -235,16 +261,18 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
         for (MoveDatabaseItemPreparedData itemPreparedData : tablesPrepareData.values()) {
 
             String primaryTblName = itemPreparedData.getTableName();
-            TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
+            TableMeta tableMeta =
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
             if (tableMeta.isGsi()) {
                 //all the gsi table version change will be behavior by primary table
                 assert
                     tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
                 primaryTblName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
             }
-            TableMeta primaryTblMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
+            TableMeta primaryTblMeta =
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
             Long primaryTblVersion = primaryTblMeta.getVersion();
-            tablesVersion.putIfAbsent(primaryTblName,primaryTblVersion);
+            tablesVersion.putIfAbsent(primaryTblName, primaryTblVersion);
         }
         return tablesVersion;
     }

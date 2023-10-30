@@ -53,7 +53,6 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAss
  * @author minggong
  */
 
-@Ignore
 
 public class TransactionTest extends GsiDMLTest {
 
@@ -127,7 +126,7 @@ public class TransactionTest extends GsiDMLTest {
     public void startOtherTransactionTest() throws Exception {
         tddlConnection.setAutoCommit(false);
         try {
-            String startSql = "set drds_transaction_policy='free'";
+            String startSql = "set drds_transaction_policy='no_transaction'";
             JdbcUtil.executeUpdateSuccess(tddlConnection, startSql);
 
             String sql = hint + "update " + baseOneTableName + " set float_test=0 where pk=1";

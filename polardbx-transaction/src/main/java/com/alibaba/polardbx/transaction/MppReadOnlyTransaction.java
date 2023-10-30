@@ -23,6 +23,11 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.type.TransactionType;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -78,8 +83,23 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     }
 
     @Override
+    public TransactionType getType() {
+        return TransactionType.TSO_MPP;
+    }
+
+//    @Override
+//    protected void updateSlowTransaction() {
+//        updateSlowTSOTransaction(statisticSchema);
+//    }
+
+    @Override
     public IConnection getConnection(String schemaName, String groupName, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        if (!begun) {
+            statisticSchema = schemaName;
+            recordTransaction();
+            begun = true;
+        }
         MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
         IConnection connection = getRealConnection(schemaName, groupName, ds, masterSlave);
         String masterId = ds.getMasterDNId();

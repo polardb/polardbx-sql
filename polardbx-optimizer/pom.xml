@@ -28,7 +28,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -80,7 +80,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <scope>test</scope>
+            <version>4.13.2</version>
         </dependency>
 <!--        <dependency>-->
 <!--            <groupId>com.sun</groupId>-->
@@ -134,20 +134,35 @@
         <dependency>
             <groupId>net.hydromatic</groupId>
             <artifactId>foodmart-data-hsqldb</artifactId>
-            <version>0.3</version>
+            <version>0.5</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>net.hydromatic</groupId>
             <artifactId>scott-data-hsqldb</artifactId>
-            <version>0.1</version>
+            <version>0.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.hsqldb</groupId>
             <artifactId>hsqldb</artifactId>
-            <version>2.3.3</version>
+            <version>2.7.1</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+            <version>3.1.9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.jdt.core.compiler</groupId>
+            <artifactId>ecj</artifactId>
+            <version>4.6.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>commons-compiler</artifactId>
+            <version>3.1.9</version>
         </dependency>
 
     </dependencies>

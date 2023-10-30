@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
@@ -37,6 +38,10 @@ import static java.lang.Thread.sleep;
 public class LocalitySingleTaskCaseTask {
 
     public static Logger logger = LoggerFactory.getLogger(LocalitySingleTaskCaseTask.class);
+
+    public static int maxWaitTime = 5000 * 200;
+
+    public static int waitTime = 2000;
 
     static private String trimString(String original) {
         original = original.trim();
@@ -63,8 +68,11 @@ public class LocalitySingleTaskCaseTask {
             LocalitySingleTaskCaseTask.fromTopologyCheck(checkActions);
 
         Map<String, Integer> checkTriggers = LocalitySingleTaskCaseTask.fromCheckTriggers(singleTestCase.checkTriggers);
-        Map<String, String> rejectDDls = singleTestCase.getRejectDDls().stream().collect(
-            Collectors.toMap(LocalityTestCaseBean.RejectDdl::getDdl, LocalityTestCaseBean.RejectDdl::getMessage));
+        Map<String, String> rejectDDls = new HashMap<>();
+        if (singleTestCase.getRejectDDls() != null) {
+            rejectDDls = singleTestCase.getRejectDDls().stream().collect(
+                Collectors.toMap(LocalityTestCaseBean.RejectDdl::getDdl, LocalityTestCaseBean.RejectDdl::getMessage));
+        }
         return new LocalitySingleTaskCaseTask(singleTestCase.prepareDDls, rejectDDls, singleTestCase.cleanupDDls,
             checkTriggers, localityValueAndTableGroupMatchCheckerMap, partitionLocalityCheckerMap,
             tableTopologyCheckActions);
@@ -274,7 +282,7 @@ public class LocalitySingleTaskCaseTask {
         });
     }
 
-    public void execute(Connection tddlConnection) {
+    public void execute(Connection tddlConnection) throws SQLException {
         try {
             executePrepareDdls(tddlConnection);
             waitTillCheckTriggerOn(tddlConnection);
@@ -287,6 +295,7 @@ public class LocalitySingleTaskCaseTask {
             logger.info(String.format("groupNameMap is %s", groupNameMap.toString()));
             this.groupNameMap = groupNameMap;
             applyTableGroupMap(groupNameMap);
+            validateBeforeCheck(tddlConnection, dbName);
             checkLocalityInfo(this.secondPassSelectCheckMap, showLocalityResult);
             for (LocalityTestUtils.LocalityBean item : showLocalityResult) {
                 logger.info("show locality item: %s" + item.toString());
@@ -302,12 +311,28 @@ public class LocalitySingleTaskCaseTask {
         }
     }
 
+    public void validateBeforeCheck(Connection tddlConnection, String schemaName) throws SQLException {
+        String[] validateSqls = new String[] {
+            "select count(1) from information_schema.ddl_plan where table_schema = '%s' and state != 'SUCCESS';"
+        };
+        for (String validateSql : validateSqls) {
+            String sql = String.format(validateSql, schemaName);
+            logger.info(String.format("execute validate ddl: %s ", sql));
+            String result = JdbcUtil.executeQueryAndGetFirstStringResult(sql, tddlConnection);
+            Assert.assertTrue(result.equalsIgnoreCase("0"));
+        }
+    }
+
     public void waitTillCheckTriggerOn(Connection tddlConnection) {
         Boolean triggerOn = false;
+        int totalWaitTime = 0;
         while (!triggerOn) {
             triggerOn = true;
+            if (totalWaitTime >= maxWaitTime) {
+                throw new RuntimeException("waitTrigger wait time out!");
+            }
             for (Map.Entry<String, Integer> checkTrigger : checkTriggers.entrySet()) {
-                Integer value = -1;
+                Integer value = -1000;
                 try {
                     ResultSet resultSet = JdbcUtil.executeQuery(checkTrigger.getKey(), tddlConnection);
                     while (resultSet.next()) {
@@ -315,13 +340,13 @@ public class LocalitySingleTaskCaseTask {
                     }
                 } catch (SQLException e) {
                     triggerOn = false;
-                    continue;
                 }
                 if (!value.equals(checkTrigger.getValue())) {
                     triggerOn = false;
                 }
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(waitTime);
+                    totalWaitTime += waitTime;
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

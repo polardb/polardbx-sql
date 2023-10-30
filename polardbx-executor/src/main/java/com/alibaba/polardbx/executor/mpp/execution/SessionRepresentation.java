@@ -60,6 +60,7 @@ public class SessionRepresentation {
     private Map<Integer, ParameterContext> params;
     private Set<Integer> cacheRelNodesId;
     private Map<Integer, Integer> recordRowCnt;
+    private Map<Integer, Integer> distinctKeyCnt = new HashMap<>();
     private boolean testMode;
     private long lastInsertId;
     private InternalTimeZone logicalTimeZone;
@@ -68,6 +69,11 @@ public class SessionRepresentation {
     private WorkloadType workloadType;
     private boolean omitTso;
     private boolean lizard1PC;
+
+    /**
+     * 暂时只增加polardbx_server_id参数，避免长度增加较多；后续如有需要可以再修改
+     */
+    private Map<String, Object> extraServerVariables;
 
     @JsonCreator
     public SessionRepresentation(
@@ -89,6 +95,7 @@ public class SessionRepresentation {
         @JsonProperty("params") Map<Integer, ParameterContext> params,
         @JsonProperty("cacheRelNodesId") Set<Integer> cacheRelNodesId,
         @JsonProperty("recordRowCnt") Map<Integer, Integer> recordRowCnt,
+        @JsonProperty("distinctKeyCnt") Map<Integer, Integer> distinctKeyCnt,
         @JsonProperty("testMode") boolean testMode,
         @JsonProperty("lastInsertId") long lastInsertId,
         @JsonProperty("logicalTimeZone") InternalTimeZone logicalTimeZone,
@@ -96,7 +103,8 @@ public class SessionRepresentation {
         @JsonProperty("dnLsnMap") Map<String, Long> dnLsnMap,
         @JsonProperty("omitTso") boolean omitTso,
         @JsonProperty("lizard1PC") boolean lizard1PC,
-        @JsonProperty("workloadType") WorkloadType workloadType) {
+        @JsonProperty("workloadType") WorkloadType workloadType,
+        @JsonProperty("extraServerVariables") Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
         this.catalog = catalog;
         this.schema = schema;
@@ -115,6 +123,7 @@ public class SessionRepresentation {
         this.params = params;
         this.cacheRelNodesId = cacheRelNodesId;
         this.recordRowCnt = recordRowCnt;
+        this.distinctKeyCnt = distinctKeyCnt;
         this.testMode = testMode;
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
@@ -123,6 +132,7 @@ public class SessionRepresentation {
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
         this.workloadType = workloadType;
+        this.extraServerVariables = extraServerVariables;
     }
 
     public SessionRepresentation(
@@ -144,6 +154,7 @@ public class SessionRepresentation {
         Parameters params,
         Set<Integer> cacheRelNodesId,
         Map<Integer, Integer> recordRowCnt,
+        Map<Integer, Integer> distinctKeyCnt,
         boolean testMode,
         long lastInsertId,
         InternalTimeZone logicalTimeZone,
@@ -151,7 +162,8 @@ public class SessionRepresentation {
         Map<String, Long> dnLsnMap,
         boolean omitTso,
         boolean lizard1PC,
-        WorkloadType workloadType) {
+        WorkloadType workloadType,
+        Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
         this.catalog = catalog;
         this.schema = schema;
@@ -170,6 +182,7 @@ public class SessionRepresentation {
         this.params = params.getCurrentParameter();
         this.cacheRelNodesId = cacheRelNodesId;
         this.recordRowCnt = recordRowCnt;
+        this.distinctKeyCnt = distinctKeyCnt;
         this.testMode = testMode;
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
@@ -178,6 +191,7 @@ public class SessionRepresentation {
         this.workloadType = workloadType;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
+        this.extraServerVariables = extraServerVariables;
     }
 
     @JsonProperty
@@ -188,6 +202,11 @@ public class SessionRepresentation {
     @JsonProperty
     public Map<Integer, Integer> getRecordRowCnt() {
         return recordRowCnt;
+    }
+
+    @JsonProperty
+    public Map<Integer, Integer> getDistinctKeyCnt() {
+        return distinctKeyCnt;
     }
 
     @JsonProperty
@@ -310,6 +329,11 @@ public class SessionRepresentation {
         return lizard1PC;
     }
 
+    @JsonProperty
+    public Map<String, Object> getExtraServerVariables() {
+        return extraServerVariables;
+    }
+
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
@@ -364,6 +388,9 @@ public class SessionRepresentation {
         }
         ec.getCacheRelNodeIds().addAll(cacheRelNodesId);
         ec.getRecordRowCnt().putAll(recordRowCnt);
+        if (distinctKeyCnt != null) {
+            ec.getDistinctKeyCnt().putAll(distinctKeyCnt);
+        }
         ec.setInternalSystemSql(false);
         ec.setUsingPhySqlCache(true);
 
@@ -401,6 +428,8 @@ public class SessionRepresentation {
             privilegeContext.setManaged(false);
         }
         ec.setTestMode(testMode);
+        ec.setExtraServerVariables(extraServerVariables);
+
         return new Session(taskId.getStageId(), ec);
     }
 }

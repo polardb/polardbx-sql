@@ -16,34 +16,25 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.common.DefaultSchema;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
-import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.util.Util;
 
-import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
 
@@ -51,6 +42,17 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
 
     public LogicalAlterTableSetTableGroup(DDL ddl) {
         super(ddl, ((AlterTableSetTableGroup) ddl).getObjectNames());
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + tableName);
     }
 
     public void preparedData(ExecutionContext ec) {
@@ -103,4 +105,18 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
         return new LogicalAlterTableSetTableGroup(ddl);
     }
 
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        AlterTableSetTableGroup alterTableSetTableGroup = (AlterTableSetTableGroup) relDdl;
+        String tableGroupName = alterTableSetTableGroup.getTableGroupName();
+        if (TableGroupNameUtil.isOssTg(tableGroupName)) {
+            return true;
+        }
+
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+        if (Engine.isFileStore(tableMeta.getEngine())) {
+            return true;
+        }
+        return false;
+    }
 }

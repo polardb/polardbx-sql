@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.cdc;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 
 import java.util.Map;
@@ -52,7 +53,7 @@ public class CdcManagerHelper {
                           DdlVisibility visibility,
                           Map<String, Object> extendParams) {
         CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, null, null,
-            null, extendParams, false, null);
+            null, extendParams, false, null, null);
 
         cdcManager.notifyDdl(context);
     }
@@ -64,7 +65,7 @@ public class CdcManagerHelper {
                              Map<String, Object> extendParams) {
         CdcDDLContext context =
             new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId, ddlType,
-                extendParams, false, null);
+                extendParams, false, null, null);
         cdcManager.notifyDdl(context);
     }
 
@@ -73,7 +74,16 @@ public class CdcManagerHelper {
                              boolean isRefreshTableMetaInfo, Map<String, Set<String>> newTableTopology) {
         CdcDDLContext context =
             new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId, ddlType,
-                extendParams, isRefreshTableMetaInfo, newTableTopology);
+                extendParams, isRefreshTableMetaInfo, newTableTopology, null);
+        cdcManager.notifyDdl(context);
+    }
+
+    public void notifyDdlNew(String schemaName, String tableName, String sqlKind, String ddlSql, DdlType ddlType,
+                             Long jobId, Long taskId, DdlVisibility visibility, Map<String, Object> extendParams,
+                             boolean isRefreshTableMetaInfo, Map<String, Set<String>> newTableTopology,
+                             Pair<String, TablesExtInfo> cdcMetaPair) {
+        CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId,
+            ddlType, extendParams, isRefreshTableMetaInfo, newTableTopology, cdcMetaPair);
         cdcManager.notifyDdl(context);
     }
 

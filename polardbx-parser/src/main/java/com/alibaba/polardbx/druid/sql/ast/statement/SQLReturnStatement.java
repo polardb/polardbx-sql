@@ -20,12 +20,13 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.Collections;
 import java.util.List;
 
-public class SQLReturnStatement extends SQLStatementImpl implements SQLReplaceable  {
+public class SQLReturnStatement extends SQLStatementImpl implements SQLReplaceable {
 
     private SQLExpr expr;
 
@@ -34,7 +35,7 @@ public class SQLReturnStatement extends SQLStatementImpl implements SQLReplaceab
     }
 
     public SQLReturnStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public SQLExpr getExpr() {
@@ -76,5 +77,10 @@ public class SQLReturnStatement extends SQLStatementImpl implements SQLReplaceab
             return true;
         }
         return false;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

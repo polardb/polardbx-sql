@@ -30,8 +30,8 @@ public class SqlAlterTableGroupMergePartition extends SqlAlterTableMergePartitio
     private SqlAlterTableGroup parent;
 
     public SqlAlterTableGroupMergePartition(SqlParserPos pos, SqlNode targetPartitionName,
-                                            List<SqlNode> oldPartitions) {
-        super(pos, targetPartitionName, oldPartitions);
+                                            List<SqlNode> oldPartitions, boolean subPartitionsMerge) {
+        super(pos, targetPartitionName, oldPartitions, subPartitionsMerge);
     }
 
     public SqlAlterTableGroup getParent() {

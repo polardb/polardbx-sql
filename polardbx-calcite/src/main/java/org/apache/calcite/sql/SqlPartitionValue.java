@@ -22,6 +22,7 @@ import org.apache.calcite.sql.util.SqlBasicVisitor;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 
 import java.util.ArrayList;
@@ -62,6 +63,8 @@ public class SqlPartitionValue extends SqlNode {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("");
+        sb.append("values");
+        sb.append(" ");
         sb.append(operator.name());
         sb.append(" ");
         sb.append("(");
@@ -94,10 +97,11 @@ public class SqlPartitionValue extends SqlNode {
                     final Boolean visited = super.visit(call);
                     final SqlOperator operator = call.getOperator();
                     if (operator.isDynamicFunction()) {
-                        
+
                         String name = operator.getName();
-                        if (!(name.equalsIgnoreCase("unix_timestamp") || name.equalsIgnoreCase("to_seconds") || name.equalsIgnoreCase("to_days") || name.equalsIgnoreCase("month") )){
-                            throw new NotSupportException("Dynamic function in partition clause is");                            
+                        if (!(name.equalsIgnoreCase("unix_timestamp") || name.equalsIgnoreCase("to_seconds")
+                            || name.equalsIgnoreCase("to_days") || name.equalsIgnoreCase("month"))) {
+                            throw new NotSupportException("Dynamic function in partition clause is");
                         }
                     }
                     return visited;
@@ -122,7 +126,7 @@ public class SqlPartitionValue extends SqlNode {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
         if (this == node) {
             return true;
         }
@@ -138,7 +142,7 @@ public class SqlPartitionValue extends SqlNode {
         }
 
         for (int i = 0; i < items.size(); ++i) {
-            if (!items.get(i).equalsDeep(sqlPart.items.get(i), litmus)) {
+            if (!items.get(i).equalsDeep(sqlPart.items.get(i), litmus, context)) {
                 return false;
             }
         }

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropPartitionGlobalInde
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableRemoveMetaTask;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropGsi;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.google.common.collect.Lists;
@@ -55,6 +57,8 @@ public class DropGsiJobFactory extends DdlJobFactory {
     protected final String indexTableName;
     protected final ExecutionContext executionContext;
     protected boolean skipSchemaChange = false;
+    protected boolean repartition;
+    protected final PhysicalPlanData physicalPlanData;
 
     public static final String HIDE_TABLE_TASK = "HIDE_TABLE_TASK";
 
@@ -67,11 +71,13 @@ public class DropGsiJobFactory extends DdlJobFactory {
     public DropGsiJobFactory(String schemaName,
                              String primaryTableName,
                              String indexTableName,
+                             PhysicalPlanData physicalPlanData,
                              ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
         this.indexTableName = indexTableName;
         this.executionContext = executionContext;
+        this.physicalPlanData = physicalPlanData;
     }
 
     @Override
@@ -115,8 +121,20 @@ public class DropGsiJobFactory extends DdlJobFactory {
             new DropGsiTableRemoveMetaTask(schemaName, primaryTableName, indexTableName);
         taskList.add(dropGsiTableRemoveTableMetaTask);
 
+        if (!skipSchemaChange && !repartition) {
+            //mark gsi task
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+            if (!tableMeta.isAutoPartition()) {
+                CdcGsiDdlMarkTask cdcGsiDdlMarkTask =
+                    new CdcGsiDdlMarkTask(schemaName, physicalPlanData,
+                        primaryTableName, executionContext.getOriginSql());
+                taskList.add(cdcGsiDdlMarkTask);
+            }
+        }
+
         //4. sync after drop table
-        TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        TablesSyncTask dropTableSyncTask =
+            new TablesSyncTask(schemaName, Lists.newArrayList(primaryTableName, indexTableName));
         taskList.add(dropTableSyncTask);
 
         final ExecutableDdlJob4DropGsi executableDdlJob = new ExecutableDdlJob4DropGsi();
@@ -178,14 +196,26 @@ public class DropGsiJobFactory extends DdlJobFactory {
                 executionContext
             );
         } else {
+            PhysicalPlanData physicalPlanData = null;
+            if (!preparedData.isRepartition()) {
+                DropGlobalIndexBuilder builder = DropGlobalIndexBuilder.createBuilder(preparedData.getSchemaName(),
+                    preparedData.getPrimaryTableName(),
+                    preparedData.getIndexTableName(),
+                    executionContext);
+                builder.build();
+                physicalPlanData = builder.genPhysicalPlanData();
+            }
+
             jobFactory = new DropGsiJobFactory(
                 preparedData.getSchemaName(),
                 preparedData.getPrimaryTableName(),
                 preparedData.getIndexTableName(),
+                physicalPlanData,
                 executionContext
             );
         }
         jobFactory.skipSchemaChange = skipSchemaChange;
+        jobFactory.repartition = preparedData.isRepartition();
         return jobFactory.create(validate);
     }
 

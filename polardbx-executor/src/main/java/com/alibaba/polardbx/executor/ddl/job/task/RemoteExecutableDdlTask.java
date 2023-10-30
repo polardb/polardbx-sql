@@ -37,6 +37,18 @@ import java.util.stream.Collectors;
 public interface RemoteExecutableDdlTask {
 
     default Optional<String> chooseServer() {
+        // choose standby node
+        List<GmsNode> standbyNodeList = GmsNodeManager.getInstance().getStandbyNodes();
+        if (enableStandbyNode() && !standbyNodeList.isEmpty()) {
+            List<String> candidates = standbyNodeList.stream().map(GmsNode::getServerKey).collect(Collectors.toList());
+            candidates.add(null);
+            String chosenNode = candidates.get(RandomUtils.nextInt(0, candidates.size()));
+
+            if (chosenNode != null) {
+                return Optional.of(chosenNode);
+            }
+        }
+
         if (forbidRemoteDdlTask()) {
             return Optional.empty();
         }
@@ -60,9 +72,13 @@ public interface RemoteExecutableDdlTask {
         String forbidRemoteDdlTaskStr =
             MetaDbInstConfigManager.getInstance()
                 .getInstProperty(ConnectionProperties.FORBID_REMOTE_DDL_TASK, Boolean.TRUE.toString());
-        if (StringUtils.equalsIgnoreCase(forbidRemoteDdlTaskStr, Boolean.TRUE.toString())) {
-            return true;
-        }
-        return false;
+        return StringUtils.equalsIgnoreCase(forbidRemoteDdlTaskStr, Boolean.TRUE.toString());
+    }
+
+    default boolean enableStandbyNode() {
+        String enableStandbyNodeStr =
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.ENABLE_STANDBY_BACKFILL, Boolean.TRUE.toString());
+        return StringUtils.equalsIgnoreCase(enableStandbyNodeStr, Boolean.TRUE.toString());
     }
 }

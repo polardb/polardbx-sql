@@ -36,6 +36,7 @@ import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_HIJA
  * @author Shi Yuxuan
  */
 public class LogicalUnArchiveHandler extends LogicalCommonDdlHandler {
+
     public LogicalUnArchiveHandler(IRepository repo) {
         super(repo);
     }

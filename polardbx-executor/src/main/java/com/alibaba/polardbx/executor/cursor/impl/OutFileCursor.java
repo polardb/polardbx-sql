@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.cursor.impl;
 
-import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.MemoryNotEnoughException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -40,6 +38,8 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.sql.OutFileParams;
 
 import java.util.ArrayList;
@@ -50,17 +50,21 @@ public class OutFileCursor extends AbstractCursor {
 
     protected static final Logger log = LoggerFactory.getLogger(OutFileCursor.class);
 
-    private DataType[] dataTypes;
+    protected DataType[] dataTypes;
 
     private Cursor cursor;
     private BlockBuilder[] blockBuilders;
     protected CursorMeta cursorMeta;
-    private ListenableFuture<?> spillFuture;
-    private ExecutionContext context;
-    private AsyncFileSingleBufferSpiller singleStreamSpiller;
-    private int affectRow = 0;
-    private MemoryPool pool;
-    protected final MemoryAllocatorCtx memoryAllocator;
+    protected ListenableFuture<?> spillFuture;
+    protected ExecutionContext context;
+    protected AsyncFileSingleBufferSpiller singleStreamSpiller;
+    protected int affectRow = 0;
+    protected MemoryPool pool;
+    protected MemoryAllocatorCtx memoryAllocator;
+
+    public OutFileCursor(boolean enableOperatorMetric) {
+        super(enableOperatorMetric);
+    }
 
     public OutFileCursor(
         ExecutionContext context, SpillerFactory spillerFactory, Cursor cursor, OutFileParams outFileParams) {
@@ -86,7 +90,7 @@ public class OutFileCursor extends AbstractCursor {
         memoryAllocator = pool.getMemoryAllocatorCtx();
     }
 
-    private final void createBlockBuilders() {
+    protected final void createBlockBuilders() {
         if (blockBuilders == null) {
             blockBuilders = new BlockBuilder[dataTypes.length];
             for (int i = 0; i < dataTypes.length; i++) {
@@ -95,7 +99,7 @@ public class OutFileCursor extends AbstractCursor {
         }
     }
 
-    private final void getSpillFuture() {
+    protected final void getSpillFuture() {
         if (spillFuture != null) {
             try {
                 spillFuture.get();

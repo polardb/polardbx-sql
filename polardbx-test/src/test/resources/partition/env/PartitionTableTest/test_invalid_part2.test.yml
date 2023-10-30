@@ -18,7 +18,7 @@ CREATE TABLE `tbl2` (
 partition by hash(year('a'))
 partitions 4;
 
-## error_msg: $# use partition function #$
+## error_msg: $# user-defined function #$
 CREATE TABLE `tbl2` (
 `b` tinyint(4) NOT NULL,
 `c` bigint(20) NOT NULL COMMENT '',
@@ -116,7 +116,7 @@ partition p2 values less than (2005),
 partition p3 values less than (maxvalue)
 );
 
-## error_msg: $# use partition function #$
+## error_msg: $# user-defined function #$
 CREATE TABLE `tbl4` (
 `b` tinyint(4) NOT NULL,
 `c` bigint(20) NOT NULL COMMENT '',

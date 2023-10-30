@@ -16,12 +16,22 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
-import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.partition.common.PartInfoSessionVars;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionByNormalizationParams;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.google.common.collect.Lists;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,12 +41,23 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_PARTITION;
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION;
+
 /**
  * The complete partition definition of one logical table
  *
  * @author chenghui.lch
  */
 public class PartitionInfo {
+
+    /**
+     * the id of logical table in table_partitions of metadb
+     * <pre>
+     *     Notice: hash & equal operation is not allowed to use this properties
+     * </pre>
+     */
+    protected Long tableId;
 
     /**
      * the schema of logical table
@@ -114,11 +135,6 @@ public class PartitionInfo {
     protected PartitionByDefinition partitionBy;
 
     /**
-     * the complete definition of subpartitions
-     */
-    protected SubPartitionByDefinition subPartitionBy;
-
-    /**
      * The hashCode of partInfo
      */
     protected volatile Integer partInfoHashCode = null;
@@ -137,20 +153,13 @@ public class PartitionInfo {
     }
 
     public boolean containSubPartitions() {
-        return subPartitionBy != null;
+        return getPartitionBy() != null && getPartitionBy().getSubPartitionBy() != null;
     }
 
     public boolean isSinglePartition() {
-        int cnt = this.partitionBy.getPartitions().size();
+        int cnt = this.partitionBy.getPhysicalPartitions().size();
         if (cnt > 1) {
             return false;
-        }
-
-        if (this.subPartitionBy != null) {
-            int spCnt = this.getPartitionBy().getPartitions().get(0).getSubPartitions().size();
-            if (spCnt > 1) {
-                return false;
-            }
         }
         return true;
     }
@@ -179,6 +188,10 @@ public class PartitionInfo {
 
     public boolean isPartitionedGsiTable() {
         return this.tableType == PartitionTableType.GSI_TABLE;
+    }
+
+    public boolean isPartitionedTableOrGsiTable() {
+        return this.tableType == PartitionTableType.PARTITION_TABLE || this.tableType == PartitionTableType.GSI_TABLE;
     }
 
     public String defaultDbIndex() {
@@ -230,14 +243,6 @@ public class PartitionInfo {
         this.partitionBy = partitionBy;
     }
 
-    public SubPartitionByDefinition getSubPartitionTemplateDef() {
-        return subPartitionBy;
-    }
-
-    public void setSubPartitionTemplateDef(SubPartitionByDefinition subPartitionTemplateDef) {
-        this.subPartitionBy = subPartitionTemplateDef;
-    }
-
     public Integer getSpTemplateFlag() {
         return spTemplateFlag;
     }
@@ -262,20 +267,8 @@ public class PartitionInfo {
         this.metaVersion = metaVersion;
     }
 
-    public SubPartitionByDefinition getSubPartitionBy() {
-        return subPartitionBy;
-    }
-
-    public void setSubPartitionBy(SubPartitionByDefinition subPartitionBy) {
-        this.subPartitionBy = subPartitionBy;
-    }
-
     public Integer getStatus() {
         return status;
-    }
-
-    public String normalizePartitionByInfo() {
-        return partitionBy.normalizePartitionByDefForShowCreateTable(false);
     }
 
     public PartitionTableType getTableType() {
@@ -355,21 +348,81 @@ public class PartitionInfo {
          */
         Map<String, List<PhysicalPartitionInfo>> topology = new HashMap<>();
 
+        boolean needFilterParts = !GeneralUtil.isEmpty(partitionNames);
+        Set<String> targetPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+        if (partitionNames != null) {
+            targetPartNameSet.addAll(partitionNames);
+        }
+
         for (PartitionSpec partitionSpec : partitionBy.getPartitions()) {
             final String name = partitionSpec.getName();
-            boolean containTargetPartition = GeneralUtil.isEmpty(partitionNames) ||
-                partitionNames.stream().filter(r -> r.equalsIgnoreCase(name)).findAny().orElse(null) != null;
-            if (containTargetPartition) {
+            boolean isLogicalPart = partitionSpec.isLogical();
+            if (isLogicalPart) {
+                List<PartitionSpec> subParts = partitionSpec.getSubPartitions();
+                for (int i = 0; i < subParts.size(); i++) {
+                    PartitionSpec subpartSpec = subParts.get(i);
+                    final String subPartName = subpartSpec.getName();
+                    boolean findTargetPart = true;
+                    if (needFilterParts) {
+                        if (!targetPartNameSet.contains(subPartName)) {
+                            findTargetPart = false;
+                        }
+                    }
+
+                    if (!findTargetPart) {
+                        continue;
+                    }
+
+                    final PartitionLocation location = subpartSpec.getLocation();
+                    if (location != null && (!throwException || location.isValidLocation())) {
+                        PhysicalPartitionInfo phyPartInfo = new PhysicalPartitionInfo();
+                        phyPartInfo.setPartId(subpartSpec.getId());
+                        phyPartInfo.setGroupKey(subpartSpec.getLocation().getGroupKey());
+                        phyPartInfo.setPhyTable(subpartSpec.getLocation().getPhyTableName());
+                        phyPartInfo.setPartName(subpartSpec.getName());
+                        phyPartInfo.setParentPartName(name);
+                        phyPartInfo.setPartLevel(subpartSpec.getPartLevel());
+                        phyPartInfo.setPartBitSetIdx(subpartSpec.getPosition().intValue());
+
+                        if (topology.containsKey(location.getGroupKey())) {
+                            topology.get(location.getGroupKey()).add(phyPartInfo);
+                        } else {
+                            List<PhysicalPartitionInfo> phyPartInfos = new ArrayList<>();
+                            phyPartInfos.add(phyPartInfo);
+                            topology.put(location.getGroupKey(), phyPartInfos);
+                        }
+                    } else {
+                        if (ignoreInvalid && location != null && !location.isValidLocation()) {
+                            continue;
+                        }
+                        throw GeneralUtil
+                            .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                                "Found invalid location info of " + this.getTableName()));
+                    }
+
+                }
+            } else {
+                boolean findTargetPart = true;
+                if (needFilterParts) {
+                    if (!targetPartNameSet.contains(name)) {
+                        findTargetPart = false;
+                    }
+                }
+
+                if (!findTargetPart) {
+                    continue;
+                }
 
                 final PartitionLocation location = partitionSpec.getLocation();
                 if (location != null && (!throwException || location.isValidLocation())) {
-
                     PhysicalPartitionInfo phyPartInfo = new PhysicalPartitionInfo();
                     phyPartInfo.setPartId(partitionSpec.getId());
                     phyPartInfo.setGroupKey(partitionSpec.getLocation().getGroupKey());
                     phyPartInfo.setPhyTable(partitionSpec.getLocation().getPhyTableName());
                     phyPartInfo.setPartName(partitionSpec.getName());
-                    phyPartInfo.setPartLevel(PartKeyLevel.PARTITION_KEY);
+                    phyPartInfo.setParentPartName(null);
+                    phyPartInfo.setPartLevel(partitionSpec.getPartLevel());
                     phyPartInfo.setPartBitSetIdx(partitionSpec.getPosition().intValue());
 
                     if (topology.containsKey(location.getGroupKey())) {
@@ -384,7 +437,8 @@ public class PartitionInfo {
                         continue;
                     }
                     throw GeneralUtil
-                        .nestedException(new NotSupportException("Not support to get topology with subpartitions"));
+                        .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                            "Found invalid location info of " + this.getTableName()));
                 }
             }
         }
@@ -424,30 +478,63 @@ public class PartitionInfo {
     }
 
     public String showCreateTablePartitionDefInfo(boolean showHashByRange) {
-        if (subPartitionBy == null) {
+        return showCreateTablePartitionDefInfo(showHashByRange, "");
+    }
 
-            String partByDef = "";
-            if (tableType == PartitionTableType.SINGLE_TABLE) {
-                partByDef += "SINGLE";
-            } else if (tableType == PartitionTableType.BROADCAST_TABLE) {
-                partByDef += "BROADCAST";
-            } else {
-                partByDef = partitionBy.normalizePartitionByDefForShowCreateTable(showHashByRange);
-                if (this.getAutoFlag() != 0) {
-                    partByDef += "\nAUTO_SPLIT=ON";
-                }
-            }
-
-            return partByDef;
-
+    public String showCreateTablePartitionDefInfo(boolean showHashByRange, String textIntentBase) {
+        String partByDef = "";
+        if (tableType == PartitionTableType.SINGLE_TABLE) {
+            partByDef += "SINGLE";
+        } else if (tableType == PartitionTableType.BROADCAST_TABLE) {
+            partByDef += "BROADCAST";
         } else {
-            throw GeneralUtil
-                .nestedException(new NotSupportException("Not support to show create for tables with subpartitions"));
+            PartitionByNormalizationParams params = new PartitionByNormalizationParams();
+            params.setShowHashByRange(showHashByRange);
+            params.setTextIntentBase(textIntentBase);
+            partByDef = partitionBy.normalizePartByDefForShowCreateTable(params);
+            if (this.getAutoFlag() != 0) {
+                partByDef += "\nAUTO_SPLIT=ON";
+            }
+        }
+        return partByDef;
+    }
+
+    public Integer getAllPartLevelCount() {
+        if (this.tableType != PartitionTableType.PARTITION_TABLE
+            && this.tableType != PartitionTableType.GSI_TABLE) {
+            return 0;
+        } else {
+            return this.partitionBy.getAllPartLevelCount();
         }
     }
 
     public List<String> getPartitionColumns() {
         return getPartitionColumnsNotReorder();
+    }
+
+    public List<String> getActualPartitionColumnsNotReorder() {
+        final Set<String> actShardSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final List<String> actShardCols = new ArrayList<>();
+        if (partitionBy != null) {
+            List<List<String>> allLevelActualPartCols = getAllLevelActualPartCols();
+            List<String> firstLevelActPartCol = allLevelActualPartCols.get(0);
+            for (String colName : firstLevelActPartCol) {
+                if (!actShardSet.contains(colName)) {
+                    actShardSet.add(colName);
+                    actShardCols.add(colName);
+                }
+            }
+            if (partitionBy.getSubPartitionBy() != null) {
+                List<String> secondLevelActPartCol = allLevelActualPartCols.get(0);
+                for (String colName : secondLevelActPartCol) {
+                    if (!actShardSet.contains(colName)) {
+                        actShardSet.add(colName);
+                        actShardCols.add(colName);
+                    }
+                }
+            }
+        }
+        return actShardCols;
     }
 
     public List<String> getPartitionColumnsNotReorder() {
@@ -460,52 +547,97 @@ public class PartitionInfo {
                     shardCols.add(colName);
                 }
             }
-        }
-        if (subPartitionBy != null) {
-            for (String colName : subPartitionBy.getSubPartitionColumnNameList()) {
-                if (!shardSet.contains(colName)) {
-                    shardSet.add(colName);
-                    shardCols.add(colName);
+
+            if (partitionBy.getSubPartitionBy() != null) {
+                for (String colName : partitionBy.getSubPartitionBy().getPartitionColumnNameList()) {
+                    if (!shardSet.contains(colName)) {
+                        shardSet.add(colName);
+                        shardCols.add(colName);
+                    }
                 }
             }
         }
         return shardCols;
     }
 
-    public String getPartitionNameByPhyLocation(String phyGrp, String phyTable) {
+    public Map<Integer, List<String>> getPartLevelToPartColsMapping() {
+        final Set<String> shardSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final Map<Integer, List<String>> shardColsByLevel = new HashMap<>();
 
-        String targetPartName = null;
-        List<PartitionSpec> allPartSpecs = this.partitionBy.getPartitions();
-
-        if (subPartitionBy != null) {
-            List<SubPartitionSpec> allSubPartSpecs = new ArrayList<>();
-            for (int i = 0; i < allPartSpecs.size(); i++) {
-                allSubPartSpecs.addAll(allPartSpecs.get(i).getSubPartitions());
-            }
-            for (int i = 0; i < allSubPartSpecs.size(); i++) {
-                SubPartitionSpec p = allSubPartSpecs.get(i);
-                String name = p.getName();
-                String grpKey = p.getLocation().getGroupKey();
-                String phyTbl = p.getLocation().getPhyTableName();
-                if (grpKey.equalsIgnoreCase(phyGrp) && phyTbl.equalsIgnoreCase(phyTable)) {
-                    targetPartName = name;
-                    break;
+        if (partitionBy != null) {
+            List<String> shardCols = new ArrayList<>();
+            for (String colName : partitionBy.getPartitionColumnNameList()) {
+                if (!shardSet.contains(colName)) {
+                    shardSet.add(colName);
+                    shardCols.add(colName);
                 }
             }
-        } else {
-            for (int i = 0; i < allPartSpecs.size(); i++) {
-                PartitionSpec p = allPartSpecs.get(i);
-                String name = p.getName();
-                String grpKey = p.getLocation().getGroupKey();
-                String phyTbl = p.getLocation().getPhyTableName();
-                if (grpKey.equalsIgnoreCase(phyGrp) && phyTbl.equalsIgnoreCase(phyTable)) {
-                    targetPartName = name;
-                    break;
+            shardColsByLevel.put(PARTITION_LEVEL_PARTITION, shardCols);
+
+            if (partitionBy.getSubPartitionBy() != null) {
+                shardSet.clear();
+                List<String> subShardCols = new ArrayList<>();
+                for (String colName : partitionBy.getSubPartitionBy().getPartitionColumnNameList()) {
+                    if (!shardSet.contains(colName)) {
+                        shardSet.add(colName);
+                        subShardCols.add(colName);
+                    }
                 }
+                shardColsByLevel.put(PARTITION_LEVEL_SUBPARTITION, subShardCols);
             }
         }
 
-        return targetPartName;
+        return shardColsByLevel;
+    }
+
+    public List<String> getPartitionColumnsNotDeduplication() {
+        final List<String> shardCols = new ArrayList<>();
+        if (partitionBy != null) {
+            shardCols.addAll(partitionBy.getPartitionColumnNameList());
+
+            if (partitionBy.getSubPartitionBy() != null) {
+                shardCols.addAll(partitionBy.getSubPartitionBy().getPartitionColumnNameList());
+            }
+        }
+        return shardCols;
+    }
+
+    public String getPartitionNameByPhyLocation(String phyGrp, String phyTable) {
+        PartitionSpec partSpec = partSpecSearcher.getPartSpec(phyGrp, phyTable);
+        if (partSpec == null) {
+            return null;
+        }
+        return partSpec.getName();
+//        String targetPartName = null;
+//        List<PartitionSpec> allPartSpecs = this.partitionBy.getPartitions();
+//        if (this.partitionBy.getSubPartitionBy() != null) {
+//            List<PartitionSpec> allSubPartSpecs = new ArrayList<>();
+//            for (int i = 0; i < allPartSpecs.size(); i++) {
+//                allSubPartSpecs.addAll(allPartSpecs.get(i).getSubPartitions());
+//            }
+//            for (int i = 0; i < allSubPartSpecs.size(); i++) {
+//                PartitionSpec p = allSubPartSpecs.get(i);
+//                String name = p.getName();
+//                String grpKey = p.getLocation().getGroupKey();
+//                String phyTbl = p.getLocation().getPhyTableName();
+//                if (grpKey.equalsIgnoreCase(phyGrp) && phyTbl.equalsIgnoreCase(phyTable)) {
+//                    targetPartName = name;
+//                    break;
+//                }
+//            }
+//        } else {
+//            for (int i = 0; i < allPartSpecs.size(); i++) {
+//                PartitionSpec p = allPartSpecs.get(i);
+//                String name = p.getName();
+//                String grpKey = p.getLocation().getGroupKey();
+//                String phyTbl = p.getLocation().getPhyTableName();
+//                if (grpKey.equalsIgnoreCase(phyGrp) && phyTbl.equalsIgnoreCase(phyTable)) {
+//                    targetPartName = name;
+//                    break;
+//                }
+//            }
+//        }
+//        return targetPartName;
     }
 
     public void setStatus(Integer status) {
@@ -532,10 +664,6 @@ public class PartitionInfo {
             newPartInfo.setPartitionBy(this.partitionBy.copy());
         }
 
-        if (this.subPartitionBy != null) {
-            newPartInfo.setSubPartitionBy(this.subPartitionBy.copy());
-        }
-
         if (this.locality != null) {
             newPartInfo.setLocality(this.locality);
         }
@@ -544,29 +672,183 @@ public class PartitionInfo {
             newPartInfo.setPartSpecSearcher(
                 PartSpecSearcher.buildPartSpecSearcher(newPartInfo.getTableType(), newPartInfo.getPartitionBy()));
         }
+
+        partitionBy.refreshPhysicalPartitionsCache();
         return newPartInfo;
     }
 
     public int getAllPhysicalPartitionCount() {
-        if (this.subPartitionBy == null) {
-            return this.partitionBy.getPartitions().size();
-        }
-
-        int allPhyPartCnt = 0;
-        List<PartitionSpec> psList = this.partitionBy.getPartitions();
-        for (int i = 0; i < psList.size(); i++) {
-            allPhyPartCnt += psList.get(i).getSubPartitions().size();
-        }
-        return allPhyPartCnt;
+        List<PartitionSpec> psList = this.partitionBy.getPhysicalPartitions();
+        return psList.size();
     }
 
-    public List<String> getActualPartitionColumns() {
-        PartitionTableType tableType = this.tableType;
-        List<String> actualPartCols = new ArrayList<>();
-        if (tableType == PartitionTableType.BROADCAST_TABLE || tableType == PartitionTableType.SINGLE_TABLE) {
-            return actualPartCols;
+//    public List<String> getActualPartitionColumns() {
+//        PartitionTableType tableType = this.tableType;
+//        List<String> actualPartCols = new ArrayList<>();
+//        if (tableType == PartitionTableType.BROADCAST_TABLE || tableType == PartitionTableType.SINGLE_TABLE) {
+//            return actualPartCols;
+//        }
+//        return this.getPartitionBy().getActualPartitionColumns();
+//    }
+
+    public List<List<ColumnMeta>> getAllLevelActualPartColMetas() {
+        List<Integer> allLevelPartColCnts = getAllLevelActualPartColCounts();
+        List<List<ColumnMeta>> result = new ArrayList<>();
+        PartitionByDefinition partByDef = this.getPartitionBy();
+        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
+        if (partByDef != null) {
+            int actPartColCnt = allLevelPartColCnts.get(0);
+            List<ColumnMeta> allPartColMetas = partByDef.getPartitionFieldList();
+            List<ColumnMeta> actPartColMetas = new ArrayList<>();
+            for (int i = 0; i < actPartColCnt; i++) {
+                actPartColMetas.add(allPartColMetas.get(i));
+            }
+            result.add(actPartColMetas);
         }
-        return this.getPartitionBy().getActualPartitionColumns();
+        if (subPartByDef != null) {
+            int actSubPartColCnt = allLevelPartColCnts.get(1);
+            List<ColumnMeta> allSubPartColMetas = subPartByDef.getPartitionFieldList();
+            List<ColumnMeta> actSubPartColMetas = new ArrayList<>();
+            for (int i = 0; i < actSubPartColCnt; i++) {
+                actSubPartColMetas.add(allSubPartColMetas.get(i));
+            }
+            result.add(actSubPartColMetas);
+        } else {
+            result.add(Lists.newArrayList());
+        }
+        return result;
+    }
+
+    public List<List<String>> getAllLevelActualPartCols() {
+        PartitionTableType tableType = this.tableType;
+        List<List<String>> result = new ArrayList<>();
+        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE) {
+            result.add(Lists.newArrayList());
+            result.add(Lists.newArrayList());
+            return result;
+        }
+        result = this.partitionBy.getAllLevelActualPartCols();
+        return result;
+    }
+
+    public List<List<String>> getAllLevelFullPartCols() {
+        PartitionTableType tableType = this.tableType;
+        List<List<String>> result = new ArrayList<>();
+        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE) {
+            result.add(Lists.newArrayList());
+            result.add(Lists.newArrayList());
+            return result;
+        }
+        result = this.partitionBy.getAllLevelFullPartCols();
+        return result;
+    }
+
+    /**
+     * Get the actual partition columns of all part levels
+     * and covert them into a list (allowed duplicated columns)
+     * <p>
+     * Import Notice:
+     * the order of  partition columns of list to be return
+     * MUST BE the same as the order of definition in create tbl/create global index ddl
+     */
+    public List<String> getAllLevelActualPartColsAsList() {
+        List<List<String>> allLevelActualPartCols = getAllLevelActualPartCols();
+        List<String> results = new ArrayList<>();
+        for (int i = 0; i < allLevelActualPartCols.size(); i++) {
+            if (!allLevelActualPartCols.get(i).isEmpty()) {
+                results.addAll(allLevelActualPartCols.get(i));
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Get the actual partition columns of all part levels and merge them into a list without duplicated columns
+     */
+    public List<String> getAllLevelActualPartColsAsNoDuplicatedList() {
+        List<List<String>> allLevelActualPartCols = getAllLevelActualPartCols();
+        TreeSet<String> colSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        List<String> allLevelActualPartColList = new ArrayList<>();
+        for (int i = 0; i < allLevelActualPartCols.size(); i++) {
+            for (int j = 0; j < allLevelActualPartCols.get(i).size(); j++) {
+                String col = allLevelActualPartCols.get(i).get(j);
+                if (!colSet.contains(col)) {
+                    colSet.add(col);
+                    allLevelActualPartColList.add(col);
+                } else {
+                    continue;
+                }
+            }
+        }
+        return allLevelActualPartColList;
+    }
+
+    public Map<Integer, List<String>> getAllLevelActualPartColsAsNoDuplicatedListByLevel() {
+        Map<Integer, List<String>> allLevelActualPartColsByLevel = new HashMap<>();
+
+        List<List<String>> allLevelActualPartColsList = getAllLevelActualPartCols();
+
+        if (GeneralUtil.isNotEmpty(allLevelActualPartColsList)) {
+            List<String> allLevelActualPartColsNoDup = removeDuplicates(allLevelActualPartColsList.get(0));
+            allLevelActualPartColsByLevel.put(PARTITION_LEVEL_PARTITION, allLevelActualPartColsNoDup);
+
+            if (allLevelActualPartColsList.size() > 1 && GeneralUtil.isNotEmpty(allLevelActualPartColsList.get(1))) {
+                List<String> allLevelActualSubPartColsNoDup = removeDuplicates(allLevelActualPartColsList.get(1));
+                allLevelActualPartColsByLevel.put(PARTITION_LEVEL_SUBPARTITION, allLevelActualSubPartColsNoDup);
+            }
+        }
+
+        return allLevelActualPartColsByLevel;
+    }
+
+    private List<String> removeDuplicates(List<String> columnNames) {
+        TreeSet<String> colNamesSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        List<String> columnNamesWithoutDuplicate = new ArrayList<>();
+        for (int i = 0; i < columnNames.size(); i++) {
+            String colName = columnNames.get(i);
+            if (!colNamesSet.contains(colName)) {
+                colNamesSet.add(colName);
+                columnNamesWithoutDuplicate.add(colName);
+            }
+        }
+        return columnNamesWithoutDuplicate;
+    }
+
+    public List<Integer> getAllLevelActualPartColCounts() {
+        List<List<String>> allLevelPartCols = getAllLevelActualPartCols();
+        List<Integer> result = new ArrayList<>();
+        for (int i = 0; i < allLevelPartCols.size(); i++) {
+            result.add(allLevelPartCols.get(i).size());
+        }
+        return result;
+    }
+
+    public List<Integer> getAllLevelFullPartColCounts() {
+        List<List<String>> allLevelPartCols = getAllLevelFullPartCols();
+        List<Integer> result = new ArrayList<>();
+        for (int i = 0; i < allLevelPartCols.size(); i++) {
+            result.add(allLevelPartCols.get(i).size());
+        }
+        return result;
+    }
+
+    public List<PartitionStrategy> getAllLevelPartitionStrategies() {
+        List<PartitionStrategy> result = new ArrayList<>();
+        result.add(this.getPartitionBy().getStrategy());
+        if (this.getPartitionBy().getSubPartitionBy() != null) {
+            result.add(this.getPartitionBy().getSubPartitionBy().getStrategy());
+        }
+        return result;
+
+    }
+
+    public List<Integer> getAllLevelPartitionCount() {
+        List<Integer> result = new ArrayList<>();
+        result.add(this.partitionBy.getPartitions().size());
+        if (this.partitionBy.getSubPartitionBy() != null) {
+            result.add(this.getAllPhysicalPartitionCount());
+        }
+        return result;
     }
 
     @Override
@@ -589,15 +871,20 @@ public class PartitionInfo {
         hashCodeVal ^= tableGroupId.intValue();
         hashCodeVal ^= metaVersion.intValue();
         hashCodeVal ^= partitionBy.hashCode();
-        if (subPartitionBy != null) {
-            hashCodeVal ^= subPartitionBy.hashCode();
-        }
-
         return hashCodeVal;
     }
 
-//    @Override
-//    public boolean equals(Object obj) {
+    @Override
+    public boolean equals(Object obj) {
+        //return equals(obj, -1);
+        return equals(obj, PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST);
+    }
+
+//    /**
+//     * check equals by specifying prefix partition column prefixPartColCnt，
+//     * if prefixPartColCnt <= 0, then use all partition columns
+//     */
+//    public boolean equals(Object obj, int prefixPartColCnt) {
 //        if (this == obj) {
 //            return true;
 //        }
@@ -611,6 +898,9 @@ public class PartitionInfo {
 //        }
 //
 //        PartitionInfo objPartInfo = (PartitionInfo) obj;
+//        if(!StringUtils.equals(locality, (objPartInfo.getLocality()))){
+//            return false;
+//        }
 //        if (objPartInfo.getTableType() != this.tableType) {
 //            if (objPartInfo.isGsiBroadcastOrBroadcast() && this.isGsiBroadcastOrBroadcast()) {
 //                return true;
@@ -627,20 +917,18 @@ public class PartitionInfo {
 //                return true;
 //            }
 //        }
-//
-//        return getPartitionBy().equals(objPartInfo.getPartitionBy());
+//        if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
+//            return getPartitionBy().equals(objPartInfo.getPartitionBy());
+//        } else {
+//            return getPartitionBy().equals(objPartInfo.getPartitionBy(), prefixPartColCnt);
+//        }
 //    }
 
-    @Override
-    public boolean equals(Object obj) {
-        return equals(obj, -1);
-    }
-
     /**
-     * check equals by specifying prefix partition column prefixPartColCnt，
-     * if prefixPartColCnt <= 0, then use all partition columns
+     * check equals by specifying all level prefix partition column allLevelPrefixPartColCnts，
+     * if allLevelPrefixPartColCnts={-1，1} , then use all partition columns
      */
-    public boolean equals(Object obj, int prefixPartColCnt) {
+    public boolean equals(Object obj, List<Integer> allLevelPrefixPartColCnts) {
         if (this == obj) {
             return true;
         }
@@ -673,10 +961,15 @@ public class PartitionInfo {
                 return true;
             }
         }
-        if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
+
+        if (this.spTemplateFlag.intValue() != objPartInfo.getSpTemplateFlag().intValue()) {
+            return false;
+        }
+
+        if (allLevelPrefixPartColCnts.equals(PartitionInfoUtil.ALL_LEVEL_FULL_PART_COL_COUNT_LIST)) {
             return getPartitionBy().equals(objPartInfo.getPartitionBy());
         } else {
-            return getPartitionBy().equals(objPartInfo.getPartitionBy(), prefixPartColCnt);
+            return getPartitionBy().equals(objPartInfo.getPartitionBy(), allLevelPrefixPartColCnts);
         }
     }
 
@@ -694,12 +987,13 @@ public class PartitionInfo {
         sb.append("tableVersion:");
         sb.append(tableVersion);
         sb.append(",");
-        sb.append(this.toString());
+        sb.append(showCreateTablePartitionDefInfo(true));
         for (PartitionSpec partitionSpec : partitionBy.getPartitions()) {
             sb.append(partitionSpec.getDigest());
             sb.append("\n");
         }
         sb.append("]");
+
         return sb.toString();
     }
 
@@ -721,14 +1015,99 @@ public class PartitionInfo {
     }
 
     public void initPartSpecSearcher() {
+
         /**
-         * Prepare the orderNum in one phyDb for each partition
+         * Sort and adjust the partitions by their bound value definitions
          */
-        PartitionInfoBuilder.prepareOrderNumForPartitions(getTableType(), getPartitionBy().getPartitions());
+        sortAndAdjustPartitionPositionsByBoundValue();
 
         /**
          * Prepare the mapping from phy_db.phy_tb to partSpec
          */
         this.partSpecSearcher = PartSpecSearcher.buildPartSpecSearcher(getTableType(), getPartitionBy());
+
+        /**
+         * Prepare the orderNum in one phyDb for each partition
+         */
+        PartitionInfoBuilder.prepareOrderNumForPartitions(getTableType(), getPartitionBy().getPhysicalPartitions());
+
+    }
+
+    /**
+     * Sort and adjust the partitions by their bound value definitions
+     */
+    private void sortAndAdjustPartitionPositionsByBoundValue() {
+
+        /**
+         * Reset the position of each part and subpart for both partitions and subpartitions
+         */
+        PartitionByDefinition.adjustPartitionPositionsByBoundVal(this.tableType, this.partitionBy);
+
+        /**
+         * Reset the parentPartPosition for both partitions and subpartitions
+         */
+        PartitionInfo.adjustParentPartPosiForBothPartsAndSubParts(this.partitionBy);
+
+        /**
+         * Reset the phyPartPosition for both partitions and subpartitions
+         */
+        PartitionInfo.adjustPhyPartPosiForBothPartsAndSubParts(this.partitionBy);
+    }
+
+    private static void adjustPhyPartPosiForBothPartsAndSubParts(PartitionByDefinition partitionBy) {
+        List<PartitionSpec> newSpecList = partitionBy.getPartitions();
+        long allPhyPartPosiCounter = 0L;
+        for (int i = 0; i < newSpecList.size(); i++) {
+            PartitionSpec spec = newSpecList.get(i);
+            if (spec.isLogical()) {
+                for (int j = 0; j < spec.getSubPartitions().size(); j++) {
+                    PartitionSpec spSpec = spec.getSubPartitions().get(j);
+                    ++allPhyPartPosiCounter;
+                    spSpec.setPhyPartPosition(allPhyPartPosiCounter);
+                }
+                spec.setPhyPartPosition(0L);
+            } else {
+                ++allPhyPartPosiCounter;
+                spec.setPhyPartPosition(allPhyPartPosiCounter);
+            }
+        }
+        PartitionByDefinition subPartByDef = partitionBy.getSubPartitionBy();
+        if (subPartByDef != null) {
+            List<PartitionSpec> newSubPartitions = subPartByDef.getPartitions();
+            for (int i = 0; i < newSubPartitions.size(); i++) {
+                PartitionSpec spec = newSubPartitions.get(i);
+                spec.setPhyPartPosition(0L);
+            }
+        }
+    }
+
+    private static void adjustParentPartPosiForBothPartsAndSubParts(PartitionByDefinition partitionBy) {
+        List<PartitionSpec> newSpecs = partitionBy.getPartitions();
+        for (int i = 0; i < newSpecs.size(); i++) {
+            PartitionSpec spec = newSpecs.get(i);
+            spec.setParentPartPosi(0L);
+            if (spec.isLogical()) {
+                for (int j = 0; j < spec.getSubPartitions().size(); j++) {
+                    PartitionSpec spSpec = spec.getSubPartitions().get(j);
+                    spSpec.setParentPartPosi(spec.getPosition());
+                }
+            }
+        }
+        PartitionByDefinition subPartBy = partitionBy.getSubPartitionBy();
+        if (subPartBy != null) {
+            List<PartitionSpec> newSubPartitions = subPartBy.getPartitions();
+            for (int i = 0; i < newSubPartitions.size(); i++) {
+                PartitionSpec spec = newSubPartitions.get(i);
+                spec.setParentPartPosi(0L);
+            }
+        }
+    }
+
+    public Long getTableId() {
+        return tableId;
+    }
+
+    public void setTableId(Long tableId) {
+        this.tableId = tableId;
     }
 }

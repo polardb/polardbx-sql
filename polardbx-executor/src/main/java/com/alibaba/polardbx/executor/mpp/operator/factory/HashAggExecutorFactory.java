@@ -34,9 +34,6 @@ import java.util.List;
 
 public class HashAggExecutorFactory extends ExecutorFactory {
 
-    public static final int MAX_HASH_TABLE_SIZE = 131064;
-    public static final int MIN_HASH_TABLE_SIZE = 1024;
-
     private HashAgg hashAgg;
     private int parallelism;
     private int taskNumber;
@@ -71,16 +68,11 @@ public class HashAggExecutorFactory extends ExecutorFactory {
     private synchronized List<Executor> createAllExecutors(ExecutionContext context) {
         if (executors.isEmpty()) {
             ImmutableBitSet gp = hashAgg.getGroupSet();
-            int[] groups = convertFrom(gp);
+            int[] groups = AggregateUtils.convertBitSet(gp);
 
             Integer expectedOutputRowCount = rowCount / (taskNumber * parallelism);
-            if (expectedOutputRowCount == null) {
-                expectedOutputRowCount = MIN_HASH_TABLE_SIZE;
-            } else if (expectedOutputRowCount > MAX_HASH_TABLE_SIZE) {
-                expectedOutputRowCount = MAX_HASH_TABLE_SIZE;
-            } else if (expectedOutputRowCount < MIN_HASH_TABLE_SIZE) {
-                expectedOutputRowCount = MIN_HASH_TABLE_SIZE;
-            }
+            int estimateHashTableSize = AggregateUtils.estimateHashTableSize(expectedOutputRowCount, context);
+
             for (int j = 0; j < parallelism; j++) {
                 MemoryAllocatorCtx memoryAllocator = context.getMemoryPool().getMemoryAllocatorCtx();
 
@@ -92,7 +84,7 @@ public class HashAggExecutorFactory extends ExecutorFactory {
 
                 HashAggExec exec =
                     new HashAggExec(inputDataTypes, groups, aggregators, CalciteUtils.getTypes(hashAgg.getRowType()),
-                        expectedOutputRowCount, spillerFactory, context);
+                        estimateHashTableSize, spillerFactory, context);
                 exec.setId(hashAgg.getRelatedId());
                 if (context.getRuntimeStatistics() != null) {
                     RuntimeStatHelper.registerStatForExec(hashAgg, exec, context);
@@ -101,14 +93,5 @@ public class HashAggExecutorFactory extends ExecutorFactory {
             }
         }
         return executors;
-    }
-
-    public static int[] convertFrom(ImmutableBitSet gp) {
-        List<Integer> list = gp.asList();
-        int[] groups = new int[list.size()];
-        for (int i = 0, n = list.size(); i < n; i++) {
-            groups[i] = list.get(i);
-        }
-        return groups;
     }
 }

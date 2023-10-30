@@ -38,8 +38,12 @@ public class SQLDataTypeRefExpr extends SQLExprImpl {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLDataTypeRefExpr that = (SQLDataTypeRefExpr) o;
 
@@ -62,8 +66,8 @@ public class SQLDataTypeRefExpr extends SQLExprImpl {
     @Override
     public SQLExpr clone() {
         return new SQLDataTypeRefExpr(
-                dataType == null
-                        ? null
-                        : dataType.clone());
+            dataType == null
+                ? null
+                : dataType.clone());
     }
 }

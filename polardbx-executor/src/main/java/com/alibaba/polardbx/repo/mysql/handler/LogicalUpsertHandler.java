@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -26,13 +29,14 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -77,6 +81,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
@@ -96,11 +101,25 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
     @Override
     protected int doExecute(LogicalInsert insert, ExecutionContext executionContext,
                             LogicalInsert.HandlerParams handlerParams) {
+        // Need auto-savepoint only when auto-commit = 0.
+        executionContext.setNeedAutoSavepoint(!executionContext.isAutoCommit());
+
         final LogicalUpsert upsert = (LogicalUpsert) insert;
         final String schemaName = upsert.getSchemaName();
         final String tableName = upsert.getLogicalTableName();
         final TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         final boolean isBroadcast = or.isBroadCast(tableName);
+
+        if (upsert.isUkContainGeneratedColumn()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "UPSERT on table having VIRTUAL/STORED generated column in unique key");
+        }
+
+        final boolean checkPrimaryKey =
+            executionContext.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK)
+                && !upsert.isPushablePrimaryKeyCheck();
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks();
 
         // For batch upsert, change params index.
         if (upsert.getBatchSize() > 0) {
@@ -146,6 +165,10 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             // Duplicate might exists between upsert values
             final List<DuplicateCheckResult> classifiedRows =
                 new ArrayList<>(bindInsertRows(upsert, selectedRows, convertedValues, upsertEc, usePartFieldChecker));
+
+            if (checkPrimaryKey || checkForeignKey) {
+                // TODO(qianjing): support upsert Pk Fk check, now we just throw exception in OptimizeLogicalInsertRule
+            }
 
             upsertEc.setPhySqlId(upsertEc.getPhySqlId() + 1);
 
@@ -333,13 +356,19 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                         skMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()), skMetas,
                         true, executionContext);
                     final NewGroupKey targetSkGk = new NewGroupKey(skTargets,
-                        targetSkRex.stream().map(rx -> DataTypeUtil.calciteToDrdsType(rx.getType()))
-                            .collect(Collectors.toList()), skMetas, true, executionContext);
+                        skTargets.stream().map(DataTypeUtil::getTypeOfObject).collect(Collectors.toList()), skMetas,
+                        true, executionContext);
 
                     return sourceSkGk.equals(targetSkGk);
                 } catch (Throwable e) {
-                    // Maybe value can not be cast, just use DELETE + INSERT to be safe
-                    LoggerFactory.getLogger(LogicalUpsertHandler.class).warn("new sk checker failed, cause by " + e);
+                    if (!rw.printed &&
+                        executionContext.getParamManager().getBoolean(ConnectionParams.DML_PRINT_CHECKER_ERROR)) {
+                        // Maybe value can not be cast, just use DELETE + INSERT to be safe
+                        EventLogger.log(EventType.DML_ERROR,
+                            executionContext.getTraceId() + " new sk checker failed, cause by " + e);
+                        LoggerFactory.getLogger(LogicalUpsertHandler.class).warn(e);
+                        rw.printed = true;
+                    }
                 }
                 return false;
             } else {
@@ -393,6 +422,16 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
         final Map<String, RexNode> columnValueMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Ord.zip(insertColumns).forEach(o -> columnValueMap.put(o.getValue(), rexRow.get(o.getKey())));
+
+        final String schemaName = upsert.getSchemaName();
+        final String tableName = upsert.getLogicalTableName();
+        TableMeta tableMeta = upsertEc.getSchemaManager(schemaName).getTable(tableName);
+        for (String generatedColumnName : tableMeta.getGeneratedColumnNames()) {
+            if (columnValueMap.get(generatedColumnName) != null) {
+                columnValueMap.put(generatedColumnName, null);
+            }
+        }
+
         final List<RexNode> columnValueMapping =
             tableColumns.stream().map(columnValueMap::get).collect(Collectors.toList());
 
@@ -476,7 +515,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                 // Add new row
 
                 // Build row value for future duplicate check
-                final List<Object> after = RexUtils.buildRowValue(rexRow, null, newRow);
+                final List<Object> after = RexUtils.buildRowValue(rexRow, null, newRow, upsertEc);
 
                 final DuplicateCheckRow newDuplicateCheckRow = new DuplicateCheckRow();
                 newDuplicateCheckRow.after = after;
@@ -534,9 +573,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                         rowResult.trivial = identicalRow(row.before, row.after, rowColumnMeta);
                     }
 
-                    if (rowResult.skipUpdate() && !upsertEc.isClientFoundRows()) {
-                        rowResult.affectedRows = 0;
-                    }
+                    // should deal affected rows inside update check
                 }
                 result.add(rowResult);
             });
@@ -558,16 +595,61 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
      * @param updateValues Value result foreach target column in DUPLICATE KEY UPDATE list
      * @return Parameter context map for DUPLICATE KEY UPDATE list
      */
-    private static Map<Integer, ParameterContext> buildParamForDuplicateKeyUpdate(List<RexNode> rexRow, Row row,
+    private static Map<Integer, ParameterContext> buildParamForDuplicateKeyUpdate(LogicalUpsert upsert,
+                                                                                  List<RexNode> rexRow, Row row,
                                                                                   Map<Integer, ParameterContext> param,
                                                                                   List<RexNode> columnValueMapping,
                                                                                   ExecutionContext upsertEc,
-                                                                                  final List<Object> updateValues) {
+                                                                                  final List<Object> updateValues,
+                                                                                  List<Integer> beforeUpdateMapping) {
         final ExecutionContext tmpEc = upsertEc.copy();
         tmpEc.setParams(new Parameters(param));
 
+        final String schemaName = upsert.getSchemaName();
+        final String tableName = upsert.getLogicalTableName();
+        final TableMeta tableMeta = upsertEc.getSchemaManager(schemaName).getTable(tableName);
+
+        List<Integer> newBeforeUpdateMapping;
+        Row newRow;
+
+        if (upsert.isInputInValueColumnOrder()) {
+            // TODO(qianjing): just a quick fix, optimize here later; from value column order to table column order
+            List<Object> newRowObject = new ArrayList<>();
+            newBeforeUpdateMapping = new ArrayList<>();
+
+            List<String> tableColumns = upsert.getTable().getRowType().getFieldNames();
+            List<String> valueColumns = upsert.getInsertRowType().getFieldNames();
+
+            for (int i = 0; i < beforeUpdateMapping.size(); i++) {
+                newBeforeUpdateMapping.add(null);
+            }
+
+            for (int i = 0; i < tableColumns.size(); i++) {
+                for (int j = 0; j < valueColumns.size(); j++) {
+                    if (tableColumns.get(i).equalsIgnoreCase(valueColumns.get(j))) {
+                        newRowObject.add(row.getObject(j));
+                        for (int k = 0; k < beforeUpdateMapping.size(); k++) {
+                            if (beforeUpdateMapping.get(k) == j) {
+                                newBeforeUpdateMapping.set(k, i);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            newRow = new ArrayRow(newRowObject.toArray());
+        } else {
+            newBeforeUpdateMapping = beforeUpdateMapping;
+            newRow = row;
+        }
+
         final Map<Integer, ParameterContext> result = new HashMap<>(param.size());
-        for (RexNode rexNode : rexRow) {
+        Set<String> referencedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        GeneratedColumnUtil.getAllLogicalReferencedColumnsByGen(tableMeta).values().forEach(referencedColumns::addAll);
+        boolean haveGeneratedColumn = tableMeta.hasLogicalGeneratedColumn();
+
+        for (int i = 0; i < rexRow.size(); i++) {
+            RexNode rexNode = rexRow.get(i);
             int paramIndex;
             RexNode valueCall;
             // Source part of DUPLICATE KEY UPDATE list should already be wrapped with RexCallParam or RexDynamicParam
@@ -583,13 +665,33 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                 valueCall = dynamicParam;
             }
 
+            // must be generated column, we do not support evaluation in cn
+            if (valueCall == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                    "UPSERT with VIRTUAL/STORED generated column in duplicate key update list");
+            }
+
             // Eval rex
-            final Object value = RexUtils.getValueFromRexNode(valueCall, row, tmpEc);
+            Object value = RexUtils.getValueFromRexNode(valueCall, newRow, tmpEc);
 
             // Build parameter
             final ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
                 paramIndex + 1, value});
             result.put(paramIndex + 1, newPc);
+
+            // Update row
+            String columnName = upsert.getTable().getRowType().getFieldNames().get(newBeforeUpdateMapping.get(i));
+            boolean strict = SQLMode.isStrictMode(upsertEc.getSqlModeFlags());
+            if (haveGeneratedColumn && (referencedColumns.contains(columnName) || tableMeta.getColumn(columnName)
+                .isLogicalGeneratedColumn())) {
+                value = RexUtils.convertValue(value, rexNode, strict, tableMeta.getColumn(columnName), upsertEc);
+                if (tableMeta.getColumn(columnName).isLogicalGeneratedColumn()) {
+                    final ParameterContext convertedPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
+                        paramIndex + 1, value});
+                    result.put(paramIndex + 1, convertedPc);
+                }
+            }
+            newRow.setObject(newBeforeUpdateMapping.get(i), value);
 
             if (null != updateValues) {
                 updateValues.add(value);
@@ -764,8 +866,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             final List<Object> updateValues = new ArrayList<>();
             final ArrayRow currentRow = new ArrayRow(meta, this.after.toArray());
             this.duplicateUpdateParam =
-                buildParamForDuplicateKeyUpdate(duplicateKeyUpdateValues, currentRow, newRow, columnValueMapping,
-                    upsertEc, updateValues);
+                buildParamForDuplicateKeyUpdate(upsert, duplicateKeyUpdateValues, currentRow, newRow,
+                    columnValueMapping,
+                    upsertEc, updateValues, beforeUpdateMapping);
 
             // Do update
             final List<Object> withoutAppended = new ArrayList<>(this.after);
@@ -794,7 +897,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             final boolean isIdenticalRow =
                 !skipIdenticalRowCheck && identicalRow(withoutAppended, this.after, rowColumnMeta);
             final List<Object> updated = isIdenticalRow ? withoutAppended : withAppended;
-            this.affectedRows += isIdenticalRow ? 1 : 2;
+            this.affectedRows += isIdenticalRow ? (upsertEc.isClientFoundRows() ? 1 : 0) : 2;
 
             if (upsert.isModifyUniqueKey()) {
                 // Update group key

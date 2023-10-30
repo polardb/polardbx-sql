@@ -30,6 +30,7 @@ import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,7 +61,7 @@ public class RemoveProjectRule extends RelOptRule {
         // if the project node contains un-pushable function, don't transform the insert rel node.
         List<RexNode> exps = project.getChildExps();
         for (RexNode node : exps) {
-            if (RexUtils.containsUnPushableFunction(node, false)) {
+            if (RexUtil.containsUnPushableFunction(node, false)) {
                 return;
             }
         }

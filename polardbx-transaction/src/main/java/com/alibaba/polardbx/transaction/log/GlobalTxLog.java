@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.transaction.log;
 
-import com.alibaba.polardbx.transaction.TransactionType;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.transaction.TransactionState;
 
 public class GlobalTxLog {
@@ -30,6 +30,7 @@ public class GlobalTxLog {
     private String error;
     private ConnectionContext context;
     private Long commitTimestamp;
+    private int participants;
 
     public long getTxid() {
         return txid;
@@ -105,5 +106,19 @@ public class GlobalTxLog {
 
     public void setCommitTimestamp(Long commitTimestamp) {
         this.commitTimestamp = commitTimestamp;
+    }
+
+    public void setParticipants(int participants) {
+        this.participants = participants;
+    }
+
+    public int getParticipants() {
+        return participants;
+    }
+
+    @Override
+    public String toString() {
+        return "Transaction id: " + txid + ", state: " + state + ", commitTimestamp: " + commitTimestamp
+            + ", participants: " + participants;
     }
 }

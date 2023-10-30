@@ -74,4 +74,9 @@ public class USmallIntType extends IntegerType {
         i1 = i1 >= 0 ? i1 : i1 + MAX_VALUE + 1;
         return i1;
     }
+
+    @Override
+    public String getStringSqlType() {
+        return "SMALLINT";
+    }
 }

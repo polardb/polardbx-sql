@@ -28,7 +28,7 @@ import java.util.List;
  * @see <a href="https://dev.mysql.com/doc/refman/8.0/en/create-role.html">Create Role</a>
  * @since 2.1.12.9_drds_3
  */
-public class MySql8ShowGrantsStatement extends MySqlShowGrantsStatement  implements MySqlShowStatement {
+public class MySql8ShowGrantsStatement extends MySqlShowGrantsStatement implements MySqlShowStatement {
     public enum UserSpec {
         /**
          * Case: <code>SHOW GRANTS;</code>

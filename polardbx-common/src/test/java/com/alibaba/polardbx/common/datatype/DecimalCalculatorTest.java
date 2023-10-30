@@ -196,7 +196,6 @@ public class DecimalCalculatorTest {
         doTestHash(230000992,"123E-2", "1.23", "00000001.23", "1.2300000000000000", "000000001.23000000000000");
     }
 
-
     @Test
     public void testRandomHiveDecimal() {
         IntStream.range(0, 1 << 10)
@@ -206,10 +205,13 @@ public class DecimalCalculatorTest {
                 DecimalStructure d = DecimalOrcConverter.transform(h);
                 Assert.assertEquals(h.toString(), d.toString());
             });
+
     }
+
     @Test
     public void testHiveDecimal() {
         String s = "15296.5768757718839862819873737";
+
         HiveDecimalWritable h = new HiveDecimalWritable(s);
         DecimalStructure d = DecimalOrcConverter.transform(h);
         Assert.assertEquals(h.toString(), d.toString());

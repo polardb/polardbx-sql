@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableValidateTask;
@@ -24,10 +25,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropTable;
 import com.google.common.collect.Lists;
 
+import java.util.List;
 import java.util.Set;
 
 public class DropTableJobFactory extends DdlJobFactory {
@@ -51,19 +54,26 @@ public class DropTableJobFactory extends DdlJobFactory {
     protected ExecutableDdlJob doCreate() {
         DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, logicalTableName);
         DropTableRemoveMetaTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, logicalTableName);
-        StoreTableLocalityTask storeTableLocalityTask = new StoreTableLocalityTask(schemaName, logicalTableName, "", false);
+        StoreTableLocalityTask storeTableLocalityTask =
+            new StoreTableLocalityTask(schemaName, logicalTableName, "", false);
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
-        CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
         ExecutableDdlJob4DropTable executableDdlJob = new ExecutableDdlJob4DropTable();
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                storeTableLocalityTask,
-                removeMetaTask,
-                tableSyncTask,
-                phyDdlTask,
-                cdcDdlMarkTask
-        ));
+
+        List<DdlTask> taskList = Lists.newArrayList(
+            validateTask,
+            storeTableLocalityTask,
+            removeMetaTask,
+            tableSyncTask,
+            phyDdlTask,
+            cdcDdlMarkTask);
+
+        // sync foreign key table meta
+        taskList.addAll(FactoryUtils.getFkTableSyncTasks(schemaName, logicalTableName));
+
+        executableDdlJob.addSequentialTasks(taskList);
+
         //labels should be replaced by fields in ExecutableDdlJob4DropTable
         executableDdlJob.labelAsHead(validateTask);
         executableDdlJob.labelAsTail(tableSyncTask);

@@ -20,28 +20,29 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class SQLExplainStatement extends SQLStatementImpl {
-    protected String               type;
-    protected String               format;
-    protected boolean              extended;
-    protected boolean              dependency;
-    protected boolean              authorization;
-    protected boolean              optimizer;
-    protected SQLStatement         statement;
+    protected String type;
+    protected String format;
+    protected boolean extended;
+    protected boolean dependency;
+    protected boolean authorization;
+    protected boolean optimizer;
+    protected SQLStatement statement;
     protected List<SQLCommentHint> hints;
-    protected boolean              parenthesis;
-    
+    protected boolean parenthesis;
+
     public SQLExplainStatement() {
-        
+
     }
-    
+
     public SQLExplainStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     public SQLStatement getStatement() {
@@ -134,5 +135,10 @@ public class SQLExplainStatement extends SQLStatementImpl {
 
     public void setParenthesis(boolean parenthesis) {
         this.parenthesis = parenthesis;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.EXPLAIN;
     }
 }

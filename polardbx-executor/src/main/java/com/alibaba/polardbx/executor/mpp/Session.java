@@ -125,8 +125,8 @@ public final class Session {
             getSchema()).getStorageInfoManager().supportTso() &&
             clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
             !getSchema().equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME) &&
-            (ExecUtils.existMppOnlyInstanceNode() || DynamicConfig.getInstance().enableFollowReadForPolarDBX() ||
-                clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
+            (ExecUtils.existMppOnlyInstanceNode() || clientContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
         ) {
             ITransaction iTransaction = clientContext.getTransaction();
             if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
@@ -137,7 +137,8 @@ public final class Session {
                     this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
                 }
                 if (!omitTso) {
-                    this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp();
+                    this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
+                    });
                 }
 
                 for (Map.Entry<String, String> group : groups.entrySet()) {
@@ -197,6 +198,14 @@ public final class Session {
                 ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
         }
 
+        //暂时只增加polardbx_server_id参数, 避免长度增加过长
+        Map<String, Object> extraServerVariables = new HashMap<>();
+        if (null != clientContext.getExtraServerVariables()
+            && clientContext.getExtraServerVariables().containsKey("polardbx_server_id")) {
+            extraServerVariables.put("polardbx_server_id",
+                clientContext.getExtraServerVariables().get("polardbx_server_id"));
+        }
+
         return new SessionRepresentation(
             clientContext.getTraceId(),
             getCatalog(),
@@ -216,6 +225,7 @@ public final class Session {
             clientContext.getParams(),
             clientContext.getCacheRelNodeIds(),
             clientContext.getRecordRowCnt(),
+            clientContext.getDistinctKeyCnt(),
             clientContext.isTestMode(),
             clientContext.getConnection().getLastInsertId(),
             clientContext.getTimeZone(),
@@ -223,7 +233,8 @@ public final class Session {
             dnLsns,
             omitTso,
             lizard1PC,
-            clientContext.getWorkloadType());
+            clientContext.getWorkloadType(),
+            extraServerVariables);
     }
 
     @Override

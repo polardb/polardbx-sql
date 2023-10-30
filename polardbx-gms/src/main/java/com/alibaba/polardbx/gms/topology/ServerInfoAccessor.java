@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.topology;
 
-import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -27,16 +26,26 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.record.NextIdRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.collect.Maps;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
@@ -58,6 +67,10 @@ public class ServerInfoAccessor extends AbstractAccessor {
         "select * from `" + SERVER_INFO_TABLE + "` where status!=2 and inst_type = "
             + ServerInfoRecord.INST_TYPE_MASTER;
 
+    private static final String SELECT_SERVER_INFO_FOR_STANDBY =
+        "select * from `" + SERVER_INFO_TABLE + "` where status!=2 and inst_type = "
+            + ServerInfoRecord.INST_TYPE_STANDBY;
+
     private static final String SELECT_SERVER_INFO_FOR_READ_ONLY =
         "select * from `" + SERVER_INFO_TABLE + "` where status!=2 and inst_type != "
             + ServerInfoRecord.INST_TYPE_MASTER;
@@ -77,6 +90,10 @@ public class ServerInfoAccessor extends AbstractAccessor {
 
     private static final String SELECT_MASTER_INST_ID =
         "select distinct inst_id from " + SERVER_INFO_TABLE + " where status!=2 and inst_type=0;";
+
+    private static final String SELECT_HTAP_LEADRNER_INSTS =
+        "select distinct inst_id from " + SERVER_INFO_TABLE + " where status!=2 and inst_type="
+            + ServerInfoRecord.INST_TYPE_HTAP_SLAVE;
 
     private static final String DELETE_REMOVED_RO_SERVER_INFOS =
         "delete from `" + SERVER_INFO_TABLE + "` where status=2 and inst_type!=0 and inst_id = ?";
@@ -126,6 +143,23 @@ public class ServerInfoAccessor extends AbstractAccessor {
         }
     }
 
+    public Set<String> getAllHTAPReadOnlyInstIdList() {
+        String instId = null;
+        Set<String> allHtapInstIdList = new HashSet<>();
+        try (PreparedStatement ps = connection.prepareStatement(SELECT_HTAP_LEADRNER_INSTS)) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    instId = rs.getString(1);
+                    allHtapInstIdList.add(instId);
+                }
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+        return allHtapInstIdList;
+    }
+
     public List<String> getAllRemovedReadOnlyInstIdList() {
         String instId = null;
         List<String> allRemovedRoInstIdList = new ArrayList<>();
@@ -150,6 +184,17 @@ public class ServerInfoAccessor extends AbstractAccessor {
         } catch (Exception e) {
             logger.error("Failed to query the system table '" + SERVER_INFO_TABLE + "' for master nodes", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query for master nodes",
+                SERVER_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ServerInfoRecord> getServerInfoForStandby() {
+        try {
+            return MetaDbUtil.query(SELECT_SERVER_INFO_FOR_STANDBY, ServerInfoRecord.class, connection);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + SERVER_INFO_TABLE + "' for master nodes", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query for standby nodes",
                 SERVER_INFO_TABLE,
                 e.getMessage());
         }
@@ -291,5 +336,4 @@ public class ServerInfoAccessor extends AbstractAccessor {
                 e.getMessage());
         }
     }
-
 }

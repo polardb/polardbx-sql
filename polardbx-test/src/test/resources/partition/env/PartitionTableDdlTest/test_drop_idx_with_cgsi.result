@@ -1,0 +1,173 @@
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (
+	a int,
+	b int,
+	c int,
+	d int
+)
+PARTITION BY KEY (a, b);
+ALTER TABLE t1
+	ADD LOCAL INDEX idx (b, c, d);
+ALTER TABLE t1
+	ADD LOCAL INDEX idx2 (b, c);
+ALTER TABLE t1
+	ADD LOCAL INDEX idx_cd (c, d);
+ALTER TABLE t1
+	ADD LOCAL INDEX idx_abc (a, b, c);
+ALTER TABLE t1
+	ADD CLUSTERED INDEX cidx (b, c) PARTITION BY KEY (b, c);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	CLUSTERED INDEX `cidx` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx` (`b`, `c`, `d`),
+	KEY `idx2` (`b`, `c`),
+	KEY `idx_cd` (`c`, `d`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE cidx;
+Table,Create Table
+cidx_$,CREATE TABLE `cidx_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx` (`b`, `c`, `d`),
+	KEY `idx2` USING BTREE (`b`, `c`),
+	KEY `idx_cd` (`c`, `d`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+ALTER TABLE t1
+	DROP INDEX idx;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	CLUSTERED INDEX `cidx` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx2` (`b`, `c`),
+	KEY `idx_cd` (`c`, `d`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE cidx;
+Table,Create Table
+cidx_$,CREATE TABLE `cidx_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx2` USING BTREE (`b`, `c`),
+	KEY `idx_cd` (`c`, `d`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+ALTER TABLE t1
+	DROP INDEX idx_cd;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	CLUSTERED INDEX `cidx` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx2` (`b`, `c`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE cidx;
+Table,Create Table
+cidx_$,CREATE TABLE `cidx_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx2` USING BTREE (`b`, `c`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+ALTER TABLE t1
+	DROP INDEX idx2;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	CLUSTERED INDEX `cidx` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE cidx;
+Table,Create Table
+cidx_$,CREATE TABLE `cidx_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_b` USING BTREE (`b`, `c`),
+	KEY `idx_abc` (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+ALTER TABLE t1
+	DROP INDEX idx_abc;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	CLUSTERED INDEX `cidx` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW CREATE TABLE cidx;
+Table,Create Table
+cidx_$,CREATE TABLE `cidx_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_b` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3

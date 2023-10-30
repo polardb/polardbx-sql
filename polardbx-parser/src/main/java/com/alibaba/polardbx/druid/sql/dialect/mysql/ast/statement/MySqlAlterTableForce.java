@@ -22,10 +22,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName MySqlAlterTableForce
- * @description
- * @Author zzy
- * @Date 2019-06-03 15:43
  */
 public class MySqlAlterTableForce extends MySqlObjectImpl implements SQLAlterTableItem {
     @Override

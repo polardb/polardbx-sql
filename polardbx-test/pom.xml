@@ -6,7 +6,7 @@
     <parent>
         <artifactId>polardbx</artifactId>
         <groupId>com.alibaba.polardbx</groupId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <packaging>jar</packaging>
@@ -17,6 +17,7 @@
     <properties>
         <mysql_connector_v5>5.1.49</mysql_connector_v5>
         <mysql_connector_v8>8.0.26</mysql_connector_v8>
+        <polardbx_connector>1.4.0-SNAPSHOT</polardbx_connector>
         <mvn_parallel>none</mvn_parallel>
         <mvn_threadCount>24</mvn_threadCount>
         <mvn_threadCountClasses>10</mvn_threadCountClasses>
@@ -84,6 +85,19 @@
             <version>${mysql_connector_v5}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>polardbx-java-connector</artifactId>
+            <version>${polardbx_connector}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.junit.jupiter</groupId>
+                    <artifactId>junit-jupiter</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
 
         <dependency>
             <groupId>com.google.truth</groupId>
@@ -121,7 +135,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-Xms2g -Xmx2g -Xmn2g -Xss2048k -XX:SurvivorRatio=10</argLine>
+                    <argLine>-Xms2g -Xmx2g -Xmn2g -Xss2048k -XX:SurvivorRatio=10 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=target/surefire-reports/</argLine>
                     <properties>
                         <property>
                             <name>listener</name>

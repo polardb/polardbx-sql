@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;

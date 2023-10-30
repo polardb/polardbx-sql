@@ -21,13 +21,19 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
+import org.eclipse.jetty.util.ConcurrentHashSet;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 
 public abstract class BaseConnectionHolder implements IConnectionHolder {
 
@@ -35,6 +41,7 @@ public abstract class BaseConnectionHolder implements IConnectionHolder {
     protected Collection<IConnection> connections = Collections.synchronizedCollection(new ArrayList<>());
     private final ReentrantLock lock = new ReentrantLock();
     protected volatile boolean killed = false;
+    protected Set<String> heldSchema = Collections.synchronizedSet(new HashSet<>());
 
     public BaseConnectionHolder() {
     }
@@ -95,10 +102,41 @@ public abstract class BaseConnectionHolder implements IConnectionHolder {
                 }
             }
             connections.clear();
+            heldSchema.clear();
         } finally {
             lock.unlock();
         }
 
     }
 
+    @Override
+    public void handleConnIds(BiConsumer<String, Long> consumer) {
+        Lock lock = this.lock;
+        lock.lock();
+        try {
+            for (IConnection connection : getAllConnection()) {
+                IConnection realConneciton = connection.getRealConnection();
+                if (realConneciton instanceof TGroupDirectConnection) {
+                    String group = ((TGroupDirectConnection) realConneciton).getGroupDataSource().getDbGroupKey();
+                    long id = -1L;
+                    try {
+                        id = realConneciton.getId();
+                    } catch (Throwable t) {
+                        // When we get id from XConnection, an exception may be thrown
+                        // if the connection is closed, and we move to the next transaction.
+                        break;
+                    }
+
+                    consumer.accept(group, id);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public Set<String> getHeldSchemas() {
+        return heldSchema;
+    }
 }

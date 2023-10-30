@@ -665,6 +665,8 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
 
         runners.forEach(Thread::start);
 
+        Thread.sleep(1000); // Run for 1s.
+
         System.out.println("Start alter col default.");
 
         // Now alter col default.

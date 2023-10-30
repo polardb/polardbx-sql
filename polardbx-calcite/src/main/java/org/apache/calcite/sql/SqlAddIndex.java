@@ -16,24 +16,22 @@
 
 package org.apache.calcite.sql;
 
-import java.util.List;
-
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import com.google.common.collect.ImmutableList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
- * @date 2018/12/13 8:15 PM
  */
 public class SqlAddIndex extends SqlAlterSpecification {
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("ADD INDEX", SqlKind.ADD_INDEX);
 
-    protected final SqlIdentifier      indexName;
+    protected final SqlIdentifier indexName;
     protected final SqlIndexDefinition indexDef;
 
-    public SqlAddIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIndexDefinition indexDef){
+    public SqlAddIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIndexDefinition indexDef) {
         super(pos);
         this.indexName = indexName;
         this.indexDef = indexDef;
@@ -76,5 +74,12 @@ public class SqlAddIndex extends SqlAlterSpecification {
         return indexDef;
     }
 
-    public boolean isClusteredIndex() { return indexDef.isClustered(); }
+    public boolean isClusteredIndex() {
+        return indexDef.isClustered();
+    }
+
+    @Override
+    public boolean supportFileStorage() {
+        return true;
+    }
 }

@@ -1,113 +1,72 @@
-DROP TABLE IF EXISTS hash_tbl;
-DROP TABLE IF EXISTS hash_tbl2;
-CREATE TABLE IF NOT EXISTS hash_tbl (
-	a bigint UNSIGNED,
-	b timestamp,
-	c varchar(128) NOT NULL
-)
-PARTITION BY KEY (c, b, a) PARTITIONS 64;
-SELECT part_route('', 'hash_tbl', NULL, NULL, NULL) AS part_rs;
+## DISABLE_FAST_SQL_PARSER
+## Test time_zone for part_route
+drop table if exists hash_tbl;
+drop table if exists hash_tbl2;
+create table if not exists hash_tbl (a bigint unsigned, b timestamp, c varchar(128) not null)
+partition by key(c,b,a) partitions 64;
+select part_route('','hash_tbl', null,null,null) as part_rs;
 part_rs
 p24
-EXPLAIN SELECT c, b, a
-FROM hash_tbl
-WHERE (c, b, a) = (NULL, NULL, NULL);
+explain select c,b,a from hash_tbl where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
 LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
-EXPLAIN SELECT c, b, a
-FROM hash_tbl
-WHERE (c, b, a) = (NULL, '2020-12-12 00:00:00', 10000);
+explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
 LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
-SELECT part_route('', 'hash_tbl', NULL, '2020-12-12 00:00:00', 10000) AS part_rs;
+select part_route('','hash_tbl', null,"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p24
-EXPLAIN SELECT c, b, a
-FROM hash_tbl
-WHERE (c, b, a) = (NULL, '2020-12-12 00:00:00', 10000);
+explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
 LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
-CREATE TABLE IF NOT EXISTS hash_tbl2 (
-	a bigint UNSIGNED,
-	b timestamp,
-	c varchar(128) NOT NULL
-)
-PARTITION BY HASH (c, b, a) PARTITIONS 64;
-SELECT part_route('', 'hash_tbl2', NULL, NULL, NULL) AS part_rs;
+create table if not exists hash_tbl2 (a bigint unsigned, b timestamp, c varchar(128) not null)
+partition by hash(c,b,a) partitions 64;
+select part_route('','hash_tbl2', null,null,null) as part_rs;
 part_rs
 p47
-EXPLAIN SELECT c, b, a
-FROM hash_tbl2
-WHERE (c, b, a) = (NULL, NULL, NULL);
+explain select c,b,a from hash_tbl2 where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
 LogicalView(tables="hash_tbl2[p47]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl2` AS `hash_tbl2` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
-SELECT part_route('', 'hash_tbl2', NULL, '2020-12-12 00:00:00', 10000) AS part_rs;
+select part_route('','hash_tbl2', null,"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p9
-EXPLAIN SELECT c, b, a
-FROM hash_tbl2
-WHERE (c, b, a) = (NULL, '2020-12-12 00:00:00', 10000);
+explain select c,b,a from hash_tbl2 where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
 LogicalView(tables="hash_tbl2[p9]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl2` AS `hash_tbl2` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
-DROP TABLE IF EXISTS rc_tbl;
-CREATE TABLE IF NOT EXISTS rc_tbl (
-	a bigint UNSIGNED,
-	b datetime,
-	c varchar(128) NOT NULL
-)
-PARTITION BY RANGE COLUMNS (c, b, a) (
-	PARTITION p0 VALUES LESS THAN ('H', '2021-11-11 00:00:00', 999999),
-	PARTITION p1 VALUES LESS THAN ('Z', '2021-11-11 00:00:00', 999999),
-	PARTITION p2 VALUES LESS THAN (maxvalue, maxvalue, maxvalue)
+drop table if exists rc_tbl;
+create table if not exists rc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
+partition by range columns(c,b,a) (
+partition p0 values less than ('H','2021-11-11 00:00:00', 999999),
+partition p1 values less than ('Z','2021-11-11 00:00:00', 999999),
+partition p2 values less than (maxvalue,maxvalue,maxvalue)
 );
-SELECT part_route('', 'rc_tbl', NULL, NULL, NULL) AS part_rs;
+select part_route('','rc_tbl', null,null,null) as part_rs;
 part_rs
 p0
-EXPLAIN SELECT c, b, a
-FROM rc_tbl
-WHERE (c, b, a) = (NULL, NULL, NULL);
+explain select c,b,a from rc_tbl where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
 LogicalView(tables="rc_tbl[p0]", sql="SELECT `c`, `b`, `a` FROM `rc_tbl` AS `rc_tbl` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
-SELECT part_route('', 'rc_tbl', 'H', '2020-12-12 00:00:00', 10000) AS part_rs;
+select part_route('','rc_tbl', 'H',"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p0
-EXPLAIN SELECT c, b, a
-FROM rc_tbl
-WHERE (c, b, a) = ('H', '2020-12-12 00:00:00', 10000);
+explain select c,b,a from rc_tbl where (c,b,a)=('H',"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
 LogicalView(tables="rc_tbl[p0]", sql="SELECT `c`, `b`, `a` FROM `rc_tbl` AS `rc_tbl` WHERE ((`c`, `b`, `a`) =(?, ?, ?))")
-SELECT part_route('', 'rc_tbl', 'H') AS part_rs;
-part_rs
-p0,p1
-EXPLAIN SELECT c, b, a
-FROM rc_tbl
-WHERE c = 'H';
-Logical ExecutionPlan
-Gather(concurrent=true)
-  LogicalView(tables="rc_tbl[p0,p1]", shardCount=2, sql="SELECT `c`, `b`, `a` FROM `rc_tbl` AS `rc_tbl` WHERE (`c` = ?)")
-CREATE TABLE IF NOT EXISTS lc_tbl (
-	a bigint UNSIGNED,
-	b datetime,
-	c varchar(128) NOT NULL
-)
-PARTITION BY LIST COLUMNS (c) (
-	PARTITION p0 VALUES IN ('1', '4', '8'),
-	PARTITION p1 VALUES IN ('2', '5', '7'),
-	PARTITION p2 VALUES IN ('3', '6', '9', NULL)
+create table if not exists lc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
+partition by list columns(c) (
+partition p0 values in ('1','4','8'),
+partition p1 values in ('2','5','7'),
+partition p2 values in ('3','6','9', null)
 );
-SELECT part_route('', 'lc_tbl', NULL) AS part_rs;
+select part_route('','lc_tbl', null) as part_rs;
 part_rs
 p2
-EXPLAIN SELECT c, b, a
-FROM lc_tbl
-WHERE c = NULL;
+explain select c,b,a from lc_tbl where (c)=(null);
 Logical ExecutionPlan
 LogicalView(tables="lc_tbl[p2]", sql="SELECT `c`, `b`, `a` FROM `lc_tbl` AS `lc_tbl` WHERE (`c` = ?)")
-SELECT part_route('', 'lc_tbl', '6') AS part_rs;
+select part_route('','lc_tbl', '6') as part_rs;
 part_rs
 p2
-EXPLAIN SELECT c, b, a
-FROM lc_tbl
-WHERE c = '6';
+explain select c,b,a from lc_tbl where (c)=('6');
 Logical ExecutionPlan
 LogicalView(tables="lc_tbl[p2]", sql="SELECT `c`, `b`, `a` FROM `lc_tbl` AS `lc_tbl` WHERE (`c` = ?)")

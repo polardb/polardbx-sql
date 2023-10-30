@@ -15,14 +15,14 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 
-
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
+
 /**
- * 
  * @author zhujun [455910092@qq.com]
  */
-public class MySqlDeclareConditionStatement extends MySqlStatementImpl{
+public class MySqlDeclareConditionStatement extends MySqlStatementImpl {
 	
 	/*
 	DECLARE condition_name CONDITION FOR condition_value
@@ -31,35 +31,39 @@ public class MySqlDeclareConditionStatement extends MySqlStatementImpl{
 	    SQLSTATE [VALUE] sqlstate_value
 	  | mysql_error_code
 	*/
-	
-	//condition_name
-	private String conditionName; 
-	//sp statement
-	private ConditionValue conditionValue;
-	
-	public String getConditionName() {
-		return conditionName;
-	}
 
-	public void setConditionName(String conditionName) {
-		this.conditionName = conditionName;
-	}
+    //condition_name
+    private String conditionName;
+    //sp statement
+    private ConditionValue conditionValue;
 
-	public ConditionValue getConditionValue() {
-		return conditionValue;
-	}
+    public String getConditionName() {
+        return conditionName;
+    }
 
-	public void setConditionValue(ConditionValue conditionValue) {
-		this.conditionValue = conditionValue;
-	}
+    public void setConditionName(String conditionName) {
+        this.conditionName = conditionName;
+    }
 
-	@Override
-	public void accept0(MySqlASTVisitor visitor) {
-		// TODO Auto-generated method stub
-		visitor.visit(this);
-	    visitor.endVisit(this);
-		
-	}
+    public ConditionValue getConditionValue() {
+        return conditionValue;
+    }
 
+    public void setConditionValue(ConditionValue conditionValue) {
+        this.conditionValue = conditionValue;
+    }
+
+    @Override
+    public void accept0(MySqlASTVisitor visitor) {
+        // TODO Auto-generated method stub
+        visitor.visit(this);
+        visitor.endVisit(this);
+
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }
 

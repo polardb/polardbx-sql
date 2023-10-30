@@ -31,17 +31,19 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @author yanfenglin
+ */
 public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreateStatement {
 
-    private boolean     orReplace   = false;
-    private boolean     force       = false;
-    // protected SQLName   name;
+    private boolean orReplace = false;
+    private boolean force = false;
     protected SQLSelect subQuery;
-    protected boolean   ifNotExists = false;
+    protected boolean ifNotExists = false;
 
-    protected String    algorithm;
-    protected SQLName   definer;
-    protected String    sqlSecurity;
+    protected String algorithm;
+    protected SQLName definer;
+    protected String sqlSecurity;
 
     protected SQLExprTableSource tableSource;
 
@@ -54,11 +56,11 @@ public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreat
 
     private SQLLiteralExpr comment;
 
-    public SQLCreateViewStatement(){
+    public SQLCreateViewStatement() {
 
     }
 
-    public SQLCreateViewStatement(DbType dbType){
+    public SQLCreateViewStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -170,7 +172,7 @@ public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreat
     public List<SQLTableElement> getColumns() {
         return columns;
     }
-    
+
     public void addColumn(SQLTableElement column) {
         if (column != null) {
             column.setParent(this);
@@ -257,6 +259,7 @@ public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreat
         visitor.endVisit(this);
     }
 
+    @Override
     public List<SQLObject> getChildren() {
         List<SQLObject> children = new ArrayList<SQLObject>();
         if (tableSource != null) {
@@ -273,12 +276,12 @@ public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreat
     }
 
     public static enum Level {
-                              CASCADED, LOCAL
+        CASCADED, LOCAL
     }
 
     public static class Column extends SQLObjectImpl {
 
-        private SQLExpr     expr;
+        private SQLExpr expr;
         private SQLCharExpr comment;
 
         public SQLExpr getExpr() {
@@ -312,10 +315,10 @@ public class SQLCreateViewStatement extends SQLStatementImpl implements SQLCreat
         }
     }
 
-
+    @Override
     public SQLCreateViewStatement clone() {
         SQLCreateViewStatement x = new SQLCreateViewStatement();
-
+        x.dbType = dbType;
         x.orReplace = orReplace;
         x.force = force;
         if (subQuery != null) {

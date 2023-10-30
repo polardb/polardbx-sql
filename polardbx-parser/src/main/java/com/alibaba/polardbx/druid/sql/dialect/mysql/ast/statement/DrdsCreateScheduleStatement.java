@@ -32,6 +32,7 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
     private SQLExpr timeZone;
 
     private boolean ifNotExists;
+    private String executorType;
     private boolean forLocalPartition;
     private boolean forAutoSplitTableGroup;
 
@@ -74,6 +75,7 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
             x.timeZone.setParent(x);
         }
         x.setIfNotExists(this.isIfNotExists());
+        x.setExecutorType(this.getExecutorType());
         x.setForLocalPartition(this.isForLocalPartition());
         x.setForAutoSplitTableGroup(this.isForAutoSplitTableGroup());
         return x;
@@ -117,6 +119,14 @@ public class DrdsCreateScheduleStatement extends MySqlStatementImpl implements S
 
     public void setIfNotExists(final boolean ifNotExists) {
         this.ifNotExists = ifNotExists;
+    }
+
+    public String getExecutorType() {
+        return executorType;
+    }
+
+    public void setExecutorType(String executorType) {
+        this.executorType = executorType;
     }
 
     public boolean isForLocalPartition() {

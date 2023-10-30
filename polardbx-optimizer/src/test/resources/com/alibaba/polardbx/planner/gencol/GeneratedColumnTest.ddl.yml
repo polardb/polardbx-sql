@@ -1,0 +1,46 @@
+gc_test_tbl_1:
+  CREATE TABLE `gc_test_tbl_1` (
+  `a` int primary key,
+  `b` bigint as (a+1) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_2:
+  CREATE TABLE `gc_test_tbl_2` (
+  `a` int primary key,
+  `b` int as (a+1) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_3:
+  CREATE TABLE `gc_test_tbl_3` (
+  `a` int primary key,
+  `b` bigint as (c+1) logical,
+  `c` bigint as (a+1) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_4:
+  CREATE TABLE `gc_test_tbl_4` (
+  `a` int primary key,
+  `b` int,
+  `c` bigint as ((a+b+1)*2) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_5:
+  CREATE TABLE `gc_test_tbl_5` (
+  `a` int primary key,
+  `b` varchar(10),
+  `c` varchar(20) as (concat(b,'123')) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_6:
+  CREATE TABLE `gc_test_tbl_6` (
+  `a` int primary key,
+  `b` int,
+  `c` bigint as (b+3.0) logical
+  ) dbpartition by hash(`b`);
+
+gc_test_tbl_7:
+  CREATE TABLE `gc_test_tbl_7` (
+  `a` int primary key,
+  `b` varchar(10),
+  `c` varchar(20) as (concat(b,0x313233)) logical
+  ) dbpartition by hash(`b`);

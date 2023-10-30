@@ -1,0 +1,55 @@
+- sql: |
+    delete from test_hash_ta where id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_ta")
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `school`, `create_time` from `test_hash_ta` as `test_hash_ta` where (`id` = ?) for update")
+
+- sql: |
+    delete from test_hash_ta where name = 'test';
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_ta")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `id`, `name`, `school`, `create_time` from `test_hash_ta` as `test_hash_ta` where (`name` = ?) for update")
+
+- sql: |
+    delete from test_hash_ta where school = 'test';
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_ta")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `id`, `name`, `school`, `create_time` from `test_hash_ta` as `test_hash_ta` where (`school` = ?) for update")
+
+- sql: |
+    delete from test_hash_tb where id = 1;
+
+  plan: |
+
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="delete from ? where (`id` = ?)", params="`test_hash_tb`,1")
+
+- sql: |
+    delete from test_hash_single_1 where id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_single_1")
+      logicalview(tables="optest_0000.test_hash_single_1", sql="select `id`, `name`, `create_time` from `test_hash_single_1` as `test_hash_single_1` where (`id` = ?) for update")
+
+- sql: |
+    delete from test_hash_single_1 where name = 'test';
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_single_1")
+      logicalview(tables="optest_0000.test_hash_single_1", sql="select `id`, `name`, `create_time` from `test_hash_single_1` as `test_hash_single_1` where (`name` = ?) for update")
+
+- sql: |
+    delete from test_hash_single_2 where id = 1;
+
+  plan: |
+
+    phytableoperation(tables="optest_0000.[test_hash_single_2]", sql="delete from ? where (`id` = ?)", params="`test_hash_single_2`,1")

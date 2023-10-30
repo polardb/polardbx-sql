@@ -16,13 +16,11 @@
  */
 package org.apache.calcite.sql.validate;
 
-import static org.apache.calcite.sql.SqlUtil.stripAs;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Sets;
 import org.apache.calcite.linq4j.Linq4j;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.type.RelDataType;
@@ -30,15 +28,17 @@ import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 
-import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.apache.calcite.sql.SqlUtil.stripAs;
 
 /**
  * Scope for resolving identifiers within a SELECT statement that has a
@@ -180,7 +180,7 @@ public class AggregatingSelectScope
   @Override public RelDataType nullifyType(SqlNode node, RelDataType type) {
     final Resolved r = this.resolved.get();
     for (Ord<SqlNode> groupExpr : Ord.zip(r.groupExprList)) {
-      if (groupExpr.e.equalsDeep(node, Litmus.IGNORE)) {
+      if (groupExpr.e.equalsDeep(node, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         if (r.isNullable(groupExpr.i)) {
           return validator.getTypeFactory().createTypeWithNullability(type,
               true);
@@ -293,7 +293,7 @@ public class AggregatingSelectScope
 
     public int lookupGroupingExpr(SqlNode operand) {
       for (Ord<SqlNode> groupExpr : Ord.zip(groupExprList)) {
-        if (operand.equalsDeep(groupExpr.e, Litmus.IGNORE)) {
+        if (operand.equalsDeep(groupExpr.e, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
           return groupExpr.i;
         }
       }

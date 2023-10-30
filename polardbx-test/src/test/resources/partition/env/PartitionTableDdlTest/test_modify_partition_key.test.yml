@@ -1,0 +1,98 @@
+# clean
+drop table if exists `t_order`;
+  
+# clear sql_mode
+set sql_mode = '';
+
+CREATE TABLE `t_order` (
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+global INDEX (`seller_id`) partition by key(seller_id)
+) partition by key(order_id);
+
+show full create table `t_order`;
+
+insert into t_order(order_id, seller_id) values
+("12345", "678910"),
+("23456", "7891011"),
+("34567", "89101112"),
+("45678", "910111213"),
+("56789", "101112131415");
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id varchar(30);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id varchar(30) CHARACTER SET utf8;
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id bigint(11);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+select * from t_order where seller_id = 7891011;
+
+select * from t_order where seller_id = 101112131415;
+
+alter table `t_order` modify column seller_id varchar(10);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id char(10);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+select * from t_order where seller_id = '7891011';
+
+select * from t_order where seller_id = '1011121314';
+
+alter table `t_order` modify column order_id varchar(30);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column order_id varchar(30) CHARACTER SET utf8;
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column order_id bigint(11);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+select * from t_order where order_id = 12345;
+
+select * from t_order where order_id = 45678;
+
+alter table `t_order` modify column order_id varchar(10);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column order_id char(11);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+select * from t_order where order_id = 12345;
+
+select * from t_order where order_id = 45678;

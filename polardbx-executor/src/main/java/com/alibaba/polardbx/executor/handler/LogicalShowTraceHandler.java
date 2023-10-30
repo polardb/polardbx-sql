@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -24,6 +23,7 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.statis.SQLOperation;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 
 import java.text.DecimalFormat;
@@ -74,7 +74,7 @@ public class LogicalShowTraceHandler extends HandlerCommon {
                 result.addRow(new Object[] {
                     index++,
                     hostIp,
-                    new DecimalFormat("0.000").format((op.getTimestamp() - startTimestamp) / (float) (1000 * 1000)),
+                    new DecimalFormat("0.000").format(op.getTimestamp() - startTimestamp),
                     op.getOperationType(), op.getGroupName(), op.getDbKeyName(), op.getTimeCost(),
                     df.format(op.getGetConnectionTimeCost()),
                     op.getTotalTimeCost(),
@@ -88,4 +88,5 @@ public class LogicalShowTraceHandler extends HandlerCommon {
 
         return result;
     }
+
 }

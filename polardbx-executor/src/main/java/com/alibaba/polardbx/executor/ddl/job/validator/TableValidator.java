@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor.ddl.job.validator;
 
-import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.charset.MySQLCharsetDDLValidator;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
@@ -45,30 +45,15 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableDropPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddTable;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMergePartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableModifyPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRenamePartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSetTableGroup;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.rule.TableRule;
@@ -94,6 +79,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
 public class TableValidator {
     private static final String GOD_USER_NAME = "polardbx_root";
@@ -224,8 +211,8 @@ public class TableValidator {
             }
 
             Set<String> physicalGroups = new HashSet<>();
-            for (PartitionGroupRecord record : GeneralUtil
-                .emptyIfNull(saveTableGroupConfig.getPartitionGroupRecords())) {
+            for (PartitionGroupRecord record : GeneralUtil.emptyIfNull(
+                saveTableGroupConfig.getPartitionGroupRecords())) {
                 if (record.id == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
                     physicalGroups.add(GroupInfoUtil.buildGroupNameFromPhysicalDb(record.phy_db));
                 }
@@ -242,26 +229,23 @@ public class TableValidator {
         Long tgId = partitionGroupRecords.get(0).tg_id;
         Long firstPgId = partitionGroupRecords.get(0).id;
         boolean invalid =
-            (curTableGroupConfig == null) || (curTableGroupConfig.getPartitionGroupRecords().isEmpty()
-                && firstPgId > 0) || (!curTableGroupConfig.getPartitionGroupRecords().isEmpty()
-                && firstPgId <= 0) || (curTableGroupConfig.getPartitionGroupRecords().size()
-                != partitionGroupRecords.size() && firstPgId > 0);
+            (curTableGroupConfig == null) || (curTableGroupConfig.getPartitionGroupRecords().isEmpty() && firstPgId > 0)
+                || (!curTableGroupConfig.getPartitionGroupRecords().isEmpty() && firstPgId <= 0) || (
+                curTableGroupConfig.getPartitionGroupRecords().size() != partitionGroupRecords.size() && firstPgId > 0);
         if (invalid) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                String.format("the metadata of tableGroup[%s] is too old, please retry this command",
-                    tgId.toString()));
+                String.format("the metadata of tableGroup[%s] is too old, please retry this command", tgId.toString()));
         } else if (!curTableGroupConfig.getPartitionGroupRecords().isEmpty()) {
-            List<PartitionGroupRecord> curPartitionGroupRecords =
-                curTableGroupConfig.getPartitionGroupRecords();
+            List<PartitionGroupRecord> curPartitionGroupRecords = curTableGroupConfig.getPartitionGroupRecords();
             assert curPartitionGroupRecords.size() == partitionGroupRecords.size();
             for (int i = 0; i < curPartitionGroupRecords.size(); i++) {
                 PartitionGroupRecord curParGroupRecord = curPartitionGroupRecords.get(i);
                 PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
-                    .filter(o -> o.partition_name.equalsIgnoreCase(curParGroupRecord.partition_name))
-                    .findFirst().orElse(null);
+                    .filter(o -> o.partition_name.equalsIgnoreCase(curParGroupRecord.partition_name)).findFirst()
+                    .orElse(null);
                 invalid = (partitionGroupRecord == null) || (partitionGroupRecord.id.longValue()
-                    != curParGroupRecord.id.longValue()) || (!partitionGroupRecord.phy_db
-                    .equalsIgnoreCase(curParGroupRecord.phy_db));
+                    != curParGroupRecord.id.longValue()) || (!partitionGroupRecord.phy_db.equalsIgnoreCase(
+                    curParGroupRecord.phy_db));
                 if (invalid) {
                     throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
                         String.format("the metadata of tableGroup[%s] is too old, please retry this command",
@@ -298,9 +282,7 @@ public class TableValidator {
                 if (unexpectedType.equalsIgnoreCase(columnsRecord.dataType)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
                         String.format("unexpected column [%s] in table [%s] with data type: [%s]",
-                            columnsRecord.columnName,
-                            columnsRecord.tableName,
-                            unexpectedType));
+                            columnsRecord.columnName, columnsRecord.tableName, unexpectedType));
                 }
             }
         } catch (Throwable ex) {
@@ -312,18 +294,14 @@ public class TableValidator {
     /**
      * see checkDdlOnGsi()
      */
-    public static void validateTableIsNotGsi(String schemaName,
-                                             String logicalTableName,
-                                             ErrorCode errorCode,
+    public static void validateTableIsNotGsi(String schemaName, String logicalTableName, ErrorCode errorCode,
                                              String... params) {
         if (checkTableIsGsi(schemaName, logicalTableName)) {
             throw new TddlRuntimeException(errorCode, params);
         }
     }
 
-    public static void validateTableIsGsi(String schemaName,
-                                          String logicalTableName,
-                                          ErrorCode errorCode,
+    public static void validateTableIsGsi(String schemaName, String logicalTableName, ErrorCode errorCode,
                                           String... params) {
         if (!checkTableIsGsi(schemaName, logicalTableName)) {
             throw new TddlRuntimeException(errorCode, params);
@@ -332,7 +310,7 @@ public class TableValidator {
 
     public static boolean checkTableIsGsi(String schemaName, String logicalTableName) {
         TableMeta tableMeta =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
         if (tableMeta == null) {
             return false;
         }
@@ -341,7 +319,7 @@ public class TableValidator {
 
     public static boolean checkTableWithGsi(String schemaName, String logicalTableName) {
         TableMeta tableMeta =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
         if (tableMeta == null) {
             return false;
         }
@@ -351,8 +329,7 @@ public class TableValidator {
     /**
      * Expect the logical table to exist, such as DROP TABLE.
      */
-    public static void validateTableExistence(String schemaName,
-                                              String logicalTableName,
+    public static void validateTableExistence(String schemaName, String logicalTableName,
                                               ExecutionContext executionContext) {
         if (executionContext.isUseHint()) {
             return;
@@ -363,11 +340,69 @@ public class TableValidator {
         }
     }
 
+    public static void validateTableNotReferenceFk(String schemaName,
+                                                   String logicalTableName,
+                                                   ExecutionContext executionContext) {
+        if (executionContext.isUseHint()) {
+            return;
+        }
+
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks();
+        if (!checkForeignKey) {
+            return;
+        }
+
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
+
+        for (ForeignKeyData data : tableMeta.getReferencedForeignKeys().values()) {
+            String refSchemaName = data.schema;
+            String refTableName = data.tableName;
+            if (refSchemaName.equals(schemaName) && refTableName.equals(logicalTableName)) {
+                continue;
+            }
+            throw new TddlRuntimeException(ErrorCode.ERR_TRUNCATE_TABLE_FK_CONSTRAINT, refSchemaName, refTableName,
+                data.constraint);
+        }
+    }
+
+    public static void validateRenamesTableNotContainsFk(String schemaName,
+                                                         String logicalTableName,
+                                                         ExecutionContext executionContext) {
+        if (executionContext.isUseHint()) {
+            return;
+        }
+
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks();
+        if (!checkForeignKey) {
+            return;
+        }
+
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
+        if (tableMeta == null) {
+            return;
+        }
+
+        if (!tableMeta.getReferencedForeignKeys().isEmpty() || !tableMeta.getForeignKeys().isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_RENAMES_TABLE_FK_CONSTRAINT);
+        }
+    }
+
     public static boolean checkIfTableExists(String schemaName, String logicalTableName) {
         return new TableInfoManagerDelegate<Boolean>(new TableInfoManager()) {
             @Override
             protected Boolean invoke() {
                 return tableInfoManager.checkIfTableExistsWithAnyStatus(schemaName, logicalTableName);
+            }
+        }.execute();
+    }
+
+    public static Set<String> getAllTableNames(String schemaName) {
+        return new TableInfoManagerDelegate<Set<String>>(new TableInfoManager()) {
+            @Override
+            protected Set<String> invoke() {
+                return tableInfoManager.queryTablesName(schemaName);
             }
         }.execute();
     }
@@ -460,8 +495,8 @@ public class TableValidator {
         Long dbId = DbInfoManager.getInstance().getDbInfo(schemaName).id;
         LocalityInfo localityInfo = LocalityManager.getInstance().getLocalityOfDb(dbId);
         if (localityInfo != null && localityDesc != null) {
-            LocalityDesc dbLocality = LocalityDesc.parse(localityInfo.getLocality());
-            if (!dbLocality.compactiableWith(localityDesc)) {
+            LocalityDesc dbLocality = LocalityInfoUtils.parse(localityInfo.getLocality());
+            if (!dbLocality.fullCompactiableWith(localityDesc)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                     " Table locality definition is not compatible with database locality! ");
             }
@@ -470,10 +505,18 @@ public class TableValidator {
 
     public static void validateTruncatePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
-        boolean withGsi = tableMeta.withGsi();
+        if (tableMeta == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, tableName);
+        }
         for (SqlAlterSpecification item : sqlAlterTable.getAlters()) {
-            if ((item instanceof SqlAlterTableTruncatePartition) && withGsi) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_TRUNCATE_PRIMARY_TABLE, tableName);
+            if ((item instanceof SqlAlterTableTruncatePartition)) {
+                if (tableMeta.withGsi()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_TRUNCATE_PRIMARY_TABLE,
+                        tableName);
+                }
+                if (tableMeta.isGsi()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_TRUNCATE_PARTITION, tableName);
+                }
             }
         }
     }
@@ -493,8 +536,9 @@ public class TableValidator {
     private static void doValidateCollation(SqlColumnDeclaration colDef) {
         SqlDataTypeSpec typeSpec = colDef.getDataType();
         if (typeSpec != null) {
-            boolean isSupported = MySQLCharsetDDLValidator
-                .checkCharsetSupported(typeSpec.getCharSetName(), typeSpec.getCollationName(), true);
+            boolean isSupported =
+                MySQLCharsetDDLValidator.checkCharsetSupported(typeSpec.getCharSetName(), typeSpec.getCollationName(),
+                    true);
             if (!isSupported) {
                 if (typeSpec.getCollationName() == null) {
                     throw GeneralUtil.nestedException(
@@ -502,66 +546,33 @@ public class TableValidator {
                             colDef.getName().getLastName(), typeSpec.getCharSetName()));
                 } else {
                     throw GeneralUtil.nestedException(
-                        MessageFormat
-                            .format("the column {0} with character set {1} collate {2} is unsupported",
-                                colDef.getName().getLastName(), typeSpec.getCharSetName(),
-                                typeSpec.getCollationName()));
+                        MessageFormat.format("the column {0} with character set {1} collate {2} is unsupported",
+                            colDef.getName().getLastName(), typeSpec.getCharSetName(), typeSpec.getCollationName()));
                 }
             }
         }
     }
 
     public static void validateTableEngine(BaseDdlOperation ddlOperation, ExecutionContext executionContext) {
-        if (ddlOperation instanceof LogicalAlterTable) {
-            String schemaName = ddlOperation.getSchemaName();
-            String logicalTableName = ddlOperation.getTableName();
-            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
-            if (tableMeta == null) {
-                return;
+        // ddl on file storage table
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CHECK_DDL_FILE_STORAGE)
+            && ddlOperation.checkIfFileStorage(executionContext)) {
+            if (!ddlOperation.isSupportedByFileStorage()) {
+                throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
             }
-            if (Engine.isFileStore(tableMeta.getEngine())) {
-                LogicalAlterTable logicalAlterTable = (LogicalAlterTable) ddlOperation;
-                if (logicalAlterTable.isAlterAsOfTimeStamp()
-                    || logicalAlterTable.isAlterPurgeBeforeTimeStamp()
-                    || logicalAlterTable.isAlterEngine()
-                    || logicalAlterTable.isExchangePartition()
-                    || logicalAlterTable.isDropFile()) {
-                    // support
-                } else {
-                    throwEngineNotSupport(schemaName, logicalTableName, tableMeta.getEngine());
-                }
+        }
+        // ddl on innodb table binding to file storage table
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CHECK_DDL_BINDING_FILE_STORAGE)
+            && ddlOperation.checkIfBindFileStorage(executionContext)) {
+            if (!ddlOperation.isSupportedByBindFileStorage()) {
+                throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
             }
-        } else if (ddlOperation instanceof LogicalDropIndex
-            || ddlOperation instanceof LogicalCreateIndex
-            || ddlOperation instanceof LogicalAlterTableRepartition
-            || ddlOperation instanceof LogicalTruncateTable) {
-            String schemaName = ddlOperation.getSchemaName();
-            String logicalTableName = ddlOperation.getTableName();
-            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
-            if (tableMeta == null) {
-                return;
-            }
-            if (Engine.isFileStore(tableMeta.getEngine())) {
-                throwEngineNotSupport(schemaName, logicalTableName, tableMeta.getEngine());
-            }
-        } else if (
-            ddlOperation instanceof LogicalAlterTableAddPartition
-                || ddlOperation instanceof LogicalAlterTableDropPartition
-                || ddlOperation instanceof LogicalAlterTableExtractPartition
-                || ddlOperation instanceof LogicalAlterTableGroupAddTable
-                || ddlOperation instanceof LogicalAlterTableMergePartition
-                || ddlOperation instanceof LogicalAlterTableModifyPartition
-                || ddlOperation instanceof LogicalAlterTableRenamePartition
-                || ddlOperation instanceof LogicalAlterTableSetTableGroup
-                || ddlOperation instanceof LogicalAlterTableSplitPartition
-                || ddlOperation instanceof LogicalAlterTableSplitPartitionByHotValue) {
-            // todo(shengyu): refactor this
         }
     }
 
-    private static void throwEngineNotSupport(String schemaName, String logicalTableName, Engine engine) {
+    private static void throwEngineNotSupport(String schemaName, String logicalTableName) {
         throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-            "Engine of " + schemaName + "." + logicalTableName + " is " + engine);
+            "DDL of " + schemaName + "." + logicalTableName + " involves file storage.");
     }
 
     public static void checkCompatibleWithOss(TableMeta sourceTable, TableMeta targetTable) {
@@ -573,21 +584,26 @@ public class TableValidator {
         boolean isShard = false;
         if (TableTopologyUtil.isBroadcast(sourceTable) != TableTopologyUtil.isBroadcast(targetTable)
             || TableTopologyUtil.isSingle(sourceTable) != TableTopologyUtil.isSingle(targetTable)
-            || (isShard = TableTopologyUtil.isShard(sourceTable)) != TableTopologyUtil.isShard(targetTable)
-        ) {
+            || (isShard = TableTopologyUtil.isShard(sourceTable)) != TableTopologyUtil.isShard(targetTable)) {
             throwTopologyInconsistentError(sourceTable, targetTable);
         }
+
         if (isShard) {
-            PartitionInfo sourcePartitionInfo = OptimizerContext.getContext(sourceTable.getSchemaName())
-                .getRuleManager().getPartitionInfoManager().getPartitionInfo(sourceTable.getTableName());
-            PartitionInfo targetPartitionInfo = OptimizerContext.getContext(targetTable.getSchemaName())
-                .getRuleManager().getPartitionInfoManager().getPartitionInfo(targetTable.getTableName());
+            PartitionInfo sourcePartitionInfo =
+                OptimizerContext.getContext(sourceTable.getSchemaName()).getRuleManager().getPartitionInfoManager()
+                    .getPartitionInfo(sourceTable.getTableName());
+
+            PartitionInfo targetPartitionInfo =
+                OptimizerContext.getContext(targetTable.getSchemaName()).getRuleManager().getPartitionInfoManager()
+                    .getPartitionInfo(targetTable.getTableName());
+
             PartitionByDefinition sourceDef = sourcePartitionInfo.getPartitionBy();
             PartitionByDefinition targetDef = targetPartitionInfo.getPartitionBy();
             if (!sourceDef.equals(targetDef)) {
                 throwTopologyInconsistentError(sourceTable, targetTable);
             }
         }
+
     }
 
     /**
@@ -595,17 +611,18 @@ public class TableValidator {
      */
     public static void checkColumnConsistency(TableMeta sourceTable, TableMeta targetTable) {
         // check columns
-        List<ColumnMeta> sortedSourceColumns = sourceTable.getPhysicalColumns()
-            .stream()
-            .sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
-            .collect(Collectors.toList());
-        List<ColumnMeta> sortedTargetColumns = targetTable.getPhysicalColumns()
-            .stream()
-            .sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
-            .collect(Collectors.toList());
+        List<ColumnMeta> sortedSourceColumns =
+            sourceTable.getPhysicalColumns().stream().sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
+                .collect(Collectors.toList());
+
+        List<ColumnMeta> sortedTargetColumns =
+            targetTable.getPhysicalColumns().stream().sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
+                .collect(Collectors.toList());
+
         if (sortedSourceColumns.size() != sortedTargetColumns.size()) {
             throwMetaInconsistentError(sourceTable, targetTable);
         }
+
         for (int i = 0; i < sortedSourceColumns.size(); i++) {
             ColumnMeta c1 = sortedSourceColumns.get(i);
             ColumnMeta c2 = sortedTargetColumns.get(i);
@@ -621,19 +638,17 @@ public class TableValidator {
     }
 
     private static void throwMetaInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
-        throw GeneralUtil.nestedException(
-            MessageFormat
-                .format("the column metas of source table {0} and target table {1} are not consistent, "
-                        + "please create a new archive table for source table {0}", sourceTable.getTableName(),
-                    targetTable.getTableName()));
+        throw GeneralUtil.nestedException(MessageFormat.format(
+            "the column metas of source table {0} and target table {1} are not consistent, "
+                + "please create a new archive table for source table {0}", sourceTable.getTableName(),
+            targetTable.getTableName()));
     }
 
     private static void throwTopologyInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
-        throw GeneralUtil.nestedException(
-            MessageFormat
-                .format("the table topology of source table {0} and target table {1} are not consistent, "
-                        + "please create a new archive table for source table {0}", sourceTable.getTableName(),
-                    targetTable.getTableName()));
+        throw GeneralUtil.nestedException(MessageFormat.format(
+            "the table topology of source table {0} and target table {1} are not consistent, "
+                + "please create a new archive table for source table {0}", sourceTable.getTableName(),
+            targetTable.getTableName()));
     }
 
     public static void checkGodPrivilege(ExecutionContext context) {
@@ -646,6 +661,50 @@ public class TableValidator {
         if (!GOD_USER_NAME.equalsIgnoreCase(user.getAccount().getUsername())) {
             throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED,
                 "Execute this sql in low-privilege account: " + user.getAccount().getUsername());
+        }
+    }
+
+    public static void validateAllowRenameMultiTable(String schemaName,
+                                                     String tableName,
+                                                     ExecutionContext executionContext) {
+        boolean isGsi = TableValidator.checkTableIsGsi(schemaName, tableName);
+        if (isGsi) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_WITH_DDL, tableName);
+        }
+
+        // only  isRandomTableNamePatternEnabled = true; multi tables can be renamed
+        boolean canRename;
+        TddlRuleManager tr = executionContext.getSchemaManager(schemaName).getTddlRuleManager();
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            PartitionInfo partitionInfo = tr.getPartitionInfoManager().getPartitionInfo(tableName);
+            canRename = partitionInfo.isRandomTableNamePatternEnabled();
+        } else {
+            TableRule tableRule = tr.getTableRule(tableName);
+            canRename = false;
+
+            if (tableRule != null) {
+                String tableNamePattern = tableRule.getTbNamePattern();
+                if (TStringUtil.isEmpty(tableNamePattern)
+                    || tableNamePattern.length() <= RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME) {
+                    // Must be single or broadcast table.
+                    canRename = false;
+                } else if (TStringUtil.startsWithIgnoreCase(tableNamePattern, tableName)) {
+                    // Not renamed yet.
+                    String randomSuffix = tableRule.extractRandomSuffix();
+                    canRename = TStringUtil.isNotEmpty(randomSuffix);
+                } else {
+                    // The table may have been renamed when logical table name
+                    // is supported, so that the table name pattern's prefix is
+                    // not the logical table name, so it should be safe to
+                    // contain random string.
+                    canRename = true;
+                }
+            }
+        }
+
+        if (!canRename) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "Rename of multiple tables together is not supported yet.");
         }
     }
 }

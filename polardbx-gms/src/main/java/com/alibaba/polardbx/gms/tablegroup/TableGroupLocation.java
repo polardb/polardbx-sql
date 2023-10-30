@@ -25,10 +25,8 @@ import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import org.apache.hadoop.io.DoubleWritable;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -59,8 +57,12 @@ public class TableGroupLocation {
         return getOrderedGroupList(schema).get(0);
     }
 
-    public static GroupAllocator buildGroupAllocator(String schema) {
-        return new GroupAllocator(getOrderedGroupList(schema));
+    public static GroupAllocator buildGroupAllocator(String schema, LocalityDesc localityDesc) {
+        if (localityDesc.holdEmptyDnList()) {
+            return new GroupAllocator(getOrderedGroupList(schema));
+        } else {
+            return buildGroupAllocatorByLocality(schema, localityDesc);
+        }
     }
 
     public static GroupAllocator buildGroupAllocatorOfPartitionByLocality(String schema, LocalityDesc localityDesc) {
@@ -74,6 +76,11 @@ public class TableGroupLocation {
 
     public static GroupAllocator buildGroupAllocatorByGroup(String schema, List<GroupDetailInfoExRecord> groups) {
         return new GroupAllocator(groups);
+    }
+
+    public static GroupAllocator buildGroupAllocatorByGroup(String schema, List<GroupDetailInfoExRecord> groups,
+                                                            int part_num) {
+        return new GroupAllocator(groups, part_num);
     }
 
     public static GroupAllocator buildGroupAllocatorByLocality(String schema, LocalityDesc localityDesc) {
@@ -109,6 +116,7 @@ public class TableGroupLocation {
 
     public static List<Pair<GroupDetailInfoExRecord, TableGroupRecord>> getOrderedGroupListForSingleTable(
         String logicalDbName,
+        LocalityDesc dbLocalityDesc,
         boolean includeToBeRemoveGroup) {
         List<GroupDetailInfoExRecord> storageGroupList;
         List<PartitionGroupExtRecord> partitionGroupList;
@@ -119,19 +127,20 @@ public class TableGroupLocation {
         // query metadb for physical group and all partition-groups
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             String instId = InstIdUtil.getInstId();
-            partitionGroupList = queryMetaDbPartitionGroupList(conn);
+            tableGroupAccessor.setConnection(conn);
+            singleTableGroups = tableGroupAccessor.getAllTableGroups(logicalDbName).stream()
+                .filter(tableGroupRecord -> tableGroupRecord.isSingleTableGroup()
+                    && tableGroupRecord.withBalanceSingleTableLocality())
+                .collect(Collectors.toList());
+            List<Long> singleTableGroupIds = singleTableGroups.stream()
+                .map(tableGroupRecord -> tableGroupRecord.getId()).collect(Collectors.toList());
+            partitionGroupList = queryMetaDbPartitionGroupList(logicalDbName, conn);
             storageGroupList = queryMetaDbGroupList(conn, instId).stream()
                 .filter(storageGroup -> storageGroup.dbName.equals(logicalDbName))
                 .filter(r -> (includeToBeRemoveGroup || DbGroupInfoManager.isNormalGroup(r.dbName,
                     r.groupName))) //exclude GROUP_TYPE_BEFORE_REMOVE if includeToBeRemoveGroup=false
+                .filter(o -> dbLocalityDesc.matchStorageInstance(o.storageInstId))
                 .collect(Collectors.toList());
-            tableGroupAccessor.setConnection(conn);
-            singleTableGroups = tableGroupAccessor.getAllTableGroups(logicalDbName).stream()
-                .filter(tableGroupRecord -> tableGroupRecord.isSingleTableGroup())
-                .filter(tableGroupRecord -> tableGroupRecord.isLocalitySpecified())
-                .collect(Collectors.toList());
-            List<Long> singleTableGroupIds = singleTableGroups.stream()
-                .map(tableGroupRecord -> tableGroupRecord.getId()).collect(Collectors.toList());
             if (singleTableGroupIds.size() > 0) {
                 tableCountMap = tableGroupAccessor.getTableCountPerGroup(singleTableGroupIds);
             } else {
@@ -180,7 +189,7 @@ public class TableGroupLocation {
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             String instId = InstIdUtil.getInstId();
             storageGroupList = queryMetaDbGroupList(conn, instId);
-            partitionGroupList = queryMetaDbPartitionGroupList(conn);
+            partitionGroupList = queryMetaDbPartitionGroupList(logicalDbName, conn);
         } catch (Throwable ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw GeneralUtil.nestedException(ex);
@@ -206,10 +215,10 @@ public class TableGroupLocation {
             .collect(Collectors.toList());
     }
 
-    private static List<PartitionGroupExtRecord> queryMetaDbPartitionGroupList(Connection conn) {
+    private static List<PartitionGroupExtRecord> queryMetaDbPartitionGroupList(String tableSchema, Connection conn) {
         PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
         partitionGroupAccessor.setConnection(conn);
-        return partitionGroupAccessor.getGetPhysicalTbCntPerPg();
+        return partitionGroupAccessor.getGetPhysicalTbCntPerPg(tableSchema);
     }
 
     private static List<GroupDetailInfoExRecord> queryMetaDbGroupList(Connection conn, String instId) {
@@ -226,9 +235,23 @@ public class TableGroupLocation {
         private final List<GroupDetailInfoExRecord> groupList;
         private int nextToAllocate;
 
+        private int partNum;
+        private int avgPartNum;
+
+        private int allocatedCount;
+
         GroupAllocator(List<GroupDetailInfoExRecord> groupList) {
             this.groupList = groupList;
             this.nextToAllocate = 0;
+            this.partNum = 0;
+        }
+
+        GroupAllocator(List<GroupDetailInfoExRecord> groupList, int partNum) {
+            this.groupList = groupList;
+            this.nextToAllocate = 0;
+            this.partNum = partNum;
+            this.avgPartNum = partNum / groupList.size();
+            this.allocatedCount = 0;
         }
 
         /**
@@ -236,7 +259,15 @@ public class TableGroupLocation {
          */
         public String allocate() {
             String result = this.groupList.get(nextToAllocate).getGroupName();
-            this.nextToAllocate = (this.nextToAllocate + 1) % this.groupList.size();
+            if (partNum == 0) {
+                this.nextToAllocate = (this.nextToAllocate + 1) % this.groupList.size();
+            } else {
+                //Sequential count
+                allocatedCount += 1;
+                if (allocatedCount % avgPartNum == 0) {
+                    this.nextToAllocate = (this.nextToAllocate + 1) % this.groupList.size();
+                }
+            }
             return result;
         }
     }

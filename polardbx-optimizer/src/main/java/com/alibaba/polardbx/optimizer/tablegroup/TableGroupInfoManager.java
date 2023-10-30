@@ -31,10 +31,12 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.GroupStorageInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.google.common.collect.ImmutableList;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -51,11 +53,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TableGroupInfoManager extends AbstractLifecycle {
 
     /**
-     * Each schema has only one broadcast table group
-     */
-    public static final String BROADCAT_TG_NAME = "tg_broadcast";
-
-    /**
      * the schema of tableGroup infos
      */
     final protected String schemaName;
@@ -66,6 +63,8 @@ public class TableGroupInfoManager extends AbstractLifecycle {
      */
     final protected Map<Long, TableGroupConfig> tableGroupConfigInfoCache;
 
+    final private GroupStorageInfoManager groupStorageInfoManager;
+
     /**
      * The tgId For broadcast table group
      */
@@ -74,6 +73,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
     public TableGroupInfoManager(String schemaName) {
         this.schemaName = schemaName;
         tableGroupConfigInfoCache = new ConcurrentHashMap<>();
+        groupStorageInfoManager = new GroupStorageInfoManager(schemaName);
     }
 
     @Override
@@ -87,6 +87,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
     protected void doDestroy() {
         synchronized (tableGroupConfigInfoCache) {
             tableGroupConfigInfoCache.clear();
+            groupStorageInfoManager.clear();
         }
     }
 
@@ -96,6 +97,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
 
         synchronized (tableGroupConfigInfoCache) {
             tableGroupConfigInfoCache.clear();
+            groupStorageInfoManager.clear();
             for (TableGroupConfig conf : tableGroupConfigs) {
                 Long tgId = conf.getTableGroupRecord().id;
                 if (conf.getTableGroupRecord().tg_type == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
@@ -103,6 +105,8 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 }
                 this.tableGroupConfigInfoCache.put(tgId, conf);
             }
+
+            groupStorageInfoManager.registerTableGroupId(tableGroupConfigInfoCache.values());
         }
     }
 
@@ -118,8 +122,10 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     broadcastTgId = tableGroupConfig.getTableGroupRecord().id;
                 }
                 this.tableGroupConfigInfoCache.put(Id, tableGroupConfig);
+                this.groupStorageInfoManager.registerTableGroupId(ImmutableList.of(tableGroupConfig));
             } else {
                 this.tableGroupConfigInfoCache.remove(Id);
+                this.groupStorageInfoManager.unregisterTableGroupId(Id);
             }
         }
     }
@@ -167,10 +173,16 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     o -> tableName.equalsIgnoreCase(o.getTableName()));
             }
             TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
-            if (tableGroupConfig.getAllTables().isEmpty()
-                && tableGroupRecord.manual_create == 0) {
-                synchronized (tableGroupConfigInfoCache) {
-                    tableGroupConfigInfoCache.remove(id);
+            if (tableGroupConfig.getAllTables().isEmpty()) {
+                if (tableGroupRecord.manual_create == 0) {
+                    synchronized (tableGroupConfigInfoCache) {
+                        tableGroupConfigInfoCache.remove(id);
+                        groupStorageInfoManager.unregisterTableGroupId(id);
+                    }
+                } else {
+                    synchronized (tableGroupConfig.getTableGroupRecord()) {
+                        tableGroupConfig.setPartitionGroupRecords(new ArrayList<>());
+                    }
                 }
             }
         }
@@ -184,6 +196,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     broadcastTgId = tableGroupConfig.getTableGroupRecord().id;
                 }
                 this.tableGroupConfigInfoCache.put(tableGroupConfig.getTableGroupRecord().id, tableGroupConfig);
+                groupStorageInfoManager.registerTableGroupId(ImmutableList.of(tableGroupConfig));
             } else {
                 Map.Entry<Long, TableGroupConfig> entry = tableGroupConfigInfoCache.entrySet().stream()
                     .filter(o -> o.getValue().getTableGroupRecord().tg_name.equalsIgnoreCase(tableGroupName))
@@ -191,6 +204,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     .orElse(null);
                 if (entry != null) {
                     tableGroupConfigInfoCache.remove(entry.getKey());
+                    groupStorageInfoManager.unregisterTableGroupId(entry.getKey());
                 }
             }
         }
@@ -206,6 +220,14 @@ public class TableGroupInfoManager extends AbstractLifecycle {
 
     public TableGroupConfig getTableGroupConfigById(Long tableGroupId) {
         return tableGroupConfigInfoCache.get(tableGroupId);
+    }
+
+    public Map<Long, String> getPartitionDNs(Long tableGroupId) {
+        return groupStorageInfoManager.getPartitionDNs(tableGroupId);
+    }
+
+    public String getPartitionDN(Long tableGroupId, Long parId) {
+        return groupStorageInfoManager.getPartitionDN(tableGroupId, parId);
     }
 
     public TableGroupConfig getTableGroupConfigByName(String tableGroupName) {
@@ -332,7 +354,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 partitionInfo.setTableGroupId(maxExistGroupId);
                 partitionGroupRecords =
                     PartitionInfoUtil
-                        .prepareRecordForPartitionGroups(partitionInfo.getPartitionBy().getPartitions());
+                        .prepareRecordForPartitionGroups(partitionInfo.getPartitionBy().getPhysicalPartitions());
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
                     partitionGroupRecord.id = maxPartGroupId + 1;
                     maxPartGroupId = maxPartGroupId + 1;
@@ -346,6 +368,8 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 newTablePartRecordInfoContext.setLogTbRec(logTableRec);
                 newTablePartRecordInfoContext.setPartitionRecList(partRecList);
                 newTablePartRecordInfoContext.setSubPartitionRecMap(subPartRecInfos);
+                newTablePartRecordInfoContext.setSubPartitionRecList(
+                    TablePartRecordInfoContext.buildAllSubPartitionRecList(subPartRecInfos));
                 List<TablePartRecordInfoContext> newTablePartRecordsInfoContext = new ArrayList<>();
                 newTablePartRecordsInfoContext.add(newTablePartRecordInfoContext);
 

@@ -62,7 +62,7 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.PRIMARY_KEY_TE
  *
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
 public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
 

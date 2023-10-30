@@ -18,7 +18,7 @@ package com.alibaba.polardbx;
 
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -27,6 +27,8 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.utils.*;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -69,17 +71,8 @@ import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
 import java.text.DateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.ResourceBundle;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -102,7 +95,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
     private final CobarConfig config;
     private final ScheduledThreadPoolExecutor scheduler;
     private final ServerThreadPool managerExecutor;
-    private final ServerThreadPool timerExecutor;
+    private final ServerThreadPool syncExecutor;
     private final ServerThreadPool serverExecutor;
     private final ServerThreadPool killExecutor;
     // Global scheduled executor service
@@ -150,7 +143,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 return thread;
             }
         });
-        this.timerExecutor = ExecutorUtil.create("TimerExecutor", system.getTimerExecutor());
+        this.syncExecutor = ExecutorUtil.create("SyncExecutor", system.getSyncExecutor());
         this.managerExecutor = ExecutorUtil.create("ManagerExecutor", system.getManagerExecutor());
         this.killExecutor = ExecutorUtil.create("KillExecutor", system.getProcessorKillExecutor());
         this.timerTaskExecutor = ExecutorUtil.createScheduler(system.getTimerTaskExecutor(),
@@ -372,7 +365,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             // connector.join(1 * 1000);
             // 关闭数据源
             this.config.destroy();
-
             if (ServiceProvider.getInstance().getServer() != null) {
                 ServiceProvider.getInstance().getServer().stop();
             }
@@ -398,7 +390,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             server.getFactory().setIdleTimeout(systemConfig.getIdleTimeout());
 
             this.killExecutor.setPoolSize(systemConfig.getProcessorKillExecutor());
-            this.timerExecutor.setPoolSize(systemConfig.getTimerExecutor());
+            this.syncExecutor.setPoolSize(systemConfig.getSyncExecutor());
             this.serverExecutor.setPoolSize(systemConfig.getServerExecutor());
             this.serverExecutor.setDeadLockCheckPeriod(systemConfig.getDeadLockCheckPeriod());
             this.managerExecutor.setPoolSize(systemConfig.getManagerExecutor());
@@ -532,8 +524,8 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         return serverExecutor;
     }
 
-    public ServerThreadPool getTimerExecutor() {
-        return timerExecutor;
+    public ServerThreadPool getSyncExecutor() {
+        return syncExecutor;
     }
 
     public ScheduledExecutorService getTimerTaskExecutor() {
@@ -627,7 +619,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
 
             @Override
             public void run() {
-                timerExecutor.execute(new Runnable() {
+                syncExecutor.execute(new Runnable() {
 
                     @Override
                     public void run() {

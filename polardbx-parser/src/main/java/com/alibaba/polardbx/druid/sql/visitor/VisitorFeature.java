@@ -38,7 +38,8 @@ public enum VisitorFeature {
 
     OutputNameQuote,
     OutputDistributedLiteralInCreateTableStmt,
-    OutputPlOnlyDefinition;
+    OutputPlOnlyDefinition,
+    OutputHashPartitionsByRange;
 
     private VisitorFeature() {
         mask = (1 << ordinal());

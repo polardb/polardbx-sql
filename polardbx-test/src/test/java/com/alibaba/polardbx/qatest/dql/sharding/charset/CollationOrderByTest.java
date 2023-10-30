@@ -38,6 +38,7 @@ public class CollationOrderByTest extends CharsetTestBase {
         this.suffix = suffix;
     }
 
+    // gbk_bin
     @Test
     public void testGBK_BIN() {
         List<byte[]> gbkStrings = CharsetTestUtils.generateGBKUnicode(STRING_SIZE, CHARACTER_SIZE, true);
@@ -51,6 +52,34 @@ public class CollationOrderByTest extends CharsetTestBase {
         List<byte[]> gbkStrings = CharsetTestUtils.generateGBKUnicode(STRING_SIZE, CHARACTER_SIZE, true);
 
         testOrderBy(gbkStrings, COL_GBK_CHINESE_CI);
+    }
+
+    // Ignore because jdk uses GB18030-2000 while Mysql uses GB18030-2005
+    // gb18030_chinese_ci
+    @Ignore
+    @Test
+    public void testGB18030_CHINESE_CI() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testOrderBy(gbkStrings, COL_GB18030_CHINESE_CI);
+    }
+
+    // gb18030_bin
+    @Ignore
+    @Test
+    public void testGB18030_BIN() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testOrderBy(gbkStrings, COL_GB18030_BIN);
+    }
+
+    // gb18030_unicode_520_ci
+    @Ignore
+    @Test
+    public void testGB18030_UNICODE_520_CI() {
+        List<byte[]> gbkStrings = CharsetTestUtils.generateGB18030Unicode(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testOrderBy(gbkStrings, COL_GB18030_UNICODE_520_CI);
     }
 
     // utf8mb4_general_ci
@@ -75,6 +104,14 @@ public class CollationOrderByTest extends CharsetTestBase {
         List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
 
         testOrderBy(utf8Strings, COL_UTF8MB4_UNICODE_CI);
+    }
+
+    // utf8mb4_unicode_520_ci
+    @Test
+    public void testUTF8MB4_UNICODE_520_CI() {
+        List<byte[]> utf8Strings = CharsetTestUtils.generateUTF8MB4(STRING_SIZE, CHARACTER_SIZE, true);
+
+        testOrderBy(utf8Strings, COL_UTF8MB4_UNICODE_520_CI);
     }
 
     // utf8_general_ci

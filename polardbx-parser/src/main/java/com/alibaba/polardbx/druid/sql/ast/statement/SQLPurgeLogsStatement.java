@@ -33,7 +33,7 @@ public class SQLPurgeLogsStatement extends SQLStatementImpl implements SQLDropSt
     }
 
     public SQLPurgeLogsStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

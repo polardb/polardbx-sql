@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.privileges;
 
+import com.alibaba.polardbx.common.privilege.PasswdRuleConfig;
 import com.alibaba.polardbx.common.privilege.UserPasswdChecker;
 import org.junit.Assert;
 import org.junit.Test;
@@ -65,4 +66,30 @@ public class UserCheckerTest {
         Assert.assertFalse(UserPasswdChecker.verifyUsername("abc@"));
         Assert.assertFalse(UserPasswdChecker.verifyUsername("abc&"));
     }
+
+    @Test
+    public void testPasswordErrorCodeByDefault() {
+        testPasswordErrorCode(null);
+    }
+
+    @Test
+    public void testPasswordErrorCodeByConfig() {
+        PasswdRuleConfig config = new PasswdRuleConfig();
+        testPasswordErrorCode(config);
+    }
+
+    private void testPasswordErrorCode(PasswdRuleConfig config) {
+        final String validPassword = "123456abc";
+        final String invalidPassword = "12345";
+        UserPasswdChecker.verifyPassword(validPassword, config);
+
+        try {
+            UserPasswdChecker.verifyPassword(invalidPassword, null);
+            Assert.fail("Expect invalid password: " + invalidPassword);
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().startsWith("ERR-CODE: [PXC-5203][ERR_INVALID_PASSWORD]"));
+            Assert.assertEquals(e.getMessage().indexOf("ERR-CODE"), e.getMessage().lastIndexOf("ERR-CODE"));
+        }
+    }
+
 }

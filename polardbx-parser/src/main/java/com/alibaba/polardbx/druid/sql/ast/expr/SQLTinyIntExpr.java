@@ -25,16 +25,16 @@ public class SQLTinyIntExpr extends SQLNumericLiteralExpr implements SQLValuable
 
     private Byte value;
 
-    public SQLTinyIntExpr(){
+    public SQLTinyIntExpr() {
 
     }
 
-    public SQLTinyIntExpr(Byte value){
+    public SQLTinyIntExpr(Byte value) {
         super();
         this.value = value;
     }
 
-    public SQLTinyIntExpr(String value){
+    public SQLTinyIntExpr(String value) {
         super();
         if (value.startsWith("--")) {
             value = value.substring(2);
@@ -70,6 +70,7 @@ public class SQLTinyIntExpr extends SQLNumericLiteralExpr implements SQLValuable
 
         visitor.endVisit(this);
     }
+
     @Override
     public int hashCode() {
         final int prime = 31;

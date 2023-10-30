@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic.spec;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
@@ -39,19 +43,14 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTabl
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableOption;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
-import com.google.common.collect.Lists;
+import com.clearspring.analytics.util.Lists;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -64,7 +63,7 @@ public class AlterTableRollbacker {
         if (sqlStatement instanceof SQLAlterTableStatement) {
             return checkIfRollbackable((SQLAlterTableStatement) sqlStatement);
         } else {
-            return false;
+            return true;
         }
     }
 

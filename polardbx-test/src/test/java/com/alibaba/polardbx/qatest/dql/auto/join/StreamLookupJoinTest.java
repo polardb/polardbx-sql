@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.google.common.collect.Lists;
 import org.junit.Test;
 import org.junit.runner.RunWith;

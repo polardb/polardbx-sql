@@ -28,6 +28,7 @@ import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
+import org.eclipse.jetty.util.StringUtil;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -46,7 +47,7 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
     public FetchPlanCacheSyncAction(String schemaName) {
         this.schemaName = schemaName;
         this.withPlan = true;
-        this.withParameter = false;
+        this.withParameter = true;
     }
 
     public FetchPlanCacheSyncAction(String schemaName, boolean withPlan) {
@@ -101,6 +102,11 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
             .entrySet()) {
             PlanCache.CacheKey cacheKey = entry.getKey();
             ExecutionPlan executionPlan = entry.getValue();
+
+            // ignore if schema is not empty
+            if ((!StringUtil.isEmpty(schemaName)) && (!schemaName.equalsIgnoreCase(cacheKey.getSchema()))) {
+                continue;
+            }
             final String plan;
             if (withPlan) {
                 if (executionPlan == PlaceHolderExecutionPlan.INSTANCE) {

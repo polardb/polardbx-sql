@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
@@ -31,6 +32,19 @@ import java.util.Map;
 public class DrdsMovePartition extends SQLObjectImpl implements SQLAlterTableItem, SQLAlterTableGroupItem {
     private Map<SQLName, List<SQLName>> instPartitions;
 
+    private boolean subPartitionsMoved;
+
+    public Map<SQLName, SQLExpr> getLocalities() {
+        return localities;
+    }
+
+    public void setLocalities(
+        Map<SQLName, SQLExpr> localities) {
+        this.localities = localities;
+    }
+
+    private Map<SQLName, SQLExpr> localities;
+
     public Map<SQLName, List<SQLName>> getInstPartitions() {
         return instPartitions;
     }
@@ -38,6 +52,14 @@ public class DrdsMovePartition extends SQLObjectImpl implements SQLAlterTableIte
     public void setInstPartitions(
         Map<SQLName, List<SQLName>> instPartitions) {
         this.instPartitions = instPartitions;
+    }
+
+    public boolean isSubPartitionsMoved() {
+        return subPartitionsMoved;
+    }
+
+    public void setSubPartitionsMoved(boolean subPartitionsMoved) {
+        this.subPartitionsMoved = subPartitionsMoved;
     }
 
     @Override

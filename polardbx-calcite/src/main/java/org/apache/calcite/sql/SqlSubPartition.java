@@ -16,14 +16,13 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by luoyanxin.
@@ -34,11 +33,19 @@ public class SqlSubPartition extends SqlNode {
     protected SqlNode name;
     protected SqlPartitionValue values;
     protected String comment;
+    protected String locality;
+
+    protected boolean isAddValues;
 
     public SqlSubPartition(SqlParserPos sqlParserPos, SqlNode name, SqlPartitionValue values) {
         super(sqlParserPos);
         this.name = name;
-        this.values =values;
+        this.values = values;
+    }
+
+    public SqlSubPartition(SqlParserPos sqlParserPos, SqlNode name, SqlPartitionValue values, boolean isAddValues) {
+        this(sqlParserPos, name, values);
+        this.isAddValues = isAddValues;
     }
 
     public void setComment(String comment) {
@@ -56,12 +63,27 @@ public class SqlSubPartition extends SqlNode {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
+    }
 
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder("");
+        sb.append("SUBPARTITION ");
+        sb.append(name);
+        sb.append(" ");
+        sb.append(values.toString());
+        if (TStringUtil.isNotEmpty(locality)) {
+            sb.append(" LOCALITY=");
+            sb.append(TStringUtil.quoteString(locality));
+        }
+        return sb.toString();
     }
 
     @Override
     public void validate(SqlValidator validator, SqlValidatorScope scope) {
-
+        if (values != null) {
+            values.validate(validator, scope);
+        }
     }
 
     @Override
@@ -70,7 +92,27 @@ public class SqlSubPartition extends SqlNode {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
         return false;
+    }
+
+    public SqlNode getName() {
+        return name;
+    }
+
+    public void setName(SqlNode name) {
+        this.name = name;
+    }
+
+    public SqlPartitionValue getValues() {
+        return values;
+    }
+
+    public String getLocality() {
+        return locality;
+    }
+
+    public boolean isAddValues() {
+        return isAddValues;
     }
 }

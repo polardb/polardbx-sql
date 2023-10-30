@@ -24,18 +24,25 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -57,6 +64,7 @@ public class TableScanExec extends SourceExec implements Closeable {
     protected volatile boolean isFinish = false;
     private final SpillerFactory spillerFactory;
     private final boolean useParameterDelegate;
+    private boolean randomSplits = false;
 
     public TableScanExec(LogicalView logicalView, ExecutionContext context, TableScanClient scanClient,
                          long maxRowCount, SpillerFactory spillerFactory, List<DataType> dataTypeList) {
@@ -68,7 +76,10 @@ public class TableScanExec extends SourceExec implements Closeable {
         this.spillerFactory = spillerFactory;
         this.dataTypeList = dataTypeList;
         this.useParameterDelegate = ExecUtils.useParameterDelegate(context);
+    }
 
+    public void setRandomSplits(boolean randomSplits) {
+        this.randomSplits = randomSplits;
     }
 
     @Override
@@ -120,6 +131,10 @@ public class TableScanExec extends SourceExec implements Closeable {
                 throw new TddlRuntimeException(ERR_EXECUTE_ON_MYSQL, "input splits are not ready!");
             }
 
+            if (randomSplits) {
+                Collections.shuffle(scanClient.splitList);
+            }
+
             if (dataTypes == null) {
                 createBlockBuilders();
                 List<DataType> columns = getDataTypes();
@@ -169,8 +184,11 @@ public class TableScanExec extends SourceExec implements Closeable {
             } else if (scanClient.connectionCount() > 0) {
                 //当前client还有残余连接存在，继续等待吧！
             } else {
-                //当前算子可以结束了
-                isFinish = true;
+                consumeResultSet = scanClient.popResultSet();
+                if (consumeResultSet == null) {
+                    //当前算子可以结束了
+                    isFinish = true;
+                }
             }
         } else {
             if (scanClient.connectionCount() > 0) {

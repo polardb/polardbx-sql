@@ -19,10 +19,13 @@ package com.alibaba.polardbx.executor.ddl.newengine.cross;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.Map;
+
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 public class RenameTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
@@ -32,15 +35,22 @@ public class RenameTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
     @Override
     protected boolean checkIfPhyObjectDone() {
-        if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+        if (isRollBackRunning(ddlContext.getState())) {
             revertForRollback();
         }
         boolean phyObjectDone = super.checkIfPhyObjectDone();
-        return ddlContext.getState() == DdlState.ROLLBACK_RUNNING ? !phyObjectDone : phyObjectDone;
+        return isRollBackRunning(ddlContext.getState()) ? !phyObjectDone : phyObjectDone;
+    }
+
+    @Override
+    protected boolean checkIfPhyObjectDoneByHashcode() {
+        // phyTableName is always source physical table name
+        boolean phyTableExists = DdlHelper.checkIfPhyTableExists(schemaName, groupName, phyTableName);
+        return isRollBackRunning(ddlContext.getState()) ? phyTableExists : !phyTableExists;
     }
 
     private void revertForRollback() {
-        boolean isRenameRollback = ddlContext.getState() == DdlState.ROLLBACK_RUNNING &&
+        boolean isRenameRollback = isRollBackRunning(ddlContext.getState()) &&
             (ddlContext.getDdlType() == DdlType.RENAME_TABLE || ddlContext.getDdlType() == DdlType.RENAME_GLOBAL_INDEX);
         if (isRenameRollback) {
             // Switch old and new table names

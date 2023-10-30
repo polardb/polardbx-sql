@@ -23,9 +23,9 @@ public class SQLAlterTableConvertCharSet extends SQLObjectImpl implements SQLAlt
 
     private SQLExpr charset;
     private SQLExpr collate;
-    
+
     public SQLAlterTableConvertCharSet() {
-        
+
     }
 
     public SQLExpr getCharset() {

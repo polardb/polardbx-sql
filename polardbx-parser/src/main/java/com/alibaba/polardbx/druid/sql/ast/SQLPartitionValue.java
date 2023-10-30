@@ -22,10 +22,10 @@ import java.util.List;
 
 public class SQLPartitionValue extends SQLObjectImpl {
 
-    protected Operator            operator;
+    protected Operator operator;
     protected final List<SQLExpr> items = new ArrayList<SQLExpr>();
 
-    public SQLPartitionValue(Operator operator){
+    public SQLPartitionValue(Operator operator) {
         super();
         this.operator = operator;
     }
@@ -33,7 +33,7 @@ public class SQLPartitionValue extends SQLObjectImpl {
     public List<SQLExpr> getItems() {
         return items;
     }
-    
+
     public void addItem(SQLExpr item) {
         if (item != null) {
             item.setParent(this);
@@ -46,9 +46,9 @@ public class SQLPartitionValue extends SQLObjectImpl {
     }
 
     public static enum Operator {
-                                 LessThan, //
-                                 In, //
-                                 List
+        LessThan, //
+        In, //
+        List
     }
 
     @Override
