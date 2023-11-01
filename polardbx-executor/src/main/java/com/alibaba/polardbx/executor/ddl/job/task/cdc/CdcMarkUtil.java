@@ -59,6 +59,8 @@ public class CdcMarkUtil {
         parameter.put(ICdcManager.CDC_ORIGINAL_DDL, "");
         if (isUseOriginalDDL(executionContext)) {
             parameter.put(ICdcManager.CDC_ORIGINAL_DDL, executionContext.getDdlContext().getDdlStmt());
+        } else if (isUseFkOriginalDDL(executionContext)) {
+            parameter.put(ICdcManager.CDC_ORIGINAL_DDL, executionContext.getDdlContext().getForeignKeyOriginalSql());
         }
         return parameter;
     }
@@ -66,6 +68,18 @@ public class CdcMarkUtil {
     private static boolean isUseOriginalDDL(ExecutionContext executionContext) {
         Map<String, Object> parameter = executionContext.getExtraCmds();
         String useOriginalDDL = (String) parameter.get(ICdcManager.USE_ORGINAL_DDL);
+
+        if (executionContext.getDdlContext() == null ||
+            StringUtils.isEmpty(
+                executionContext.getDdlContext().getDdlStmt())) {
+            return false;
+        }
+
+        return StringUtils.equalsIgnoreCase("true", useOriginalDDL);
+    }
+
+    private static boolean isUseFkOriginalDDL(ExecutionContext executionContext) {
+        Map<String, Object> parameter = executionContext.getExtraCmds();
         String foreignKeysDdl = (String) parameter.get(ICdcManager.FOREIGN_KEYS_DDL);
 
         if (executionContext.getDdlContext() == null ||
@@ -74,10 +88,6 @@ public class CdcMarkUtil {
             return false;
         }
 
-        if (StringUtils.equalsIgnoreCase("true", useOriginalDDL) ||
-            StringUtils.equalsIgnoreCase("true", foreignKeysDdl)) {
-            return true;
-        }
-        return false;
+        return StringUtils.equalsIgnoreCase("true", foreignKeysDdl);
     }
 }

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.validator;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -26,7 +25,6 @@ import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -34,6 +32,8 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -41,17 +41,16 @@ import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlCall;
-import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlModifyColumn;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
 
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -65,8 +64,10 @@ import java.util.stream.IntStream;
 
 public class ForeignKeyValidator {
 
-    public static void validateFkConstraints(SqlCreateTable sqlCreateTable, String schemaName, String tableName,
+    public static void validateFkConstraints(SqlCreateTable sqlCreateTableOrigin, String schemaName, String tableName,
                                              ExecutionContext executionContext) {
+        SqlCreateTable sqlCreateTable = getCharsetAndCollation(sqlCreateTableOrigin, schemaName, executionContext);
+
         final boolean checkForeignKey =
             executionContext.foreignKeyChecks();
 
@@ -228,30 +229,16 @@ public class ForeignKeyValidator {
                 }
             }
 
-            DbInfoRecord dbInfoRecord = DbInfoManager.getInstance().getDbInfo(schemaName);
-            String charset = Optional.ofNullable(sqlCreateTable.getDefaultCharset())
-                .orElse(dbInfoRecord == null ? null : dbInfoRecord.charset);
-            Charset tableCharset = Optional.ofNullable(charset)
-                .map(CharsetName::convertStrToJavaCharset)
-                .orElseGet(
-                    () -> CharsetName.defaultCharset().toJavaCharset()
-                );
-
             if (!data.refTableName.equalsIgnoreCase(tableName)) {
                 // charset and collation must be same
-                String collation = Optional.ofNullable(sqlCreateTable.getDefaultCollation())
-                    .orElse(dbInfoRecord == null ? null : dbInfoRecord.collation);
-                if (collation == null) {
-                    SqlCollation tableCollation = new SqlCollation(tableCharset, sqlCreateTable.getDefaultCollation(),
-                        SqlCollation.Coercibility.IMPLICIT);
-                    collation = tableCollation.getCollationName();
-                }
 
-                if (!StringUtils.equalsIgnoreCase(tableCharset.name(), referringTableMeta.getDefaultCharset())) {
+                if (!StringUtils.equalsIgnoreCase(sqlCreateTable.getDefaultCharset(),
+                    referringTableMeta.getDefaultCharset())) {
                     throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
                         schemaName, tableName, data.refSchema, data.refTableName);
                 }
-                if (!StringUtils.equalsIgnoreCase(collation, referringTableMeta.getDefaultCollation())) {
+                if (!StringUtils.equalsIgnoreCase(sqlCreateTable.getDefaultCollation(),
+                    referringTableMeta.getDefaultCollation())) {
                     throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
                         schemaName, tableName, data.refSchema, data.refTableName);
                 }
@@ -282,10 +269,8 @@ public class ForeignKeyValidator {
                     RelDataType type = def.getDataType().deriveType(factory, nullable);
 
                     if (charSetName == null && SqlTypeUtil.inCharFamily(type)) {
-                        SqlCollation collation = new SqlCollation(tableCharset, sqlCreateTable.getDefaultCollation(),
-                            SqlCollation.Coercibility.IMPLICIT);
-                        charSetName = tableCharset.name();
-                        collationName = collation.getCollationName();
+                        charSetName = sqlCreateTable.getDefaultCharset();
+                        collationName = sqlCreateTable.getDefaultCollation();
                     }
 
                     if (!columnTypeName.equals(
@@ -749,4 +734,51 @@ public class ForeignKeyValidator {
             }
         }
     }
+
+    private static SqlCreateTable getCharsetAndCollation(SqlCreateTable sqlCreateTableOrigin, String schemaName,
+                                                         ExecutionContext executionContext) {
+        SqlCreateTable sqlCreateTable = sqlCreateTableOrigin.clone(SqlParserPos.ZERO);
+        String defaultCharset = sqlCreateTable.getDefaultCharset();
+        String defaultCollation = sqlCreateTable.getDefaultCollation();
+        String charset;
+        String collation;
+        StringBuilder builder = new StringBuilder();
+        charset = DbInfoManager.getInstance().getDbChartSet(schemaName);
+        collation = DbInfoManager.getInstance().getDbCollation(schemaName);
+
+        if (StringUtils.isEmpty(charset) || StringUtils.isEmpty(collation)) {
+            /**
+             * For some unit-test, its dbInfo is mock,so its charset & collation maybe null
+             */
+            // Fetch server default collation
+            DdlCharsetInfo serverDefaultCharsetInfo =
+                DdlCharsetInfoUtil.fetchServerDefaultCharsetInfo(executionContext, true);
+
+            // Fetch db collation by charset & charset defined by user and server default collation
+            DdlCharsetInfo createDbCharInfo =
+                DdlCharsetInfoUtil.decideDdlCharsetInfo(executionContext, serverDefaultCharsetInfo.finalCharset,
+                    serverDefaultCharsetInfo.finalCollate,
+                    charset, collation, true);
+            charset = createDbCharInfo.finalCharset;
+            collation = createDbCharInfo.finalCollate;
+        }
+
+        // Fetch tbl collation by charset & charset defined by user and db collation
+        DdlCharsetInfo createTbCharInfo =
+            DdlCharsetInfoUtil.decideDdlCharsetInfo(executionContext, charset, collation,
+                defaultCharset, defaultCollation, true);
+
+        if (defaultCharset == null && defaultCollation == null && createTbCharInfo.finalCharset != null) {
+            builder.append(" CHARSET `").append(createTbCharInfo.finalCharset.toLowerCase()).append("`");
+            sqlCreateTable.setDefaultCharset(createTbCharInfo.finalCharset.toLowerCase());
+        }
+
+        if (defaultCollation == null && createTbCharInfo.finalCollate != null) {
+            builder.append(" COLLATE `").append(createTbCharInfo.finalCollate.toLowerCase()).append("`");
+            sqlCreateTable.setDefaultCollation(createTbCharInfo.finalCollate.toLowerCase());
+        }
+
+        return sqlCreateTable;
+    }
 }
+
