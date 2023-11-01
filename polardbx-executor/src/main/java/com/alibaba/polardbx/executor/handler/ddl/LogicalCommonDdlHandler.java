@@ -68,6 +68,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -75,9 +76,11 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAddPrimaryKey;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
@@ -86,9 +89,12 @@ import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDropPrimaryKey;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.sql.SqlShowCreateTable;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.commons.collections.CollectionUtils;
@@ -222,6 +228,8 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
         DdlContext ddlContext =
             DdlContext.create(schemaName, objectName, ddlType, executionContext);
+
+        rewriteOriginSqlWithForeignKey(logicalDdlPlan, ddlContext, schemaName, objectName);
 
         executionContext.setDdlContext(ddlContext);
     }
@@ -522,4 +530,39 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             recycleBin != null && !recycleBin.hasForeignConstraint(appName, tableName);
     }
 
+    protected void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, DdlContext ddlContext,
+                                                  String schemaName, String tableName) {
+        // rewrite origin sql for different naming behaviours in 5.7 & 8.0
+        boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
+            && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
+        boolean alterTableWithFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
+            && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+            == SqlKind.ADD_FOREIGN_KEY;
+        if (createTableWithFk) {
+            ddlContext.setForeignKeyOriginalSql(
+                ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().toString());
+        } else if (alterTableWithFk) {
+            final SqlAlterTable sqlTemplate = ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable();
+
+            SqlAddForeignKey sqlAddForeignKey =
+                (SqlAddForeignKey) ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0);
+            // create foreign key constraints symbol
+            String symbol =
+                ForeignKeyUtils.getForeignKeyConstraintName(schemaName, tableName);
+            if (sqlAddForeignKey.getConstraint() == null) {
+                sqlAddForeignKey.setConstraint(new SqlIdentifier(SQLUtils.normalizeNoTrim(symbol), SqlParserPos.ZERO));
+            }
+            SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+            writer.setAlwaysUseParentheses(true);
+            writer.setSelectListItemsOnSeparateLines(false);
+            writer.setIndentation(0);
+            final int leftPrec = sqlTemplate.getOperator().getLeftPrec();
+            final int rightPrec = sqlTemplate.getOperator().getRightPrec();
+            sqlTemplate.getAlters().clear();
+            sqlTemplate.getAlters().add(sqlAddForeignKey);
+            sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
+
+            ddlContext.setForeignKeyOriginalSql(writer.toSqlString().getSql());
+        }
+    }
 }

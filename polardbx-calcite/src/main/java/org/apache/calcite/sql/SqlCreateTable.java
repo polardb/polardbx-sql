@@ -19,8 +19,8 @@ package org.apache.calcite.sql;
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -113,8 +113,6 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
 import static com.alibaba.polardbx.common.TddlConstants.UGSI_PK_INDEX_NAME;
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_FUNCTION_ALIAS;
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_WITH_GSI;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_WITH_OSS;
 
 /**
@@ -370,9 +368,8 @@ public class SqlCreateTable extends SqlCreate {
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> spatialKeys,
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> foreignKeys, List<SqlCall> checks,
                           SqlIdentifier primaryKeyConstraint, boolean hasPrimaryKeyConstraint, SqlNode sqlPartition,
-                          SqlNode localPartition,
-                          SqlNode tableGroupName,
-                          SqlNode joinGroupName) {
+                          SqlNode localPartition, SqlNode tableGroupName, SqlNode joinGroupName,
+                          List<ForeignKeyData> addedForeignKeys, String defaultCharset, String defaultCollation) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = name;
         this.likeTableName = likeTableName;
@@ -405,6 +402,9 @@ public class SqlCreateTable extends SqlCreate {
         this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
         this.joinGroupName = joinGroupName;
+        this.addedForeignKeys = addedForeignKeys;
+        this.defaultCharset = defaultCharset;
+        this.defaultCollation = defaultCollation;
     }
 
     public boolean shouldLoad() {
@@ -922,7 +922,10 @@ public class SqlCreateTable extends SqlCreate {
             sqlPartition,
             localPartition,
             tableGroupName,
-            joinGroupName);
+            joinGroupName,
+            addedForeignKeys,
+            defaultCharset,
+            defaultCollation);
         ret.setEngine(engine);
         ret.setDBPartition(DbPartition);
         return ret;
@@ -2533,3 +2536,4 @@ class IndexColumnInfo {
 }
 
 // End SqlCreateTable.java
+
