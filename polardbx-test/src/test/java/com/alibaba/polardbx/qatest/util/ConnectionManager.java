@@ -294,30 +294,6 @@ public class ConnectionManager {
         return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
     }
 
-    public Connection newPolarDBXConnectionWithXDriver(String schema, String connProperties) {
-        try {
-            Class.forName("com.polardbx.Driver");
-            Class.forName("com.polardbx.jdbc.Driver");
-            Driver driver = new com.polardbx.Driver();
-
-            String url =
-                String.format(ConfigConstant.X_DRIVER_URL_PATTERN + connProperties,
-                    polardbxAddress, polardbxPort, schema);
-            Properties info = new Properties();
-            info.put("user", polardbxUser);
-            info.put("password", polardbxPassword);
-
-            Connection conn = driver.connect(url, info);
-            if (conn == null) {
-                throw new RuntimeException("Null connection");
-            }
-            return conn;
-        } catch (ClassNotFoundException | SQLException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-
     public Connection newPolarDBXConnectionWithExtraParams(String extraParams) {
         String url =
             String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), polardbxAddress, polardbxPort);
