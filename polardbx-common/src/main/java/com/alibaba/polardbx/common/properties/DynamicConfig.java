@@ -252,7 +252,7 @@ public class DynamicConfig {
                 maxCachedSlowTransStats = parseValue(value, Integer.class, 1024 * 1024 / 10);
                 break;
             case ConnectionProperties.ENABLE_X_PROTO_OPT_FOR_AUTO_SP:
-                xProtoOptForAutoSp = parseValue(value, Boolean.class, true);
+                xProtoOptForAutoSp = parseValue(value, Boolean.class, false);
                 break;
             case ConnectionProperties.DATABASE_DEFAULT_SINGLE:
                 databaseDefaultSingle = parseValue(value, Boolean.class, false);
@@ -566,7 +566,7 @@ public class DynamicConfig {
         return isolation;
     }
 
-    private volatile boolean xProtoOptForAutoSp = true;
+    private volatile boolean xProtoOptForAutoSp = false;
 
     public boolean enableXProtoOptForAutoSp() {
         return xProtoOptForAutoSp;
