@@ -229,9 +229,9 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         DdlContext ddlContext =
             DdlContext.create(schemaName, objectName, ddlType, executionContext);
 
-        rewriteOriginSqlWithForeignKey(logicalDdlPlan, ddlContext, schemaName, objectName);
-
         executionContext.setDdlContext(ddlContext);
+
+        rewriteOriginSqlWithForeignKey(logicalDdlPlan, executionContext, schemaName, objectName);
     }
 
     protected void handleDdlRequest(DdlJob ddlJob, ExecutionContext executionContext) {
@@ -530,18 +530,21 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             recycleBin != null && !recycleBin.hasForeignConstraint(appName, tableName);
     }
 
-    protected void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, DdlContext ddlContext,
+    protected void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
                                                   String schemaName, String tableName) {
         // rewrite origin sql for different naming behaviours in 5.7 & 8.0
         boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
             && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
-        boolean alterTableWithFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
+        boolean alterTableAddFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
             && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
             == SqlKind.ADD_FOREIGN_KEY;
+        boolean alterTableDropFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
+            && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+            == SqlKind.DROP_FOREIGN_KEY;
         if (createTableWithFk) {
-            ddlContext.setForeignKeyOriginalSql(
+            ec.getDdlContext().setForeignKeyOriginalSql(
                 ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().toString());
-        } else if (alterTableWithFk) {
+        } else if (alterTableAddFk) {
             final SqlAlterTable sqlTemplate = ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable();
 
             SqlAddForeignKey sqlAddForeignKey =
@@ -562,7 +565,9 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             sqlTemplate.getAlters().add(sqlAddForeignKey);
             sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
 
-            ddlContext.setForeignKeyOriginalSql(writer.toSqlString().getSql());
+            ec.getDdlContext().setForeignKeyOriginalSql(writer.toSqlString().getSql());
+        } else if (alterTableDropFk) {
+            ec.getDdlContext().setForeignKeyOriginalSql(ec.getOriginSql());
         }
     }
 }
