@@ -101,10 +101,10 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
     }
 
     public void loadConfig() {
-        load();
+        loadServerProperty();
     }
 
-    private void load() {
+    private Properties loadServerProperty() {
         // 加载 server.properties 的属性
         String conf = System.getProperty("server.conf", "classpath:server.properties");
         Properties serverProps = new Properties();
@@ -168,6 +168,16 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
         System.setProperties(serverProps);
 
         configSystem(serverProps);
+
+        // Set private protocol port first(or we will fail to connect metaDB with Xproto).
+        XConnectionManager.getInstance().setMetaDbPort(this.system.getMetaDbXprotoPort());
+        XConnectionManager.getInstance().setStorageDbPort(this.system.getStorageDbXprotoPort());
+
+        return serverProps;
+    }
+
+    private void load() {
+        Properties serverProps = loadServerProperty();
 
         ConfigDataMode.setSupportSingleDbMultiTbs(this.system.isSupportSingleDbMultiTbs());
         ConfigDataMode.setSupportRemoveDdl(this.system.isSupportRemoveDdl());
