@@ -535,12 +535,16 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         // rewrite origin sql for different naming behaviours in 5.7 & 8.0
         boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
             && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
-        boolean alterTableAddFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
-            && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
-            == SqlKind.ADD_FOREIGN_KEY;
-        boolean alterTableDropFk = logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE
-            && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
-            == SqlKind.DROP_FOREIGN_KEY;
+        boolean alterTableAddFk =
+            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+                == SqlKind.ADD_FOREIGN_KEY;
+        boolean alterTableDropFk =
+            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+                == SqlKind.DROP_FOREIGN_KEY;
         if (createTableWithFk) {
             ec.getDdlContext().setForeignKeyOriginalSql(
                 ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().toString());
