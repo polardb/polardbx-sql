@@ -1,0 +1,106 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists tbl;
+create table if not exists tbl (
+    a int not null,
+    b int not null,
+    c int not null,
+    d int not null,
+    primary key (`a`),
+    global index `g_idx_b`(`b`, `c`) partition by key(b)
+) partition by range(a) (
+  partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+alter table `tbl` modify column `c` int(11) not null after `d`;
+show full create table `tbl`;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+alter table `tbl` modify column `b` int(11) not null after d;
+show full create table `tbl`;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+alter table `tbl` change column `c` `c` int(11) not null after `d`;
+show full create table `tbl`;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+alter table `tbl` change column `b` `b` int(11) not null after d;
+show full create table `tbl`;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+## error_msg: $# optimize error #$
+alter table `tbl` modify column `c` varchar(11) after d;
+optimize error
+show full create table `tbl`;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* g_idx_b_$ */ `g_idx_b` (`b`, `c`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */

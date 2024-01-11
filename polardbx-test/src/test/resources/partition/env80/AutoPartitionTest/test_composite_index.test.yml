@@ -1,0 +1,47 @@
+
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+  `x` int NOT NULL AUTO_INCREMENT,
+  `y` int NOT NULL,
+  `z` int NOT NULL,
+  `c` int NOT NULL,
+  `d` float NOT NULL,
+  `e` int NOT NULL,
+  `f` int NOT NULL,
+  PRIMARY KEY (x,y),
+  INDEX (y,z),
+  INDEX (y,z,x),
+  INDEX (y,z,x,c,e,f),
+  INDEX (y,z,d),
+  UNIQUE INDEX (z,d)
+);
+
+show create table `t_order`;
+show full create table `t_order`;
+
+show create table `y`;
+show full create table `y`;
+show create table `y_2`;
+show full create table `y_2`;
+show create table `y_3`;
+show full create table `y_3`;
+show create table `y_4`;
+show full create table `y_4`;
+
+create index `agsi_0` on `t_order`(x,y);
+create unique index `agsi_1` on `t_order`(y,z,d);
+alter table `t_order` add index `agsi_2` (z,d);
+alter table `t_order` add unique index `agsi_3` (x,y,z,c,e,f);
+
+show create table `agsi_0`;
+show full create table `agsi_0`;
+show create table `agsi_1`;
+show full create table `agsi_2`;
+show create table `agsi_2`;
+show full create table `agsi_2`;
+show create table `agsi_3`;
+show full create table `agsi_3`;
+
+
+drop table if exists `t_order`;

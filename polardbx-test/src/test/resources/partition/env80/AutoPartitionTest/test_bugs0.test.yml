@@ -1,0 +1,18 @@
+
+drop table if exists `t2`;
+
+CREATE PARTITION TABLE `t2` (
+`2Iec5b8` mediumint(2) UNSIGNED ZEROFILL NOT NULL COMMENT 'Ejnv9Qa6mDv',
+`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+PRIMARY KEY (`_drds_implicit_id_`),
+GLOBAL INDEX /* t5GlS3yN2VVJV_$df1b */ `t5GlS3yN2VVJV` (`2Iec5b8`) PARTITION BY KEY (`2Iec5b8`, `_drds_implicit_id_`) PARTITIONS 3,
+LOCAL KEY `_local_t5GlS3yN2VVJV` (`2Iec5b8`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg193` */;
+
+show create table `t2`;
+show full create table `t2`;
+
+drop table if exists `t2`;

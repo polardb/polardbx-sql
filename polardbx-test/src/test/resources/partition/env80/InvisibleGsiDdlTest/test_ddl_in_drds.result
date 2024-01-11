@@ -1,0 +1,451 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `invisible_gsi_drds_db`;
+create database invisible_gsi_drds_db mode=drds;
+use invisible_gsi_drds_db;
+## test invisible clustered gsi, add/drop column
+create table tb1 (
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  addr2 varchar(20),
+  primary key(id)
+) dbpartition by hash(id) tbpartition by hash(id);
+insert into tb1 values(0, 'a', 'aa', 'aaa'), (1, 'b', 'bb', 'bbb'), (3, 'c', 'cc', 'ccc'), (4, 'd', 'dd', 'ddd');
+alter table tb1 add clustered index g1 on tb1(name) dbpartition by hash(name) invisible;
+alter table tb1 add unique global index g2 on tb1(name) covering (id, addr) dbpartition by hash(name) invisible;
+alter table tb1 add global index g3 on tb1(name) covering (id, addr) dbpartition by hash(name) invisible;
+## drop column from primary table
+alter table tb1 drop column addr;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show create table g1;
+Table,Create Table
+g1,CREATE TABLE `g1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g2;
+Table,Create Table
+g2,CREATE TABLE `g2` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g3;
+Table,Create Table
+g3,CREATE TABLE `g3` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_drds_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+alter table tb1 alter index g1 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g1 invisible;
+alter table tb1 alter index g2 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g2 invisible;
+alter table tb1 alter index g3 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g3 invisible;
+## do some dml
+insert into tb1 values (5, 'e', 'eee');
+delete from tb1 where name='c';
+update tb1 set name='w' where name='d';
+select id from tb1 where id not in (select id from g1);
+id
+select id from g1 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g2);
+id
+select id from g2 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g3);
+id
+select id from g3 where id not in (select id from tb1);
+id
+## add column from primary table
+alter table tb1 add column addr3 text;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show create table g1;
+Table,Create Table
+g1,CREATE TABLE `g1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g2;
+Table,Create Table
+g2,CREATE TABLE `g2` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g3;
+Table,Create Table
+g3,CREATE TABLE `g3` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_drds_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+1
+## check optimizer
+alter table tb1 alter index g1 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g1 invisible;
+alter table tb1 alter index g2 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g2 invisible;
+alter table tb1 alter index g3 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`)
+alter table tb1 alter index g3 invisible;
+## do some dml
+insert into tb1 values (6, 'f', 'ff', 'fff'),(7, 'g', 'gg', 'ggg'),(8, 'h', 'hh', 'hhh');
+delete from tb1 where name='a';
+update tb1 set name='z' where name='f';
+select id from tb1 where id not in (select id from g1);
+id
+select id from g1 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g2);
+id
+select id from g2 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g3);
+id
+select id from g3 where id not in (select id from tb1);
+id
+## repartition primary table
+alter table tb1 dbpartition by hash(addr3, id) tbpartition by hash(addr3, id);
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+show create table g1;
+Table,Create Table
+g1,CREATE TABLE `g1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g2;
+Table,Create Table
+g2,CREATE TABLE `g2` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+show create table g3;
+Table,Create Table
+g3,CREATE TABLE `g3` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_name` USING BTREE (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`name`)
+## check metadb
+select visible from metadb.indexes where table_schema="invisible_gsi_drds_db" and table_name="tb1" and index_location=1;
+visible
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+## check optimizer
+alter table tb1 alter index g1 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`),
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+alter table tb1 alter index g1 invisible;
+alter table tb1 alter index g2 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`),
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+alter table tb1 alter index g2 invisible;
+alter table tb1 alter index g3 visible;
+show create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+show full create table tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL,
+	`name` varchar(20) DEFAULT NULL,
+	`addr2` varchar(20) DEFAULT NULL,
+	`addr3` text,
+	PRIMARY KEY (`id`),
+	CLUSTERED INDEX `g1`(`name`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	UNIQUE GLOBAL KEY `g2` (`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`) INVISIBLE ,
+	GLOBAL INDEX `g3`(`name`) COVERING (`id`, `addr3`) DBPARTITION BY HASH(`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`addr3`)
+alter table tb1 alter index g3 invisible;
+## do some dml
+insert into tb1 values (9, 'i', 'ii', 'iii');
+delete from tb1 where name='h';
+update tb1 set name='y' where name='g';
+select id from tb1 where id not in (select id from g1);
+id
+select id from g1 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g2);
+id
+select id from g2 where id not in (select id from tb1);
+id
+select id from tb1 where id not in (select id from g3);
+id
+select id from g3 where id not in (select id from tb1);
+id
+use polardbx;
+drop database if exists `invisible_gsi_drds_db`;

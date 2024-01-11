@@ -248,7 +248,7 @@ public class BroadcastWriteWithXATest extends CrudBasedLockTestCase {
             + "(4, 'something in broadcast table', 666), (3, 'something in broadcast table', 888);";
         if (baseOneTableName.equalsIgnoreCase("update_delete_base_broadcast")) {
             executeErrorAssert(tddlConnection, sql, ImmutableList.of(),
-                "Duplicate entry '4' for key 'PRIMARY'");
+                "Duplicate entry '4' for key ");
         } else {
             sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test) VALUES"
                 + "(4, 'something in broadcast table', 666), (3, 'something in broadcast table', 888);";

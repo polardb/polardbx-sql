@@ -69,6 +69,39 @@ public enum CharsetName {
         "UTF8", "UTF-8", 3),
 
     /**
+     * UTF-8 Unicode (UTF8MB3)
+     */
+    UTF8MB3(UTF8_GENERAL_CI,
+        ImmutableList.of(UTF8_GENERAL_CI, UTF8_BIN, UTF8_UNICODE_CI),
+        ImmutableList.of(
+            UTF8_ICELANDIC_CI,
+            UTF8_LATVIAN_CI,
+            UTF8_ROMANIAN_CI,
+            UTF8_SLOVENIAN_CI,
+            UTF8_POLISH_CI,
+            UTF8_ESTONIAN_CI,
+            UTF8_SPANISH_CI,
+            UTF8_SWEDISH_CI,
+            UTF8_TURKISH_CI,
+            UTF8_CZECH_CI,
+            UTF8_DANISH_CI,
+            UTF8_LITHUANIAN_CI,
+            UTF8_SLOVAK_CI,
+            UTF8_SPANISH2_CI,
+            UTF8_ROMAN_CI,
+            UTF8_PERSIAN_CI,
+            UTF8_ESPERANTO_CI,
+            UTF8_HUNGARIAN_CI,
+            UTF8_SINHALA_CI,
+            UTF8_GERMAN2_CI,
+            UTF8_CROATIAN_CI,
+            UTF8_UNICODE_520_CI,
+            UTF8_VIETNAMESE_CI,
+            UTF8_GENERAL_MYSQL500_CI
+        ),
+        "UTF8", "UTF-8", 3),
+
+    /**
      * UTF-8 Unicode (MySQL style)
      */
     UTF8MB4(UTF8MB4_0900_AI_CI,
@@ -371,7 +404,7 @@ public enum CharsetName {
         .collect(Collectors.toMap(Enum::name, Function.identity()));
 
     public static ImmutableList<CharsetName> POLAR_DB_X_IMPLEMENTED_CHARSET_NAMES = ImmutableList.of(
-        UTF8, UTF8MB4, UTF16, UTF16LE, UTF32, LATIN1, GBK, GB18030, BIG5, BINARY, ASCII
+        UTF8, UTF8MB3, UTF8MB4, UTF16, UTF16LE, UTF32, LATIN1, GBK, GB18030, BIG5, BINARY, ASCII
     );
 
     static Set<String> POLAR_DB_X_IMPLEMENTED_CHARSET_NAME_STRINGS = new HashSet<>();
@@ -382,6 +415,8 @@ public enum CharsetName {
         .put("UTF-8", UTF8)
         .put("utf8", UTF8)
         .put("UTF8", UTF8)
+        .put("utf8mb3", UTF8)
+        .put("UTF8MB3", UTF8)
 
         .put("utf8mb4", UTF8MB4)
         .put("UTF8MB4", UTF8MB4)

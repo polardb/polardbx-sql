@@ -1,0 +1,41 @@
+
+# clean
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;
+
+# explicit global
+CREATE TABLE `t_order_0` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x),
+global INDEX (`seller_id`),
+UNIQUE global INDEX (`order_id`)
+);
+show full create table `t_order_0`;
+
+# implicit global
+CREATE TABLE `t_order_1` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+INDEX (`seller_id`),
+UNIQUE INDEX (`order_id`)
+);
+show full create table `t_order_1`;
+
+# explicit global and name
+CREATE TABLE `t_order_2` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+global INDEX i_0(`seller_id`),
+UNIQUE global INDEX i_1(`order_id`)
+);
+show full create table `t_order_2`;
+
+# cleanup
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;

@@ -1,0 +1,250 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup mytg21;
+CREATE TABLE `t2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue),
+PARTITION p4 VALUES LESS THAN (maxvalue, maxvalue)
+)
+tablegroup = mytg21;
+show full create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+CREATE TABLE `t1` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`) (
+PARTITION p1 VALUES LESS THAN ('abc'),
+PARTITION p2 VALUES LESS THAN ('efg'),
+PARTITION p3 VALUES LESS THAN ('hij'),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+tablegroup = mytg21;
+
+show full create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2,p3,p4],t2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+alter tablegroup mytg21 split partition p2 into (
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc') ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2_1,p2_2,p3,p4],t2[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+alter tablegroup mytg21 merge partitions p2_1,p2_2 to p2;
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2,p3,p4],t2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+## error_msg: $# the column count[2] of bound values of partition p2_1 is more than the full partition columns count[1] #$
+alter tablegroup mytg21 split partition p2 into (
+PARTITION p2_1 VALUES LESS THAN ('adc', 100),
+PARTITION p2_2 VALUES LESS THAN ('efg', maxvalue)
+);
+the column count[2] of bound values of partition p2_1 is more than the full partition columns count[1]
+create tablegroup newtg;
+alter table t2 set tablegroup=newtg;
+alter tablegroup mytg21 split partition p2 into (
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+alter tablegroup newtg split partition p2 into (
+PARTITION p2_1 VALUES LESS THAN ('adc', maxvalue),
+PARTITION p2_2 VALUES LESS THAN ('efg', maxvalue)
+);
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc') ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `newtg`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Project(a="a0")
+  BKAJoin(condition="a = a", type="inner")
+    Gather(concurrent=true)
+      LogicalView(tables="t2[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `a` FROM `t2` AS `t2`")
+    Gather(concurrent=true)
+      LogicalView(tables="t1[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `a` FROM `t1` AS `t1` WHERE (`a` IN (...))")
+alter table t2 set tablegroup=newtg force;
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc') ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg21`
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `newtg`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Project(a="a0")
+  BKAJoin(condition="a = a", type="inner")
+    Gather(concurrent=true)
+      LogicalView(tables="t2[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `a` FROM `t2` AS `t2`")
+    Gather(concurrent=true)
+      LogicalView(tables="t1[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `a` FROM `t1` AS `t1` WHERE (`a` IN (...))")
+create tablegroup newtg2;
+alter table t2 set tablegroup=newtg2 force;
+alter table t1 set tablegroup=newtg2 force;
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc') ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij') ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `newtg2`
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `newtg2`
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2_1,p2_2,p3,p4],t2[p1,p2_1,p2_2,p3,p4]", shardCount=5, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")

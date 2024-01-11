@@ -1,0 +1,65 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists drds_db;
+drop database if exists drds_db2;
+drop database if exists auto_db;
+drop database if exists auto_db2;
+create database if not exists drds_db mode='drds';
+create database if not exists auto_db mode='auto';
+create database if not exists drds_db2 partition_mode='sharding';
+create database if not exists auto_db2 partition_mode='partitioning';
+show create database drds_db;
+Database,Create Database
+drds_db,CREATE DATABASE `drds_db` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
+show create database drds_db2;
+Database,Create Database
+drds_db2,CREATE DATABASE `drds_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
+show create database auto_db;
+Database,Create Database
+auto_db,CREATE DATABASE `auto_db` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+show create database auto_db2;
+Database,Create Database
+auto_db2,CREATE DATABASE `auto_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+drop database if exists drds_db;
+drop database if exists drds_db2;
+drop database if exists auto_db;
+drop database if exists auto_db2;
+## in current test env, default is auto_partition=0
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+ID,TABLE_NAME,BROADCAST,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT
+0,single_tb,0,,,,,,1
+drop table single_tb;
+set @auto_partition=true;
+CREATE TABLE IF NOT EXISTS `auto_part_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from auto_part_tb;
+ID,TABLE_NAME,BROADCAST,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT
+0,auto_part_tb,0,,,,_drds_implicit_id_,KEY,3
+drop table auto_part_tb;
+set @auto_partition=0;
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+ID,TABLE_NAME,BROADCAST,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT
+0,single_tb,0,,,,,,1
+drop table single_tb;
+set @auto_partition=1;
+CREATE TABLE IF NOT EXISTS `auto_part_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from auto_part_tb;
+ID,TABLE_NAME,BROADCAST,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT
+0,auto_part_tb,0,,,,_drds_implicit_id_,KEY,3
+drop table auto_part_tb;
+set @auto_partition=false;
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+ID,TABLE_NAME,BROADCAST,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT
+0,single_tb,0,,,,,,1
+drop table single_tb;

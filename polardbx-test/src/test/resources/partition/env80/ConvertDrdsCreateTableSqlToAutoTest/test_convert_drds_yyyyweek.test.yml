@@ -1,0 +1,90 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+
+create database if not exists `testConvertDrdsDb` mode = drds;
+use testConvertDrdsDb;
+  
+## full index test, 
+create table `tb1` (
+`col1` datetime DEFAULT NULL,
+`col2` datetime DEFAULT NULL,
+`col3` date DEFAULT NULL,
+`col4` datetime DEFAULT NULL,
+`col5` date DEFAULT NULL,
+`col6` datetime DEFAULT NULL,
+`col7` datetime DEFAULT NULL,
+`col8` date DEFAULT NULL,
+`col9` date DEFAULT NULL,
+`col10` date DEFAULT NULL,
+`col11` datetime DEFAULT NULL,
+UNIQUE KEY `tb1_k1` (`col1`),
+KEY `tb1_k2` (`col2`),
+UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY YYYYWEEK(`col4`),
+CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY YYYYWEEK(`col5`),
+UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`) DBPARTITION BY YYYYWEEK(`col6`),
+GLOBAL INDEX `tb1_k8`(`col8`, `col9`) DBPARTITION BY YYYYWEEK(`col9`)
+) dbpartition by YYYYWEEK(`col10`) tbpartition by YYYYWEEK(`col11`) tbpartitions 36;
+  
+## with primary key, but primary is not sharding key
+create table `tb2` (
+`col1` datetime not null,
+`col2` datetime not null,
+`col3` date not null,
+primary key(`col1`)
+) dbpartition by yyyyweek(`col2`) tbpartition by yyyyweek(`col3`) tbpartitions 2;
+  
+## with primary key, but pk is not sharding key, db sharding key is same with tb sharding key.
+create table `tb3` (
+`col1` date not null,
+`col2` datetime not null,
+primary key(`col1`)
+) dbpartition by yyyyweek(`col2`) tbpartition by yyyyweek(`col2`) tbpartitions 2;
+  
+## only dbpartition, pk is not sharding key
+create table `tb4` (
+`col1` datetime,
+`col2` date,
+primary key(`col1`)
+) dbpartition by yyyyweek(`col2`);
+  
+## only tbpartition, pk is sharding key
+create table `tb5` (
+`col1` date,
+`col2` datetime,
+primary key(`col2`)
+) tbpartition by yyyyweek(`col2`) tbpartitions 8;
+  
+## gsi dbpartition and tbpartition
+create table `tb6` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+`col9` date,
+primary key(`col0`),
+unique clustered index `tb6_k1`(`col1`) dbpartition by yyyyweek(`col1`),
+clustered index `tb6_k2` (`col2`, `col3`) dbpartition by yyyyweek(`col2`) tbpartition by yyyyweek(`col3`) tbpartitions 4,
+clustered index `tb6_k3` (`col4`) dbpartition by yyyyweek(`col4`),
+unique global index `tb6_k4` (`col5`) dbpartition by yyyyweek(`col5`),
+unique global index  `tb6_k5` (`col6`, `col7`) covering (`col8`) dbpartition by yyyyweek(`col6`) tbpartition by yyyyweek(`col7`) tbpartitions 4,
+global index `tb6_k6` (`col8`) covering (`col9`) dbpartition by yyyyweek(`col8`)
+) dbpartition by yyyyweek(`col1`) tbpartition by yyyyweek(`col2`) tbpartitions 4;
+  
+## real run
+create database testConvertDbAuto like testConvertDrdsDb mode=auto;
+create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
+  
+## real run
+create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
+  
+## dry run
+create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;

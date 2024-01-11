@@ -43,6 +43,12 @@ public class CdcSqlTest extends BaseTestCase {
             ResultSet rs = stmt.executeQuery(SHOW_SQL);
             if (rs.next()) {
                 String sql = rs.getString(2);
+                if (isMySQL80()) {
+                    sql = sql.replace("`tinyintr` tinyint NOT NULL,", "`tinyintr` tinyint(4) NOT NULL,");
+                    sql = sql.replace("`tinyintr_3` tinyint DEFAULT NULL,", "`tinyintr_3` tinyint(3) DEFAULT NULL,");
+                    sql = sql.replace("`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,",
+                        "`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,");
+                }
                 Assert.assertEquals(CHECK_SQL, sql);
             }
         }

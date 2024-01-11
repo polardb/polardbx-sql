@@ -1,0 +1,53 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+
+create database if not exists `testConvertDrdsDb` mode=drds;
+use testConvertDrdsDb;
+
+## implicit pk(will create drds group sequence)
+create table `tb1` (
+`col1` int,
+`col2` int,
+global index `tb1_c1`(`col1`) dbpartition by hash(col1)
+) auto_increment= 200 dbpartition by hash(`col2`);
+
+## implicit sequence(drds: group seq --> auto: new seq)
+create table `tb2` (
+`col1` int not null auto_increment by group,
+`col2` int,
+global index `tb2_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) auto_increment= 200 dbpartition by hash(`col2`);
+
+## implicit sequence(drds: timebased seq --> auto: new seq)
+create table `tb3` (
+`col1` int not null auto_increment by time,
+`col2` int,
+global index `tb3_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) dbpartition by hash(`col2`);
+
+## implicit sequence(drds: simple seq --> auto: new seq)
+create table `tb4` (
+`col1` int not null auto_increment by simple,
+`col2` int,
+global index `tb4_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) auto_increment= 200 dbpartition by hash(`col2`);
+
+## explicit sequence
+create group sequence seq1;
+create time sequence seq2;
+create simple sequence seq3 start with 400 increment by 5 maxvalue 100000;
+
+create database testConvertDbAuto as testConvertDrdsDb;
+use testConvertDbAuto;
+show sequence where name = 'seq1';
+show sequence where name = 'seq3';
+show sequence where name like '%tb1';
+show sequence where name like '%tb2';
+show sequence where name like '%tb4';

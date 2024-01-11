@@ -1,0 +1,63 @@
+## DISABLE_FAST_SQL_PARSER
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null)
+partition by hash(a)
+partitions 4;
+show create table tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+insert into tbl values (10),(99),(100),(101);
+select * from tbl order by a;
+a
+10
+99
+100
+101
+explain select * from tbl where a=99 order by a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+explain select * from tbl where a=200 order by a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p4]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+explain select * from tbl where a<200 order by a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` < ?) ORDER BY `a`")
+drop table if exists tbl;
+## test hash/one col with year/datetime
+drop table if exists tbl;
+create table if not exists tbl (a datetime not null)
+partition by hash(year(a))
+partitions 4;
+show create table tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` datetime NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(YEAR(`a`))
+PARTITIONS 4
+insert into tbl values ('2012-10-12 12:12:12'),('2010-10-12 12:12:12'),('2011-10-12 12:12:12'),('2014-10-12 12:12:12');
+select * from tbl order by a;
+a
+2010-10-12 12:12:12.0
+2011-10-12 12:12:12.0
+2012-10-12 12:12:12.0
+2014-10-12 12:12:12.0
+explain select * from tbl where a='2012-10-12 12:12:12' order by a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p3]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+explain select * from tbl where a>'2010-10-12 12:12:12' order by a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` > ?) ORDER BY `a`")
+drop table if exists tbl;
+## error_msg: $# Not all physical DDLs have been executed successfully #$
+create table t1 (c1 int primary key default null);
+Not all physical DDLs have been executed successfully

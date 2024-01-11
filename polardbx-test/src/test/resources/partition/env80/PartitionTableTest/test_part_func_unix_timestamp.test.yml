@@ -1,0 +1,62 @@
+## test unix_timestamp
+drop table if exists rng_unix_ts;
+CREATE TABLE `rng_unix_ts` (
+  `a` timestamp NOT NULL,
+  `b` int(11) NOT NULL,
+  `c` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+PARTITION BY RANGE (UNIX_TIMESTAMP(a))
+(PARTITION p0 VALUES LESS THAN (UNIX_TIMESTAMP('1990-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (UNIX_TIMESTAMP('2000-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (UNIX_TIMESTAMP('2010-01-01 00:00:00')) ENGINE = InnoDB);
+
+set time_zone='+10:00';
+insert into rng_unix_ts values ('1990-01-01 00:00:01',0,0);
+# <+10:00,'1990-01-01 00:00:01'> ==> <+08:00,'1989-12-31 22:00:01'>, route rs: p0
+explain select * from rng_unix_ts where a='1990-01-01 00:00:01';
+# <+10:00,'1990-01-01 02:00:01'> ==> <+08:00,'1990-01-01 00:00:01'>, route rs: p1
+explain select * from rng_unix_ts where a='1990-01-01 02:00:01';
+set time_zone='+08:00';
+# <+08:00,'1990-01-01 00:00:01'> ==> <+08:00,'1990-01-01 00:00:01'>, route rs: p1
+explain select * from rng_unix_ts where a='1990-01-01 00:00:01';
+# <+08:00,'1989-12-31 22:00:01'> ==> <+08:00,'1989-12-31 22:00:01'>, route rs: p0
+explain select * from rng_unix_ts where a='1989-12-31 22:00:01';
+
+drop table if exists rng_unix_ts;
+
+
+set time_zone='+10:00';
+CREATE TABLE `rng_unix_ts_tz_e1000` (
+  `a` timestamp NOT NULL,
+  `b` int(11) NOT NULL,
+  `c` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+PARTITION BY RANGE (UNIX_TIMESTAMP(a))
+(PARTITION p0 VALUES LESS THAN (UNIX_TIMESTAMP('1990-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (UNIX_TIMESTAMP('2000-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (UNIX_TIMESTAMP('2010-01-01 00:00:00')) ENGINE = InnoDB);
+insert into rng_unix_ts_tz_e1000 values ('1990-01-01 00:00:01',0,0);
+# <+10:00,'1990-01-01 00:00:01'> ==> <+10:00,'1990-01-01 00:00:01'>, route rs: p1
+explain select * from rng_unix_ts_tz_e1000 where a='1990-01-01 00:00:01';
+# <+10:00,'1990-01-01 02:00:01'> ==> <+10:00,'1990-01-01 02:00:01'>, route rs: p1
+explain select * from rng_unix_ts_tz_e1000 where a='1990-01-01 02:00:01';
+drop table if exists rng_unix_ts_tz_e1000;
+
+
+set time_zone='+08:00';
+CREATE TABLE `rng_unix_ts_tz_e0800` (
+  `a` timestamp NOT NULL,
+  `b` int(11) NOT NULL,
+  `c` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+PARTITION BY RANGE (UNIX_TIMESTAMP(a))
+(PARTITION p0 VALUES LESS THAN (UNIX_TIMESTAMP('1990-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (UNIX_TIMESTAMP('2000-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (UNIX_TIMESTAMP('2010-01-01 00:00:00')) ENGINE = InnoDB);
+# <+08:00,'1990-01-01 00:00:01'> ==> <+08:00,'1990-01-01 00:00:01'>, route rs: p1
+explain select * from rng_unix_ts_tz_e0800 where a='1990-01-01 00:00:01';
+# <+08:00,'1989-12-31 22:00:01'> ==> <+08:00,'1989-12-31 22:00:01'>, route rs: p0
+explain select * from rng_unix_ts_tz_e0800 where a='1989-12-31 22:00:01';
+drop table if exists rng_unix_ts_tz_e0800;
+
+

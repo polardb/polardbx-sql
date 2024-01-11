@@ -1,0 +1,214 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+
+## test join with same tbl type
+begin;
+select * from hash_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a;
+insert into bro_tbl_bigint values (2),(10);
+insert into hash_tbl_bigint values (2),(5),(6),(9),(10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from bro_tbl_bigint where a in (2,10) for update;
+select * from bro_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+select * from bro_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join with sig & part
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into sig_tbl_bigint values (2),(5),(6),(9),(10);
+select * from sig_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into hash_tbl_bigint select a from sig_tbl_bigint;
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join with bro & part
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into bro_tbl_bigint values (2),(5),(6),(9),(10);
+select * from bro_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into hash_tbl_bigint select a from bro_tbl_bigint;
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join with sig & bro
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into bro_tbl_bigint values (2),(5),(6),(9),(10);
+select * from bro_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into sig_tbl_bigint select a from bro_tbl_bigint;
+select * from sig_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from sig_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join sig & bro, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into bro_tbl_bigint values (2),(5),(6),(9),(10);
+select * from bro_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into sig_tbl_bigint select a from bro_tbl_bigint;
+select * from sig_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from sig_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+
+## test join with sig & part, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into sig_tbl_bigint values (2),(5),(6),(9),(10);
+select * from sig_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into hash_tbl_bigint select a from sig_tbl_bigint;
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join with bro & part, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+insert into bro_tbl_bigint values (2),(5),(6),(9),(10);
+select * from bro_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into hash_tbl_bigint select a from bro_tbl_bigint;
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+
+## test join bro & bro, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;
+insert into bro_tbl_bigint values (2),(5),(6),(9),(10);
+select * from bro_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into bro_tbl_bigint2 select a from bro_tbl_bigint;
+select * from bro_tbl_bigint2 where a in (2,5,6,9,10) order by a for update;
+select * from bro_tbl_bigint2 t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;
+
+## test join with sig & sig, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;
+insert into sig_tbl_bigint values (2),(5),(6),(9),(10);
+select * from sig_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into sig_tbl_bigint2 select a from sig_tbl_bigint;
+select * from sig_tbl_bigint2 where a in (2,5,6,9,10) order by a for update;
+select * from sig_tbl_bigint2 t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;
+
+## test join part & part, for update
+begin;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;
+insert into hash_tbl_bigint values (2),(5),(6),(9),(10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+insert into hash_tbl_bigint2 select a from hash_tbl_bigint;
+select * from hash_tbl_bigint2 where a in (2,5,6,9,10) order by a for update;
+select * from hash_tbl_bigint2 t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+select * from hash_tbl_bigint2 t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a for update;
+rollback;
+select * from sig_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+select * from bro_tbl_bigint2 order by a;
+select * from hash_tbl_bigint2 order by a;

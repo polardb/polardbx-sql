@@ -1,0 +1,147 @@
+## test month
+drop table if exists tbl;
+CREATE TABLE `tbl` (
+`a` datetime NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(MONTH(a))
+(PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB,
+PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+PARTITION p3 VALUES LESS THAN (4) ENGINE = InnoDB,
+PARTITION p4 VALUES LESS THAN (5) ENGINE = InnoDB,
+PARTITION p5 VALUES LESS THAN (6) ENGINE = InnoDB,
+PARTITION p6 VALUES LESS THAN (7) ENGINE = InnoDB,
+PARTITION p7 VALUES LESS THAN (8) ENGINE = InnoDB,
+PARTITION p8 VALUES LESS THAN (9) ENGINE = InnoDB,
+PARTITION p9 VALUES LESS THAN (10) ENGINE = InnoDB,
+PARTITION p10 VALUES LESS THAN (11) ENGINE = InnoDB,
+PARTITION p11 VALUES LESS THAN (12) ENGINE = InnoDB,
+PARTITION p12 VALUES LESS THAN (13) ENGINE = InnoDB);
+show create table tbl;
+  ## single value insert
+insert into tbl values ('1989-01-01 00:00:00');
+  ## multi values insert
+insert into tbl values ('1990-01-01 00:00:01'),('1991-01-01 00:00:02'),('2019-01-01 00:00:03');
+  ## check point select
+select * from tbl where a='1989-01-01 00:00:00' order by a;
+select * from tbl where a='1990-01-01 00:00:01' order by a;
+select * from tbl where a='1991-01-01 00:00:02' order by a;
+select * from tbl where a='2019-01-01 00:00:03' order by a;
+  ## check range select
+select * from tbl where (a<'2019-01-02 00:00:00' and a>='2009-12-31 00:00:00') or a between '1989-01-01 00:00:00' and '1989-11-01 00:00:00'  order by a;
+  ## explain point select, choose partition: p1
+explain select * from tbl where a='2000-01-01 00:00:00' order by a;
+  ## explain range select, choose partition: p1,p2,p3,p4,p5,p12
+explain select * from tbl where (a<='2019-01-01 00:00:00' and a>='2018-12-31 23:59:59') or a between '1989-01-01 00:00:00' and '1989-05-31 23:59:59' order by a;
+  ## explain range select, choose partition: p8,p9,p10,p11,p12
+explain select * from tbl where a between date_format('2008-08-08 22:23:01','%Y-%m-%d 01:01:01') and  date_format('2008-12-08 22:23:01','%Y-%m-%d 01:01:01') order by a;
+
+drop table if exists t1;
+CREATE TABLE `t1` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`dt` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB
+PARTITION BY HASH(MONTH(`dt`))
+PARTITIONS 3;
+
+explain select * from t1 where dt='2021-09-12 18:00:01';
+select part_route('', 't1', '2021-09-12 18:00:01');
+insert into t1 values (1, '2021-09-12 18:00:01');
+select * from t1 where dt='2021-09-12 18:00:01';
+select part_route('', 't1', dt) as part from t1;
+  
+  ## test hash
+CREATE TABLE `m1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(MONTH(`d`))
+PARTITIONS 16;
+show create table m1;
+  ## prepare data
+insert into m1 values('2022-01-01'),('2020-02-01'),('2021-03-01'),('2024-04-01');
+  ## check point select
+select * from m1 where d = '2022-01-01';
+select * from m1 where d = '2020-02-01';
+select * from m1 where d = '2021-03-01';
+select * from m1 where d = '2024-04-01';
+  ## explain
+explain select * from m1 where d = '2022-01-01';
+explain select * from m1 where d = '2020-02-01';
+explain select * from m1 where d = '2021-03-01';
+explain select * from m1 where d = '2024-04-01';
+  ## range select
+select * from m1 where (d > '2020-02-01' and d < '2022-01-01') or d between '2021-03-01' and '2022-01-01' order by d;
+  ## full scan
+select * from m1 where d > '2021-03-01' order by d;
+explain select * from m1 where d > '2021-03-01' order by d;
+select * from m1 where d > '2021-03-01' and d < '2050-01-01' order by d;
+explain select * from m1 where d > '2021-03-01' and d < '2050-01-01' order by d;
+  ## partition enumeration
+select * from m1 where d > '2021-03-01' and d <= '2022-01-01' order by d;
+explain select * from m1 where d > '2021-03-01' and d <= '2022-01-01' order by d;
+  
+  ## test range
+CREATE TABLE `m2` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(MONTH(`d`))
+(PARTITION p0 VALUES LESS THAN(3),
+PARTITION p1 VALUES LESS THAN(6),
+PARTITION p2 VALUES LESS THAN(9),
+PARTITION p3 VALUES LESS THAN(MAXVALUE));
+show create table m2;
+  ## prepare data
+insert into m2 values('2022-01-01'),('2020-03-01'),('2021-06-01'),('2024-09-01');
+  ## check point select
+select * from m2 where d = '2022-01-01';
+select * from m2 where d = '2020-03-01';
+select * from m2 where d = '2021-06-01';
+select * from m2 where d = '2024-09-01';
+  ## explain
+explain select * from m2 where d = '2022-01-01';
+explain select * from m2 where d = '2020-03-01';
+explain select * from m2 where d = '2021-06-01';
+explain select * from m2 where d = '2024-09-01';
+  ## range select
+select * from m2 where (d > '2020-03-01' and d < '2022-01-01') or d between '2021-06-01' and '2022-01-01' order by d;
+  ## full scan
+select * from m2 where d > '2020-03-01' order by d;
+explain select * from m2 where d > '2020-03-01' order by d;
+select * from m2 where d > '2020-03-01' and d < '2024-09-01' order by d;
+explain select * from m2 where d > '2020-03-01' and d < '2024-09-01' order by d;
+  ## partition enumeration
+select * from m2 where d > '2020-02-01' and d < '2020-06-01' order by d;
+explain select * from m2 where d > '2020-02-01' and d < '2020-06-01' order by d;
+  
+  ## test list
+CREATE TABLE `m3` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(MONTH(`d`))
+(PARTITION p0 VALUES IN(1,2,3),
+PARTITION p1 VALUES IN(4,5,6),
+PARTITION p2 VALUES IN(7,8,9),
+PARTITION pd VALUES IN(default));
+show create table m3;
+  ## prepare data
+insert into m3 values('2022-01-01'),('2020-04-01'),('2021-07-01'),('2024-12-31');
+  ## check point select
+select * from m3 where d = '2022-01-01';
+select * from m3 where d = '2020-04-01';
+select * from m3 where d = '2021-07-01';
+select * from m3 where d = '2024-12-31';
+  ## explain
+explain select * from m3 where d = '2022-01-01';
+explain select * from m3 where d = '2020-04-01';
+explain select * from m3 where d = '2021-07-01';
+explain select * from m3 where d = '2024-12-31';
+  ## range select
+select * from m3 where (d > '2020-04-01' and d < '2022-01-01') or d between '2021-07-01' and '2024-12-31' order by d;
+  ## full scan
+select * from m3 where d > '2021-07-01' order by d;
+explain select * from m3 where d > '2021-07-01' order by d;
+select * from m3 where d > '2020-04-01' and d < '2024-12-31' order by d;
+explain select * from m3 where d > '2020-04-01' and d < '2024-12-31' order by d;
+  ## partition enumeration
+select * from m3 where d > '2020-01-01' and d < '2020-05-01' order by d;
+explain select * from m3 where d > '2020-01-01' and d < '2020-05-01' order by d;

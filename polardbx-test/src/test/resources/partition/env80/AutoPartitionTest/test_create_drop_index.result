@@ -1,0 +1,123 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (x),
+	INDEX(`seller_id`),
+	UNIQUE INDEX (`order_id`)
+);
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE INDEX `order_id` (`order_id`),
+	INDEX `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE `t_order`
+	ADD UNIQUE CLUSTERED INDEX `ucgsi` (`order_id`);
+CREATE CLUSTERED INDEX `cgsi` ON `t_order` (`seller_id`);
+ALTER TABLE `t_order`
+	ADD UNIQUE INDEX `ugsi` (`order_id`);
+CREATE INDEX `gsi` ON t_order (`seller_id`);
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	CLUSTERED INDEX `cgsi` (`seller_id`),
+	INDEX `gsi` (`seller_id`),
+	UNIQUE INDEX `order_id` (`order_id`),
+	INDEX `seller_id` (`seller_id`),
+	UNIQUE CLUSTERED INDEX `ucgsi` (`order_id`),
+	UNIQUE INDEX `ugsi` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	CLUSTERED INDEX /* cgsi_$ */ `cgsi` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* gsi_$ */ `gsi` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* ucgsi_$ */ `ucgsi` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* ugsi_$ */ `ugsi` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	UNIQUE LOCAL KEY `_local_ucgsi` (`order_id`),
+	UNIQUE LOCAL KEY `_local_ugsi` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`),
+	LOCAL KEY `_local_cgsi` (`seller_id`),
+	LOCAL KEY `_local_gsi` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE `t_order`
+	DROP INDEX `seller_id`;
+ALTER TABLE `t_order`
+	DROP INDEX `order_id`;
+DROP INDEX `ucgsi` ON `t_order`;
+DROP INDEX `cgsi` ON `t_order`;
+ALTER TABLE `t_order`
+	DROP INDEX `ugsi`;
+ALTER TABLE `t_order`
+	DROP INDEX `gsi`;
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;

@@ -1,0 +1,36 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists tbl;
+create table if not exists tbl (
+    a int not null,
+    b int not null,
+    c int not null,
+    d int not null,
+    primary key (`a`),
+    global index `g_idx_b`(`b`, `c`) partition by key(b)
+) partition by range(a) (
+  partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+
+alter table `tbl` modify column `c` int(11) not null after `d`;
+
+show full create table `tbl`;
+
+alter table `tbl` modify column `b` int(11) not null after d;
+
+show full create table `tbl`;
+
+alter table `tbl` change column `c` `c` int(11) not null after `d`;
+
+show full create table `tbl`;
+
+alter table `tbl` change column `b` `b` int(11) not null after d;
+
+show full create table `tbl`;
+  
+## error_msg: $# optimize error #$
+alter table `tbl` modify column `c` varchar(11) after d;
+
+show full create table `tbl`;

@@ -1,0 +1,7 @@
+## DISABLE_FAST_SQL_PARSER
+select myfunc1(1);
+myfunc1(1)
+1
+select myfunc2(1,1);
+myfunc2(1, 1)
+2

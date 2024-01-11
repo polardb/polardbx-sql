@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLCurrentTimeExpr;
@@ -1013,7 +1014,7 @@ public final class FastSqlConstructUtils {
             }
             if (tableColumn.getDefaultExpr() instanceof SQLLiteralExpr) {
                 defaultValue = (SqlLiteral) convertToSqlNode(tableColumn.getDefaultExpr(), context, ec);
-            } else if (tableColumn.getDefaultExpr() instanceof SQLCurrentTimeExpr) {
+            } else if (tableColumn.getDefaultExpr() instanceof SQLCurrentTimeExpr && !InstanceVersion.isMYSQL80()) {
                 final SQLCurrentTimeExpr currentTimeExpr = (SQLCurrentTimeExpr) tableColumn.getDefaultExpr();
                 defaultValue = SqlLiteral.createSymbol(currentTimeExpr.getType(), SqlParserPos.ZERO);
             } else {

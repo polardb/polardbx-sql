@@ -1,0 +1,6 @@
+drop table if exists `t_implicit_cast_1`;
+create table if not exists `t_implicit_cast_1` ( `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT, `admin_id` int(11) UNSIGNED NOT NULL, `createdate` char(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL, PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 PARTITION BY KEY(`admin_id`,`createdate`) PARTITIONS 16;
+SELECT part_route('', 't_implicit_cast_1', 11, '2023-05-01');
+SELECT part_route('', 't_implicit_cast_1', 11, date('2023-05-01'));
+SELECT part_route('', 't_implicit_cast_1', 100, '2023-06-01');
+SELECT part_route('', 't_implicit_cast_1', 100, date('2023-06-01'));

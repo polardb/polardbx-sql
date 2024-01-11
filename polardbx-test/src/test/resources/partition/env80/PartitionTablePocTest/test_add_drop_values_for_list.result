@@ -1,0 +1,52 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists tbl_list1;
+drop table if exists tbl_list2;
+create tablegroup new_tg_for_add_part3;
+create table if not exists tbl_list1 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+  partition p2 values in (100,101),
+  partition p3 values in (200,201)
+);
+alter table tbl_list1 set tablegroup=new_tg_for_add_part3 force;
+create table if not exists tbl_list2 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+  partition p2 values in (100,101),
+  partition p3 values in (200,201)
+);
+alter table tbl_list2 set tablegroup=new_tg_for_add_part3 force;
+## add values for list partition
+alter tablegroup new_tg_for_add_part3 modify partition p2 add values (302,303);
+show create table tbl_list1;
+Table,Create Table
+tbl_list1,CREATE TABLE `tbl_list1` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (100,101,302,303) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part3`
+show create table tbl_list2;
+Table,Create Table
+tbl_list2,CREATE TABLE `tbl_list2` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (100,101,302,303) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part3`
+## test insert into data 302, no error
+insert into tbl_list1 values (302);
+insert into tbl_list2 values (302);
+## check if p2 has value 302
+select * from tbl_list1 partition(p2);
+a
+302
+select * from tbl_list2 partition(p2);
+a
+302

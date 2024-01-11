@@ -1,0 +1,89 @@
+DROP TABLE IF EXISTS `t_order_0`;
+DROP TABLE IF EXISTS `t_order_1`;
+DROP TABLE IF EXISTS `t_order_2`;
+# explicit clustered
+CREATE TABLE `t_order_0` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (x),
+	CLUSTERED INDEX(`seller_id`),
+	UNIQUE CLUSTERED INDEX (`order_id`)
+);
+SHOW FULL CREATE TABLE `t_order_0`;
+Table,Create Table
+t_order_0,CREATE PARTITION TABLE `t_order_0` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE CLUSTERED INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	CLUSTERED INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`x`)
+		PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+# explicit clustered and partition
+CREATE TABLE `t_order_1` (
+	`x` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	CLUSTERED INDEX(`seller_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 2,
+	UNIQUE CLUSTERED INDEX (`order_id`) PARTITION BY KEY (`order_id`) PARTITIONS 5
+);
+SHOW FULL CREATE TABLE `t_order_1`;
+Table,Create Table
+t_order_1,CREATE PARTITION TABLE `t_order_1` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE CLUSTERED INDEX /* order_id_$ */ `order_id` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS 5,
+	CLUSTERED INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS 2,
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+# explicit clustered and name
+CREATE TABLE `t_order_2` (
+	`x` int NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	CLUSTERED INDEX i_0(`seller_id`),
+	UNIQUE CLUSTERED INDEX i_1 (`order_id`)
+);
+SHOW FULL CREATE TABLE `t_order_2`;
+Table,Create Table
+t_order_2,CREATE PARTITION TABLE `t_order_2` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CLUSTERED INDEX /* i_0_$ */ `i_0` (`seller_id`)
+		PARTITION BY KEY(`seller_id`,`_drds_implicit_id_`)
+		PARTITIONS #@#,
+	UNIQUE CLUSTERED INDEX /* i_1_$ */ `i_1` (`order_id`)
+		PARTITION BY KEY(`order_id`)
+		PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_i_1` (`order_id`),
+	LOCAL KEY `_local_i_0` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order_0`;
+DROP TABLE IF EXISTS `t_order_1`;
+DROP TABLE IF EXISTS `t_order_2`;

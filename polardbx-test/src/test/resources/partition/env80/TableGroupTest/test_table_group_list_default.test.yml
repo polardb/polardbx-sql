@@ -1,0 +1,1871 @@
+dbName: test_list_default_db
+testCases:
+  # create table test
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+    syntaxWrongDDLs:
+      # list syntax
+      - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0), partition pd values in(1, default));
+      - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0), partition pd0 values in(default)， partition pd1 values in(default));
+      - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0), partition p1 values in(0)， partition pd values in(default));
+      - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0), partition pd values in((1, default)));
+      - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition pd values in(to_days(default)));
+      # list columns syntax
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition pd values in((1, '1'), default));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition pd values in((1, '1'), (default)));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition pd values in((1, default)));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition pd0 values in(default), partition pd1 values in(default));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition p1 values in((0, '0')), partition pd1 values in(default));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0, '0')), partition pd values in(default, default));
+      - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((to_days('20220202'), '0')), partition pd values in(default));
+    checkActions:
+      # normal test
+      - prepares:
+          - create table tb(`a` int not null, primary key(a), global index `g_i_a`(`a`) partition by list(a) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default))) partition by list(a) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default));
+        insertData: insert into tb values (0), (2), (4);
+        #check table and it's global index
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker: null
+        clean: drop table if exists tb;
+      # list function
+      - prepares:
+        - create table tb(`a` date not null, primary key(a), global index `g_i_a`(`a`) partition by list(year(a)) (partition p0 values in(2020), partition p2 values in(2022), partition pd values in(default))) partition by list(year(a)) (partition p0 values in(2020), partition p2 values in(2022), partition pd values in(default));
+        insertData: insert into tb values('20200101'),('20220101'),('20240101');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 2020-01-01
+          - query: select a from tb partition(p2);
+            answer: 2022-01-01
+          - query: select a from tb partition(pd);
+            answer: 2024-01-01
+          - query: select a from tb where a > 20200101;
+            answer: 2022-01-01,2024-01-01
+          - query: select a from tb where a >= 20200101;
+            answer: 2020-01-01,2022-01-01,2024-01-01
+          - query: select a from tb where a > 20220101;
+            answer: 2024-01-01
+          - query: select a from tb where a >= 20220101;
+            answer: 2022-01-01,2024-01-01
+          - query: select a from tb where a < 20230101;
+            answer: 2020-01-01,2022-01-01
+          - query: select a from tb where a <= 20230101;
+            answer: 2020-01-01,2022-01-01
+          - query: select a from tb where a < 20240101;
+            answer: 2020-01-01,2022-01-01
+          - query: select a from tb where a <= 20240101;
+            answer: 2020-01-01,2022-01-01,2024-01-01
+          - query: select a from tb where a = 20200101;
+            answer: 2020-01-01
+          - query: select a from tb where a = 20240101;
+            answer: 2024-01-01
+          - query: select a from tb where a != 20200101;
+            answer: 2022-01-01,2024-01-01
+          - query: select a from tb where a != 20240101;
+            answer: 2020-01-01,2022-01-01
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (2020)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2022)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        clean: drop table if exists tb;
+      # list columns (single column)
+      - prepares:
+        - create table tb(`a` int not null, primary key(a), global index `g_i_a`(`a`) partition by list columns(a)(partition p0 values in(0), partition p2 values in(2), partition pd values in(default))) partition by list columns(a) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default));
+        insertData: insert into tb values (0), (2), (4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4;
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        clean: drop table if exists tb;
+      # list columns (single column)
+      - prepares:
+        - create table tb(`a` varchar(10) not null, primary key(a), global index `g_i_a`(`a`) partition by list columns(a)(partition p0 values in (0), partition p2 values in(2), partition pd values in(default))) partition by list columns(a) (partition p0 values in(0), partition p2 values in(2), partition pd values in(default));
+        insertData: insert into tb values (0), (2), (4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p2);
+            answer: 2
+          - query: select a from tb partition(pd);
+            answer: 4
+          - query: select a from tb where a > 1;
+            answer: 2,4
+          - query: select a from tb where a >= 1;
+            answer: 2,4
+          - query: select a from tb where a > 0;
+            answer: 2,4
+          - query: select a from tb where a >= 0;
+            answer: 0,2,4
+          - query: select a from tb where a < 3;
+            answer: 0,2
+          - query: select a from tb where a <= 3;
+            answer: 0,2
+          - query: select a from tb where a < 4;
+            answer: 0,2
+          - query: select a from tb where a <= 4;
+            answer: 0,2,4
+          - query: select a from tb where a = 4;
+            answer: 4
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where a != 0;
+            answer: 2,4
+          - query: select a from tb where a != 4;
+            answer: 0,2
+          - query: select a from tb where a > 0 and a < 4;
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (2)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        clean: drop table if exists tb;
+      # list columns
+      - prepares:
+        - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p2 values in((2,'ccc'),(3,'ddd')), partition pd values in(default));
+        - create global index `g_i_b` on tb(`b`) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p2 values in((2,'ccc'),(3,'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0,'aaa'), (1,'dft'), (2, 'ccc'), (3, 'dft'), (4, 'dft');
+        checkers:
+          - query: select a from tb partition(p0)
+            answer: 0
+          - query: select a from tb partition(p2)
+            answer: 2
+          - query: select a from tb partition(pd)
+            answer: 1,3,4
+          - query: select a from tb where a > 0;
+            answer: 1,2,3,4
+          - query: select a from tb where b > 'aaa';
+            answer: 1,2,3,4
+          - query: select a from tb where (a,b) > (0,'aaa');
+            answer: 1,2,3,4
+          - query: select a from tb where a > 0 and b > 'aaa';
+            answer: 1,2,3,4
+          - query: select a from tb where (a,b) > (0, 'ccc');
+            answer: 1,2,3,4
+          - query: select a from tb where a > 0 and b > 'ccc';
+            answer: 1,3,4
+          - query: select a from tb where a >= 0;
+            answer: 0,1,2,3,4
+          - query: select a from tb where b >= 'aaa';
+            answer: 0,1,2,3,4
+          - query: select a from tb where (a,b) >= (0, 'aaa');
+            answer: 0,1,2,3,4
+          - query: select a from tb where a >= 0 and b >= 'aaa';
+            answer: 0,1,2,3,4
+          - query: select a from tb where (a,b) >= (0, 'ccc');
+            answer: 1,2,3,4
+          - query: select a from tb where a >= 0 and b >= 'ccc';
+            answer: 1,2,3,4
+          - query: select a from tb where a < 3;
+            answer: 0,1,2
+          - query: select a from tb where b < 'dft';
+            answer: 0,2
+          - query: select a from tb where (a, b) < (3, 'dft');
+            answer: 0,1,2
+          - query: select a from tb where a < 3 and b < 'dft';
+            answer: 0,2
+          - query: select a from tb where (a, b) < (3, 'ccc');
+            answer: 0,1,2
+          - query: select a from tb where a < 3 and b < 'ccc';
+            answer: 0
+          - query: select a from tb where a <= 3;
+            answer: 0,1,2,3
+          - query: select a from tb where b <= "dft";
+            answer: 0,1,2,3,4
+          - query: select a from tb where (a, b) <= (3, "dft");
+            answer: 0,1,2,3
+          - query: select a from tb where a <= 3 and b <= 'dft';
+            answer: 0,1,2,3
+          - query: select a from tb where (a, b) <= (3, "ccc");
+            answer: 0,1,2
+          - query: select a from tb where a <= 3 and b <= 'ccc';
+            answer: 0,2
+          - query: select a from tb where a = 0;
+            answer: 0
+          - query: select a from tb where b = 'aaa';
+            answer: 0
+          - query: select a from tb where (a, b) = (0, 'aaa');
+            answer: 0
+          - query: select a from tb where a = 4;
+            answer: 4
+          - query: select a from tb where b = 'dft';
+            answer: 1,3,4
+          - query: select a from tb where (a, b) = (4, 'dft');
+            answer: 4
+          - query: select a from tb where a != 0;
+            answer: 1,2,3,4
+          - query: select a from tb where b != 'aaa';
+            answer: 1,2,3,4
+          - query: select a from tb where (a, b) != (0, 'aaa');
+            answer: 1,2,3,4
+          - query: select a from tb where (a, b) != (0, 'kkk');
+            answer: 0,1,2,3,4
+          - query: select a from tb where a != 4;
+            answer: 0,1,2,3
+          - query: select a from tb where b != 'dft';
+            answer: 0,2
+          - query: select a from tb where (a, b) != (4, 'dft');
+            answer: 0,1,2,3
+          - query: select a from tb where (a, b) != (2, 'dft');
+            answer: 0,1,2,3,4
+          - query: select a from tb where a > 0 and a <= 4;
+            answer: 1,2,3,4
+          - query: select a from tb where b > 'aaa' and b < 'dft';
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p2' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: null
+        insertAgain: null
+        afterAlterCheckers: null
+        clean: drop table if exists tb;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test split partition (single list)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      # test split default partition into normal partition
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(10), partition pd1 values in(11));
+      # test split default partition into duplicated partition
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(0), partition pd1 values in(default));
+      # test split normal partition into default partition
+      - alter tablegroup test_tg split partition p0 into (partition pd0 values in(0), partition pd1 values in(1), partition pd2 values in(default));
+      # test wrong default partition order
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(4), partition pd values in(default), partition pd1 values in(5));
+      - alter tablegroup test_tg split partition pd into (partition pd values in(default), partition pd0 values in(4), partition pd1 values in(5));
+      # other cases
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in(4), partition p01 values in(0,1));
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in(1));
+      - alter tablegroup test_tg split partition p0 into (partition p1 values in (0,1));
+      - alter tablegroup test_tg split partition p0 into (partition pd values in (0,1));
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in (0,1), partition p01 values in(10));
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(default), partition pd1 values in(default));
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(100,default), partition pd1 values in(default));
+      # test in normal table group
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in(0,1), partition p01 values in(default));
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in(0), partition p01 values in(1), partition p02 values in(default));
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in(default));
+    checkActions:
+      # normal test
+      - prepares:
+        - create tablegroup test_tg2;
+        - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+        - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values (0),(2),(3),(4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in (0,1));
+        insertAgain: insert into tb values (1);
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split normal partition
+      - prepares:
+        - create tablegroup test_tg2;
+        - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+        - create global index `g_i_a` on tb(`a`)  partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values (0),(1),(2),(3),(4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in (0), partition p01 values in(1));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0
+          - query: select a from tb partition(p01);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split default partition
+      - prepares:
+        - create tablegroup test_tg2;
+        - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+        - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values (0),(1),(2),(3),(4),(5),(6);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5,6
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 split partition pd into (partition pd0 values in (4), partition pd1 values in(5), partition pd values in(default));
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd0);
+            answer: 4
+          - query: select a from tb partition(pd1);
+            answer: 5
+          - query: select a from tb partition(pd);
+            answer: 6
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd0' and table_schema = 'test_list_default_db';
+            answer: (4)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd1' and table_schema = 'test_list_default_db';
+            answer: (5)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split normal partition when there is no default partition
+      - prepares:
+        - create tablegroup test_tg2;
+        - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+        - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3));
+        insertData: insert into tb values (0),(1),(2),(3)
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in (0), partition p01 values in(1));
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0
+          - query: select a from tb partition(p01);
+            answer: 1
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test split partition (multi column)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      # test split default partition into normal partition
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in((10, 'ccc')), partition pd1 values in((11, 'ddd')));
+      # test split default partition into duplicated partition
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in((0, 'aaa')), partition pd1 values in(default));
+      # test split normal partition into default partition
+      - alter tablegroup test_tg split partition p0 into (partition pd0 values in((0, 'aaa')), partition pd1 values in((1, 'bbb')), partition pd2 values in(default));
+      # test default partition in wrong order
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in((100, 'aaa')), partition pd values in(default), partition pd1 values in((101, 'zzz')));
+      - alter tablegroup test_tg split partition pd into (partition pd values in(default), partition pd0 values in((100, 'aaa')), partition pd1 values in((101, 'zzz')));
+      # other cases
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in((4, 'ddd')), partition p01 values in((0, 'aaa'),(1, 'bbb')));
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in((1, 'bbb')));
+      - alter tablegroup test_tg split partition p0 into (partition p1 values in ((0, 'aaa'),(1, 'bbb')));
+      - alter tablegroup test_tg split partition p0 into (partition pd values in ((0, 'aaa'), (1, 'bbb')));
+      - alter tablegroup test_tg split partition p0 into (partition p00 values in ((0, 'aaa'), (1, 'bbb')), partition p01 values in((10, 'fff')));
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in(default), partition pd1 values in(default));
+      - alter tablegroup test_tg split partition pd into (partition pd0 values in((100, 'fff'),default), partition pd1 values in(default));
+      # test in normal table group
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in((0, 'aaa'),(1, 'bbb')), partition p01 values in(default));
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in((0, 'aaa')), partition p01 values in((1, 'bbb')), partition p02 values in(default));
+      - alter tablegroup test_normal_tg split partition p0 into (partition p00 values in(default));
+    checkActions:
+      # normal test
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a, b) (partition p0 values in((0,'aaa'), (1, 'bbb')), partition p1 values in((2, 'ccc'), (3, 'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`,`b`) partition by list columns(a, b) (partition p0 values in((0,'aaa'), (1, 'bbb')), partition p1 values in((2, 'ccc'), (3, 'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0, 'aaa'), (2, 'ccc'), (3, 'ddd'), (4,'eee');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in ((0, 'aaa'),(1, 'bbb')));
+        insertAgain: insert into tb values(1, 'bbb');
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split normal partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0, 'aaa'),(1, 'bbb')), partition p1 values in((2, 'ccc'),(3, 'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`,`b`) partition by list columns(a,b) (partition p0 values in((0, 'aaa'),(1, 'bbb')), partition p1 values in((2, 'ccc'),(3, 'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0,'aaa'),(1,'bbb'),(2,'ccc'),(3, 'ddd'),(4, 'eee');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in ((0, 'aaa')), partition p01 values in((1,'bbb')));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0
+          - query: select a from tb partition(p01);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1, 'bbb')), partition p1 values in((2, 'ccc'),(3, 'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`,`b`) partition by list columns(a,b) (partition p0 values in((0, 'aaa'),(1, 'bbb')), partition p1 values in((2, 'ccc'),(3, 'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0,'aaa'),(1, 'bbb'),(2,'ccc'),(3,'ddd'),(4,'eee'),(5,'fff'),(6,'ggg');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5,6
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 split partition pd into (partition pd0 values in ((4,'eee')), partition pd1 values in((5,'fff')), partition pd values in(default));
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd0);
+            answer: 4
+          - query: select a from tb partition(pd1);
+            answer: 5
+          - query: select a from tb partition(pd);
+            answer: 6
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd0' and table_schema = 'test_list_default_db';
+            answer: (((4,eee)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd1' and table_schema = 'test_list_default_db';
+            answer: (((5,fff)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test, split normal partition when there is no default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`,`b`) partition by list columns(a,b) (partition p0 values in((0, 'aaa'),(1, 'bbb')), partition p1 values in((2, 'ccc'),(3, 'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0,'aaa'),(1, 'bbb'),(2,'ccc'),(3,'ddd')
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 split partition p0 into (partition p00 values in ((0,'aaa')), partition p01 values in((1, 'bbb')));
+        afterAlterCheckers:
+          - query: select a from tb partition(p00);
+            answer: 0
+          - query: select a from tb partition(p01);
+            answer: 1
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p00' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # merge tablegroup test
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      # test merge default partition to new partition
+      - alter tablegroup test_tg merge partitions pd to pnew;
+      - alter tablegroup test_tg merge partitions p0, p1 to pd;
+    checkActions:
+      # normal test
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values (0),(2),(3),(4);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 merge partitions p0, p1 to p01;
+        insertAgain: insert into tb values(1);
+        afterAlterCheckers:
+          - query: select a from tb partition(p01);
+            answer: 0,1,2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test merge when there is no default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3));
+        insertData: insert into tb values (0),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 merge partitions p0, p1 to p01;
+        insertAgain: insert into tb values(1);
+        afterAlterCheckers:
+          - query: select a from tb partition(p01);
+            answer: 0,1,2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (0,1,2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # merge test(multi columns)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      - alter tablegroup test_tg merge partitions pd to pnew;
+      - alter tablegroup test_tg merge partitions p0, p1 to pd;
+    checkActions:
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`,`b`) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default));
+        insertData: insert into tb values (0,'aaa'), (2, 'ccc'), (3, 'ddd'), (4, 'eee');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 merge partitions p0, p1 to p01;
+        insertAgain: insert into tb values(1,'bbb');
+        afterAlterCheckers:
+          - query: select a from tb partition(p01);
+            answer: 0,1,2,3
+          - query: select a from tb partition(pd);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb),(2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+        # test merge when there is no default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(10), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+        insertData: insert into tb values (0,'aaa'), (2, 'ccc'), (3, 'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 merge partitions p0, p1 to p01;
+        insertAgain: insert into tb values(1,'bbb');
+        afterAlterCheckers:
+          - query: select a from tb partition(p01);
+            answer: 0,1,2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p01' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb),(2,ccc),(3,ddd)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test add partition
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      # test add default partition when we already have a default partition
+      - alter tablegroup test_tg add partition (partition pnew1 values in(100), partition pnew2 values in(default));
+      - alter tablegroup test_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+      # test default partition in wrong order
+      - alter tablegroup test_normal_tg add partition (partition pd values in(default), partition pnew2 values in(1000));
+      # other tests
+      - alter tablegroup test_tg add partition (partition pnew1 values in(100, default), partition pnew2 values in(120));
+      - alter tablegroup test_tg add partition (partition pnew1 values in(100), partition pnew2 values in(101, default));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in(100, default), partition pnew2 values in(120));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in(100), partition pnew2 values in(101, default));
+    checkActions:
+      # normal test. add normal partition when default partition exists
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values(0),(1),(2),(3),(4),(6)
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,6
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pnew0 values in(4), partition pnew1 values in(5));
+        insertAgain: insert into tb values(5);
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew0);
+            answer: 4
+          - query: select a from tb partition(pnew1);
+            answer: 5
+          - query: select a from tb partition(pd);
+            answer: 6
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew0' and table_schema = 'test_list_default_db';
+            answer: (4)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew1' and table_schema = 'test_list_default_db';
+            answer: (5)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test. add normal partition when there is no default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+ #         - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3));
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pnew0 values in(4), partition pnew1 values in(5));
+        insertAgain: insert into tb values (4),(5);
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew0);
+            answer: 4
+          - query: select a from tb partition(pnew1);
+            answer: 5
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew0' and table_schema = 'test_list_default_db';
+            answer: (4)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew1' and table_schema = 'test_list_default_db';
+            answer: (5)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # add default partition test.
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pd values in(default));
+        insertAgain: insert into tb values (4),(5);
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+  # test add partition (list columns)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1, 'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+    # test add default partition when we already have a default partition
+      - alter tablegroup test_tg add partition (partition pnew1 values in((100, 'fff')), partition pnew2 values in(default));
+      - alter tablegroup test_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in(default), partition pnew2 values in(default));
+    # test default partition in wrong order
+      - alter tablegroup test_normal_tg add partition (partition pd values in(default), partition pnew2 values in((100, 'fff')));
+    # other tests
+      - alter tablegroup test_tg add partition (partition pnew1 values in((100,'fff'), default), partition pnew2 values in((120,'fff')));
+      - alter tablegroup test_tg add partition (partition pnew1 values in((100,'fff')), partition pnew2 values in((101,'fff'), default));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in((100,'fff'), default), partition pnew2 values in((120,'fff')));
+      - alter tablegroup test_normal_tg add partition (partition pnew1 values in((100,'fff')), partition pnew2 values in((101,'fff'), default));
+    checkActions:
+      # normal test.
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd'),(4,'eee'),(6,'ggg');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,6
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pnew0 values in((4,'eee')), partition pnew1 values in((5,'fff')));
+        insertAgain: insert into tb values (5,'fff');
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew0);
+            answer: 4
+          - query: select a from tb partition(pnew1);
+            answer: 5
+          - query: select a from tb partition(pd);
+            answer: 6
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew0' and table_schema = 'test_list_default_db';
+            answer: (((4,eee)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew1' and table_schema = 'test_list_default_db';
+            answer: (((5,fff)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # add default partition test.
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pd values in(default));
+        insertAgain: insert into tb values (4,'eee'),(5,'fff');
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # normal test. add normal partition when there is no default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 add partition(partition pnew0 values in((4,'eee')), partition pnew1 values in((5,'fff')));
+        insertAgain: insert into tb values (4,'eee'),(5,'fff');
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew0);
+            answer: 4
+          - query: select a from tb partition(pnew1);
+            answer: 5
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew0' and table_schema = 'test_list_default_db';
+            answer: (((4,eee)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew1' and table_schema = 'test_list_default_db';
+            answer: (((5,fff)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test drop partition
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs: null
+    checkActions:
+      - metaCreateTableContainsBeforeChecker:
+          - query: show full create table test_tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg drop partition pd;
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+      - alterTableGroup: alter tablegroup test_tg drop partition p0;
+      - alterTableGroup: alter tablegroup test_normal_tg drop partition p0;
+    cleanDDL: drop database if exists test_list_default_db;
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs: null
+    checkActions:
+      - metaCreateTableContainsBeforeChecker:
+          - query: show full create table test_tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg drop partition pd;
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'test_tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+      - alterTableGroup: alter tablegroup test_tg drop partition p0;
+      - alterTableGroup: alter tablegroup test_normal_tg drop partition p0;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test rename partition
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs: null
+    checkActions:
+      - alterTableGroup: alter tablegroup test_tg rename partition pd to pd0;
+      - alterTableGroup: alter tablegroup test_tg rename partition p0 to p00;
+      - alterTableGroup: alter tablegroup test_normal_tg rename partition p0 to p00;
+    cleanDDL: drop database if exists test_list_default_db;
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs: null
+    checkActions:
+      - alterTableGroup: alter tablegroup test_tg rename partition pd to pd0;
+      - alterTableGroup: alter tablegroup test_tg rename partition p0 to p00;
+      - alterTableGroup: alter tablegroup test_normal_tg rename partition p0 to p00;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test modify partition
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      - alter tablegroup test_tg modify partition pd add values(10,11,12);
+      - alter tablegroup test_tg modify partition pd drop values(0);
+    checkActions:
+      # add values
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 modify partition p0 add values(10);
+        insertAgain: insert into tb values(10);
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1,10
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1,10)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 modify partition p0 drop values(1);
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test modify partition(list columns)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      - alter tablegroup test_tg modify partition pd add values((10,'fff'),(11,'fff'),(12,'fff'));
+      - alter tablegroup test_tg modify partition pd drop values((10,'fff'));
+    checkActions:
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 modify partition p0 add values((10,'fff'));
+        insertAgain: insert into tb values(10,'fff');
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1,10
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb),(10,fff)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a, b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 modify partition p0 drop values((1,'bbb'));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test extract hot value
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      - alter tablegroup test_tg extract to partition pd by hot value(100);
+      - alter tablegroup test_tg extract to partition pd by hot value(0);
+      - alter tablegroup test_tg extract to partition p0 by hot value(100);
+      - alter tablegroup test_tg extract to partition p0 by hot value(0);
+      - alter tablegroup test_tg extract to partition pnew by hot value(0,1,2);
+      - alter tablegroup test_tg extract to partition pnew by hot value(100,101);
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value(100);
+      - alter tablegroup test_normal_tg extract to partition p0 by hot value(100);
+      - alter tablegroup test_normal_tg extract to partition p0 by hot value(0);
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value(100);
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value(0,1,2);
+    checkActions:
+      # test syntax [hot]
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3));
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by value(0);
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract without default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3));
+        insertData: insert into tb values(0),(1),(2),(3);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value(0);
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from normal partition (with default partition)
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values(0),(1),(2),(3),(4),(5);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value(0);
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from default partition (with default partition)
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`)  partition by list(a) (partition p0 values in(0,1), partition p1 values in(2,3), partition pd values in(default));
+        insertData: insert into tb values(0),(1),(2),(3),(4),(5);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value(4);
+        insertAgain: insert into tb values(6);
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 5,6
+          - query: select a from tb partition(pnew);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0,1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (2,3)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (4)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from partition with only one item
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, primary key(a)) partition by list(a) (partition p0 values in(0), partition p1 values in(1), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_a` on tb(`a`) partition by list(a) (partition p0 values in(0), partition p1 values in(1), partition pd values in(default));
+        insertData: insert into tb values(0),(1),(2);
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 1
+          - query: select a from tb partition(pd);
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value(0);
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p1);
+            answer: 1
+          - query: select a from tb partition(pd);
+            answer: 2
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (0)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (1)
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: (default)
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+  # test extract hot value (list columns)
+  - prepareDDLs:
+      - use information_schema; drop database if exists test_list_default_db;
+      - create database test_list_default_db mode=auto;
+      - use test_list_default_db;
+      - create tablegroup test_tg;
+      - create table test_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg;
+      - create tablegroup test_normal_tg;
+      - create table test_normal_tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_normal_tg;
+    syntaxWrongDDLs:
+      - alter tablegroup test_tg extract to partition pd by hot value((100,'fff'));
+      - alter tablegroup test_tg extract to partition pd by hot value((0,'aaa'));
+      - alter tablegroup test_tg extract to partition p0 by hot value((100,'fff'));
+      - alter tablegroup test_tg extract to partition p0 by hot value((0,'aaa'));
+      - alter tablegroup test_tg extract to partition pnew by hot value((0,'aaa'),(1,'bbb'),(2,'ccc'));
+      - alter tablegroup test_tg extract to partition pnew by hot value((100,'fff'),(101,'fff'));
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value((100,'fff'));
+      - alter tablegroup test_normal_tg extract to partition p0 by hot value((100,'fff'));
+      - alter tablegroup test_normal_tg extract to partition p0 by hot value((0,'aaa'));
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value((100,'fff'));
+      - alter tablegroup test_normal_tg extract to partition pnew by hot value((0,'aaa'),(1,'bbb'),(2,'ccc'));
+    checkActions:
+    # test extract without default partition
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd'))) tablegroup=test_tg2;
+          - create global index `g_i_ab` on tb(`a`, `b`) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')));
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+        metaCreateTableContainsBeforeChecker: null
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value((0,'aaa'));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker: null
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from normal partition (with default partition)
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_ab` on tb(`a`, `b`) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default));
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd'),(4,'eee'),(5,'fff');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value((0,'aaa'));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from default partition (with default partition)
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_ab` on tb(`a`, `b`) partition by list columns(a,b) (partition p0 values in((0,'aaa'),(1,'bbb')), partition p1 values in((2,'ccc'),(3,'ddd')), partition pd values in(default));
+        insertData: insert into tb values(0,'aaa'),(1,'bbb'),(2,'ccc'),(3,'ddd'),(4,'eee'),(5,'fff');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 4,5
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value((4,'eee'));
+        insertAgain: insert into tb values(6,'ggg');
+        afterAlterCheckers:
+          - query: select a from tb partition(p0);
+            answer: 0,1
+          - query: select a from tb partition(p1);
+            answer: 2,3
+          - query: select a from tb partition(pd);
+            answer: 5,6
+          - query: select a from tb partition(pnew);
+            answer: 4
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (((4,eee)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa),(1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((2,ccc),(3,ddd)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+      # test extract from partition with only one item
+      - prepares:
+          - create tablegroup test_tg2;
+          - create table tb(`a` int not null, `b` varchar(20), primary key(a)) partition by list columns(a,b) (partition p0 values in((0,'aaa')), partition p1 values in((1,'bbb')), partition pd values in(default)) tablegroup=test_tg2;
+          - create global index `g_i_ab` on tb(`a`,`b`) partition by list columns(a,b) (partition p0 values in((0,'aaa')), partition p1 values in((1,'bbb')), partition pd values in(default));
+        insertData: insert into tb values(0, 'aaa'),(1, 'bbb'),(2,'ccc');
+        checkers:
+          - query: select a from tb partition(p0);
+            answer: 0
+          - query: select a from tb partition(p1);
+            answer: 1
+          - query: select a from tb partition(pd);
+            answer: 2
+        metaCreateTableContainsBeforeChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueBeforeChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p0' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        alterTableGroup: alter tablegroup test_tg2 extract to partition pnew by hot value((0,'aaa'));
+        insertAgain: null
+        afterAlterCheckers:
+          - query: select a from tb partition(p1);
+            answer: 1
+          - query: select a from tb partition(pd);
+            answer: 2
+          - query: select a from tb partition(pnew);
+            answer: 0
+        metaCreateTableContainsAfterChecker:
+          - query: show full create table tb;
+            answer: VALUES IN (DEFAULT)
+        metaInfoSchemaBoundValueAfterChecker:
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pnew' and table_schema = 'test_list_default_db';
+            answer: (((0,aaa)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'p1' and table_schema = 'test_list_default_db';
+            answer: (((1,bbb)))
+          - query: select bound_value from information_schema.table_detail where table_name = 'tb' and partition_name = 'pd' and table_schema = 'test_list_default_db';
+            answer: ((default))
+        clean: drop table if exists tb; drop tablegroup if exists test_tg2;
+    cleanDDL: drop database if exists test_list_default_db;
+
+
+
+
+

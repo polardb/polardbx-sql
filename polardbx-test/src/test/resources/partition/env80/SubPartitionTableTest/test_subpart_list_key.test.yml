@@ -1,0 +1,241 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======== lc-key ===========
+ # lc_k_tp1
+drop table if exists lc_k_tp1;
+create table if not exists lc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+show create table lc_k_tp1;
+
+
+ # lc_k_tp2
+drop table if exists lc_k_tp2;
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_k_tp2;
+
+  # lc_k_tp3
+drop table if exists lc_k_tp3st;
+create table if not exists lc_k_tp3st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table lc_k_tp3st;
+
+
+
+  # lc_k_ntp1
+drop table if exists lc_k_ntp1;
+create table if not exists lc_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d)
+(
+partition p0 values in ((5,5),(6,6)) subpartitions 2,
+partition p1 values in ((7,7),(8,8)) subpartitions 1
+);
+show create table lc_k_ntp1;
+
+  # lc_k_ntp2
+drop table if exists lc_k_ntp2;
+create table if not exists lc_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d)
+(
+partition p0 values in ((5,5),(6,6)) subpartitions 2 (
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+),
+partition p1 values in (default) subpartitions 1 (
+subpartition sp2 values less than (9223372036854775807,9223372036854775807))
+);
+show create table lc_k_ntp2;
+
+
+  # lc_k_tp2
+drop table if exists lc_k_tp2;
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_k_tp2;
+
+  # lc_k_tp3
+drop table if exists lc_k_tp3st;
+create table if not exists lc_k_tp3st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table lc_k_tp3st;
+
+
+##======== l-key ===========
+
+  # l_k_tp1
+drop table if exists l_k_tp1;
+create table if not exists l_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in (2020,2021),
+partition p1 values in (2022,2023)
+);
+show create table l_k_tp1;
+
+
+  # l_k_tp2
+drop table if exists l_k_tp2;
+create table if not exists l_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in (2020,2021),
+partition p1 values in (default)
+);
+show create table l_k_tp2;
+
+  # l_k_tp3
+drop table if exists l_k_tp3;
+create table if not exists l_k_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in (2022,2020,2023),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table l_k_tp3;
+
+
+
+  # l_k_ntp1
+drop table if exists l_k_ntp1;
+create table if not exists l_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d)
+(
+partition p0 values in (2020,2021) subpartitions 2,
+partition p1 values in (default) subpartitions 1
+);
+show create table l_k_ntp1;
+
+  # l_k_ntp2
+drop table if exists l_k_ntp2;
+create table if not exists l_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d)
+(
+partition p0 values in (2020,2021) subpartitions 2 (
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+),
+partition p1 values in (default) subpartitions 1 (
+subpartition sp2 values less than (9223372036854775807,9223372036854775807))
+);
+show create table l_k_ntp2;
+
+

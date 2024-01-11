@@ -1011,7 +1011,13 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
             if (isMySQL80()) {
                 createTableStr = createTableStr.replaceAll(" CHARACTER SET \\w+", "")
                     .replaceAll(" COLLATE \\w+", "")
-                    .replaceAll(" DEFAULT COLLATE = \\w+", "");
+                    .replaceAll(" DEFAULT COLLATE = \\w+", "")
+                    .replaceAll(" int ", " int(11) ")
+                    .replaceAll(" bigint ", " bigint(11) ")
+                    .replaceAll(" int,", " int(11),")
+                    .replaceAll(" bigint,", " bigint(11),")
+                    .replaceAll(" int\n", " int(11)\n")
+                    .replaceAll(" bigint\n", " bigint(11)\n");
             }
             return TableChecker.buildTableChecker(createTableStr);
         } catch (Exception e) {
@@ -1796,9 +1802,19 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s convert to character set utf8 collate utf8_bin", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertTrue(showCreateTable(tddlConnection, primaryTable).contains("utf8"));
-        Assert.assertTrue(showCreateTable(tddlConnection, indexTable).contains("utf8_bin"));
+        String showIndexTable = showCreateTable(tddlConnection, indexTable);
+        if (isMySQL80()) {
+            showIndexTable = showIndexTable.replace("utf8mb3_bin", "utf8_bin");
+        }
+        System.out.println(showIndexTable);
+        Assert.assertTrue(showIndexTable.contains("utf8_bin"));
         Assert.assertTrue(showCreateTable(tddlConnection, primaryTable).contains("utf8"));
-        Assert.assertTrue(showCreateTable(tddlConnection, indexTable).contains("utf8_bin"));
+        String showIndexTable1 = showCreateTable(tddlConnection, indexTable);
+        if (isMySQL80()) {
+            showIndexTable1 = showIndexTable1.replace("utf8mb3_bin", "utf8_bin");
+        }
+        System.out.println(showIndexTable1);
+        Assert.assertTrue(showIndexTable1.contains("utf8_bin"));
 
         sql = String.format("alter table %s convert to character set utf8 collate utf8_general_cixx", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "unknown collate name 'utf8_general_cixx'");

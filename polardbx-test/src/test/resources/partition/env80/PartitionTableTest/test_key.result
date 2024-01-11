@@ -1,0 +1,143 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+INSERT INTO tbl
+VALUES (10),
+	(99),
+	(100),
+	(101);
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+10
+99
+100
+101
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = 99
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = 200
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p4]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a < 200
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` < ?) ORDER BY `a`")
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+10
+99
+100
+101
+SELECT *
+FROM tbl
+WHERE a = 99
+ORDER BY a;
+a
+99
+SELECT *
+FROM tbl
+WHERE a = 200
+ORDER BY a;
+a
+SELECT *
+FROM tbl
+WHERE a < 200
+ORDER BY a;
+a
+10
+99
+100
+101
+DROP TABLE IF EXISTS tbl;
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY KEY (a, b, c) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) NOT NULL,
+	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`c`)
+PARTITIONS 4
+INSERT INTO tbl
+VALUES (100, '2012-12-12 11:11:11', 'abc'),
+	(200, '2012-12-13 11:11:11', 'abc'),
+	(300, '2012-12-14 11:11:11', 'efg');
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+100,2012-12-12 11:11:11.0,abc
+200,2012-12-13 11:11:11.0,abc
+300,2012-12-14 11:11:11.0,efg
+SELECT *
+FROM tbl
+WHERE a = 100
+	AND b = '2012-12-12 11:11:11'
+	AND c = 'abc'
+ORDER BY a;
+a,b,c
+100,2012-12-12 11:11:11.0,abc
+SELECT *
+FROM tbl
+WHERE a = 200
+	AND b = '2012-12-13 11:11:11'
+	AND c = 'abc'
+ORDER BY a;
+a,b,c
+200,2012-12-13 11:11:11.0,abc
+SELECT *
+FROM tbl
+WHERE a = 300
+	AND b = '2012-12-14 11:11:11'
+	AND c = 'efg'
+ORDER BY a;
+a,b,c
+300,2012-12-14 11:11:11.0,efg
+DROP TABLE IF EXISTS tbl;
+DROP TABLE IF EXISTS `W`;
+CREATE TABLE `W` (
+	`8` INT UNSIGNED ZEROFILL PRIMARY KEY AUTO_INCREMENT COMMENT 'eU',
+	`p` INT(5) ZEROFILL NOT NULL COMMENT 'c2Z45dqDdW7'
+)
+PARTITION BY KEY (`8`) PARTITIONS 3;
+SHOW CREATE TABLE W;
+Table,Create Table
+W,CREATE TABLE `W` (
+	`8` int(10) UNSIGNED ZEROFILL NOT NULL AUTO_INCREMENT COMMENT 'eU',
+	`p` int(5) UNSIGNED ZEROFILL NOT NULL COMMENT 'c2Z45dqDdW7',
+	PRIMARY KEY (`8`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`8`)
+PARTITIONS 3
+DROP TABLE IF EXISTS `W`;

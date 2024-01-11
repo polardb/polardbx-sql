@@ -1,0 +1,12 @@
+## DISABLE_FAST_SQL_PARSER
+use information_schema;
+desc table_group;
+describe table_group;
+show create table table_group;
+desc full_table_group;
+describe full_table_group;
+show create table full_table_group;
+show create table table_detail;
+desc partitions_meta;
+describe partitions_meta;
+desc partitions;

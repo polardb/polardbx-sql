@@ -1,0 +1,19 @@
+## DISABLE_FAST_SQL_PARSER
+
+DROP TABLE IF EXISTS dml_perf_test;
+CREATE TABLE `dml_perf_test` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` bigint(20) UNSIGNED NOT NULL,
+`d` bigint(20) UNSIGNED NOT NULL,
+`e` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 64;
+
+set GROUP_PARALLELISM=4;
+begin;
+select * from dml_perf_test order by a;
+load data infile 'resource/partition/env/PartitionIntraGroupParallelTest/test_load_data.txt' into table dml_perf_test fields terminated by ',' optionally enclosed by '' escaped by '\\' lines terminated by '\n' (a,b,c,d,e);
+select * from dml_perf_test order by a;
+rollback;

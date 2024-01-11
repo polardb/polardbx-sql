@@ -1,0 +1,54 @@
+## DISABLE_FAST_SQL_PARSER
+SET ENABLE_FOREIGN_KEY = true;
+#echo #
+#echo # TRUNCATE TABLE
+#echo #
+#echo # Truncating is disallowed for parent tables unless such table
+#echo # participates in self-referencing foreign keys only.
+#echo #
+CREATE TABLE t1 (pk INT PRIMARY KEY) ENGINE=INNODB;
+CREATE TABLE t2 (fk INT NOT NULL, FOREIGN KEY (fk) REFERENCES t1 (pk)) ENGINE=INNODB;
+#error ER_TRUNCATE_ILLEGAL_FK
+## error_msg: $# ERR_TRUNCATE_TABLE_FK_CONSTRAINT #$
+TRUNCATE TABLE t1;
+ERR_TRUNCATE_TABLE_FK_CONSTRAINT
+#echo # Truncation of child should succeed.
+TRUNCATE TABLE t2;
+DROP TABLE t2;
+DROP TABLE t1;
+CREATE TABLE t1 (pk INT PRIMARY KEY, fk INT,
+FOREIGN KEY (fk) REFERENCES t1 (pk)) ENGINE=INNODB;
+#echo # Truncation of self-referencing table should succeed.
+TRUNCATE TABLE t1;
+DROP TABLE t1;
+#echo #
+#echo # Also, truncating such tables is allowed if foreign key
+#echo # checks are disabled.
+#echo #
+CREATE TABLE t1 (pk INT PRIMARY KEY) ENGINE=INNODB;
+CREATE TABLE t2 (fk INT NOT NULL, FOREIGN KEY (fk) REFERENCES t1 (pk)) ENGINE=INNODB;
+CREATE TABLE t3 (pk INT PRIMARY KEY, fk INT,
+FOREIGN KEY (fk) REFERENCES t1 (pk)) ENGINE=INNODB;
+SET foreign_key_checks = 0;
+TRUNCATE TABLE t1;
+TRUNCATE TABLE t2;
+TRUNCATE TABLE t3;
+SET foreign_key_checks = 1;
+#error ER_TRUNCATE_ILLEGAL_FK
+## error_msg: $# ERR_TRUNCATE_TABLE_FK_CONSTRAINT #$
+TRUNCATE TABLE t1;
+ERR_TRUNCATE_TABLE_FK_CONSTRAINT
+TRUNCATE TABLE t2;
+TRUNCATE TABLE t3;
+LOCK TABLES t1 WRITE;
+SET foreign_key_checks = 0;
+TRUNCATE TABLE t1;
+SET foreign_key_checks = 1;
+#error ER_TRUNCATE_ILLEGAL_FK
+## error_msg: $# ERR_TRUNCATE_TABLE_FK_CONSTRAINT #$
+TRUNCATE TABLE t1;
+ERR_TRUNCATE_TABLE_FK_CONSTRAINT
+UNLOCK TABLES;
+DROP TABLE t3;
+DROP TABLE t2;
+DROP TABLE t1;

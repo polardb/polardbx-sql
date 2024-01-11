@@ -1,0 +1,95 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (x),
+	LOCAL INDEX(`seller_id`),
+	UNIQUE LOCAL INDEX (`order_id`)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	LOCAL INDEX(`seller_id`),
+	UNIQUE LOCAL INDEX (`order_id`)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	LOCAL INDEX(`seller_id`),
+	UNIQUE LOCAL INDEX (`order_id`)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `order_id` (`order_id`),
+	LOCAL KEY `seller_id` (`seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;

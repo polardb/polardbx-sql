@@ -1,0 +1,113 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_gsi_drds;
+create database inspect_gsi_drds mode=drds;
+use inspect_gsi_drds;
+  
+# 完全重复的gsi
+create table tb1(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g1(name) covering(status) dbpartition by hash(name),
+  unique global index g2(name) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb1;
+
+create table tb2(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g3(name) covering(status) dbpartition by hash(name),
+  clustered index g4(name) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb2;
+
+create table tb3(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g5(name) covering(status, detail, shop_id) dbpartition by hash(name),
+  global index g6(name) covering(status) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb3;
+  
+# 部分列重复的GSI
+create table tb4(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g7(name, code) covering(status, detail, shop_id) dbpartition by hash(name),
+  global index g8(name) covering(status) dbpartition by hash(name),
+  local index idx1(name, code)
+) dbpartition by hash(id);
+
+inspect full index from tb4;
+
+create table tb5(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g9(name, code) covering(status) dbpartition by hash(name),
+  global index g10(name) covering(status, detail, shop_id) dbpartition by hash(name)
+) dbpartition by hash(id);
+
+inspect full index from tb5;
+
+create table tb6(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g11(name, code) covering(status) dbpartition by hash(name),
+  unique global index g12(name) covering(status, detail, shop_id) dbpartition by hash(name)
+) dbpartition by hash(id);
+
+inspect full index from tb6;
+  
+# duplicate gsi partition key
+create table tb10(
+  id int,
+  dt time,
+  primary key(id),
+  key `idx` (`dt`, `id`),
+  global index g16(dt,id) dbpartition by hash(id)
+) dbpartition by hash(id);
+
+inspect full index from tb10;
+use polardbx;
+drop database if exists inspect_gsi_drds;

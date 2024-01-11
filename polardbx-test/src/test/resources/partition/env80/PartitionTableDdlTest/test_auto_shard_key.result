@@ -1,0 +1,66 @@
+DROP TABLE IF EXISTS dci_network_alarms;
+CREATE TABLE `dci_network_alarms` (
+	`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+	`gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+	`network_character_name` varchar(128) NOT NULL DEFAULT '' COMMENT '网络角色名',
+	`network_character_type` varchar(16) NOT NULL DEFAULT '' COMMENT '网络角色类型',
+	`cause` varchar(128) NOT NULL DEFAULT '' COMMENT '告警原因',
+	`level` varchar(16) NOT NULL DEFAULT '' COMMENT '告警级别',
+	`source` varchar(512) DEFAULT '' COMMENT '源告警，包括（源告警的设备IP，源告警的原因，源告警的告警源，源告警的级别），多个源告警情况下，用#隔开',
+	`type` varchar(32) DEFAULT '' COMMENT '告警类型',
+	`tag` varchar(16) DEFAULT '' COMMENT '告警标记',
+	`duration_type` varchar(16) DEFAULT '' COMMENT '告警持续类型',
+	`description` varchar(512) DEFAULT '' COMMENT '告警内容附属信息',
+	`miscellaneous` varchar(512) DEFAULT '' COMMENT '告警自定义内容',
+	`cleared_state` varchar(16) DEFAULT '' COMMENT '告警清除状态',
+	`cleared_time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '告警清除时间',
+	`confirmed_state` varchar(16) DEFAULT NULL COMMENT '告警确认状态',
+	`confirmed_time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '告警确认时间',
+	`generate_time` datetime NOT NULL COMMENT '告警产生时间',
+	`post_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '告警上报时间',
+	PRIMARY KEY (`id`),
+	INDEX `idx_charactername_generatetime_charactertype_cause_level`(`network_character_name`, `generate_time`, `network_character_type`, `cause`, `level`),
+	LOCAL KEY `idx_time` (`generate_time`, `cleared_time`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT 'dci网络告警表';
+SHOW CREATE TABLE dci_network_alarms;
+Table,Create Table
+dci_network_alarms,CREATE TABLE `dci_network_alarms` (
+	`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+	`gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+	`network_character_name` varchar(128) NOT NULL DEFAULT '' COMMENT '网络角色名',
+	`network_character_type` varchar(16) NOT NULL DEFAULT '' COMMENT '网络角色类型',
+	`cause` varchar(128) NOT NULL DEFAULT '' COMMENT '告警原因',
+	`level` varchar(16) NOT NULL DEFAULT '' COMMENT '告警级别',
+	`source` varchar(512) DEFAULT '' COMMENT '源告警，包括（源告警的设备IP，源告警的原因，源告警的告警源，源告警的级别），多个源告警情况下，用#隔开',
+	`type` varchar(32) DEFAULT '' COMMENT '告警类型',
+	`tag` varchar(16) DEFAULT '' COMMENT '告警标记',
+	`duration_type` varchar(16) DEFAULT '' COMMENT '告警持续类型',
+	`description` varchar(512) DEFAULT '' COMMENT '告警内容附属信息',
+	`miscellaneous` varchar(512) DEFAULT '' COMMENT '告警自定义内容',
+	`cleared_state` varchar(16) DEFAULT '' COMMENT '告警清除状态',
+	`cleared_time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '告警清除时间',
+	`confirmed_state` varchar(16) DEFAULT NULL COMMENT '告警确认状态',
+	`confirmed_time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '告警确认时间',
+	`generate_time` datetime NOT NULL COMMENT '告警产生时间',
+	`post_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '告警上报时间',
+	PRIMARY KEY (`id`),
+	INDEX `idx_charactername_generatetime_charactertype_cause_level` (`network_character_name`, `generate_time`, `network_character_type`, `cause`, `level`),
+	LOCAL KEY `idx_time` (`generate_time`, `cleared_time`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT 'dci网络告警表'
+SHOW CREATE TABLE idx_charactername_generatetime_charactertype_cause_level;
+Table,Create Table
+idx_charactername_generatetime_charactertype_cause_level_$,CREATE TABLE `idx_charactername_generatetime_charactertype_cause_level_$` (
+	`id` bigint(20) UNSIGNED NOT NULL COMMENT '主键',
+	`network_character_name` varchar(128) NOT NULL DEFAULT '' COMMENT '网络角色名',
+	`network_character_type` varchar(16) NOT NULL DEFAULT '' COMMENT '网络角色类型',
+	`cause` varchar(128) NOT NULL DEFAULT '' COMMENT '告警原因',
+	`level` varchar(16) NOT NULL DEFAULT '' COMMENT '告警级别',
+	`generate_time` datetime NOT NULL COMMENT '告警产生时间',
+	PRIMARY KEY (`id`),
+	KEY `i_network_character_name_generate_time` USING BTREE (`network_character_name`, `generate_time`, `network_character_type`, `cause`, `level`),
+	KEY `auto_shard_key_network_character_name` USING BTREE (`network_character_name`(84), `network_character_type`, `cause`(75), `level`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT 'dci网络告警表'
+PARTITION BY KEY(`network_character_name`,`network_character_type`,`cause`,`level`,`id`)
+PARTITIONS 3

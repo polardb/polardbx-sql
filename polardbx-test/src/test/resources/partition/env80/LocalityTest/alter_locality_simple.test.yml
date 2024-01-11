@@ -1,0 +1,144 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_simple"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_locality_simple"
+      - "create database test_locality_simple mode = auto"
+      - "use test_locality_simple;"
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1';"
+      - "create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1';"
+      - "create table c0(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c1(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c2(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c3(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c4(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn1', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table s0(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "create table s1(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "create table s2(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn2';"
+      - "create table s3(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn2';"
+      - "create table s4(x int  AUTO_INCREMENT primary key, y int) single;"
+      - "create table b0(x int  AUTO_INCREMENT primary key, y int) broadcast;"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn1
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table ""
+        - s0 table $dn1
+        - s1 table $dn1
+        - s2 table $dn2
+        - s3 table $dn2
+        - s4 table ""
+        - b0 table ""
+        - test_locality_simple database ""
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn1
+        - c0,c1 $tg2 ""
+        - c2,c3 $tg3 ""
+        - c4 $tg4 ""
+        - s0,s1 $tg5 $dn1
+        - s2,s3 $tg6 $dn2
+        - s4 $tg7 ""
+        - b0 $tg8 ""
+      partitionLocalityCheck:
+        - $tg2.p1 $dn1
+        - $tg2.p2 $dn1
+        - $tg2.p3 $dn2
+        - $tg2.p4 $dn2
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn1
+        - $tg4.p3 $dn1
+        - $tg4.p4 $dn2
+      topologyCheck:
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p4 partition $dn2
+        - c1.p1 partition $dn1
+        - c1.p2 partition $dn1
+        - c1.p3 partition $dn2
+        - c1.p4 partition $dn2
+        - c4.p1 partition $dn1
+        - c4.p2 partition $dn1
+        - c4.p3 partition $dn1
+        - c4.p4 partition $dn2
+        - s0.p1 partition $dn1
+        - s1.p1 partition $dn1
+        - s2.p1 partition $dn2
+        - s3.p1 partition $dn2
+  - prepareDDls:
+      - "alter tablegroup $tg1 set locality = 'dn=$dn2';"
+      - "alter tablegroup $tg2 set partitions p1 LOCALITY='dn=$dn2';"
+      - "alter tablegroup $tg2 set partitions p3 LOCALITY='dn=$dn1';"
+      - "alter tablegroup $tg3 set LOCALITY='dn=$dn1';"
+      - "alter tablegroup $tg4 set partitions p2 LOCALITY='dn=$dn2';"
+      - "alter tablegroup $tg4 set partitions p3 LOCALITY='dn=$dn2';"
+      - "alter tablegroup $tg5 set LOCALITY='dn=$dn2';"
+    rejectDDls:
+      - ddl: "alter tablegroup $tg7 set LOCALITY='dn=$dn2';"
+        message: "invalid alter locality action for table group! table group [single_tg] is default single table group or broadcast table group"
+      - ddl: "alter tablegroup $tg7 set partitions p1 LOCALITY='dn=$dn2';"
+        message: "invalid alter locality operation on partition! table group [single_tg] is single table group or broadcast table group"
+      - ddl: "alter tablegroup $tg8 set LOCALITY='dn=$dn2';"
+        message: "invalid alter locality action for table group! table group [broadcast_tg] is default single table group or broadcast table group"
+      - ddl: "alter tablegroup $tg8 set partitions p1 LOCALITY='dn=$dn2';"
+        message: "invalid alter locality operation on partition! table group [broadcast_tg] is single table group or broadcast table group"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from information_schema.ddl_plan where ddl_type = 'rebalance' and table_schema = 'test_locality_simple' and state != 'success';###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn2
+        - t2 table $dn2
+        - c0 table ""
+        - c1 table ""
+        - c2 table $dn1
+        - c3 table $dn1
+        - c4 table ""
+        - s0 table $dn2
+        - s1 table $dn2
+        - s2 table $dn2
+        - s3 table $dn2
+        - test_locality_simple database ""
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn2
+        - c0,c1 $tg2 ""
+        - c2,c3 $tg3 $dn1
+        - c4 $tg4 ""
+        - s0,s1 $tg5 $dn2
+        - s2,s3 %tg6 $dn2
+      partitionLocalityCheck:
+        - $tg2.p1 $dn2
+        - $tg2.p2 $dn1
+        - $tg2.p3 $dn1
+        - $tg2.p4 $dn2
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn2
+        - $tg4.p3 $dn2
+        - $tg4.p4 $dn2
+      topologyCheck:
+  - prepareDDls:
+      - "drop table t1;"
+      - "drop table t2;"
+      - "drop table c0;"
+      - "drop table c1;"
+      - "drop table c2;"
+      - "drop table c3;"
+      - "drop table c4;"
+      - "drop table s0"
+      - "drop table s1;"
+      - "drop table s2;"
+      - "drop table s3;"
+cleanupDDls:
+  - "use polardbx;"
+  - "use polardbx;"
+  - "drop database if exists test_locality_simple;"

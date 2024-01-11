@@ -1,0 +1,262 @@
+## DISABLE_FAST_SQL_PARSER
+# test tablegroup
+# template
+create tablegroup tg1;
+create table tb1(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg1";
+insert into tb1 values(1, '1'),(1,'2'),(1,'3'),(1,'4'),(1,'5'),(1,'6'),(1,'7'),(1,'8');
+insert into tb1 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb1 values(5, '1'),(5,'2'),(5,'3'),(5,'4'),(5,'5'),(5,'6'),(5,'7'),(5,'8');
+
+alter tablegroup tg1 merge subpartitions sp1, spd to sp1_d;
+select b from tb1 order by b;
+select b from tb1 partition(p1sp1_d) order by b;
+select b from tb1 partition(p1sp2) order by b;
+select b from tb1 partition(p2sp1_d) order by b;
+select b from tb1 partition(p2sp2) order by b;
+select b from tb1 partition(pdsp1_d) order by b;
+select b from tb1 partition(pdsp2) order by b;
+show create table tb1;
+
+# non-template
+create tablegroup tg2;
+create table tb2(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+) tablegroup="tg2";
+insert into tb2 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+
+alter tablegroup tg2 merge subpartitions p2sp1, p2spd to p2sp1_d;
+select b from tb2 partition(p2) order by b;
+select b from tb2 partition(p2sp1_d) order by b;
+select b from tb2 partition(p2sp2) order by b;
+show create table tb2;
+
+# logical-template
+create tablegroup tg3;
+create table tb3(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg3";
+insert into tb3 values(1, '1'),(1,'2'),(1,'3'),(1,'4'),(1,'5'),(1,'6'),(1,'7'),(1,'8');
+insert into tb3 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb3 values(5, '1'),(5,'2'),(5,'3'),(5,'4'),(5,'5'),(5,'6'),(5,'7'),(5,'8');
+
+alter tablegroup tg3 merge partitions p1, pd to p1_d;
+select b from tb3 order by b;
+select b from tb3 partition(p1_dsp1) order by b;
+select b from tb3 partition(p1_dsp2) order by b;
+select b from tb3 partition(p1_dspd) order by b;
+show create table tb3;
+
+# logical non-template
+create tablegroup tg4;
+create table tb4(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+) tablegroup="tg4";
+insert into tb4 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+insert into tb4 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+
+alter tablegroup tg4 merge partitions p2, pd to p2_d;
+select b from tb4 partition(p2_d) order by b;
+show create table tb4;
+
+# normal partition
+create tablegroup tg5;
+create table tb5(
+a int,
+b int
+) partition by list(a) (
+partition p1 values in(1),
+partition p2 values in(2),
+partition pd values in(default)
+);
+insert into tb5 values(1,1),(2,2),(3,3);
+alter table tb5 merge partitions p1, pd to p1_d;
+select a from tb5 partition(p1_d) order by a;
+select a from tb5 partition(p2) order by a;
+show create table tb5;
+  
+# test table
+# template
+create table tb6(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb6 values(1, '1'),(1,'2'),(1,'3'),(1,'4'),(1,'5'),(1,'6'),(1,'7'),(1,'8');
+insert into tb6 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb6 values(5, '1'),(5,'2'),(5,'3'),(5,'4'),(5,'5'),(5,'6'),(5,'7'),(5,'8');
+
+alter table tb6 merge subpartitions sp1, spd to sp1_d;
+select b from tb6 order by b;
+select b from tb6 partition(p1sp1_d) order by b;
+select b from tb6 partition(p1sp2) order by b;
+select b from tb6 partition(p2sp1_d) order by b;
+select b from tb6 partition(p2sp2) order by b;
+select b from tb6 partition(pdsp1_d) order by b;
+select b from tb6 partition(pdsp2) order by b;
+show create table tb6;
+  
+# non-template
+create table tb7(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb7 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+
+alter table tb7 merge subpartitions p2sp1, p2spd to p2sp1_d;
+select b from tb7 partition(p2) order by b;
+select b from tb7 partition(p2sp1_d) order by b;
+select b from tb7 partition(p2sp2) order by b;
+show create table tb7;
+  
+# logical-template
+create table tb8(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb8 values(1, '1'),(1,'2'),(1,'3'),(1,'4'),(1,'5'),(1,'6'),(1,'7'),(1,'8');
+insert into tb8 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+insert into tb8 values(5, '1'),(5,'2'),(5,'3'),(5,'4'),(5,'5'),(5,'6'),(5,'7'),(5,'8');
+
+alter table tb8 merge partitions p1, pd to p1_d;
+select b from tb8 order by b;
+select b from tb8 partition(p1_dsp1) order by b;
+select b from tb8 partition(p1_dsp2) order by b;
+select b from tb8 partition(p1_dspd) order by b;
+show create table tb8;
+  
+# logical non-template
+create table tb9(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1spd VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2spd VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3"),
+SUBPARTITION p3spd VALUES IN (default)
+)
+);
+insert into tb9 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6'),(2,'7'),(2,'8');
+insert into tb9 values(3, '1'),(3,'2'),(3,'3'),(3,'4'),(3,'5'),(3,'6'),(3,'7'),(3,'8');
+
+alter table tb9 merge partitions p2, pd to p2_d;
+select b from tb9 partition(p2_d) order by b;
+show create table tb9;
+  
+# normal partition
+create table tb10(
+a int,
+b int
+) partition by list(a) (
+partition p1 values in(1),
+partition p2 values in(2),
+partition pd values in(default)
+);
+insert into tb10 values(1,1),(2,2),(3,3);
+alter table tb10 merge partitions p1, pd to p1_d;
+select a from tb10 partition(p1_d) order by a;
+select a from tb10 partition(p2) order by a;
+show create table tb10;
+

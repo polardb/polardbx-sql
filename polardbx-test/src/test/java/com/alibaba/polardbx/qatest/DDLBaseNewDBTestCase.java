@@ -717,7 +717,13 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             if (isMySQL80()) {
                 return rs.getString("Create Table").replaceAll(" CHARACTER SET \\w+", "")
                     .replaceAll(" COLLATE \\w+", "")
-                    .replaceAll(" DEFAULT COLLATE = \\w+", "");
+                    .replaceAll(" DEFAULT COLLATE = \\w+", "")
+                    .replaceAll(" int ", " int(11) ")
+                    .replaceAll(" bigint ", " bigint(11) ")
+                    .replaceAll(" int,", " int(11),")
+                    .replaceAll(" bigint,", " bigint(11),")
+                    .replaceAll(" int\n", " int(11)\n")
+                    .replaceAll(" bigint\n", " bigint(11)\n");
             }
             return rs.getString("Create Table").replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
         } catch (SQLException e) {

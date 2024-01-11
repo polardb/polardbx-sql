@@ -1,0 +1,498 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup t_a_t_s_tg1;
+create tablegroup t_a_t_s_tg2;
+create tablegroup t_a_t_s_tg3;
+create tablegroup t_a_t_s_tg4;
+create tablegroup t_a_t_s_tg5;
+create tablegroup t_a_t_s_tg6;
+create tablegroup t_a_t_s_tg7;
+create tablegroup t_a_t_s_tg8;
+create tablegroup t_a_t_s_tg9;
+create tablegroup t_a_t_s_tg10;
+create tablegroup t_a_t_s_tg11;
+create table if not exists st_1(a int) single;
+create table if not exists st_2(b varchar(20)) single;
+create table if not exists bt_1(a int) broadcast;
+create table if not exists bt_2(b varchar(20)) broadcast;
+alter table st_1 set tablegroup=t_a_t_s_tg1;
+alter table st_2 set tablegroup=t_a_t_s_tg1;
+## error_msg: $# change tablegroup of broadcast table is not allow #$
+alter table bt_1 set tablegroup=t_a_t_s_tg1;
+change tablegroup of broadcast table is not allow
+create table if not exists pt_k_1(a int) partition by key(a) partitions 2;
+create table if not exists pt_k_2(b int) partition by key(b) partitions 3;
+create table if not exists pt_k_3(c bigint) partition by key(c) partitions 4;
+create table if not exists pt_k_4(a int, b int) partition by key(a,b) partitions 5;
+create table if not exists pt_k_5(a int, b bigint) partition by key(a,b) partitions 6;
+create table if not exists pt_k_6(a bigint, b int) partition by key(a,b) partitions 2;
+create table if not exists pt_k_7(a varchar(20)) partition by key(a) partitions 3;
+create table if not exists pt_k_8(b varchar(30)) partition by key(b) partitions 4;
+create table if not exists pt_k_9(a datetime) partition by key(a) partitions 5;
+create table if not exists pt_k_10(a datetime, b datetime) partition by key(a,b) partitions 6;
+alter table pt_k_1 split partition p1;
+alter table pt_k_6 split into partitions 3 by hot value(88);
+## error_msg: $# is not match to table #$
+alter table pt_k_1 set tablegroup=t_a_t_s_tg1;
+is not match to table
+alter table pt_k_1 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_k_2 set tablegroup=t_a_t_s_tg2 force;
+## error_msg: $# is not match to table #$
+alter table pt_k_3 set tablegroup=t_a_t_s_tg2 force;
+is not match to table
+alter table pt_k_4 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_k_5 set tablegroup=t_a_t_s_tg2 force;
+## error_msg: $# is not match to table #$
+alter table pt_k_6 set tablegroup=t_a_t_s_tg2 force;
+is not match to table
+alter table pt_k_6 set tablegroup=t_a_t_s_tg10 force;
+## error_msg: $# are not compatible with tablegroup #$
+alter table pt_k_7 set tablegroup=t_a_t_s_tg10 force;
+are not compatible with tablegroup
+alter table pt_k_7 set tablegroup=t_a_t_s_tg4 force;
+## error_msg: $# is not match to table #$
+alter table pt_k_8 set tablegroup=t_a_t_s_tg4 force;
+is not match to table
+alter table pt_k_8 set tablegroup=t_a_t_s_tg5 force;
+## error_msg: $# is not match to table #$
+alter table pt_k_9 set tablegroup=t_a_t_s_tg2 force;
+is not match to table
+alter table pt_k_9 set tablegroup=t_a_t_s_tg6 force;
+alter table pt_k_10 set tablegroup=t_a_t_s_tg6 force;
+create table if not exists pt_h_1(a int, b int) partition by hash(a,b) partitions 2;
+create table if not exists pt_h_2(b bigint, c varchar(20)) partition by hash(b,c) partitions 3;
+create table if not exists pt_h_3(a bigint, c varchar(30)) partition by hash(a,c) partitions 4;
+alter table pt_h_1 split partition p1;
+alter table pt_h_1 set tablegroup=t_a_t_s_tg7 force;
+## error_msg: $# is not match to table #$
+alter table pt_h_2 set tablegroup=t_a_t_s_tg7 force;
+is not match to table
+alter table pt_h_2 set tablegroup=t_a_t_s_tg8 force;
+## error_msg: $# is not match to table #$
+alter table pt_h_3 set tablegroup=t_a_t_s_tg8 force;
+is not match to table
+create table if not exists pt_r_1(a int, b int) partition by range(a) (partition p1 values less than(20), partition p3 values less than(maxvalue));
+create table if not exists pt_r_2(b int) partition by range(b) (partition p4 values less than(10), partition p5 values less than(50));
+create table if not exists pt_r_3(c bigint) partition by range(c) (partition p5 values less than(10), partition p7 values less than(maxvalue));
+create table if not exists pt_r_4(d datetime) partition by range(year(d)) (partition p10 values less than(15), partition p30 values less than(90));
+alter table pt_r_1 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_r_2 set tablegroup=t_a_t_s_tg2 force;
+## error_msg: $# is not match to table #$
+alter table pt_r_3 set tablegroup=t_a_t_s_tg2 force;
+is not match to table
+alter table pt_r_3 set tablegroup=t_a_t_s_tg3 force;
+alter table pt_r_3 set tablegroup=t_a_t_s_tg9 force;
+alter table pt_r_4 set tablegroup=t_a_t_s_tg11 force;
+create table if not exists pt_rc_1(a int, b int) partition by range columns(a,b) (partition p1 values less than(20,20), partition p3 values less than(200,20));
+create table if not exists pt_rc_2(a int, b bigint) partition by range columns(a,b) (partition p4 values less than(20, 20), partition p3 values less than(200,100));
+create table if not exists pt_rc_3(d datetime, e datetime) partition by range columns(d,e) (partition p10 values less than('2022-01-12 10:20','2022-02-12 10:20'), partition p30 values less than('2025-01-12 10:20','2023-01-12 10:20'));
+alter table pt_rc_1 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_rc_2 set tablegroup=t_a_t_s_tg2 force;
+## error_msg: $# is not match to table #$
+alter table pt_rc_3 set tablegroup=t_a_t_s_tg9 force;
+is not match to table
+alter table pt_rc_3 set tablegroup=t_a_t_s_tg6 force;
+create table if not exists pt_l_1(a int, b int) partition by list(a) (partition p1 values in(1,2,3), partition p3 values in(4,5,6));
+create table if not exists pt_l_2(a1 int, b int) partition by list(b) (partition p1 values in(1,2,3), partition p3 values in(default));
+create table if not exists pt_l_3(a3 datetime, b int) partition by list(year(a3)) (partition p4 values in(1,2,3), partition p21 values in(default));
+alter table pt_l_1 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_l_2 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_l_3 set tablegroup=t_a_t_s_tg11 force;
+create table if not exists pt_lc_1(a int, b int) partition by list columns(a,b) (partition p1 values in((1,2),(2,3)), partition p3 values in((3,5),(6,7)));
+create table if not exists pt_lc_2(a1 int, b bigint) partition by list columns(b,a1) (partition p1 values in((1,2),(2,3)), partition p3 values in((3,5),(6,7)), partition p21 values in(default));
+create table if not exists pt_lc_4(a3 varchar(20), b int) partition by list columns(a3,b) (partition p4 values in(('1',1),('2',2),('3',3)), partition p21 values in(('default',2)));
+alter table pt_lc_1 set tablegroup=t_a_t_s_tg2 force;
+alter table pt_lc_2 set tablegroup=t_a_t_s_tg10 force;
+## error_msg: $# is not match to table #$
+alter table pt_lc_4 set tablegroup=t_a_t_s_tg5 force;
+is not match to table
+alter table pt_lc_4 set tablegroup=t_a_t_s_tg4 force;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_1;
+Table,Create Table
+pt_k_1,CREATE TABLE `pt_k_1` (
+	`a` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_2;
+Table,Create Table
+pt_k_2,CREATE TABLE `pt_k_2` (
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_3;
+Table,Create Table
+pt_k_3,CREATE TABLE `pt_k_3` (
+	`c` bigint(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_4;
+Table,Create Table
+pt_k_4,CREATE TABLE `pt_k_4` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_5;
+Table,Create Table
+pt_k_5,CREATE TABLE `pt_k_5` (
+	`a` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_6;
+Table,Create Table
+pt_k_6,CREATE TABLE `pt_k_6` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 6
+(PARTITION p1 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (2447782206554327989,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (2447782206554327990,-3074457345618258604) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (2447782206554327990,3074457345618258600) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (2447782206554327991,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p7 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg10`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_7;
+Table,Create Table
+pt_k_7,CREATE TABLE `pt_k_7` (
+	`a` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3074457345618258603) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg4`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_8;
+Table,Create Table
+pt_k_8,CREATE TABLE `pt_k_8` (
+	`b` varchar(30) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg5`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_9;
+Table,Create Table
+pt_k_9,CREATE TABLE `pt_k_9` (
+	`a` datetime DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 5
+(PARTITION p1 VALUES LESS THAN (-5534023222112865481) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (-1844674407370955159) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (1844674407370955163) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (5534023222112865485) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg6`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_k_10;
+Table,Create Table
+pt_k_10,CREATE TABLE `pt_k_10` (
+	`a` datetime DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 5
+(PARTITION p1 VALUES LESS THAN (-5534023222112865481,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (-1844674407370955159,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (1844674407370955163,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (5534023222112865485,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg6`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_h_1;
+Table,Create Table
+pt_h_1,CREATE TABLE `pt_h_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg7`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_h_2;
+Table,Create Table
+pt_h_2,CREATE TABLE `pt_h_2` (
+	`b` bigint(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`b`,`c`)
+PARTITIONS 3
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3074457345618258603) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg8`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_h_3;
+Table,Create Table
+pt_h_3,CREATE TABLE `pt_h_3` (
+	`a` bigint(20) DEFAULT NULL,
+	`c` varchar(30) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_c` USING BTREE (`a`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`c`)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_r_1;
+Table,Create Table
+pt_r_1,CREATE TABLE `pt_r_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_r_2;
+Table,Create Table
+pt_r_2,CREATE TABLE `pt_r_2` (
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_r_3;
+Table,Create Table
+pt_r_3,CREATE TABLE `pt_r_3` (
+	`c` bigint(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`c`)
+(PARTITION p5 VALUES LESS THAN (10) ENGINE = InnoDB,
+ PARTITION p7 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg9`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_r_4;
+Table,Create Table
+pt_r_4,CREATE TABLE `pt_r_4` (
+	`d` datetime DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`d`))
+(PARTITION p10 VALUES LESS THAN (15) ENGINE = InnoDB,
+ PARTITION p30 VALUES LESS THAN (90) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg11`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_rc_1;
+Table,Create Table
+pt_rc_1,CREATE TABLE `pt_rc_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_rc_2;
+Table,Create Table
+pt_rc_2,CREATE TABLE `pt_rc_2` (
+	`a` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_rc_3;
+Table,Create Table
+pt_rc_3,CREATE TABLE `pt_rc_3` (
+	`d` datetime DEFAULT NULL,
+	`e` datetime DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_d_e` USING BTREE (`d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`,`e`)
+PARTITIONS 5
+(PARTITION p1 VALUES LESS THAN (-5534023222112865481,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (-1844674407370955159,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (1844674407370955163,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (5534023222112865485,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg6`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_l_1;
+Table,Create Table
+pt_l_1,CREATE TABLE `pt_l_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_l_2;
+Table,Create Table
+pt_l_2,CREATE TABLE `pt_l_2` (
+	`a1` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_l_3;
+Table,Create Table
+pt_l_3,CREATE TABLE `pt_l_3` (
+	`a3` datetime DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a3` USING BTREE (`a3`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`a3`))
+(PARTITION p10 VALUES LESS THAN (15) ENGINE = InnoDB,
+ PARTITION p30 VALUES LESS THAN (90) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg11`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_lc_1;
+Table,Create Table
+pt_lc_1,CREATE TABLE `pt_lc_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+(PARTITION p3 VALUES LESS THAN (-4611686018427387903,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg2`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_lc_2;
+Table,Create Table
+pt_lc_2,CREATE TABLE `pt_lc_2` (
+	`a1` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_b_a1` USING BTREE (`b`, `a1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`a1`)
+PARTITIONS 6
+(PARTITION p1 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (2447782206554327989,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (2447782206554327990,-3074457345618258604) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (2447782206554327990,3074457345618258600) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (2447782206554327991,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p7 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg10`
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show full create table pt_lc_4;
+Table,Create Table
+pt_lc_4,CREATE TABLE `pt_lc_4` (
+	`a3` varchar(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a3_b` USING BTREE (`a3`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a3`,`b`)
+PARTITIONS 3
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3074457345618258603,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `t_a_t_s_tg4`

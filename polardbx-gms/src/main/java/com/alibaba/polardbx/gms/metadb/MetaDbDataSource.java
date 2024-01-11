@@ -534,7 +534,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
         return instance;
     }
 
-    public static void initMetaDbDataSource(String addrs, String dbName, String props, String usr, String pwd) {
+    public synchronized static void initMetaDbDataSource(String addrs, String dbName, String props, String usr,
+                                                         String pwd) {
 
         if (addrs == null || addrs.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Init meta db error, url is null");
@@ -548,8 +549,13 @@ public class MetaDbDataSource extends AbstractLifecycle {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Init meta db error, passwd is null");
         }
 
-        MetaDbDataSource metaDbDataSource = new MetaDbDataSource(addrs, dbName, props, usr, pwd);
-        instance = metaDbDataSource;
+        if (instance == null) {
+            /**
+             * Only allow creating the MetaDbDataSource object once for the whole cn-node during initing
+             */
+            MetaDbDataSource metaDbDataSource = new MetaDbDataSource(addrs, dbName, props, usr, pwd);
+            instance = metaDbDataSource;
+        }
 
         // Init meta db datasource
         try {

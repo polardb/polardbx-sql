@@ -1,0 +1,303 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======== r-key ===========
+
+## r-key-tp
+drop table if exists r_key_tp;
+create table if not exists r_key_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by key (a,b)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_key_tp;
+
+## r-key-tp2, use subpartition template
+drop table if exists r_key_tp2;
+create table if not exists r_key_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_key_tp2;
+
+## r-key-ntp1
+drop table if exists r_key_ntp1;
+create table if not exists r_key_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+(
+partition p0 values less than (2020) subpartitions 2,
+partition p1 values less than (2021) subpartitions 3,
+partition p2 values less than (maxvalue) subpartitions 4
+);
+show create table r_key_ntp1;
+
+## r-key-ntp2
+drop table if exists r_key_ntp2;
+create table if not exists r_key_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+(
+partition p0 values less than (2020) (
+subpartition sp0,
+subpartition sp1
+),
+partition p1 values less than (2021) subpartitions 3 (
+subpartition sp2,
+subpartition sp3,
+subpartition sp4
+),
+partition p2 values less than (maxvalue) subpartitions 4 (
+subpartition sp5,
+subpartition sp6,
+subpartition sp7,
+subpartition sp8
+)
+);
+show create table r_key_ntp2;
+
+
+##======== rc-key ===========
+## rc-key-tp
+drop table if exists rc_key_tp;
+create table if not exists rc_key_tp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+subpartitions 4
+( partition p0 values less than ('2020-01-01','abc'),
+  partition p1 values less than ('2022-01-01', 'efg'),
+  partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_key_tp;
+
+## rc-key-tp2
+drop table if exists rc_key_tp2;
+create table if not exists rc_key_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01', 'efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_key_tp2;
+
+# rc-key-tp3, use subpartition template, specify subpart temp name
+drop table if exists rc_key_tp3;
+create table if not exists rc_key_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+subpartition abc,
+subpartition sp2,
+subpartition sp3,
+subpartition sp4
+)
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01', 'efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_key_tp3;
+
+## rc-key-tp4, use subpartition template, specify subpart temp name and bound value
+drop table if exists rc_key_tp4;
+create table if not exists rc_key_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+subpartition template
+(
+subpartition sp1 values less than (-5,5),
+subpartition sp2 values less than (3,9223372036854775807),
+subpartition sp3 values less than (4611686018427387905,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+)
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_key_tp4;
+
+
+## rc-key-ntp, use subpartitions
+drop table if exists rc_key_ntp1;
+create table if not exists rc_key_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(
+partition p0 values less than ('2020-01-01','abc') subpartitions 2,
+partition p1 values less than ('2023-01-01', 'efg') subpartitions 3,
+partition p2 values less than (maxvalue,maxvalue) subpartitions 4
+);
+show create table rc_key_ntp1;
+
+## rc-key-ntp, use subpartitions
+drop table if exists rc_key_ntp2;
+create table if not exists rc_key_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(
+partition p0 values less than ('2020-01-01','abc') subpartitions 2,
+partition p1 values less than ('2023-01-01', 'efg') subpartitions 3,
+partition p2 values less than (maxvalue,maxvalue) subpartitions 4
+);
+show create table rc_key_ntp2;
+
+
+## rc-key-ntp, specify each subpart names
+drop table if exists rc_key_ntp3;
+create table if not exists rc_key_ntp3 (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(partition p0 values less than ('2020-01-01','abc') (
+    subpartition sp0,
+    subpartition sp1
+  ),partition p1 values less than ('2023-01-01', 'efg') (
+    subpartition sp2,
+    subpartition sp3,
+    subpartition sp4
+  ),partition p2 values less than (maxvalue,maxvalue) (
+    subpartition sp5,
+    subpartition sp6,
+    subpartition sp7,
+    subpartition sp8
+  )
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_key_ntp3;
+
+## rc-key-ntp4,  specify each subpart name and bound value
+drop table if exists rc_key_ntp4;
+create table if not exists rc_key_ntp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(
+partition p0 values less than ('2020-01-01','abc') subpartitions 2 (
+  subpartition sp0 values less than (-5,5),
+  subpartition sp1 values less than (9223372036854775807,9223372036854775807)
+  )
+,partition p1 values less than ('2023-01-01', 'efg')subpartitions 3 (
+  subpartition sp2 values less than (-5,5),
+  subpartition sp3 values less than (3,9223372036854775807),
+  subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+  )
+,partition p2 values less than (maxvalue,maxvalue) subpartitions 4 (
+  subpartition sp5 values less than (-5,5),
+  subpartition sp6 values less than (3,9223372036854775807),
+  subpartition sp7 values less than (4611686018427387905,9223372036854775807),
+  subpartition sp8 values less than (9223372036854775807,9223372036854775807)
+  )
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_key_ntp4;
+
+## rc-key-ntp5,  specify each subpart name and bound value
+drop table if exists rc_key_ntp5;
+create table if not exists rc_key_ntp5 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(
+partition p0 values less than ('2020-01-01','abc') (
+subpartition sp0 values less than (-5,5),
+subpartition sp1 values less than (9223372036854775807,9223372036854775807)
+),
+partition p1 values less than ('2023-01-01', 'efg') (
+subpartition sp2 values less than (-5,5),
+subpartition sp3 values less than (3,9223372036854775807),
+subpartition sp4 values less than (9223372036854775807,9223372036854775807)
+),
+partition p2 values less than (maxvalue,maxvalue) (
+subpartition sp5 values less than (-5,5),
+subpartition sp6 values less than (3,9223372036854775807),
+subpartition sp7 values less than (4611686018427387905,9223372036854775807),
+subpartition sp8 values less than (9223372036854775807,9223372036854775807)
+)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_key_ntp5;
+
+

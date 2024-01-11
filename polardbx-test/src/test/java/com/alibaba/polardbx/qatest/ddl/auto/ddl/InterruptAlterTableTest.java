@@ -234,6 +234,9 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     public void t52_partial_physical_add_with_timeout() throws SQLException {
         // Expected: partial shards hit timeout, but tolerated.
         String columnInfo = "c5 int(11)";
+        if (isMySQL80()) {
+            columnInfo = "c5 int";
+        }
         String sql = String.format(ALTER_TABLE, ADD_COLUMN, columnInfo);
         try {
             injectDDLTimeout(1000);

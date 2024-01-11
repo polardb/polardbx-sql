@@ -1,0 +1,117 @@
+## DISABLE_FAST_SQL_PARSER
+select Mymurmurhash64var('1');
+Mymurmurhash64var('1')
+746762829127501960
+select Mymurmurhash64bint(1);
+Mymurmurhash64bint(1)
+746762829127501960
+drop tablegroup if exists icbc_hash_var_tg;
+create tablegroup if not exists icbc_hash_var_tg
+partition by udf_hash(bigint)
+partition 6
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+)
+locality='hash_range_sequential_placement=on';
+create table uh_t1(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(Mymurmurhash64var(c1))
+tablegroup=icbc_hash_var_tg;
+create table uh_t2(
+c1 varchar(32) not null,
+c2 varchar(32) not null
+)
+partition by udf_hash(Mymurmurhash64var(c1))
+tablegroup=icbc_hash_var_tg;
+insert into uh_t1 values ('1','1'),('2','2'),('3','3'),('4','4');
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=1;
+c1,route_rs,hash_rs
+1,p6,(746762829127501960)
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=2;
+c1,route_rs,hash_rs
+2,p6,(602994839685422785)
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=3;
+c1,route_rs,hash_rs
+3,p1,(-3266576381013309554)
+select c1, part_route('', 'uh_t1', c1) as route_rs, part_hash('', 'uh_t1', c1) as hash_rs from uh_t1 where c1=4;
+c1,route_rs,hash_rs
+4,p6,(2090661578966068036)
+show create table uh_t1;
+Table,Create Table
+uh_t1,CREATE TABLE `uh_t1` (
+	`c1` varchar(32) NOT NULL,
+	`c2` varchar(32) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+/* LOCALITY='hash_range_sequential_placement=on' */
+PARTITION BY UDF_HASH(mymurmurhash64var(`c1`))
+PARTITIONS 6
+(PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (5) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (6) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `icbc_hash_var_tg`
+drop tablegroup if exists icbc_hash_bint_tg;
+create tablegroup if not exists icbc_hash_bint_tg
+partition by udf_hash(bigint)
+partition 6
+(
+partition p1 values less than (2),
+partition p2 values less than (3),
+partition p3 values less than (4),
+partition p4 values less than (5),
+partition p5 values less than (6),
+partition p6 values less than (9223372036854775807)
+)
+locality='hash_range_sequential_placement=on';
+create table uh_t3(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(Mymurmurhash64bint(c1))
+tablegroup=icbc_hash_bint_tg;
+create table uh_t4(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(Mymurmurhash64bint(c1))
+tablegroup=icbc_hash_bint_tg;
+insert into uh_t3 values ('1','1'),('2','2'),('3','3'),('4','4');
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=1;
+c1,route_rs,hash_rs
+1,p6,(746762829127501960)
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=2;
+c1,route_rs,hash_rs
+2,p6,(602994839685422785)
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=3;
+c1,route_rs,hash_rs
+3,p1,(-3266576381013309554)
+select c1, part_route('', 'uh_t3', c1) as route_rs, part_hash('', 'uh_t3', c1) as hash_rs from uh_t3 where c1=4;
+c1,route_rs,hash_rs
+4,p6,(2090661578966068036)
+show create table uh_t3;
+Table,Create Table
+uh_t3,CREATE TABLE `uh_t3` (
+	`c1` bigint(20) NOT NULL,
+	`c2` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+/* LOCALITY='hash_range_sequential_placement=on' */
+PARTITION BY UDF_HASH(mymurmurhash64bint(`c1`))
+PARTITIONS 6
+(PARTITION p1 VALUES LESS THAN (2) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (5) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (6) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `icbc_hash_bint_tg`

@@ -1,0 +1,33 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+DROP TABLE IF EXISTS `hash_dayofmonth`;
+CREATE TABLE IF NOT EXISTS`hash_dayofmonth` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFMONTH(`d`))
+PARTITIONS 8;
+select part_route('', 'hash_dayofmonth', '2022-02-28');
+part_route('', 'hash_dayofmonth', '2022-02-28')
+p1
+select part_route('', 'hash_dayofmonth', '2022-02-31');
+part_route('', 'hash_dayofmonth', '2022-02-31')
+p5
+select part_route('', 'hash_dayofmonth', '2024-02-29');
+part_route('', 'hash_dayofmonth', '2024-02-29')
+p7
+select part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.499');
+part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.499')
+p3
+select part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.500');
+part_route('', 'hash_dayofmonth', '2024-12-31 23:59:59.500')
+p1
+select part_route('', 'hash_dayofmonth', '2025-01-01 00:00:00.000');
+part_route('', 'hash_dayofmonth', '2025-01-01 00:00:00.000')
+p1
+explain select d from hash_dayofmonth where d between '2022-02-28' and '2022-03-01';
+Logical ExecutionPlan
+PhyTableOperation(tables="hash_dayofmonth[p1]", sql="SELECT `hash_dayofmonth`.`d` AS `d` FROM ? AS `hash_dayofmonth` WHERE (`hash_dayofmonth`.`d` BETWEEN ? AND ?)", params="2022-03-01,2022-02-28")
+explain select d from hash_dayofmonth where d between '2024-02-28' and '2024-03-01';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hash_dayofmonth[p1,p7]", shardCount=2, sql="SELECT `d` FROM `hash_dayofmonth` AS `hash_dayofmonth` WHERE (`d` BETWEEN ? AND ?)")

@@ -102,6 +102,7 @@ public class DefaultAsExprTest extends PartitionAutoLoadSqlTestBase {
                     tmpRs = tmpRs.replace("DEFAULT_GENERATED", "");
 
                     tmpRs = tmpRs.replace("USING HASH ", "");
+                    tmpRs = tmpRs.replace("int(11) ", "int ");
 
                     rsCmpArr[i] = tmpRs;
                 }

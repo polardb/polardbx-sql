@@ -5,6 +5,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -320,6 +321,8 @@ public class Rds80DirectTest extends AutoCrudBasedLockTestCase {
         }
     }
 
+    // 8032 not supported
+    @Ignore
     @Test
     public void testInventorHint() throws SQLException {
         if (!isMySQL80()) {

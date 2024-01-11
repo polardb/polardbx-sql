@@ -1,0 +1,124 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_gsi_drds;
+create database inspect_gsi_drds mode=drds;
+use inspect_gsi_drds;
+# 完全重复的gsi
+create table tb1(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g1(name) covering(status) dbpartition by hash(name),
+  unique global index g2(name) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb1;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb1,g1,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g1, g2;,alter table `tb1` alter index `g1` invisible;,alter table `tb1` drop index `g1`;
+inspect_gsi_drds,tb1,g2,UNIQUE GLOBAL INDEX,name,id,0,null,0.0,found duplicate global indexes: g1, g2, covering column {id, status} is recommended;,alter table `tb1` alter index `g2` invisible;,alter table `tb1` drop index `g2`;
+alter table `tb1` add unique global index `g2` (`name`) covering(`id`,`status`) dbpartition by hash(`name`);
+create table tb2(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g3(name) covering(status) dbpartition by hash(name),
+  clustered index g4(name) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb2;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb2,g3,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g3, g4;,alter table `tb2` alter index `g3` invisible;,alter table `tb2` drop index `g3`;
+create table tb3(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g5(name) covering(status, detail, shop_id) dbpartition by hash(name),
+  global index g6(name) covering(status) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb3;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb3,g6,GLOBAL INDEX,name,id,status,0,null,0.0,found duplicate global indexes: g5, g6;,alter table `tb3` alter index `g6` invisible;,alter table `tb3` drop index `g6`;
+# 部分列重复的GSI
+create table tb4(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g7(name, code) covering(status, detail, shop_id) dbpartition by hash(name),
+  global index g8(name) covering(status) dbpartition by hash(name),
+  local index idx1(name, code)
+) dbpartition by hash(id);
+inspect full index from tb4;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb4,g8,GLOBAL INDEX,name,id,status,0,null,0.0,index columns duplicate: g7, g8;,alter table `tb4` alter index `g8` invisible;,alter table `tb4` drop index `g8`;
+create table tb5(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g9(name, code) covering(status) dbpartition by hash(name),
+  global index g10(name) covering(status, detail, shop_id) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb5;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb5,g10,GLOBAL INDEX,name,id,shop_id,status,detail,0,null,0.0,index columns duplicate: g10, g9;,alter table `tb5` alter index `g10` invisible;,alter table `tb5` drop index `g10`;
+alter table `tb5` add local index `g10` (`name`);
+inspect_gsi_drds,tb5,g9,GLOBAL INDEX,name,code,id,status,0,null,0.0,index columns duplicate: g10, g9, covering column {detail, id, shop_id, status} is recommended;,alter table `tb5` alter index `g9` invisible;,alter table `tb5` drop index `g9`;
+alter table `tb5` add global index `g9` (`name`,`code`) covering(`detail`,`id`,`shop_id`,`status`) dbpartition by hash(`name`);
+create table tb6(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g11(name, code) covering(status) dbpartition by hash(name),
+  unique global index g12(name) covering(status, detail, shop_id) dbpartition by hash(name)
+) dbpartition by hash(id);
+inspect full index from tb6;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb6,g11,GLOBAL INDEX,name,code,id,status,0,null,0.0,index columns duplicate: g11, g12;,alter table `tb6` alter index `g11` invisible;,alter table `tb6` drop index `g11`;
+alter table `tb6` add local index `g11` (`name`,`code`);
+inspect_gsi_drds,tb6,g12,UNIQUE GLOBAL INDEX,name,id,shop_id,status,detail,0,null,0.0,index columns duplicate: g11, g12, covering column {code, detail, id, shop_id, status} is recommended;,alter table `tb6` alter index `g12` invisible;,alter table `tb6` drop index `g12`;
+alter table `tb6` add unique global index `g12` (`name`) covering(`code`,`detail`,`id`,`shop_id`,`status`) dbpartition by hash(`name`);
+# duplicate gsi partition key
+create table tb10(
+  id int,
+  dt time,
+  primary key(id),
+  key `idx` (`dt`, `id`),
+  global index g16(dt,id) dbpartition by hash(id)
+) dbpartition by hash(id);
+inspect full index from tb10;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_gsi_drds,tb10,g16,GLOBAL INDEX,dt,id,,0,null,0.0,ineffective gsi `g16` because it has the same rule as primary table,alter table `tb10` alter index `g16` invisible;,alter table `tb10` drop index `g16`;
+use polardbx;
+drop database if exists inspect_gsi_drds;

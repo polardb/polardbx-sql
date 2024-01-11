@@ -1,0 +1,62 @@
+## DISABLE_FAST_SQL_PARSER
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,101),
+  partition p2 values in (99,100,98),
+  partition p3 values in (200,201)
+);
+create tablegroup tbl_tg;
+alter table tbl set tablegroup=tbl_tg;
+## test add value
+alter tablegroup tbl_tg modify partition p3 add values (202,203);
+show create table tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,101) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (98,99,100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201,202,203) ENGINE = InnoDB)
+tablegroup = `tbl_tg`
+# clear data
+delete from tbl where 1=1;
+## test insert into new added values: 202
+insert into tbl values (202);
+select * from tbl partition(p3);
+a
+202
+## test insert into new added values: 203
+insert into tbl values (203);
+select * from tbl partition(p3);
+a
+202
+203
+## prepare data 200
+insert into tbl values (200);
+select * from tbl partition(p3);
+a
+200
+202
+203
+## test drop value
+alter tablegroup tbl_tg modify partition p3 drop values (200);
+show create table tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,101) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (98,99,100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (201,202,203) ENGINE = InnoDB)
+tablegroup = `tbl_tg`
+## check if exists value 200 in p3s
+select * from tbl partition(p3);
+a
+202
+203

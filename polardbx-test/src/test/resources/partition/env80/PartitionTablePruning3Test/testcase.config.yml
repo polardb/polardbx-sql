@@ -1,0 +1,8 @@
+test_list_part_posi
+test_semijoin_pruning
+test_decimal
+test_decimal2
+test_decimal_invalid
+test_decimal_sp
+test_decimal_endpoints
+test_decimal_gsi

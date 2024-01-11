@@ -1,0 +1,192 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists inspect_gsi_auto;
+create database inspect_gsi_auto mode=auto;
+use inspect_gsi_auto;
+  
+# 完全重复的gsi
+create table tb1(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g1(name) covering(status) partition by key(name),
+  unique global index g2(name) partition by key(name)
+) partition by key(id);
+
+inspect full index from tb1;
+
+create table tb2(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g3(name) covering(status) partition by key(name),
+  clustered index g4(name) partition by key(name)
+) partition by key(id);
+
+inspect full index from tb2;
+
+create table tb3(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g5(name) covering(status, detail, shop_id) partition by hash(name),
+  global index g6(name) covering(status) partition by hash(name)
+) partition by hash(id);
+
+inspect full index from tb3;
+  
+# 部分列重复的GSI
+create table tb4(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g7(name, code) covering(status, detail, shop_id) partition by key(name),
+  global index g8(name) covering(status) partition by key(name),
+  local index idx1(name, code)
+) partition by hash(id);
+
+inspect full index from tb4;
+
+create table tb5(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g9(name, code) covering(status) partition by hash(name),
+  global index g10(name) covering(status, detail, shop_id) partition by hash(name)
+) partition by hash(id);
+
+inspect full index from tb5;
+
+create table tb6(
+  id int,
+  name varchar(20),
+  code varchar(50),
+  shop_id int,
+  customer_id int,
+  voucher_id int,
+  status varchar(20),
+  detail varchar(120),
+  primary key(id),
+  global index g11(name, code) covering(status) partition by key(name),
+  unique global index g12(name) covering(status, detail, shop_id) partition by key(name)
+) partition by key(id);
+
+inspect full index from tb6;
+  
+# low efficient GSI
+create table tb7(
+  id int,
+  dt datetime,
+  primary key(id),
+  global index g13(dt) partition by hash(dt)
+) partition by hash(id);
+
+inspect full index from tb7;
+
+create table tb8(
+  id int,
+  dt timestamp,
+  primary key(id),
+  unique global index g14(dt) partition by hash(dt)
+) partition by hash(id);
+
+inspect full index from tb8;
+
+# duplicate gsi partition key
+create table tb10(
+  id int,
+  dt time,
+  primary key(id),
+  key `idx` (`dt`, `id`),
+  global index g16(dt,id) partition by key(id)
+) partition by key(id);
+
+inspect full index from tb10;
+
+create table tb11(
+  id int,
+  dt varchar(20),
+  key `idx`(`id`,`dt`),
+  global index g17(id, dt) partition by key(id, dt)
+) partition by key(id);
+
+inspect full index from tb11;
+
+# test auto partition table
+create table tb12(
+  id int,
+  dt time,
+  name varchar(20),
+  primary key(id),
+  index idx1(id, dt),
+  local index idx2(dt),
+  local index idx3(dt, name),
+  index idx4(name)
+);
+
+inspect full index from tb12;
+
+# shared column gsi中，生成local index的建议
+CREATE TABLE `tb13` (
+  `id` int(11) DEFAULT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `col1` varchar(20) DEFAULT NULL,
+  `col2` varchar(20) DEFAULT NULL,
+  GLOBAL INDEX `g18` (`name`) COVERING (`id`) PARTITION BY KEY(`name`),
+  GLOBAL INDEX `g19` (`name`, `col1`) COVERING (`id`) PARTITION BY HASH(`name`,`col1`),
+  GLOBAL INDEX `g20` (`name`, `col1`, `col2`) COVERING (`id`) PARTITION BY HASH(`name`,`col1`,`col2`)
+) PARTITION BY KEY(`id`);
+
+inspect full index from tb13;
+
+# 主表key分区，gsi hash分区
+CREATE TABLE `tb14` (
+`id` int(11) DEFAULT NULL,
+`name` varchar(20) DEFAULT NULL,
+`col1` varchar(20) DEFAULT NULL,
+`col2` varchar(20) DEFAULT NULL,
+GLOBAL INDEX `g1` (`id`) PARTITION BY hash(`id`)
+) PARTITION BY KEY(`id`, name);
+
+inspect full index from tb14;
+
+CREATE TABLE `tb15` (
+`id` int(11) DEFAULT NULL,
+`name` varchar(20) DEFAULT NULL,
+`col1` varchar(20) DEFAULT NULL,
+`col2` varchar(20) DEFAULT NULL,
+GLOBAL INDEX `g1` (`id`, `name`) PARTITION BY key(`id`, `name`)
+) PARTITION BY HASH(`id`);
+
+inspect full index from tb15;
+use polardbx;
+drop database if exists inspect_gsi_auto;

@@ -1,0 +1,58 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+create database if not exists `testConvertDrdsDb` mode=drds;
+use testConvertDrdsDb;
+## implicit pk(will create drds group sequence)
+create table `tb1` (
+`col1` int,
+`col2` int,
+global index `tb1_c1`(`col1`) dbpartition by hash(col1)
+) auto_increment= 200 dbpartition by hash(`col2`);
+## implicit sequence(drds: group seq --> auto: new seq)
+create table `tb2` (
+`col1` int not null auto_increment by group,
+`col2` int,
+global index `tb2_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) auto_increment= 200 dbpartition by hash(`col2`);
+## implicit sequence(drds: timebased seq --> auto: new seq)
+create table `tb3` (
+`col1` int not null auto_increment by time,
+`col2` int,
+global index `tb3_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) dbpartition by hash(`col2`);
+## implicit sequence(drds: simple seq --> auto: new seq)
+create table `tb4` (
+`col1` int not null auto_increment by simple,
+`col2` int,
+global index `tb4_c1`(`col1`) dbpartition by hash(col1),
+primary key(`col1`)
+) auto_increment= 200 dbpartition by hash(`col2`);
+## explicit sequence
+create group sequence seq1;
+create time sequence seq2;
+create simple sequence seq3 start with 400 increment by 5 maxvalue 100000;
+create database testConvertDbAuto as testConvertDrdsDb;
+RESULT
+ALL SUCCESS
+use testConvertDbAuto;
+show sequence where name = 'seq1';
+SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
+testConvertDbAuto,seq1,200001,N/A ,N/A  ,N/A   ,1,200001,9223372036854775807,N,NEW,pxc_seq_8cd19f750de3e9a68865ecd912c71402
+show sequence where name = 'seq3';
+SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
+testConvertDbAuto,seq3,401,N/A ,N/A  ,N/A   ,1,401,9223372036854775807,N,NEW,pxc_seq_537a5ac3c5236e2920fa8c63568f2ffc
+show sequence where name like '%tb1';
+SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
+testConvertDbAuto,AUTO_SEQ_tb1,200001,1,0,100000,N/A,N/A,N/A,N/A,GROUP,N/A
+show sequence where name like '%tb2';
+SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
+testConvertDbAuto,AUTO_SEQ_tb2,300001,N/A ,N/A  ,N/A   ,1,300001,9223372036854775807,N,NEW,pxc_seq_9414aace8472cdd79e5a842b8f7f2774
+show sequence where name like '%tb4';
+SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
+testConvertDbAuto,AUTO_SEQ_tb4,201,N/A ,N/A  ,N/A   ,1,201,9223372036854775807,N,NEW,pxc_seq_727f4672d59b50724512442e4be7045f

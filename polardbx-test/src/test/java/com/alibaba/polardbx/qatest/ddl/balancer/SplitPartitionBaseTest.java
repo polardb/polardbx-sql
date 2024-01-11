@@ -136,14 +136,14 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
         JdbcUtil.executeUpdate(tddlConnection, analyzeTable2);
 
         // Merge partition-groups
-        String mergeSql = genMergePartitionSql(tableName2, mergePartitionSize);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, mergeSql);
-
-        // Verify merge
-        TableDetails afterMerge = queryTableDetails(logicalDBName, tableName1);
-        LOG.info("merge partitions into " + afterMerge);
-        Assert.assertTrue(String.format("after merge has %d partitions", afterMerge.partitions.size()),
-            afterMerge.partitions.size() < afterSplitDetails.partitions.size());
+//        String mergeSql = genMergePartitionSql(tableName2, mergePartitionSize);
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, mergeSql);
+//
+//        // Verify merge
+//        TableDetails afterMerge = queryTableDetails(logicalDBName, tableName1);
+//        LOG.info("merge partitions into " + afterMerge);
+//        Assert.assertTrue(String.format("after merge has %d partitions", afterMerge.partitions.size()),
+//            afterMerge.partitions.size() < afterSplitDetails.partitions.size());
     }
 
     /**

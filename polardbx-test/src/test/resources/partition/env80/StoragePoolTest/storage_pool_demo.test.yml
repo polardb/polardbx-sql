@@ -1,0 +1,218 @@
+storageList: [$dn1, $dn2, $dn3, $dn4, $dn5, $dn6, $dn7, $dn8]
+testCases:
+  ## first pass, create database in old instance.
+  - prepareDDls:
+      - "drop database if exists old_auto_database2;"
+      - "drop database if exists old_auto_database;"
+      - "drop database if exists orders_comm1;"
+      - "drop database if exists orders_comm2;"
+      - "drop database if exists orders_comm3;"
+      - "drop database if exists test_db1;"
+      - "drop database if exists test_db2;"
+      - "drop database if exists test_db3;"
+      - "drop database if exists test_db4;"
+      - "drop storage pool __all_storage_pool"
+      - "create database if not exists old_auto_database mode = auto;"
+    dbNames: []
+    rejectDDls:
+    expectedSQLs:
+      - sql: "select * from information_schema.storage_pool_info"
+        result: ""
+      - sql: "select * from information_schema.locality_info"
+        result: ""
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+      localityValueCheck:
+      tableGroupMatchCheck:
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  ## second pass, create storage pool from old instance.
+  - prepareDDls:
+      - "use old_auto_database"
+      - "create table t1(a int, b int) partition by hash(a) partitions 24"
+      - "create storage pool sp1"
+    dbNames: ["old_auto_database"]
+    rejectDDls:
+      - ddl: "create storage pool sp1 dn_list='$dn7,$dn8'"
+        message: "duplicate storage pool name 'sp1' found!"
+    expectedSQLs:
+      - sql: "select * from information_schema.storage_pool_info"
+        result: ""
+    cleanupDDls:
+      - "use polardbx;"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "" ""
+#        - _default "$dn1,$dn2,$dn3,$dn4,$dn5,$dn6,$dn7,$dn8" $dn1
+      localityValueCheck:
+        - old_auto_database.t1 table ""
+      tableGroupMatchCheck:
+        - old_auto_database.t1 $tg1 ""
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  ## third pass, create storage pool from old instance.
+  - prepareDDls:
+      - "use polardbx;"
+      - "alter storage pool _default drain node '$dn3,$dn4,$dn5,$dn6,$dn7,$dn8'"
+    dbNames: ["old_auto_database"]
+    rejectDDls:
+      - ddl: "create storage pool sp1 dn_list='$dn7,$dn8'"
+        message: "duplicate storage pool name 'sp1' found!"
+    expectedSQLs:
+      - sql: "select * from information_schema.storage_pool_info"
+        result: ""
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "" ""
+        - _default "$dn1,$dn2" $dn1
+        - _recycle "$dn3,$dn4,$dn5,$dn6,$dn7,$dn8" ""
+      localityValueCheck:
+        - old_auto_database.t1 table ""
+      tableGroupMatchCheck:
+        - old_auto_database.t1 $tg1 ""
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - old_auto_database.t1 table "$dn1,$dn2"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "alter storage pool sp1 append node '$dn3,$dn4'"
+      - "create storage pool sp2 dn_list='$dn5,$dn6' undeletable_dn='$dn5'"
+      - "create storage pool sp3 dn_list='$dn7' undeletable_dn='$dn7'"
+    dbNames: ["old_auto_database"]
+    rejectDDls:
+      - ddl: "create storage pool sp2 dn_list='$dn8' undeletable_dn='$dn8'"
+        message: ""
+      - ddl: "create storage pool sp4 dn_list='$dn6' undeletable_dn='$dn6'"
+        message: ""
+    expectedSQLs:
+      - sql: "select * from information_schema.storage_pool_info"
+        result: ""
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7" "$dn7"
+        - _recycle "$dn8" ""
+        - _default "$dn1,$dn2" $dn1
+      localityValueCheck:
+        - old_auto_database.t1 table ""
+      tableGroupMatchCheck:
+        - old_auto_database.t1 $tg1 ""
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - old_auto_database.t1 table "$dn1,$dn2"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  ## forth pass, create some db.
+  - prepareDDls:
+      - "create database old_auto_database2 mode = auto;"
+      - "create database test_db1 mode = auto locality=\"storage_pools='sp1'\""
+      - "create database test_db2 mode = auto locality=\"storage_pools='sp2'\""
+      - "create database test_db3 mode = auto locality=\"storage_pools='sp1,sp2',primary_storage_pool='sp1'\""
+      - "use test_db1"
+      - "create table t2(a int) partition by hash(a);"
+    dbNames: ["old_auto_database", "test_db1", "test_db2", "test_db3"]
+    rejectDDls:
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7" "$dn7"
+        - _recycle "$dn8" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+      localityValueCheck:
+        - test_db1 database "storage_pools='sp1',primary_storage_pool='sp1'"
+        - test_db2 database "storage_pools='sp2',primary_storage_pool='sp2'"
+        - test_db3 database "storage_pools='sp1,sp2',primary_storage_pool='sp1'"
+      tableGroupMatchCheck:
+        - old_auto_database.t1 $tg1 ""
+        - test_db1.t2 $tg2 ""
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - old_auto_database.t1 table "$dn1,$dn2"
+        - test_db1.t2 table "$dn3,$dn4"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  ## fifth pass, alter storage pool.
+  - prepareDDls:
+      - "alter storage pool sp3 append node '$dn8'"
+    dbNames: ["old_auto_database", "test_db1", "test_db2", "test_db3"]
+    rejectDDls:
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7,$dn8" "$dn7"
+        - _recycle "" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+      localityValueCheck:
+        - test_db1 database "storage_pools='sp1',primary_storage_pool='sp1'"
+        - test_db2 database "storage_pools='sp2',primary_storage_pool='sp2'"
+        - test_db3 database "storage_pools='sp1,sp2',primary_storage_pool='sp1'"
+      tableGroupMatchCheck:
+        - old_auto_database.t1 $tg1 ""
+        - test_db1.t2 $tg2 ""
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - old_auto_database.t1 table "$dn1,$dn2"
+        - test_db1.t2 table "$dn3,$dn4"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  ## fifth pass, alter storage pool.
+cleanupDDls:
+  - "use polardbx;"
+#  - "drop database if exists old_auto_database2;"
+#  - "drop database if exists old_auto_database;"
+#  - "drop database if exists test_db1;"
+#  - "drop database if exists test_db2;"
+#  - "drop database if exists test_db3;"

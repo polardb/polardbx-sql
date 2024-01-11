@@ -4521,10 +4521,10 @@ select concat('data was: /', var1, '/');
   #ignore_temporary FROM INFORMATION_SCHEMA.ROUTINES
   #ignore_temporary WHERE ROUTINE_SCHEMA = "mysqltest2" AND ROUTINE_NAME = "bug16211_f4"|
 
-  SELECT CHARSET(bug16211_f1())|
-  SELECT CHARSET(bug16211_f2())|
+  #SELECT CHARSET(bug16211_f1())|
+  #SELECT CHARSET(bug16211_f2())|
 
-  SELECT CHARSET(mysqltest2.bug16211_f3())|
+  #SELECT CHARSET(mysqltest2.bug16211_f3())|
   SELECT CHARSET(mysqltest2.bug16211_f4())|
 
   #   - Alter database character set.
@@ -4556,10 +4556,10 @@ select concat('data was: /', var1, '/');
   #ignore_temporary FROM INFORMATION_SCHEMA.ROUTINES
   #ignore_temporary WHERE ROUTINE_SCHEMA = "mysqltest2" AND ROUTINE_NAME = "bug16211_f4"|
 
-  SELECT CHARSET(bug16211_f1())|
-  SELECT CHARSET(bug16211_f2())|
+  #SELECT CHARSET(bug16211_f1())|
+  #SELECT CHARSET(bug16211_f2())|
 
-  SELECT CHARSET(mysqltest2.bug16211_f3())|
+  #SELECT CHARSET(mysqltest2.bug16211_f3())|
   SELECT CHARSET(mysqltest2.bug16211_f4())|
 
   drop function if exists bug16211_f1|

@@ -1,0 +1,48 @@
+## DISABLE_FAST_SQL_PARSER
+select java_udf_concat(1,"xx");
+java_udf_concat(1, 'xx')
+polarx_xx_1
+select java_udf_concat(2, 1);
+java_udf_concat(2, 1)
+polarx_1_2
+drop table if exists java_udf_auto_test;
+create table java_udf_auto_test(id varchar(255), num bigint, data varchar(255)) partition by hash(id);
+insert into java_udf_auto_test values ("1",1,"test"), ("polarx_test_0", 2, "test"),  ("polarx_test_2", 2, "polarx_test_0"), ("polarx_test_2", 2, "test1");
+# test project and filter
+select *, java_udf_concat(0, "test") from java_udf_auto_test where id = java_udf_concat(0, "test") order by id;
+id,num,data,java_udf_concat(0, 'test')
+polarx_test_0,2,test,polarx_test_0
+select *, java_udf_concat(0, "test") from java_udf_auto_test where data = java_udf_concat(0, "test") order by id;
+id,num,data,java_udf_concat(0, 'test')
+polarx_test_2,2,polarx_test_0,polarx_test_0
+select *, java_udf_concat(0, data) from java_udf_auto_test where id = java_udf_concat(id, data) order by id;
+id,num,data,java_udf_concat(0, data)
+polarx_test_0,2,test,polarx_test_0
+select * from java_udf_auto_test where id not in (java_udf_concat(0, "test")) order by id;
+id,num,data
+1,1,test
+polarx_test_2,2,polarx_test_0
+polarx_test_2,2,test1
+# test agg
+select java_udf_concat(0, data), count(*) from java_udf_auto_test group by java_udf_concat(0, data) order by java_udf_concat(0, data);
+java_udf_concat(0, data),count(*)
+polarx_polarx_test_0_0,1
+polarx_test1_0,1
+polarx_test_0,2
+# test join
+create table java_udf_auto_test_2(id varchar(255), num bigint, data varchar(255)) partition by hash(id);
+insert into java_udf_auto_test_2 values ("t2_1",1,"test"), ("t2_polarx_test_0", 2, "test"),  ("polarx_test_2", 2, "not_match"), ("polarx_test_2", 2, "test1");
+select * from java_udf_auto_test a join java_udf_auto_test_2 b on java_udf_concat(a.num, a.data) = java_udf_concat(b.num, b.data) and b.num = 2 order by a.id;
+id,num,data,id,num,data
+polarx_test_0,2,test,t2_polarx_test_0,2,test
+polarx_test_2,2,test1,polarx_test_2,2,test1
+# test subquery
+select * from java_udf_auto_test_2 where id in (select java_udf_concat(num, data) from java_udf_auto_test) order by id;
+id,num,data
+polarx_test_2,2,not_match
+polarx_test_2,2,test1
+select * from java_udf_auto_test_2 where not exists (select 1 from java_udf_auto_test where java_udf_auto_test.id = java_udf_concat(java_udf_auto_test_2.num, java_udf_auto_test_2.data)) order by id;
+id,num,data
+polarx_test_2,2,not_match
+polarx_test_2,2,test1
+t2_1,1,test

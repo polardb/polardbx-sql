@@ -1,0 +1,25 @@
+DROP TABLE IF EXISTS tbl_bt;
+CREATE TABLE IF NOT EXISTS tbl_bt (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL
+)
+PARTITION BY RANGE COLUMNS (a, b) (
+	PARTITION p0 VALUES LESS THAN (100, 1000),
+	PARTITION p1 VALUES LESS THAN (100, 2000),
+	PARTITION p2 VALUES LESS THAN (200, 2000),
+	PARTITION p3 VALUES LESS THAN (200, 3000),
+	PARTITION p4 VALUES LESS THAN (300, 3000)
+);
+EXPLAIN SELECT a
+FROM tbl_bt
+WHERE b BETWEEN 2000 AND 3000
+	AND a = 100;
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_bt[p2]", sql="SELECT `tbl_bt`.`a` AS `a` FROM ? AS `tbl_bt` WHERE ((`tbl_bt`.`b` BETWEEN ? AND ?) AND (`tbl_bt`.`a` = ?))", params="3000,2000,100")
+EXPLAIN SELECT a
+FROM tbl_bt
+WHERE a BETWEEN 200 AND 300
+	AND b = 1250;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_bt[p2,p4]", shardCount=2, sql="SELECT `a` FROM `tbl_bt` AS `tbl_bt` WHERE ((`a` BETWEEN ? AND ?) AND (`b` = ?))")

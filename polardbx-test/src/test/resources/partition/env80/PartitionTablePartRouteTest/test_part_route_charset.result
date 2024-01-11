@@ -1,0 +1,292 @@
+DROP TABLE IF EXISTS rc_tbl_utf8;
+DROP TABLE IF EXISTS rc_tbl_gbk;
+SET NAMES utf8;
+CREATE TABLE IF NOT EXISTS rc_tbl_utf8 (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) CHARACTER SET utf8 NOT NULL
+)
+PARTITION BY RANGE COLUMNS (c) (
+	PARTITION p0 VALUES LESS THAN (0xE4B896E7958C),
+	PARTITION p1 VALUES LESS THAN (0xE4B896E7958CE4BABAE6B091),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+SET NAMES gbk;
+CREATE TABLE IF NOT EXISTS rc_tbl_gbk (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) CHARACTER SET gbk NOT NULL
+)
+PARTITION BY RANGE COLUMNS (c) (
+	PARTITION p0 VALUES LESS THAN (0xCAC0BDE7),
+	PARTITION p1 VALUES LESS THAN (0xCAC0BDE7C8CBC3F1),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+CREATE TABLE IF NOT EXISTS rc_tbl_gbk_idx (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY i_c (c)
+)
+PARTITION BY RANGE COLUMNS (c) (
+	PARTITION p0 VALUES LESS THAN (0xCAC0BDE7),
+	PARTITION p1 VALUES LESS THAN (0xCAC0BDE7C8CBC3F1),
+	PARTITION p2 VALUES LESS THAN MAXVALUE
+);
+SET NAMES utf8;
+SHOW CREATE TABLE rc_tbl_utf8;
+Table,Create Table
+rc_tbl_utf8,CREATE TABLE `rc_tbl_utf8` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET utf8 NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk;
+Table,Create Table
+rc_tbl_gbk,CREATE TABLE `rc_tbl_gbk` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk_idx;
+Table,Create Table
+rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `i_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SET NAMES gbk;
+SHOW CREATE TABLE rc_tbl_utf8;
+Table,Create Table
+rc_tbl_utf8,CREATE TABLE `rc_tbl_utf8` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET utf8 NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk;
+Table,Create Table
+rc_tbl_gbk,CREATE TABLE `rc_tbl_gbk` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SHOW CREATE TABLE rc_tbl_gbk_idx;
+Table,Create Table
+rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) CHARACTER SET gbk NOT NULL,
+	KEY `i_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`)
+(PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+SET NAMES utf8;
+INSERT INTO rc_tbl_utf8 (a, b, c)
+VALUES (1, '2012-12-11 23:00:00', '世界'),
+	(2, '2012-12-12 01:00:00', '世界人民');
+SELECT a, b, c
+FROM rc_tbl_utf8
+WHERE c = '世界';
+a,b,c
+1,2012-12-11 23:00:00.0,世界
+DELETE FROM rc_tbl_utf8;
+SET NAMES utf8;
+INSERT INTO rc_tbl_utf8 (a, b, c)
+VALUES (3, '2012-12-11 23:00:00', 0xE4B896E7958C),
+	(4, '2012-12-12 01:00:00', 0xE4B896E7958CE4BABAE6B091);
+SELECT a, b, c
+FROM rc_tbl_utf8
+WHERE c = 0xE4B896E7958C;
+a,b,c
+3,2012-12-11 23:00:00.0,世界
+SET NAMES gbk;
+INSERT INTO rc_tbl_gbk (a, b, c)
+VALUES (5, '2012-12-11 23:00:00', 0xCAC0BDE7),
+	(6, '2012-12-12 01:00:00', 0xCAC0BDE7C8CBC3F1);
+INSERT INTO rc_tbl_gbk_idx (a, b, c)
+VALUES (5, '2012-12-11 23:00:00', 0xCAC0BDE7),
+	(6, '2012-12-12 01:00:00', 0xCAC0BDE7C8CBC3F1);
+SELECT a, b, c
+FROM rc_tbl_gbk
+WHERE c = 0xCAC0BDE7;
+a,b,c
+5,2012-12-11 23:00:00.0,世界
+SELECT a, b, c
+FROM rc_tbl_gbk_idx
+WHERE c = 0xCAC0BDE7;
+a,b,c
+5,2012-12-11 23:00:00.0,世界
+SET NAMES utf8;
+SELECT a, b, hex(c)
+FROM rc_tbl_gbk
+WHERE c = '世界';
+a,b,hex(c)
+5,2012-12-11 23:00:00.0,CAC0BDE7
+SELECT a, b, hex(c)
+FROM rc_tbl_gbk_idx
+WHERE c = '世界';
+a,b,hex(c)
+5,2012-12-11 23:00:00.0,CAC0BDE7
+SET NAMES utf8;
+SELECT a, part_route('', 'rc_tbl_utf8', c)
+FROM rc_tbl_utf8
+ORDER BY a;
+a,part_route('', 'rc_tbl_utf8', c)
+3,p1
+4,p2
+EXPLAIN SELECT hex(c)
+FROM rc_tbl_utf8
+WHERE c = 0xE4B896E7958C
+	OR c = 0xE4B896E7958CE4BABAE6B091
+ORDER BY a;
+Logical ExecutionPlan
+Project(hex(c)="hex(c)")
+  MergeSort(sort="a ASC")
+    LogicalView(tables="rc_tbl_utf8[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_utf8` AS `rc_tbl_utf8` WHERE ((`c` = CONVERT(? USING 'UTF8')) OR (`c` = CONVERT(? USING 'UTF8'))) ORDER BY `a`")
+SELECT part_route('', 'rc_tbl_utf8', 0xE4B896E7958C);
+part_route('', 'rc_tbl_utf8', 0xE4B896E7958C)
+p1
+SELECT part_route('', 'rc_tbl_utf8', 0xE4B896E7958CE4BABAE6B091);
+part_route('', 'rc_tbl_utf8', 0xE4B896E7958CE4BABAE6B091)
+p2
+SELECT part_route('', 'rc_tbl_utf8', '世界');
+part_route('', 'rc_tbl_utf8', '世界')
+p1
+SELECT part_route('', 'rc_tbl_utf8', '世界人民');
+part_route('', 'rc_tbl_utf8', '世界人民')
+p2
+SET NAMES gbk;
+SELECT a, part_route('', 'rc_tbl_gbk', c)
+FROM rc_tbl_gbk
+ORDER BY a;
+a,part_route('', 'rc_tbl_gbk', c)
+5,p1
+6,p2
+EXPLAIN SELECT hex(c)
+FROM rc_tbl_gbk
+WHERE c = 0xCAC0BDE7
+	OR c = 0xCAC0BDE7C8CBC3F1
+ORDER BY a;
+Logical ExecutionPlan
+Project(hex(c)="hex(c)")
+  MergeSort(sort="a ASC")
+    LogicalView(tables="rc_tbl_gbk[p1,p2]", shardCount=2, sql="SELECT HEX(`c`) AS `hex(c)`, `a` FROM `rc_tbl_gbk` AS `rc_tbl_gbk` WHERE ((`c` = CONVERT(? USING 'GBK')) OR (`c` = CONVERT(? USING 'GBK'))) ORDER BY `a`")
+SELECT part_route('', 'rc_tbl_gbk', 0xCAC0BDE7);
+part_route('', 'rc_tbl_gbk', 0xCAC0BDE7)
+p1
+SELECT part_route('', 'rc_tbl_gbk', 0xCAC0BDE7C8CBC3F1);
+part_route('', 'rc_tbl_gbk', 0xCAC0BDE7C8CBC3F1)
+p2
+DROP TABLE IF EXISTS lc_tbl3;
+SET NAMES utf8;
+CREATE TABLE IF NOT EXISTS lc_tbl3 (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL
+)
+PARTITION BY LIST COLUMNS (c) (
+	PARTITION p0 VALUES IN ('A', 'B', 'C'),
+	PARTITION p1 VALUES IN ('a', 'b', 'c'),
+	PARTITION p2 VALUES IN ('Aa', 'Bb', 'Cc'),
+	PARTITION p3 VALUES IN ('aA', 'bB', 'cC')
+);
+DROP TABLE IF EXISTS lc_tbl3;
+SET NAMES utf8;
+CREATE TABLE IF NOT EXISTS lc_tbl3 (
+	a bigint UNSIGNED DEFAULT NULL,
+	b datetime DEFAULT NULL,
+	c varchar(128) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL
+)
+PARTITION BY LIST COLUMNS (c) (
+	PARTITION p0 VALUES IN ('A', 'B', 'C'),
+	PARTITION p1 VALUES IN ('a', 'b', 'c'),
+	PARTITION p2 VALUES IN ('Aa', 'Bb', 'Cc'),
+	PARTITION p3 VALUES IN ('aA', 'bB', 'cC')
+);
+INSERT INTO lc_tbl3 (c)
+VALUES ('A'),
+	('Aa'),
+	('B'),
+	('Bb'),
+	('a'),
+	('aA'),
+	('b'),
+	('bB');
+EXPLAIN SELECT c
+FROM lc_tbl3
+WHERE c = 'A'
+	OR c = 'Aa'
+	OR c = 'B'
+	OR c = 'Bb'
+	OR c = 'a'
+	OR c = 'aA'
+	OR c = 'b'
+	OR c = 'bB';
+Logical ExecutionPlan
+MaterializedSemiJoin(condition="c = ROW_VALUE", type="semi")
+  Gather(concurrent=true)
+    LogicalView(tables="lc_tbl3[p0,p2,p1,p3]", shardCount=4, sql="SELECT `c` FROM `lc_tbl3` AS `lc_tbl3` WHERE (`c` IN (...))")
+  DynamicValues(tuples=[{ ?0 }, { ?1 }, { ?2 }, { ?3 }, { ?4 }, { ?5 }, { ?6 }, { ?7 }])
+SELECT part_route('', 'lc_tbl3', 'A');
+part_route('', 'lc_tbl3', 'A')
+p0
+SELECT part_route('', 'lc_tbl3', 'Aa');
+part_route('', 'lc_tbl3', 'Aa')
+p2
+SELECT part_route('', 'lc_tbl3', 'B');
+part_route('', 'lc_tbl3', 'B')
+p0
+SELECT part_route('', 'lc_tbl3', 'Bb');
+part_route('', 'lc_tbl3', 'Bb')
+p2
+SELECT part_route('', 'lc_tbl3', 'a');
+part_route('', 'lc_tbl3', 'a')
+p1
+SELECT part_route('', 'lc_tbl3', 'aA');
+part_route('', 'lc_tbl3', 'aA')
+p3
+SELECT part_route('', 'lc_tbl3', 'b');
+part_route('', 'lc_tbl3', 'b')
+p1
+SELECT part_route('', 'lc_tbl3', 'bB');
+part_route('', 'lc_tbl3', 'bB')
+p3
+SELECT part_route('', 'lc_tbl3', c)
+FROM lc_tbl3
+ORDER BY c;
+part_route('', 'lc_tbl3', c)
+p0
+p2
+p0
+p2
+p1
+p3
+p1
+p3

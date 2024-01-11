@@ -111,7 +111,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
      */
     @Test
     public void updateTestForInventorHint() throws Exception {
-        if (isGalaxy()) {
+        if (isMySQL80()) {
             return;
         }
 
@@ -242,7 +242,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
 
     @Test
     public void updateWithCommitHintOnShardingTable2() throws Exception {
-        if (isGalaxy() || baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
+        if (isMySQL80() || baseOneTableName.contains(ONE_DB_ONE_TB_SUFFIX)) {
             return;
         }
 

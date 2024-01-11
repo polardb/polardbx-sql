@@ -1,0 +1,79 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE PARTITION TABLE `test` (
+`iD` bigint(20) NOT NULL,
+`boolean_test` tinyint(4) DEFAULT NULL,
+`BYTE_test` tinyint(4) DEFAULT NULL,
+`short_test` smallint(6) DEFAULT NULL,
+`INT_TEST` int(11) DEFAULT NULL,
+`long_test` bigint(20) DEFAULT NULL,
+`multivalue_test` varchar(255) DEFAULT NULL,
+`multivalue_string` varchar(255) DEFAULT NULL,
+`float_test` float DEFAULT NULL,
+`string_test` varchar(255) DEFAULT NULL,
+`date_test` date DEFAULT NULL,
+`time_test` time DEFAULT NULL,
+`timestamp_test` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`bitmap_test` int(11) DEFAULT NULL,
+`longitude` float DEFAULT NULL,
+`latitude` float DEFAULT NULL,
+`double_test` double DEFAULT NULL,
+`second_partition_cloumn_name` varchar(255) DEFAULT NULL,
+PRIMARY KEY (`iD`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`iD`)
+PARTITIONS 3;
+insert into test(id,int_test) values (1,972),(3,972);
+CREATE PARTITION TABLE `student` (
+`id` bigint(20) NOT NULL,
+`name` varchar(255) DEFAULT NULL,
+`unit` int(11) NOT NULL,
+`second_partition_cloumn_name` varchar(255) DEFAULT NULL,
+PRIMARY KEY (`id`, `unit`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`,`unit`)
+PARTITIONS 3;
+insert into student(id,name,unit) values (1,'a',1),(3,'c',3);
+CREATE PARTITION TABLE `grade` (
+`id` bigint(20) NOT NULL,
+`sid` bigint(20) DEFAULT NULL,
+`score` int(11) DEFAULT NULL,
+`gid` bigint(20) DEFAULT NULL,
+`course` int(11) DEFAULT NULL,
+`second_partition_cloumn_name` varchar(255) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS 3;
+insert into grade(id,sid) values (100,1),(300,3);
+CREATE PARTITION TABLE `elective` (
+`id` bigint(20) NOT NULL,
+`stuid` bigint(20) NOT NULL,
+`clist` bigint(20) NOT NULL,
+`second_partition_cloumn_name` varchar(255) DEFAULT NULL,
+PRIMARY KEY (`clist`, `id`, `stuid`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`clist`,`id`,`stuid`)
+PARTITIONS 3;
+insert into elective(id,stuid,clist) values (1,1,100),(3,3,300);
+explain select int_test,id from test   where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
+Logical ExecutionPlan
+Project(int_test="int_test", id="id")
+  MergeSort(sort="int_test ASC,id ASC,timestamp_test ASC")
+    LogicalView(tables="test[p1,p2,p3]", shardCount=3, sql="SELECT `INT_TEST` AS `int_test`, `iD` AS `id`, `timestamp_test` FROM `test` AS `test` WHERE ((`INT_TEST` = ?) AND (`iD` IN(?))) ORDER BY `INT_TEST`, `iD`, `timestamp_test`")
+HitCache:false
+Source:PLAN_CACHE
+>> individual scalar subquery
+Project(id="id")
+  BKAJoin(condition="id = id", type="left")
+    BKAJoin(condition="id = sid", type="left")
+      MergeSort(sort="id ASC")
+        LogicalView(tables="student[p1,p2,p3]", shardCount=3, sql="SELECT `id` FROM `student` AS `student` ORDER BY `id`")
+      Gather(concurrent=true)
+        LogicalView(tables="grade[p1,p2,p3]", shardCount=3, sql="SELECT `sid` FROM `grade` AS `grade` WHERE (`sid` IN (...))")
+    Gather(concurrent=true)
+      LogicalView(tables="elective[p1,p2,p3]", shardCount=3, sql="SELECT `id` FROM `elective` AS `elective` WHERE (`id` IN (...))")
+## exec sql no error
+select int_test,id from test where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
+int_test,id
+972,1
+972,3

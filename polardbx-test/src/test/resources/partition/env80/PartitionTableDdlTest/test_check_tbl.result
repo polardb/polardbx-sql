@@ -1,0 +1,48 @@
+CREATE DATABASE d_check_table_test MODE 'auto';
+USE d_check_table_test;
+DROP TABLE IF EXISTS tbl1;
+DROP TABLE IF EXISTS tbl2;
+DROP TABLE IF EXISTS tbl3;
+CREATE TABLE IF NOT EXISTS tbl1 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300)
+);
+CREATE TABLE IF NOT EXISTS tbl2 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+) SINGLE;
+CREATE TABLE IF NOT EXISTS tbl3 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+) BROADCAST;
+CHECK TABLE tbl1;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl1:Topology,check,status,OK
+d_check_table_test.tbl1:Columns,check,status,OK
+CHECK TABLE tbl2;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl2:Topology,check,status,OK
+d_check_table_test.tbl2:Columns,check,status,OK
+CHECK TABLE tbl3;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl3:Topology,check,status,OK
+d_check_table_test.tbl3:Columns,check,status,OK
+USE polardbx;
+CHECK TABLE d_check_table_test.tbl1;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl1:Topology,check,status,OK
+d_check_table_test.tbl1:Columns,check,status,OK
+CHECK TABLE d_check_table_test.tbl2;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl2:Topology,check,status,OK
+d_check_table_test.tbl2:Columns,check,status,OK
+CHECK TABLE d_check_table_test.tbl3;
+Table,Op,Msg_type,Msg_text
+d_check_table_test.tbl3:Topology,check,status,OK
+d_check_table_test.tbl3:Columns,check,status,OK
+DROP DATABASE d_check_table_test;

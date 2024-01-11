@@ -1,0 +1,67 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `hash_tbl_bigint3` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+delete from hash_tbl_bigint3;
+
+insert into bro_tbl_bigint values (2,200),(10,100);
+insert into sig_tbl_bigint values (2,200),(10,100);
+insert into bro_tbl_bigint2 values (2,200),(10,100);
+insert into sig_tbl_bigint2 values (2,200),(10,100);
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into hash_tbl_bigint2 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into hash_tbl_bigint3 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+
+begin;
+select * from hash_tbl_bigint where a in (2) order by a for update;
+select * from hash_tbl_bigint where a in (5) order by a for update;
+update hash_tbl_bigint set b=100 where a in (2);
+update hash_tbl_bigint set b=100 where a in (5);
+delete from hash_tbl_bigint where a in (2);
+insert into hash_tbl_bigint values (2,50);
+replace into hash_tbl_bigint values (2,51);
+select * from hash_tbl_bigint order by a;
+rollback;

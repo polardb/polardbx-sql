@@ -52,13 +52,15 @@ import java.util.regex.Matcher;
 
 public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
 
-    protected static final String RESOURCES_FILE_PATH = "partition/env/%s/";
-    protected static final String ENV_FILE_PATH = "src/test/resources/" + RESOURCES_FILE_PATH;
-    protected static final String TEST_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.test.yml";
-    protected static final String RESULT_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.result";
+    protected static final String RESOURCES_FILE_PATH_FRO_MYSQL57 = "partition/env/%s/";
+    protected static final String RESOURCES_FILE_PATH_FRO_MYSQL80 = "partition/env80/%s/";
+    protected static String RESOURCES_FILE_PATH = RESOURCES_FILE_PATH_FRO_MYSQL57;
+    protected static String ENV_FILE_PATH = "src/test/resources/" + RESOURCES_FILE_PATH;
+    protected static String TEST_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.test.yml";
+    protected static String RESULT_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.result";
 
-    protected static final String RESOURCE_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.resource";
-    protected static final String TEST_CASE_CONFIG_FILE_PATH_TEMPLATE = RESOURCES_FILE_PATH + "testcase.config.yml";
+    protected static String RESOURCE_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.resource";
+    protected static String TEST_CASE_CONFIG_FILE_PATH_TEMPLATE = RESOURCES_FILE_PATH + "testcase.config.yml";
 
     protected static final String DISABLE_FAST_SQL_PARSER_FALG = "DISABLE_FAST_SQL_PARSER";
     protected static final String SQL_ERROR_MSG = "## ERROR_MSG";
@@ -67,6 +69,17 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
 
     protected static final String DISABLE_AUTO_PART = "set @auto_partition=0;";
     protected static final String ENABLE_AUTO_PART = "set @auto_partition=1;";
+
+    static {
+        if (isMySQL80()) {
+            RESOURCES_FILE_PATH = RESOURCES_FILE_PATH_FRO_MYSQL80;
+            ENV_FILE_PATH = "src/test/resources/" + RESOURCES_FILE_PATH;
+            TEST_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.test.yml";
+            RESULT_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.result";
+            RESOURCE_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.resource";
+            TEST_CASE_CONFIG_FILE_PATH_TEMPLATE = RESOURCES_FILE_PATH + "testcase.config.yml";
+        }
+    }
 
     protected AutoLoadSqlTestCaseParams params;
 
@@ -149,7 +162,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 conn = ConnectionManager.getInstance().newPolarDBXConnection();
                 JdbcUtil.dropDatabase(conn, dbName);
                 if ("PartitionTablePartRouteTest".equalsIgnoreCase(testClassName)
-                || "TableReorgTest".equalsIgnoreCase(testClassName)) {
+                    || "TableReorgTest".equalsIgnoreCase(testClassName)) {
                     JdbcUtil.createPartDatabaseUsingUtf8(conn, dbName);
                 } else {
                     JdbcUtil.createPartDatabase(conn, dbName);
@@ -207,6 +220,10 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                     tmpRs = tmpRs.replace("DEFAULT_GENERATED", "");
 
                     tmpRs = tmpRs.replace("USING HASH ", "");
+
+                    tmpRs = tmpRs.replace("bigint(20)", "bigint");
+                    tmpRs = tmpRs.replace("bigint(11)", "bigint");
+                    tmpRs = tmpRs.replace("int(11)", "int");
 
                     rsCmpArr[i] = tmpRs;
                 }

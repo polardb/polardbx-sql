@@ -1,0 +1,184 @@
+## DISABLE_FAST_SQL_PARSER
+## test to_days
+drop table if exists tbl;
+CREATE TABLE `tbl` (
+        `a` datetime NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(to_days(a))
+(PARTITION p0 VALUES LESS THAN (to_days('1990-01-01')) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (to_days('2000-01-01')) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (to_days('2010-01-01')) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (to_days('2020-01-01')) ENGINE = InnoDB);
+show create table tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` datetime NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`a`))
+(PARTITION p0 VALUES LESS THAN (726833) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (730485) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (734138) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (737790) ENGINE = InnoDB)
+## single value insert
+insert into tbl values ('1989-01-01');
+## multi values insert
+insert into tbl values ('1990-01-01'),('1991-01-01'),('2019-01-01');
+## check point select
+select * from tbl where a='1989-01-01' order by a;
+a
+1989-01-01 00:00:00.0
+select * from tbl where a='1990-01-01' order by a;
+a
+1990-01-01 00:00:00.0
+select * from tbl where a='1991-01-01' order by a;
+a
+1991-01-01 00:00:00.0
+select * from tbl where a='2019-01-01' order by a;
+a
+2019-01-01 00:00:00.0
+## check range select
+select * from tbl where (a<'2019-01-02' and a>='2009-12-31') or a between '1989-01-01' and '1989-11-01'  order by a;
+a
+1989-01-01 00:00:00.0
+2019-01-01 00:00:00.0
+## explain point select
+explain select * from tbl where a='1989-01-01' order by a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 48dfdf4e
+## explain range select
+explain select * from tbl where (a<'2019-01-02' and a>='2009-12-31') or a between '1989-01-01' and '1989-11-01'  order by a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p0,p2,p3]", shardCount=3, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (((`a` < ?) AND (`a` >= ?)) OR (`a` BETWEEN ? AND ?)) ORDER BY `a`")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: d85eb230
+## test hash
+CREATE TABLE `tod1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_DAYS(`d`))
+PARTITIONS 16;
+show create table tod1;
+Table,Create Table
+tod1,CREATE TABLE `tod1` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_DAYS(`d`))
+PARTITIONS 16
+## prepare data
+insert into tod1 values('0000-01-01'),('2022-01-01'),('2022-07-01'),('2022-12-31');
+## range select
+select * from tod1 where (d > '0000-01-01' and d < '2022-07-01') or d between '2022-01-01' and '2022-07-01' order by d;
+d
+2022-01-01
+2022-07-01
+## full scan
+select * from tod1 where d > '0000-01-01' order by d;
+d
+2022-01-01
+2022-07-01
+2022-12-31
+explain select * from tod1 where d > '0000-01-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="tod1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `tod1` AS `tod1` WHERE (`d` > ?) ORDER BY `d`")
+select * from tod1 where d >'2021-12-30' and d < '2022-03-31' order by d;
+d
+2022-01-01
+## enumeration
+select * from tod1 where d > '2021-12-30' and d < '2022-01-02' order by d;
+d
+2022-01-01
+explain select * from tod1 where d > '2021-12-30' and d < '2022-01-02' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="tod1[p6,p8,p11]", shardCount=3, sql="SELECT `d` FROM `tod1` AS `tod1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## test range
+CREATE TABLE `tod2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`dt`))
+(PARTITION p0 VALUES LESS THAN(5),
+PARTITION p1 VALUES LESS THAN(10),
+PARTITION p2 VALUES LESS THAN(15),
+PARTITION pd VALUES LESS THAN(MAXVALUE));
+show create table tod2;
+Table,Create Table
+tod2,CREATE TABLE `tod2` (
+	`dt` datetime DEFAULT NULL,
+	KEY `auto_shard_key_dt` USING BTREE (`dt`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`dt`))
+(PARTITION p0 VALUES LESS THAN (5) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (10) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (15) ENGINE = InnoDB,
+ PARTITION pd VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+## prepare data
+insert into tod2 values('0000-01-04 23:59:59'), ('0000-01-05 00:00:00'), ('0000-01-05 00:00:01'), ('0000-01-10'),('0000-01-15');
+## range select
+select * from tod2 where dt < '0000-01-05 00:00:02' order by dt;
+dt
+0001-01-04 23:59:59.0
+0001-01-05 00:00:00.0
+0001-01-05 00:00:01.0
+select * from tod2 where dt < '0000-01-05 00:00:01' order by dt;
+dt
+0001-01-04 23:59:59.0
+0001-01-05 00:00:00.0
+select * from tod2 where dt < '0000-01-10 00:00:00' order by dt;
+dt
+0001-01-04 23:59:59.0
+0001-01-05 00:00:00.0
+0001-01-05 00:00:01.0
+select * from tod2 where dt < '0000-01-15 00:00:00' order by dt;
+dt
+0001-01-04 23:59:59.0
+0001-01-05 00:00:00.0
+0001-01-05 00:00:01.0
+0001-01-10 00:00:00.0
+## test list
+CREATE TABLE `tod3` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(TO_DAYS(`dt`))
+(PARTITION p0 VALUES IN (1,2,3,4,5),
+PARTITION p1 VALUES IN(6,7,8,9,10),
+PARTITION p2 VALUES IN(11,12,13,14,15),
+PARTITION pd VALUES IN(default));
+show create table tod2;
+Table,Create Table
+tod2,CREATE TABLE `tod2` (
+	`dt` datetime DEFAULT NULL,
+	KEY `auto_shard_key_dt` USING BTREE (`dt`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`dt`))
+(PARTITION p0 VALUES LESS THAN (5) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (10) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (15) ENGINE = InnoDB,
+ PARTITION pd VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+## prepare data
+insert into tod3 values('0000-01-05 23:59:58'), ('0000-01-06 00:00:00'), ('0000-01-11 00:00:01'), ('0000-01-16 00:00:00');
+## range select
+select * from tod3 where dt < '0000-01-05 23:59:59' order by dt;
+dt
+0001-01-05 23:59:58.0
+select * from tod3 where dt <= '0000-01-06 00:00:00' order by dt;
+dt
+0001-01-05 23:59:58.0
+0001-01-06 00:00:00.0
+select * from tod3 where dt < '0000-01-11 00:00:01' order by dt;
+dt
+0001-01-05 23:59:58.0
+0001-01-06 00:00:00.0
+select * from tod3 where dt < '0000-01-16 00:00:01' order by dt;
+dt
+0001-01-05 23:59:58.0
+0001-01-06 00:00:00.0
+0001-01-11 00:00:01.0
+0001-01-16 00:00:00.0

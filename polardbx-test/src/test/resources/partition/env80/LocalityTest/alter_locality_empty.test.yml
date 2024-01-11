@@ -1,0 +1,122 @@
+storageList: [$dn1, $dn2]
+dbName: "test_alter_locality_empty"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_alter_locality_empty "
+      - "create database test_alter_locality_empty mode = auto"
+      - "use test_alter_locality_empty;"
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1';"
+      - "create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1,$dn2';"
+      - "create table t3(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8;"
+      - "create table s0(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "create table s1(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn2';"
+      - "create table s2(x int  AUTO_INCREMENT primary key, y int) single;"
+      - "create table b0(x int  AUTO_INCREMENT primary key, y int) broadcast;"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn1,$dn2
+        - t3 table ""
+        - s0 table $dn1
+        - s1 table $dn2
+        - s2 table ""
+        - b0 table ""
+        - test_alter_locality_empty database ""
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1
+        - t2 $tg2 $dn1,$dn2
+        - t3 $tg3 ""
+        - s0 $tg4 $dn1
+        - s1 $tg5 $dn2
+        - s2 $tg6 ""
+        - b0 $tg8 ""
+      partitionLocalityCheck:
+      topologyCheck:
+
+  - prepareDDls:
+      - "alter tablegroup $tg1 set locality = 'dn=$dn1,$dn2';"
+      - "alter tablegroup $tg2 set locality = '';"
+      - "alter tablegroup $tg3 set locality= 'dn=$dn1,$dn2';"
+      - "alter tablegroup $tg4 set locality = '';"
+      - "alter tablegroup $tg5 set locality = '';"
+    rejectDDls:
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkTriggers:
+      - "select sleep(1)###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table ""
+        - t3 table $dn1,$dn2
+        - s0 table ""
+        - s1 table ""
+        - s2 table ""
+        - b0 table ""
+        - test_alter_locality_empty database ""
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1,$dn2
+        - t2 $tg2 ""
+        - t3 $tg3 $dn1,$dn2
+        - s0 $tg4 ""
+        - s1 $tg5 ""
+        - s2 $tg6 ""
+        - b0 $tg8 ""
+      partitionLocalityCheck:
+      topologyCheck:
+  - prepareDDls:
+      - "alter tablegroup $tg1 move partitions p1 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p2 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p3 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p4 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p5 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p6 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p7 to '$dn1'"
+      - "alter tablegroup $tg1 move partitions p8 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p1 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p2 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p3 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p4 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p5 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p6 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p7 to '$dn1'"
+      - "alter tablegroup $tg2 move partitions p8 to '$dn1'"
+      - "alter tablegroup $tg4 move partitions p1 to '$dn1'"
+      - "alter tablegroup $tg5 move partitions p1 to '$dn1'"
+      - "alter tablegroup $tg1 set locality = 'dn=$dn1';"
+      - "alter tablegroup $tg2 set locality = 'dn=$dn1';"
+      - "alter tablegroup $tg4 set locality = 'dn=$dn1';"
+      - "alter tablegroup $tg5 set locality = 'dn=$dn1';"
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select sleep(1)###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn1
+        - t3 table $dn1,$dn2
+        - s0 table $dn1
+        - s1 table $dn1
+        - s2 table ""
+        - b0 table ""
+        - test_alter_locality_empty database ""
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1
+        - t2 $tg2 $dn1
+        - t3 $tg3 $dn1,$dn2
+        - s0 $tg4 $dn1
+        - s1 $tg5 $dn1
+        - s2 $tg6 ""
+        - b0 $tg8 ""
+      partitionLocalityCheck:
+      topologyCheck:
+cleanupDDls:
+  - "use polardbx;"
+  - "use polardbx;"
+  - "drop database if exists test_alter_locality_empty;"

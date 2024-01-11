@@ -1,0 +1,1828 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE DATABASE foreign_key_test_1 mode = auto;
+use foreign_key_test_1;
+#
+  # Bug#34455 (Ambiguous foreign keys syntax is accepted)
+  #
+#disable_warnings
+drop table if exists t_34455;
+#enable_warnings
+  # 2 match clauses, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, error in :'full match partial) #$
+create table t_34455 (
+a int not null,
+foreign key (a) references t3 (a) match full match partial);
+syntax error, error in :'full match partial)
+# match after on delete, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, error in :'ault match full) #$
+create table t_34455 (
+a int not null,
+foreign key (a) references t3 (a) on delete set default match full);
+syntax error, error in :'ault match full)
+# match after on update, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, error in :'ault match full) #$
+create table t_34455 (
+a int not null,
+foreign key (a) references t3 (a) on update set default match full);
+syntax error, error in :'ault match full)
+# 2 on delete clauses, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, multiple DELETE #$
+create table t_34455 (
+a int not null,
+foreign key (a) references t3 (a)
+on delete set default on delete set default);
+syntax error, multiple DELETE
+# 2 on update clauses, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, multiple UPDATE #$
+create table t_34455 (
+a int not null,
+foreign key (a) references t3 (a)
+on update set default on update set default);
+syntax error, multiple UPDATE
+create table t_34455 (a int not null);
+# 2 match clauses, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, error in :'full match partial) #$
+alter table t_34455
+add foreign key (a) references t3 (a) match full match partial);
+syntax error, error in :'full match partial)
+# match after on delete, illegal
+#error ER_PARSE_ERROR
+## error_msg: $# syntax error, error in :'ault match full) #$
+alter table t_34455
+add foreign key (a) references t3 (a) on delete set default match full);
+syntax error, error in :'ault match full)
+# match after on update, illegal
+#error ER_PARSE_ERROR
+  ## error_msg: $# syntax error, error in :'ault match full) #$
+alter table t_34455
+add foreign key (a) references t3 (a) on update set default match full);
+syntax error, error in :'ault match full)
+# 2 on delete clauses, illegal
+#error ER_PARSE_ERROR
+  ## error_msg: $# syntax error, multiple DELETE #$
+alter table t_34455
+add foreign key (a) references t3 (a)
+on delete set default on delete set default);
+syntax error, multiple DELETE
+# 2 on update clauses, illegal
+#error ER_PARSE_ERROR
+  ## error_msg: $# syntax error, multiple UPDATE #$
+alter table t_34455
+add foreign key (a) references t3 (a)
+on update set default on update set default);
+syntax error, multiple UPDATE
+drop table t_34455;
+#echo #
+#echo # WL#6929: Move FOREIGN KEY constraints to the global data dictionary
+#echo #
+#echo # Extra coverage of @@foreign_key_checks
+#echo #
+SET @@foreign_key_checks= 0;
+CREATE TABLE t1(a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES non(a));
+ALTER TABLE t1 ADD FOREIGN KEY (b) REFERENCES non(a);
+DROP TABLE t1;
+CREATE TABLE t1(a INT PRIMARY KEY);
+CREATE TABLE t2(a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES t1(a));
+DROP TABLE t1;
+DROP TABLE t2;
+SET @@foreign_key_checks= 1;
+#error ER_FK_CANNOT_OPEN_PARENT
+## error_msg: $# ERR_UNKNOWN_TABLE #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES non(a));
+ERR_UNKNOWN_TABLE
+# Works, but no FK created
+CREATE TABLE t1(a INT PRIMARY KEY, b INT REFERENCES non(a));
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#error ER_FK_CANNOT_OPEN_PARENT
+## error_msg: $# ERR_UNKNOWN_TABLE #$
+ALTER TABLE t1 ADD FOREIGN KEY (b) REFERENCES non(a);
+ERR_UNKNOWN_TABLE
+DROP TABLE t1;
+CREATE TABLE t1(a INT PRIMARY KEY);
+CREATE TABLE t2(a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES t1(a));
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP TABLE t1;
+ERR_DROP_TABLE_FK_CONSTRAINT
+DROP TABLE t2;
+DROP TABLE t1;
+#echo # Test coverage of identifier length related to foreign keys.
+#echo #
+CREATE TABLE t1(a INT PRIMARY KEY);
+# Exactly 64 chars
+CREATE TABLE t2(a INT PRIMARY KEY, b INT);
+ALTER TABLE t2 ADD CONSTRAINT
+name567890123456789012345678901234567890123456789012345678901234
+FOREIGN KEY
+name567890123456789012345678901234567890123456789012345678901234
+(b) REFERENCES t1(a);
+SHOW CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CONSTRAINT `name567890123456789012345678901234567890123456789012345678901234` FOREIGN KEY (`b`) REFERENCES `t1` (`a`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = 'foreign_key_test_1' AND REFERENCED_TABLE_NAME = 't1';
+CONSTRAINT_NAME
+name567890123456789012345678901234567890123456789012345678901234
+DROP TABLE t2;
+# 65 chars - too long
+CREATE TABLE t2(a INT PRIMARY KEY, b INT);
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+ALTER TABLE t2 ADD FOREIGN KEY
+name5678901234567890123456789012345678901234567890123456789012345
+(b) REFERENCES t1(a);
+is too long (max = 64)
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+ALTER TABLE t2 ADD CONSTRAINT
+name5678901234567890123456789012345678901234567890123456789012345
+FOREIGN KEY (b) REFERENCES t1(a);
+is too long (max = 64)
+DROP TABLE t2;
+# 65 chars - too long, now with pre-existing index on b
+CREATE TABLE t2(a INT PRIMARY KEY, b INT UNIQUE);
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+ALTER TABLE t2 ADD FOREIGN KEY
+name5678901234567890123456789012345678901234567890123456789012345
+(b) REFERENCES t1(a);
+is too long (max = 64)
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+ALTER TABLE t2 ADD CONSTRAINT
+name5678901234567890123456789012345678901234567890123456789012345
+FOREIGN KEY (b) REFERENCES t1(a);
+is too long (max = 64)
+DROP TABLE t2;
+DROP TABLE t1;
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES name5678901234567890123456789012345678901234567890123456789012345.t2(a));
+is too long (max = 64)
+#error ER_WRONG_TABLE_NAME
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES name5678901234567890123456789012345678901234567890123456789012345(a));
+is too long (max = 64)
+#error ER_WRONG_COLUMN_NAME
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES t2(name5678901234567890123456789012345678901234567890123456789012345));
+is too long (max = 64)
+SET @@foreign_key_checks= 0;
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES name5678901234567890123456789012345678901234567890123456789012345.t2(a));
+is too long (max = 64)
+#error ER_WRONG_TABLE_NAME
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES name5678901234567890123456789012345678901234567890123456789012345(a));
+is too long (max = 64)
+#error ER_WRONG_COLUMN_NAME
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t1(a INT PRIMARY KEY, b INT,
+FOREIGN KEY(b) REFERENCES t2(name5678901234567890123456789012345678901234567890123456789012345));
+is too long (max = 64)
+SET @@foreign_key_checks= 1;
+#echo #
+#echo # Bug#24666169: I_S.TABLE_CONSTRAINTS.CONSTRAINT_NAME IS NOT UPDATED
+#echo #               AFTER RENAME TABLE
+#echo #
+SET @@foreign_key_checks= 1;
+#echo #
+#echo # Tests for FK name behavior.
+CREATE TABLE t1(c1 INT PRIMARY KEY);
+CREATE TABLE t2(c1 INT, FOREIGN KEY (c1) REFERENCES t1(c1));
+ALTER TABLE t2 RENAME TO t3;
+SHOW CREATE TABLE t3;
+Table,Create Table
+t3,CREATE TABLE `t3` (
+	`c1` int(11) DEFAULT NULL,
+	CONSTRAINT `t3_ibfk_1` FOREIGN KEY (`c1`) REFERENCES `t1` (`c1`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#error ER_NO_REFERENCED_ROW_2
+## error_msg: $# ERR_ADD_UPDATE_FK_CONSTRAINT #$
+INSERT INTO t3 VALUES(1);
+ERR_ADD_UPDATE_FK_CONSTRAINT
+ALTER TABLE t3 RENAME TO t4;
+SHOW CREATE TABLE t4;
+Table,Create Table
+t4,CREATE TABLE `t4` (
+	`c1` int(11) DEFAULT NULL,
+	CONSTRAINT `t4_ibfk_1` FOREIGN KEY (`c1`) REFERENCES `t1` (`c1`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#error ER_NO_REFERENCED_ROW_2
+## error_msg: $# ERR_ADD_UPDATE_FK_CONSTRAINT #$
+INSERT INTO t4 VALUES(1);
+ERR_ADD_UPDATE_FK_CONSTRAINT
+# TODO: COPY does not work properly, see Bug#25467454
+ALTER TABLE t4 RENAME TO t5;
+SHOW CREATE TABLE t5;
+Table,Create Table
+t5,CREATE TABLE `t5` (
+	`c1` int(11) DEFAULT NULL,
+	CONSTRAINT `t5_ibfk_1` FOREIGN KEY (`c1`) REFERENCES `t1` (`c1`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#error ER_NO_REFERENCED_ROW_2
+## error_msg: $# ERR_ADD_UPDATE_FK_CONSTRAINT #$
+INSERT INTO t5 VALUES(1);
+ERR_ADD_UPDATE_FK_CONSTRAINT
+RENAME TABLE t5 to t6;
+SHOW CREATE TABLE t6;
+Table,Create Table
+t6,CREATE TABLE `t6` (
+	`c1` int(11) DEFAULT NULL,
+	CONSTRAINT `t6_ibfk_1` FOREIGN KEY (`c1`) REFERENCES `t1` (`c1`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#error ER_NO_REFERENCED_ROW_2
+## error_msg: $# ERR_ADD_UPDATE_FK_CONSTRAINT #$
+INSERT INTO t6 VALUES(1);
+ERR_ADD_UPDATE_FK_CONSTRAINT
+DROP TABLE t6;
+Drop TABLE t1;
+#echo #
+#echo # Tests of FK name generation
+CREATE TABLE t1(a INT PRIMARY KEY);
+CREATE TABLE t2(a INT, b INT, FOREIGN KEY(a) REFERENCES t1(a));
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+t2_ibfk_1
+#echo # Add FK
+ALTER TABLE t2 ADD FOREIGN KEY(b) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+t2_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+t2_ibfk_2
+#echo # Remove first FK and add a new FK.
+ALTER TABLE t2 DROP FOREIGN KEY t2_ibfk_1;
+ALTER TABLE t2 ADD FOREIGN KEY(a) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+t2_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+t2_ibfk_2
+#echo # Rename table in different ways.
+ALTER TABLE t2 RENAME TO t3;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't3' ORDER BY constraint_name;
+constraint_name
+t3_ibfk_1
+t3_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't3' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t3_ibfk_1
+t3_ibfk_2
+ALTER TABLE t3 RENAME TO t4;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't4' ORDER BY constraint_name;
+constraint_name
+t4_ibfk_1
+t4_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't4' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t4_ibfk_1
+t4_ibfk_2
+# COPY does not work properly, see Bug#25467454
+ALTER TABLE t4 RENAME TO t5;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't5' ORDER BY constraint_name;
+constraint_name
+t5_ibfk_1
+t5_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't5' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t5_ibfk_1
+t5_ibfk_2
+RENAME TABLE t5 TO t6;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't6' ORDER BY constraint_name;
+constraint_name
+t6_ibfk_1
+t6_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't6' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t6_ibfk_1
+t6_ibfk_2
+#echo # Simulate dump+restore and test rename
+DROP TABLE t6;
+CREATE TABLE `t6` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+KEY `b` (`b`),
+KEY `a` (`a`),
+CONSTRAINT `t6_ibfk_2` FOREIGN KEY (`b`) REFERENCES `t1` (`a`),
+CONSTRAINT `t6_ibfk_3` FOREIGN KEY (`a`) REFERENCES `t1` (`a`)
+) ENGINE=InnoDB;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't6' ORDER BY constraint_name;
+constraint_name
+t6_ibfk_2
+t6_ibfk_3
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't6' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t6_ibfk_2
+t6_ibfk_3
+RENAME TABLE t6 TO t2;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_2
+t2_ibfk_3
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_2
+t2_ibfk_3
+#echo # Remove all FKs and add one back
+ALTER TABLE t2 DROP FOREIGN KEY t2_ibfk_2;
+ALTER TABLE t2 DROP FOREIGN KEY t2_ibfk_3;
+ALTER TABLE t2 ADD FOREIGN KEY(a) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+#echo # Add a foreign key with close to generated name
+ALTER TABLE t2 ADD CONSTRAINT t3_ibfk_2 FOREIGN KEY(b) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+t3_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+t3_ibfk_2
+#echo # Then rename so that the given name now matches a generated name
+RENAME TABLE t2 TO t3;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't3' ORDER BY constraint_name;
+constraint_name
+t3_ibfk_1
+t3_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't3' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t3_ibfk_1
+t3_ibfk_2
+#echo # Finally rename it again. The given name is now seen as generated and renamed.
+RENAME TABLE t3 TO t4;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't4' ORDER BY constraint_name;
+constraint_name
+t4_ibfk_1
+t4_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't4' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t4_ibfk_1
+t4_ibfk_2
+DROP TABLE t4;
+#echo # Make a foreign key with given name matching a generated name
+CREATE TABLE t2(a INT, b INT);
+ALTER TABLE t2 ADD CONSTRAINT t2_ibfk_1 FOREIGN KEY(a) REFERENCES t1(a);
+# Then add a new FK with generated name
+ALTER TABLE t2 ADD FOREIGN KEY(b) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+t2_ibfk_1
+t2_ibfk_2
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+t2_ibfk_1
+t2_ibfk_2
+DROP TABLE t2;
+#echo # Test FK name case sensitivity
+CREATE TABLE t2(a INT, b INT);
+ALTER TABLE t2 ADD CONSTRAINT FK FOREIGN KEY(a) REFERENCES t1(a);
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+FK
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't2' ORDER BY constraint_name;
+constraint_name
+FK
+PRIMARY
+PRIMARY
+PRIMARY
+PRIMARY
+#error ER_DUP_KEYNAME
+## error_msg: $# ERR_DUPLICATE_NAME_FK_CONSTRAINT #$
+ALTER TABLE t2 ADD CONSTRAINT fk FOREIGN KEY(b) REFERENCES t1(a);
+ERR_DUPLICATE_NAME_FK_CONSTRAINT
+ALTER TABLE t2 DROP FOREIGN KEY FK;
+DROP TABLE t2;
+#echo # Check long FK generated names due to long table names.
+CREATE TABLE t2 (a INT, FOREIGN KEY (a) REFERENCES t1(a));
+RENAME TABLE t2 TO t12345678901234567890123456789012345678901234567890123456;
+SELECT constraint_name FROM information_schema.referential_constraints
+WHERE table_name = 't12345678901234567890123456789012345678901234567890123456'
+ORDER BY constraint_name;
+constraint_name
+t12345678901234567890123456789012345678901234567890123456_ibfk_1
+SELECT constraint_name FROM information_schema.table_constraints
+WHERE table_name = 't12345678901234567890123456789012345678901234567890123456'
+ORDER BY constraint_name;
+constraint_name
+PRIMARY
+t12345678901234567890123456789012345678901234567890123456_ibfk_1
+DROP TABLE t12345678901234567890123456789012345678901234567890123456;
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t123456789012345678901234567890123456789012345678901234567(
+a INT, FOREIGN KEY (a) REFERENCES t1(a));
+is too long (max = 64)
+CREATE TABLE t123456789012345678901234567890123456789012345678901234567890123(
+a INT, CONSTRAINT fk FOREIGN KEY (a) REFERENCES t1(a));
+DROP TABLE t123456789012345678901234567890123456789012345678901234567890123;
+DROP TABLE t1;
+#echo # Trying to drop columns used in multi-column FKs.
+CREATE TABLE t1(a INT PRIMARY KEY, b INT, INDEX(a, b));
+CREATE TABLE t2(a INT, b INT, FOREIGN KEY(a, b) REFERENCES t1(a, b));
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE t2 DROP COLUMN a;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE t2 DROP COLUMN b;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+DROP TABLE t2;
+DROP TABLE t1;
+#echo #
+#echo # Bug#20021917: WORK AROUND FOR CHARSET CONVERSION WITH FKS CAN
+#echo # RESULT IN WRONG DATA
+#echo #
+CREATE TABLE t1 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100) UNIQUE);
+CREATE TABLE t2 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), fname VARCHAR(100), FOREIGN KEY (fname) REFERENCES t1 (name) ON UPDATE CASCADE ON DELETE CASCADE);
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE LOCAL KEY `name` (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(100) DEFAULT NULL,
+	`fname` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`fname`) REFERENCES `t1` (`name`) ON DELETE CASCADE ON UPDATE CASCADE /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_FK_CONVERT_TO_CHARSET #$
+ALTER TABLE t2 CONVERT TO CHARACTER SET latin1;
+ERR_FK_CONVERT_TO_CHARSET
+SET foreign_key_checks= OFF;
+ALTER TABLE t2 CONVERT TO CHARACTER SET latin1;
+SET foreign_key_checks= ON;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE LOCAL KEY `name` (`name`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(100) DEFAULT NULL,
+	`fname` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`fname`) REFERENCES `t1` (`name`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = latin1
+INSERT INTO t1(name) VALUES ('test1');
+INSERT INTO t2(name, fname) VALUES ('test1', 'test1');
+UPDATE t1 SET name=CONCAT('St', UNHEX('C3A5') ,'le') WHERE name = 'test1';
+#echo # Should not get any rows here
+SELECT t1.name, t2.fname FROM t1, t2 WHERE t1.name <> t2.fname;
+name,fname
+Ståle,StÃ¥le
+DROP TABLE t2;
+DROP TABLE t1;
+#echo #
+#echo # Validation of FK and referred column names.
+#echo #
+#echo # Too long constraint name.
+#error ER_TOO_LONG_IDENT
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t (pk INTEGER PRIMARY KEY, fk_i INTEGER,
+CONSTRAINT xxxxxxxxx1xxxxxxxxx2xxxxxxxxx3xxxxxxxxx4xxxxxxxxx5xxxxxxxxx6xxxxx
+FOREIGN KEY (fk_i) REFERENCES x(x));
+is too long (max = 64)
+#echo # Too long column name.
+#error ER_WRONG_COLUMN_NAME
+## error_msg: $# is too long (max = 64) #$
+CREATE TABLE t (pk INTEGER PRIMARY KEY, fk_i INTEGER,
+FOREIGN KEY (fk_i) REFERENCES x(xxxxxxxxx1xxxxxxxxx2xxxxxxxxx3xxxxxxxxx4xxxxxxxxx5xxxxxxxxx6xxxxx));
+is too long (max = 64)
+#echo #
+#echo # Bug #25722221 "RENAME COLUMN DID NOT UPDATE FOREIGN_KEY_COLUMN_USAGE
+#echo #                FOR FK CONSTRAINT".
+#echo # Bug #26659110 "LIFT LIMITATION ON RENAMING PARENT COLUMNS WHICH ARE
+#echo #                REFERENCED BY FOREIGN KEYS".
+#echo #
+CREATE TABLE t1 (pk INT PRIMARY KEY, fk INT,
+FOREIGN KEY (fk) REFERENCES t1 (pk));
+SELECT constraint_name, table_name, column_name, referenced_column_name
+FROM information_schema.key_column_usage
+WHERE table_schema='foreign_key_test_1' AND table_name='t1';
+constraint_name,table_name,column_name,referenced_column_name
+PRIMARY,t1,pk,null
+t1_ibfk_1,t1,fk,pk
+DROP TABLE t1;
+CREATE TABLE t1 (pk INT PRIMARY KEY);
+CREATE TABLE t2 (fk INT, FOREIGN KEY (fk) REFERENCES t1 (pk));
+SELECT constraint_name, table_name, column_name, referenced_column_name
+FROM information_schema.key_column_usage
+WHERE table_schema='foreign_key_test_1' AND table_name='t2';
+constraint_name,table_name,column_name,referenced_column_name
+t2_ibfk_1,t2,fk,pk
+DROP TABLE t2;
+DROP TABLE t1;
+#echo #
+#echo # Bug #27821060 "NEWDD FK: DROP TABLES/DATABASE SHOULD CHECK FOR FKS".
+#echo #
+#echo #
+#echo # 1) Attempt to DROP TABLE which serves as parent in FK without dropping
+#echo #    child should fail with nice error message.
+CREATE TABLE t1 (pk INT PRIMARY KEY);
+CREATE TABLE t2 (fk INT, FOREIGN KEY (fk) REFERENCES t1 (pk));
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP TABLE t1;
+ERR_DROP_TABLE_FK_CONSTRAINT
+#echo #
+#echo # 2) However, same should be allowed in FOREIGN_KEY_CHECKS=0 mode.
+SET FOREIGN_KEY_CHECKS=0;
+DROP TABLE t1;
+SET FOREIGN_KEY_CHECKS=1;
+#echo #
+#echo # 3) Dropping of parent table along with child table should be allowed.
+#echo #    Even if parent precedes child in table list.
+CREATE TABLE t1 (pk INT PRIMARY KEY);
+DROP TABLES t2;
+DROP TABLES t1;
+#echo #
+#echo # 4) Even if FKs form circular dependencies.
+CREATE TABLE t1 (pk INT PRIMARY KEY, fk INT);
+CREATE TABLE t2 (pk INT PRIMARY KEY, fk INT,
+FOREIGN KEY(fk) REFERENCES t1 (pk));
+ALTER TABLE t1 ADD FOREIGN KEY (fk) REFERENCES t2 (pk);
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP TABLES t2;
+ERR_DROP_TABLE_FK_CONSTRAINT
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP TABLES t1;
+ERR_DROP_TABLE_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+DROP TABLES t2;
+DROP TABLES t1;
+SET FOREIGN_KEY_CHECKS=1;
+#echo #
+#echo # 5) Attempt to DROP SCHEMA which will remove parent without
+#echo #    removing child should fail with nice error message.
+CREATE DATABASE mysqltest;
+CREATE TABLE mysqltest.t1 (pk INT PRIMARY KEY);
+CREATE TABLE t2 (fk INT, FOREIGN KEY(fk) REFERENCES mysqltest.t1 (pk));
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP DATABASE mysqltest;
+ERR_DROP_TABLE_FK_CONSTRAINT
+#echo #
+#echo # 6) NOT allowed in FOREIGN_KEY_CHECKS=0 mode.
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_CANNOT_DROP_PARENT
+## error_msg: $# ERR_DROP_TABLE_FK_CONSTRAINT #$
+DROP DATABASE mysqltest;
+ERR_DROP_TABLE_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+DROP TABLE t2;
+DROP DATABASE mysqltest;
+#echo #
+#echo # 7) Also dropping schema which drops both parent and child
+#echo #    should be OK.
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (pk INT PRIMARY KEY, fk INT);
+CREATE TABLE t2 (pk INT PRIMARY KEY, fk INT,
+FOREIGN KEY(fk) REFERENCES t1 (pk));
+ALTER TABLE t1 ADD FOREIGN KEY (fk) REFERENCES t2 (pk);
+USE foreign_key_test_1;
+DROP DATABASE mysqltest;
+#echo #
+#echo # Bug#27506922 "DROPPING OF PARENT KEY FOR FOREIGN KEY IS ALLOWED".
+#echo #
+#echo #
+#echo # 1) CREATE TABLE with FK and no parent key.
+#echo #
+CREATE TABLE parent(pk INT PRIMARY KEY, a INT);
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(a));
+ERR_CREATE_FK_MISSING_INDEX
+SET FOREIGN_KEY_CHECKS = 0;
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(a));
+ERR_CREATE_FK_MISSING_INDEX
+SET FOREIGN_KEY_CHECKS = 1;
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE self (pk INT PRIMARY KEY, a INT, fk INT,
+FOREIGN KEY (fk) REFERENCES self(a));
+ERR_CREATE_FK_MISSING_INDEX
+SET FOREIGN_KEY_CHECKS = 0;
+#error ER_FK_NO_INDEX_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE self (pk INT PRIMARY KEY, a INT, fk INT,
+FOREIGN KEY (fk) REFERENCES self(a));
+ERR_CREATE_FK_MISSING_INDEX
+#echo # Missing parent table case.
+SET FOREIGN_KEY_CHECKS = 1;
+#error ER_FK_CANNOT_OPEN_PARENT,
+## error_msg: $# ERR_UNKNOWN_TABLE #$
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES no_such_parent(pk));
+ERR_UNKNOWN_TABLE
+#echo # We allow creation of orphan FKs in FOREIGN_KEY_CHECKS = 0 mode.
+SET FOREIGN_KEY_CHECKS = 0;
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES no_such_parent(pk));
+SET FOREIGN_KEY_CHECKS = 1;
+DROP TABLE child;
+DROP TABLE parent;
+#echo #
+#echo # 5) Special case. ALTER TABLE which replaces parent key with another
+#echo #    one due to new key creation. Old key is generated so it is
+#echo #    automagically replaced with a new explicit key or more universal
+#echo #    generated key.
+#echo #
+CREATE TABLE grandparent (pk INT PRIMARY KEY);
+CREATE TABLE parent (pkfk INT, FOREIGN KEY (pkfk) REFERENCES grandparent(pk));
+SHOW CREATE TABLE parent;
+Table,Create Table
+parent,CREATE TABLE `parent` (
+	`pkfk` int(11) DEFAULT NULL,
+	CONSTRAINT `parent_ibfk_1` FOREIGN KEY (`pkfk`) REFERENCES `grandparent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(pkfk));
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'child';
+referenced_table_name,unique_constraint_name
+parent,parent_ibfk_1
+ALTER TABLE parent ADD UNIQUE KEY u (pkfk);
+SHOW CREATE TABLE parent;
+Table,Create Table
+parent,CREATE TABLE `parent` (
+	`pkfk` int(11) DEFAULT NULL,
+	CONSTRAINT `parent_ibfk_1` FOREIGN KEY (`pkfk`) REFERENCES `grandparent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	UNIQUE INDEX `u` (`pkfk`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'child';
+referenced_table_name,unique_constraint_name
+parent,parent_ibfk_1
+DROP TABLE child;
+DROP TABLE parent;
+CREATE TABLE self (fk INT, pkfk INT,
+FOREIGN KEY (fk) REFERENCES self (pkfk),
+FOREIGN KEY (pkfk) REFERENCES grandparent(pk));
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`fk` int(11) DEFAULT NULL,
+	`pkfk` int(11) DEFAULT NULL,
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pkfk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `self_ibfk_2` FOREIGN KEY (`pkfk`) REFERENCES `grandparent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'self'
+ORDER BY referenced_table_name;
+referenced_table_name,unique_constraint_name
+grandparent,PRIMARY
+self,self_ibfk_2
+ALTER TABLE self ADD UNIQUE KEY u (pkfk);
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`fk` int(11) DEFAULT NULL,
+	`pkfk` int(11) DEFAULT NULL,
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pkfk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `self_ibfk_2` FOREIGN KEY (`pkfk`) REFERENCES `grandparent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	UNIQUE INDEX `u` (`pkfk`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'self'
+ORDER BY referenced_table_name;
+referenced_table_name,unique_constraint_name
+grandparent,PRIMARY
+self,self_ibfk_2
+DROP TABLE self;
+DROP TABLE grandparent;
+CREATE TABLE grandparent1 (pk INT PRIMARY KEY);
+CREATE TABLE grandparent2 (pk1 INT , pk2 INT, PRIMARY KEY(pk1, pk2));
+CREATE TABLE parent (pkfk1 INT, pkfk2 INT, FOREIGN KEY (pkfk1) REFERENCES grandparent1(pk));
+SHOW CREATE TABLE parent;
+Table,Create Table
+parent,CREATE TABLE `parent` (
+	`pkfk1` int(11) DEFAULT NULL,
+	`pkfk2` int(11) DEFAULT NULL,
+	CONSTRAINT `parent_ibfk_1` FOREIGN KEY (`pkfk1`) REFERENCES `grandparent1` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(pkfk1));
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'child';
+referenced_table_name,unique_constraint_name
+parent,parent_ibfk_1
+ALTER TABLE parent ADD FOREIGN KEY (pkfk1, pkfk2) REFERENCES grandparent2(pk1, pk2);
+SHOW CREATE TABLE parent;
+Table,Create Table
+parent,CREATE TABLE `parent` (
+	`pkfk1` int(11) DEFAULT NULL,
+	`pkfk2` int(11) DEFAULT NULL,
+	CONSTRAINT `parent_ibfk_1` FOREIGN KEY (`pkfk1`) REFERENCES `grandparent1` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `parent_ibfk_2` FOREIGN KEY (`pkfk1`, `pkfk2`) REFERENCES `grandparent2` (`pk1`, `pk2`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'child';
+referenced_table_name,unique_constraint_name
+parent,parent_ibfk_1
+DROP TABLE child;
+DROP TABLE parent;
+CREATE TABLE self (fk INT, pkfk1 INT, pkfk2 INT,
+FOREIGN KEY (fk) REFERENCES self (pkfk1),
+FOREIGN KEY (pkfk1) REFERENCES grandparent1(pk));
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`fk` int(11) DEFAULT NULL,
+	`pkfk1` int(11) DEFAULT NULL,
+	`pkfk2` int(11) DEFAULT NULL,
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pkfk1`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `self_ibfk_2` FOREIGN KEY (`pkfk1`) REFERENCES `grandparent1` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'self'
+ORDER BY referenced_table_name;
+referenced_table_name,unique_constraint_name
+grandparent1,PRIMARY
+self,self_ibfk_2
+ALTER TABLE self ADD FOREIGN KEY (pkfk1, pkfk2) REFERENCES grandparent2(pk1, pk2);
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`fk` int(11) DEFAULT NULL,
+	`pkfk1` int(11) DEFAULT NULL,
+	`pkfk2` int(11) DEFAULT NULL,
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pkfk1`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `self_ibfk_2` FOREIGN KEY (`pkfk1`) REFERENCES `grandparent1` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `self_ibfk_3` FOREIGN KEY (`pkfk1`, `pkfk2`) REFERENCES `grandparent2` (`pk1`, `pk2`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT referenced_table_name, unique_constraint_name FROM
+information_schema.referential_constraints WHERE table_name = 'self'
+ORDER BY referenced_table_name;
+referenced_table_name,unique_constraint_name
+grandparent1,PRIMARY
+grandparent2,PRIMARY
+self,self_ibfk_2
+DROP TABLE self;
+DROP TABLE grandparent1;
+DROP TABLE grandparent2;
+#echo #
+#echo # Bug#25722927 "NEWDD FK: ALTER TABLE CHANGE COLUMN TYPE SHOULD CHECK FK CONSTRAINT"
+#echo #
+#echo #
+#echo # 1) Check how missing/dropped referencing and referenced columns
+#echo #    are handled.
+#echo #
+#echo #
+#echo # 1.a) Missing referencing column. This problem is detected
+#echo #      during generated supported index processing.
+CREATE TABLE parent (pk INT PRIMARY KEY, j INT);
+#error ER_KEY_COLUMN_DOES_NOT_EXITS
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT, FOREIGN KEY (nocol) REFERENCES parent(pk));
+ERR_ADD_FK_CONSTRAINT
+#error ER_KEY_COLUMN_DOES_NOT_EXITS
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE self (pk INT PRIMARY KEY, FOREIGN KEY (nocol) REFERENCES self(pk));
+ERR_ADD_FK_CONSTRAINT
+CREATE TABLE child (fk INT, j INT);
+CREATE TABLE self (pk INT PRIMARY KEY, fk INT);
+#error ER_KEY_COLUMN_DOES_NOT_EXITS
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (nocol) REFERENCES parent(pk);
+ERR_ADD_FK_CONSTRAINT
+#error ER_KEY_COLUMN_DOES_NOT_EXITS
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE self ADD FOREIGN KEY (nocol) REFERENCES self(pk);
+ERR_ADD_FK_CONSTRAINT
+#echo #
+#echo # 1.b) Dropped referencing column.
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child DROP COLUMN fk;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+#echo # Adding column with the same name at the same time should not help.
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child DROP COLUMN fk, ADD COLUMN fk INT;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(pk);
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self DROP COLUMN fk;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+#error ER_FK_COLUMN_CANNOT_DROP
+## error_msg: $# ERR_DROP_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self DROP COLUMN fk, ADD COLUMN fk INT;
+ERR_DROP_COLUMN_FK_CONSTRAINT
+#echo #
+#echo # 1.c) Missing referenced column.
+DROP TABLE child;
+#error ER_FK_NO_COLUMN_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(nocol));
+ERR_CREATE_FK_MISSING_INDEX
+DROP TABLE self;
+#error ER_FK_NO_COLUMN_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+CREATE TABLE self (pk INT PRIMARY KEY, fk INT, FOREIGN KEY (fk) REFERENCES self(nocol));
+ERR_CREATE_FK_MISSING_INDEX
+CREATE TABLE child (fk INT);
+#error ER_FK_NO_COLUMN_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(nocol);
+ERR_CREATE_FK_MISSING_INDEX
+CREATE TABLE self (pk INT PRIMARY KEY, fk INT);
+#error ER_FK_NO_COLUMN_PARENT
+## error_msg: $# ERR_CREATE_FK_MISSING_INDEX #$
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(nocol);
+ERR_CREATE_FK_MISSING_INDEX
+#echo #
+#echo # 1.d) Dropped referenced column.
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+#error ER_FK_COLUMN_CANNOT_DROP_CHILD
+## error_msg: $# ERR_ALTER_SHARDING_KEY #$
+ALTER TABLE parent DROP COLUMN pk;
+ERR_ALTER_SHARDING_KEY
+#echo # Adding column with the same name at the same time should not help.
+#error ER_FK_COLUMN_CANNOT_DROP_CHILD
+## error_msg: $# ERR_ALTER_SHARDING_KEY #$
+ALTER TABLE parent DROP COLUMN pk, ADD COLUMN pk INT;
+ERR_ALTER_SHARDING_KEY
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(pk);
+#error ER_FK_COLUMN_CANNOT_DROP_CHILD
+## error_msg: $# ERR_ALTER_SHARDING_KEY #$
+ALTER TABLE self DROP COLUMN pk;
+ERR_ALTER_SHARDING_KEY
+#error ER_FK_COLUMN_CANNOT_DROP_CHILD
+## error_msg: $# ERR_ALTER_SHARDING_KEY #$
+ALTER TABLE self DROP COLUMN pk, ADD COLUMN pk INT;
+ERR_ALTER_SHARDING_KEY
+#echo #
+#echo # 1.e) Special case. Attempt to create parent for orphan
+#echo #      foreign key which doesn't have matching column.
+DROP TABLES child;
+DROP TABLES parent;
+SET FOREIGN_KEY_CHECKS=0;
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(nocol));
+CREATE TABLE parent (pk INT PRIMARY KEY);
+SET FOREIGN_KEY_CHECKS=1;
+#error ER_FK_NO_COLUMN_PARENT
+## error_msg: $# ERR_FK_REFERENCING_COLUMN_NOT_EXIST #$
+INSERT INTO child values (1);
+ERR_FK_REFERENCING_COLUMN_NOT_EXIST
+ALTER TABLE parent ADD column nocol INT;
+INSERT INTO parent values (1,1);
+INSERT INTO child values (1);
+DROP TABLES child;
+DROP TABLES parent;
+DROP TABLES self;
+#echo #
+#echo # 2) Handling of virtual columns in referencing and referenced
+#echo #    columns lists.
+#echo #
+#echo #
+#echo # 2.a) Virtual columns in referencing columns list are not
+#echo #      supported.
+CREATE TABLE parent (pk INT PRIMARY KEY);
+#error ER_FK_CANNOT_USE_VIRTUAL_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+CREATE TABLE child (base INT, fk INT GENERATED ALWAYS AS (base+1) VIRTUAL,
+FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_ADD_FK_GENERATED_COLUMN
+#error ER_FK_CANNOT_USE_VIRTUAL_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+CREATE TABLE self (pk INT PRIMARY KEY, base INT,
+fk INT GENERATED ALWAYS AS (base+1) VIRTUAL,
+FOREIGN KEY (fk) REFERENCES self(pk));
+ERR_ADD_FK_GENERATED_COLUMN
+CREATE TABLE child (base INT, fk INT GENERATED ALWAYS AS (base+1) VIRTUAL);
+#error ER_FK_CANNOT_USE_VIRTUAL_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+ERR_ADD_FK_GENERATED_COLUMN
+CREATE TABLE self (pk INT PRIMARY KEY, base INT,
+fk INT GENERATED ALWAYS AS (base+1) VIRTUAL);
+#error ER_FK_CANNOT_USE_VIRTUAL_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(pk);
+ERR_ADD_FK_GENERATED_COLUMN
+#echo #
+#echo # 2.b) One should not be able to get virtual column in referencing
+#echo #      columns list by ALTERing column.
+DROP TABLE child;
+DROP TABLE self;
+#error ER_UNSUPPORTED_ACTION_ON_GENERATED_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+CREATE TABLE child (base INT, fk INT GENERATED ALWAYS AS (base+1) STORED,
+FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_ADD_FK_GENERATED_COLUMN
+#error ER_UNSUPPORTED_ACTION_ON_GENERATED_COLUMN
+## error_msg: $# ERR_ADD_FK_GENERATED_COLUMN #$
+CREATE TABLE self (pk INT PRIMARY KEY, base INT,
+fk INT GENERATED ALWAYS AS (base+1) STORED,
+FOREIGN KEY (fk) REFERENCES self(pk));
+ERR_ADD_FK_GENERATED_COLUMN
+DROP TABLE parent;
+#echo #
+#echo # 3) Check how missing/dropped supporting index on referencing table
+#echo #    is handled.
+#echo #
+#echo #
+#echo # 3.b) Attempt to drop supporting index should be prohibited.
+CREATE TABLE parent (pk INT PRIMARY KEY);
+CREATE TABLE child (fk INT, FOREIGN KEY(fk) REFERENCES parent(pk));
+#error ER_DROP_INDEX_FK
+## error_msg: $# ERR_UNKNOWN_KEY #$
+ALTER TABLE child DROP KEY fk;
+ERR_UNKNOWN_KEY
+CREATE TABLE self (pk INT PRIMARY KEY, fk INT, FOREIGN KEY(fk) REFERENCES self(pk));
+#error ER_DROP_INDEX_FK
+## error_msg: $# ERR_UNKNOWN_KEY #$
+ALTER TABLE self DROP KEY fk;
+ERR_UNKNOWN_KEY
+DROP TABLE self;
+DROP TABLE child;
+DROP TABLE parent;
+#echo #
+#echo # 6) Check that we prohibit foreign keys with SET NULL action with
+#echo #    non-nullable referencing columns.
+#echo #
+#echo #
+#echo # 6.1) Attempt to add foreign key with SET NULL action and
+#echo #      non-nullable column should lead to error.
+CREATE TABLE parent (pk INT PRIMARY KEY);
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT NOT NULL, CONSTRAINT c FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL);
+ERR_ADD_FK_CONSTRAINT
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT NOT NULL, CONSTRAINT c FOREIGN KEY (fk) REFERENCES parent(pk) ON UPDATE SET NULL);
+ERR_ADD_FK_CONSTRAINT
+CREATE TABLE child (fk INT NOT NULL);
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL;
+ERR_ADD_FK_CONSTRAINT
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk) ON UPDATE SET NULL;
+ERR_ADD_FK_CONSTRAINT
+DROP TABLE child;
+#echo # Case of when column is implicitly made non-nullable due to PRIMARY
+#echo # KEY should be handled in the same way.
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT, PRIMARY KEY(fk), CONSTRAINT c FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL);
+ERR_ADD_FK_CONSTRAINT
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT, PRIMARY KEY(fk), CONSTRAINT c FOREIGN KEY (fk) REFERENCES parent(pk) ON UPDATE SET NULL);
+ERR_ADD_FK_CONSTRAINT
+CREATE TABLE child (fk INT);
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# Do not support multiple alter spec whit add foreign key #$
+ALTER TABLE child ADD PRIMARY KEY (fk), ADD FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL;
+Do not support multiple alter spec whit add foreign key
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# Do not support multiple alter spec whit add foreign key #$
+ALTER TABLE child ADD PRIMARY KEY (fk), ADD FOREIGN KEY (fk) REFERENCES parent(pk) ON UPDATE SET NULL;
+Do not support multiple alter spec whit add foreign key
+DROP TABLE child;
+#echo #
+#echo # 6.2) Attempt to make referencing column non-nullable in existing
+#echo #      foreign key with SET NULL action should lead to error as well.
+CREATE TABLE child_one (fk INT, CONSTRAINT c FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL);
+CREATE TABLE child_two (fk INT, FOREIGN KEY (fk) REFERENCES parent(pk) ON DELETE SET NULL);
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE child_one MODIFY COLUMN fk INT NOT NULL;
+ERR_ADD_FK_CONSTRAINT
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# ERR_ADD_FK_CONSTRAINT #$
+ALTER TABLE child_two CHANGE COLUMN fk fk1 INT NOT NULL;
+ERR_ADD_FK_CONSTRAINT
+#echo # Case of when column is implicitly made non-nullable due addition
+#echo # of PRIMARY KEY should be handled in the same way.
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# optimize error by add primary key is not supported #$
+ALTER TABLE child_one ADD PRIMARY KEY(fk);
+optimize error by add primary key is not supported
+#error ER_FK_COLUMN_NOT_NULL
+## error_msg: $# optimize error by add primary key is not supported #$
+ALTER TABLE child_two ADD PRIMARY KEY(fk);
+optimize error by add primary key is not supported
+DROP TABLE child_one;
+DROP TABLE child_two;
+DROP TABLE parent;
+#echo #
+#echo # 7) Test that we check that referencing and referenced column types are
+#echo #    compatible. Such check should be performed for newly created foreign
+#echo #    keys and when we change types of columns in existing foreign keys.
+#echo #
+#echo #
+#echo # 7.a) Attempt to create new foreign key between columns of incompatible
+#echo #      types should lead to error. This should happen even in
+#echo #      FOREIGN_KEY_CHECKS=0 mode.
+CREATE TABLE parent (pk INT PRIMARY KEY);
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk CHAR(10), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk CHAR(10), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+CREATE TABLE child (fk CHAR(10));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE self (pk INT PRIMARY KEY, fk CHAR(10), FOREIGN KEY (fk) REFERENCES self(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE self (pk INT PRIMARY KEY, fk CHAR(10), FOREIGN KEY (fk) REFERENCES self(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+CREATE TABLE self (pk INT PRIMARY KEY, fk CHAR(10));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(pk);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self ADD FOREIGN KEY (fk) REFERENCES self(pk);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+DROP TABLE self;
+DROP TABLE child;
+#echo #
+#echo # 7.b) Attempt to change referencing or referenced column in existing
+#echo #      foreign key to incompatible type should lead to error. This
+#echo #      should also happen in FOREIGN_KEY_CHECKS=0 mode in general case
+#echo #      (there is exception for charset changes which we test below).
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(pk));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child MODIFY fk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE parent MODIFY pk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child MODIFY fk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE parent MODIFY pk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+CREATE TABLE self (pk INT PRIMARY KEY, fk INT, FOREIGN KEY (fk) REFERENCES self(pk));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY fk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY pk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=0;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY fk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY pk CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+SET FOREIGN_KEY_CHECKS=1;
+DROP TABLE child;
+DROP TABLE parent;
+DROP TABLE self;
+#echo #
+#echo # 7.c) Test compatibility checks for multi-column foreign keys.
+CREATE TABLE parent (pk1 INT, pk2 INT, PRIMARY KEY (pk1, pk2));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk1 INT, fk2 CHAR(10), FOREIGN KEY (fk1, fk2) REFERENCES parent(pk1, pk2));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+CREATE TABLE child (fk1 INT, fk2 CHAR(10));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child ADD FOREIGN KEY (fk1, fk2) REFERENCES parent(pk1, pk2);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE child;
+CREATE TABLE child (fk1 INT, fk2 INT, FOREIGN KEY (fk1, fk2) REFERENCES parent(pk1, pk2));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE child MODIFY fk2 CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE parent MODIFY pk2 CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE child;
+DROP TABLE parent;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE self (pk1 INT, pk2 INT, fk1 INT, fk2 CHAR(10), PRIMARY KEY (pk1, pk2),
+FOREIGN KEY (fk1, fk2) REFERENCES self(pk1, pk2));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+CREATE TABLE self (pk1 INT, pk2 INT, fk1 INT, fk2 CHAR(10), PRIMARY KEY (pk1, pk2));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self ADD FOREIGN KEY (fk1, fk2) REFERENCES self(pk1, pk2);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE self;
+CREATE TABLE self (pk1 INT, pk2 INT, fk1 INT, fk2 INT, PRIMARY KEY (pk1, pk2),
+FOREIGN KEY (fk1, fk2) REFERENCES self(pk1, pk2));
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY fk2 CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+ALTER TABLE self MODIFY pk2 CHAR(10);
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE self;
+#echo #
+#echo # 7.e) Test how compatibility rules work for various types.
+#echo #      Different engines have different rules, so the below
+#echo #      part of test is specific to InnoDB.
+#echo #
+#echo # We don't check compatibility for BLOB based types as they only
+#echo # support prefix indexes which are not usable for foreign keys.
+#echo # Also we don't provide coverage for legacy types.
+#echo #
+#echo # 7.e.I) For integer types both type size and signedness should match.
+CREATE TABLE parent (pk INT PRIMARY KEY);
+#echo # Foreign keys over integer types are supported.
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(pk));
+DROP TABLE child;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk TINYINT, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk BIGINT, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE parent;
+#echo # Integer types are not compatible with most of other types
+#echo # (we check types with same storage requirements as INT below).
+CREATE TABLE parent (pk INT PRIMARY KEY);
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk BINARY(4), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk VARBINARY(3), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk FLOAT, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk DECIMAL(8,0), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk TIMESTAMP, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk BIT(32), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#echo # Oddly enough, some integer types are compatible with some temporal
+#echo # types, enums and sets. However, this is probably a bug and not a
+#echo # feature, so we don't test it here.
+DROP TABLE parent;
+#echo #
+#echo # 7.e.IV) All string types are compatible with each other provided
+#echo #         that charset matches (there are exceptions to the latter
+#echo #         rule, see below).
+CREATE TABLE parent (pk CHAR(10) PRIMARY KEY);
+#echo # Difference in size doesn't matter.
+CREATE TABLE child (fk CHAR(100), FOREIGN KEY (fk) REFERENCES parent(pk));
+#echo # Difference in type doesn't matter
+DROP TABLE child;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk VARCHAR(100), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE parent;
+#echo # Even VARCHARs which use different number of bytes to store length
+#echo # are compatible.
+CREATE TABLE parent (pk VARCHAR(10) PRIMARY KEY);
+CREATE TABLE child (fk VARCHAR(100), FOREIGN KEY (fk) REFERENCES parent(pk));
+DROP TABLE child;
+DROP TABLE parent;
+#echo # However both columns must use the same collation.
+CREATE TABLE parent (pk VARCHAR(10) CHARACTER SET utf8mb4 PRIMARY KEY);
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_ADD_FK_CHARSET_COLLATION #$
+CREATE TABLE child (fk VARCHAR(100) CHARACTER SET latin1, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_ADD_FK_CHARSET_COLLATION
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_ADD_FK_CHARSET_COLLATION #$
+CREATE TABLE child (fk VARCHAR(100) COLLATE utf8mb4_bin, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_ADD_FK_CHARSET_COLLATION
+#echo # Binary strings are not compatible with non-binary strings.
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk VARBINARY(40), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE parent;
+#echo # But all binary string types are compatible.
+CREATE TABLE parent (pk VARBINARY(10) PRIMARY KEY);
+CREATE TABLE child (fk BINARY(100), FOREIGN KEY (fk) REFERENCES parent(pk));
+DROP TABLES child;
+DROP TABLES parent;
+#echo # Non-binary string types are incompatible with non-string types.
+CREATE TABLE parent (pk CHAR(4) CHARACTER SET latin1 PRIMARY KEY);
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk INT, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk FLOAT, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk DECIMAL(8,0), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk TIMESTAMP, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk TIME(2), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk BIT(32), FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+ALTER TABLE parent MODIFY pk CHAR(1) CHARACTER SET latin1;
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk YEAR, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk ENUM('a') CHARACTER SET latin1, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_CHANGE_COLUMN_FK_CONSTRAINT #$
+CREATE TABLE child (fk SET('a') CHARACTER SET latin1, FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_CHANGE_COLUMN_FK_CONSTRAINT
+DROP TABLE parent;
+#echo #
+#echo # 7.e.IX) In FOREIGN_KEY_CHECKS=0 mode InnoDB allows to change charsets
+#echo #         of string columns in existing foreign keys. Allowing such
+#echo #         temporary discrepancies is necessary as in general case there
+#echo #         is no way to change charset of both child and parent columns
+#echo #         simultaneously. Such discrepancies are still prohibited
+#echo #         in newly created foreign keys.
+CREATE TABLE parent (pk VARCHAR(10) CHARACTER SET latin1 PRIMARY KEY);
+CREATE TABLE child (fk VARCHAR(20) CHARACTER SET latin1,
+FOREIGN KEY (fk) REFERENCES parent(pk));
+SET FOREIGN_KEY_CHECKS=0;
+ALTER TABLE parent MODIFY pk VARCHAR(10) CHARACTER SET utf8mb4;
+ALTER TABLE child MODIFY fk VARCHAR(20) CHARACTER SET utf8mb4;
+ALTER TABLE child MODIFY fk VARCHAR(20) CHARACTER SET latin1;
+ALTER TABLE parent MODIFY pk VARCHAR(10) CHARACTER SET latin1;
+DROP TABLE child;
+#echo # Adding new foreign key with discrepancies is not allowed
+#echo # even in FOREIGN_KEY_CHECKS=0 mode.
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_ADD_FK_CHARSET_COLLATION #$
+CREATE TABLE child (fk VARCHAR(20) CHARACTER SET utf8mb4,
+FOREIGN KEY (fk) REFERENCES parent(pk));
+ERR_ADD_FK_CHARSET_COLLATION
+CREATE TABLE child (fk VARCHAR(20) CHARACTER SET utf8mb4);
+#error ER_FK_INCOMPATIBLE_COLUMNS
+## error_msg: $# ERR_ADD_FK_CHARSET_COLLATION #$
+ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent(pk);
+ERR_ADD_FK_CHARSET_COLLATION
+DROP TABLE child;
+DROP TABLE parent;
+SET FOREIGN_KEY_CHECKS=1;
+#echo #
+#echo # Bug #27353767 "FOREIGN KEY IS ALWAYS IN LOWER CASE".
+#echo #
+#echo # Check that the way in which referencing and referenced column names in
+#echo # foreign key definition are stored and shown in SHOW CREATE TABLE output
+#echo # and I_S tables is with 5.7 and earlier versions.
+#echo #
+#echo # We always use version of name of referencing column which comes from
+#echo # the definition of referencing table and not version from FOREIGN KEY
+#echo # clause.
+#echo # If referenced table exists than we use version of referenced column
+#echo # name which comes from its definition, and not version from FOREIGN KEY
+#echo # clause.
+CREATE TABLE parent (Pk VARCHAR(10) PRIMARY KEY);
+CREATE TABLE child (Fk VARCHAR(10), FOREIGN KEY (fK) REFERENCES parent(pK));
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+DROP TABLE child;
+CREATE TABLE child (Fk VARCHAR(10));
+ALTER TABLE child ADD FOREIGN KEY (fK) REFERENCES parent(pK);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+#echo # Ditto for self-referencing tables.
+CREATE TABLE self (Pk VARCHAR(10) PRIMARY KEY, Fk VARCHAR(10),
+FOREIGN KEY (fK) REFERENCES self(pK));
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`Pk` varchar(10) NOT NULL,
+	`Fk` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`Pk`),
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='self';
+column_name,referenced_column_name
+fk,pk
+DROP TABLE self;
+CREATE TABLE self (Pk VARCHAR(10) PRIMARY KEY, Fk VARCHAR(10));
+ALTER TABLE self ADD FOREIGN KEY (fK) REFERENCES self(pK);
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`Pk` varchar(10) NOT NULL,
+	`Fk` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`Pk`),
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='self';
+column_name,referenced_column_name
+fk,pk
+#echo #
+#echo # If column name is changed (even to equivalent one) then the name shown
+#echo # in foreign key definition is updated too.
+ALTER TABLE parent CHANGE COLUMN Pk PK VARCHAR(20);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+ALTER TABLE child CHANGE COLUMN Fk FK VARCHAR(20);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`FK` varchar(20) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+#echo # Ditto for self-referencing tables.
+ALTER TABLE self CHANGE COLUMN Pk PK VARCHAR(20);
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`Pk` varchar(10) NOT NULL,
+	`Fk` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`Pk`),
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='self';
+column_name,referenced_column_name
+fk,pk
+ALTER TABLE self CHANGE COLUMN Fk FK VARCHAR(20);
+SHOW CREATE TABLE self;
+Table,Create Table
+self,CREATE TABLE `self` (
+	`Pk` varchar(10) NOT NULL,
+	`Fk` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`Pk`),
+	CONSTRAINT `self_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `self` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='self';
+column_name,referenced_column_name
+fk,pk
+DROP TABLE self;
+#echo #
+#echo # Referenced column names are preserved when referenced table is dropped
+#echo # (which is possible in FOREIGN_KEY_CHECKS = 0 mode).
+SET FOREIGN_KEY_CHECKS=0;
+DROP TABLE parent;
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`FK` varchar(20) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+#echo #
+#echo # Addition of parent doesn't change the referenced column names.
+CREATE TABLE parent (pk VARCHAR(10) PRIMARY KEY);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`FK` varchar(20) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+DROP TABLE child;
+DROP TABLE parent;
+#echo #
+#echo # We use version of referenced column name coming from FOREIGN KEY clause
+#echo # when orphan foreign key is created (as referenced table doesn't exist).
+#echo #
+#echo # Oddly, 5.7 uses version of referencing column name coming from FOREIGN
+#echo # KEY clause when orphan FK is added via ALTER TABLE (but not CREATE
+#echo # TABLE). This means that in 5.7 there is discrepancy between CREATE and
+#echo # ALTER TABLE behavior in this case.
+#echo # In 8.0 we are consistent and stick to CREATE TABLE behavior in such
+#echo # cases.
+CREATE TABLE child (Fk VARCHAR(10), FOREIGN KEY (fK) REFERENCES parent(pK));
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+DROP TABLE child;
+CREATE TABLE child (Fk VARCHAR(10));
+ALTER TABLE child ADD FOREIGN KEY (fK) REFERENCES parent(pK);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+#echo #
+#echo # Addition of parent doesn't change the referenced column names.
+CREATE TABLE parent (pk VARCHAR(10) PRIMARY KEY);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`Fk` varchar(10) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT column_name, referenced_column_name FROM information_schema.key_column_usage
+WHERE referenced_table_name='parent';
+column_name,referenced_column_name
+fk,pk
+SET FOREIGN_KEY_CHECKS=1;
+DROP TABLE child;
+DROP TABLE parent;
+#echo #
+#echo # Test for bug#29173134 "FOREIGN KEY CONSTRAINT NAMES TAKING INDEX NAME".
+#echo #
+#echo #
+#echo # Original test case.
+CREATE TABLE t1 (id INT PRIMARY KEY);
+CREATE TABLE t2 (t1id INT, FOREIGN KEY fk_index (t1id) REFERENCES t1 (id));
+CREATE TABLE t3 (t1id INT, FOREIGN KEY fk_index (t1id) REFERENCES t1 (id));
+SHOW CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`t1id` int(11) DEFAULT NULL,
+	CONSTRAINT `t2_ibfk_1` FOREIGN KEY (`t1id`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE t3;
+Table,Create Table
+t3,CREATE TABLE `t3` (
+	`t1id` int(11) DEFAULT NULL,
+	CONSTRAINT `t3_ibfk_1` FOREIGN KEY (`t1id`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT CONSTRAINT_NAME, TABLE_NAME
+FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE TABLE_NAME IN ('t2', 't3') ORDER BY CONSTRAINT_NAME;
+CONSTRAINT_NAME,TABLE_NAME
+t2_ibfk_1,t2
+t3_ibfk_1,t3
+#echo #
+#echo # Let us check what foreign key names are used in different situations.
+CREATE TABLE t4 (fk1 INT, fk2 INT, fk3 INT, fk4 INT,
+FOREIGN KEY (fk1) REFERENCES t1 (id),
+CONSTRAINT c FOREIGN KEY (fk2) REFERENCES t1 (id),
+FOREIGN KEY d (fk3) REFERENCES t1 (id),
+CONSTRAINT e FOREIGN KEY f (fk4) REFERENCES t1 (id));
+SHOW CREATE TABLE t4;
+Table,Create Table
+t4,CREATE TABLE `t4` (
+	`fk1` int(11) DEFAULT NULL,
+	`fk2` int(11) DEFAULT NULL,
+	`fk3` int(11) DEFAULT NULL,
+	`fk4` int(11) DEFAULT NULL,
+	CONSTRAINT `t4_ibfk_1` FOREIGN KEY (`fk1`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `c` FOREIGN KEY (`fk2`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `t4_ibfk_2` FOREIGN KEY (`fk3`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `e` FOREIGN KEY (`fk4`) REFERENCES `t1` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE TABLE_NAME = 't4' ORDER BY CONSTRAINT_NAME;
+CONSTRAINT_NAME
+c
+e
+t4_ibfk_1
+t4_ibfk_2
+#echo # Clean-up.
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t1;
+#echo #
+#echo # Bug #11756183 "FOREIGN KEYS MAY DISAPPEAR AFTER ALTER TABLE RENAME".
+#echo # Bug #18713399 "FK CHILD TABLE CANNOT BE CREATED: PROBLEMS AFTER TABLE RENAME"
+#echo #
+CREATE TABLE parent (pk INT PRIMARY KEY);
+INSERT INTO parent VALUES (1);
+CREATE TABLE child (fk INT, b INT, FOREIGN KEY (fk) REFERENCES parent (pk));
+INSERT INTO child VALUES (1, 1);
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`fk` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+#echo # We use ALGORITHM=COPY to ensure that the below ALTER is executed
+#echo # using COPY algorithm even if changing column datatype becomes
+#echo # in-place operation.
+ALTER TABLE child MODIFY COLUMN b BIGINT;
+ALTER TABLE child RENAME TO child_renamed;
+#echo # The foreign key should be still in SHOW CREATE TABLE output.
+SHOW CREATE TABLE child_renamed;
+Table,Create Table
+child_renamed,CREATE TABLE `child_renamed` (
+	`fk` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	CONSTRAINT `child_renamed_ibfk_1` FOREIGN KEY (`fk`) REFERENCES `parent` (`pk`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+#echo # Removal of parent row should not be allowed.
+#error ER_ROW_IS_REFERENCED_2
+## error_msg: $# Cannot delete or update a parent row #$
+DELETE FROM parent WHERE pk = 1;
+Cannot delete or update a parent row
+DROP TABLE child_renamed;
+#echo # Part of test covering bug#18713399. The below CREATE TABLE statement
+#echo # should not fail due to duplicate foreign key name.
+CREATE TABLE child (fk INT, b INT, FOREIGN KEY (fk) REFERENCES parent (pk));
+DROP TABLE child;
+DROP TABLE parent;
+#echo #
+#echo # Bug #18199504 "AUTO-NAMING OF FOREIGN KEYS SEEMS BROKEN WHEN
+#echo #                MULTI-OPERATION ALTER IS USED".
+#echo #
+CREATE TABLE parent (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, c CHAR(32));
+CREATE TABLE uncle (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, c CHAR(32));
+CREATE TABLE child (parent_id INT, c CHAR(32), FOREIGN KEY (parent_id) REFERENCES parent (id));
+#echo # Turn off foreign key checking so we can add foreign key using
+#echo # inplace algorithm.
+SET FOREIGN_KEY_CHECKS=0;
+#echo # The problem occured when a foreign key was added by ALTER TABLE
+#echo # executed using inplace algorithm which still did table rebuild
+#echo # internally. So we drop column to make operation non-instant for
+#echo # sure.
+ALTER TABLE child ADD COLUMN uncle_id INT;
+ALTER TABLE child DROP COLUMN c;
+ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (uncle_id) REFERENCES uncle (id);
+SET FOREIGN_KEY_CHECKS=1;
+SHOW CREATE TABLE child;
+Table,Create Table
+child,CREATE TABLE `child` (
+	`parent_id` int(11) DEFAULT NULL,
+	`uncle_id` int(11) DEFAULT NULL,
+	CONSTRAINT `child_ibfk_0` FOREIGN KEY (`parent_id`) REFERENCES `parent` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+	CONSTRAINT `child_ibfk_1` FOREIGN KEY (`uncle_id`) REFERENCES `uncle` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+DROP TABLES child;
+DROP TABLES parent;
+DROP TABLES uncle;
+#echo #
+#echo # Now similar tests for self-referencing foreign keys.
+#echo #
+CREATE TABLE self1 (pk INT PRIMARY KEY, a INT, fk1 INT, fk2 INT,
+KEY(a), FOREIGN KEY (fk1, fk2) REFERENCES self1 (a, pk));
+CREATE TABLE self2 (pk INT PRIMARY KEY, b INT, fk1 INT, fk2 INT,
+UNIQUE(b), FOREIGN KEY (fk1, fk2) REFERENCES self2 (b, pk));
+DROP TABLE self1;
+DROP TABLE self2;
+#echo # Test for complex multi-column case.
+CREATE TABLE self (a INT, b INT, c INT, fk1 INT, fk2 INT, fk3 INT,
+PRIMARY KEY (a,b), KEY(c, a),
+FOREIGN KEY (fk1, fk2, fk3) REFERENCES self (c, a, b));
+DROP TABLE self;
+use information_schema;
+drop database foreign_key_test_1;

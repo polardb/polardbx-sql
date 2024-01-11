@@ -853,9 +853,9 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
         System.out.println(idGen.get() + " rows added.");
 
         // Assert that column default changed and covered in GSI.
-        Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, TABLE_NAME).contains("`c0` int(11),"));
-        Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, CGSI_NAME).contains("`c0` int(11),"));
-        Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, UCGSI_NAME).contains("`c0` int(11),"));
+        Assert.assertTrue(showCreateTable(tddlConnection, TABLE_NAME).contains("`c0` int(11),"));
+        Assert.assertTrue(showCreateTable(tddlConnection, CGSI_NAME).contains("`c0` int(11),"));
+        Assert.assertTrue(showCreateTable(tddlConnection, UCGSI_NAME).contains("`c0` int(11),"));
 
         // Assert that data identical.
         selectContentSameAssert(selectPrimary + " order by `seller_id`", selectGSI + " order by `seller_id`", null,
@@ -878,12 +878,9 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
             JdbcUtil.executeUpdateFailed(tddlConnection,
                 MessageFormat.format("alter table `{0}` alter `c0` set default {1}", TABLE_NAME, "'hehe'"),
                 "Not all physical DDLs have been executed successfully");
-            Assert.assertTrue(
-                JdbcUtil.showCreateTable(tddlConnection, TABLE_NAME).contains("`c0` int(11) DEFAULT NULL,"));
-            Assert
-                .assertTrue(JdbcUtil.showCreateTable(tddlConnection, CGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
-            Assert.assertTrue(
-                JdbcUtil.showCreateTable(tddlConnection, UCGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
+            Assert.assertTrue(showCreateTable(tddlConnection, TABLE_NAME).contains("`c0` int(11) DEFAULT NULL,"));
+            Assert.assertTrue(showCreateTable(tddlConnection, CGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
+            Assert.assertTrue(showCreateTable(tddlConnection, UCGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
         }
     }
 

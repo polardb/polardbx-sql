@@ -1,0 +1,408 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup mytg23;
+CREATE TABLE `rng_t2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue)
+)
+tablegroup = mytg23;
+show full create table rng_t2;
+Table,Create Table
+rng_t2,CREATE TABLE `rng_t2` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+CREATE TABLE `rng_t3` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue)
+)
+tablegroup = mytg23;
+show full create table rng_t3;
+Table,Create Table
+rng_t3,CREATE TABLE `rng_t3` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+CREATE TABLE `rng_t4` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue)
+)
+tablegroup = mytg23;
+show full create table rng_t4;
+Table,Create Table
+rng_t4,CREATE TABLE `rng_t4` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d` USING BTREE (`a`, `b`, `c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+CREATE TABLE `rng_t5` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL,
+`d` int(11) DEFAULT NULL,
+`e` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue,maxvalue)
+)
+tablegroup = mytg23;
+show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
+## error_msg: $# the column count[3] of bound values of partition p2_1 is more than the full partition columns count[2] #$
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+the column count[3] of bound values of partition p2_1 is more than the full partition columns count[2]
+alter tablegroup mytg23 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_1 VALUES LESS THAN ('hhh',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh',100),
+PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_1 VALUES LESS THAN ('hhh',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+drop table rng_t2;
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',100,100,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_1 VALUES LESS THAN ('adc',100,100,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2_2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_1 VALUES LESS THAN ('hhh',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3_2 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+## error_msg: $# the column count[5] of bound values of partition p2_1 is more than the full partition columns count[3] #$
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue)
+);
+the column count[5] of bound values of partition p2_1 is more than the full partition columns count[3]
+## error_msg: $# the column count[6] of bound values of partition p2_1 is more than the full partition columns count[3] #$
+alter tablegroup mytg23 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue,maxvalue)
+);
+the column count[6] of bound values of partition p2_1 is more than the full partition columns count[3]
+alter tablegroup mytg23 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn'),
+PARTITION p5 VALUES LESS THAN ('oqp')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN ('lmn',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
+alter tablegroup mytg23 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN ('lmn',100,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
+alter tablegroup mytg23 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100,100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN ('lmn',100,100,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN ('oqp',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+Table,Create Table
+rng_t5,CREATE TABLE `rng_t5` (
+	`a` varchar(32) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c_d_e` USING BTREE (`a`, `b`, `c`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`)
+(PARTITION p1 VALUES LESS THAN ('abc',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('efg',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN ('hij',MAXVALUE,MAXVALUE,MAXVALUE,MAXVALUE) ENGINE = InnoDB)
+tablegroup = `mytg23`
+## error_msg: $# the column count[4] of bound values of partition p6 is more than the full partition columns count[3] #$
+alter tablegroup mytg23 add partition (
+PARTITION p6 VALUES LESS THAN ('rst',100,100,100)
+);
+the column count[4] of bound values of partition p6 is more than the full partition columns count[3]

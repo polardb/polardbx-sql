@@ -1,0 +1,189 @@
+## DISABLE_FAST_SQL_PARSER
+##======== lc-lc ===========
+# lc_lc_tp1
+drop table if exists lc_lc_tp1;
+create table if not exists lc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by list columns (a,b)
+(
+subpartition sp0 values in ((5,5),(6,6)),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_lc_tp1;
+Table,Create Table
+lc_lc_tp1,CREATE TABLE `lc_lc_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp0 VALUES IN ((5,5),(6,6)),
+ SUBPARTITION sp1 VALUES IN (DEFAULT))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+# lc_lc_tp2
+drop table if exists lc_lc_tp2st;
+create table if not exists lc_lc_tp2st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by list columns (a,b)
+subpartition template
+(
+subpartition sp0 values in ((5,5),(6,6)),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_lc_tp2st;
+Table,Create Table
+lc_lc_tp2st,CREATE TABLE `lc_lc_tp2st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp0 VALUES IN ((5,5),(6,6)),
+ SUBPARTITION sp1 VALUES IN (DEFAULT))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+# lc_lc_ntp1
+drop table if exists lc_lc_ntp1;
+create table if not exists lc_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by list columns (a,b)
+(
+partition p0 values in ((5,5),(6,6))
+(
+subpartition sp0 values in ((5,5),(6,6)),
+subpartition sp1 values in (default)
+),
+partition p1 values in (default)
+(
+subpartition sp2 values in ((5,5),(6,6)),
+subpartition sp3 values in (default)
+)
+);
+show create table lc_lc_ntp1;
+Table,Create Table
+lc_lc_ntp1,CREATE TABLE `lc_lc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p0 VALUES IN ((5,5),(6,6))
+ (SUBPARTITION sp0 VALUES IN ((5,5),(6,6)) ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 VALUES IN ((5,5),(6,6)) ENGINE = InnoDB,
+  SUBPARTITION sp3 VALUES IN (DEFAULT) ENGINE = InnoDB))
+##======== l-l ===========
+# l_l_tp1
+drop table if exists l_l_tp1;
+create table if not exists l_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by list (year(c))
+(
+subpartition sp0 values in (2020,2022),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values in (2020,2022),
+partition p1 values in (default)
+);
+show create table l_l_tp1;
+Table,Create Table
+l_l_tp1,CREATE TABLE `l_l_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY LIST(YEAR(`c`))
+(SUBPARTITION sp0 VALUES IN (2020,2022),
+ SUBPARTITION sp1 VALUES IN (DEFAULT))
+(PARTITION p0 VALUES IN (2020,2022),
+ PARTITION p1 VALUES IN (DEFAULT))
+# l_l_ntp1
+drop table if exists l_l_tp1;
+create table if not exists l_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by list (year(c))
+(
+partition p0 values in (2020,2022) (
+subpartition sp0 values in (2020,2022),
+subpartition sp1 values in (default)
+),
+partition p1 values in (default) (
+subpartition sp2 values in (2020,2022),
+subpartition sp3 values in (default)
+)
+);
+show create table l_l_tp1;
+Table,Create Table
+l_l_tp1,CREATE TABLE `l_l_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY LIST(YEAR(`c`))
+(PARTITION p0 VALUES IN (2020,2022)
+ (SUBPARTITION sp0 VALUES IN (2020,2022) ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 VALUES IN (2020,2022) ENGINE = InnoDB,
+  SUBPARTITION sp3 VALUES IN (DEFAULT) ENGINE = InnoDB))

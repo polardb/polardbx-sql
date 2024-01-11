@@ -1,0 +1,101 @@
+## DISABLE_FAST_SQL_PARSER
+
+ ## lc_ntp
+CREATE TABLE `lc_ntp` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL,
+KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION `p1` VALUES IN ((10001,20001)) ENGINE = InnoDB,
+PARTITION `p2` VALUES IN ((20002,20002)) ENGINE = InnoDB,
+PARTITION `p3` VALUES IN ((30003,30003)) ENGINE = InnoDB);
+
+CREATE TABLE `lc_ntp2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL,
+KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION `p1` VALUES IN ((10001,20001)) ENGINE = InnoDB,
+PARTITION `p2` VALUES IN ((20002,20002)) ENGINE = InnoDB,
+PARTITION `p3` VALUES IN ((30003,30003)) ENGINE = InnoDB);
+
+
+  ## rc_lc_ntp
+create table if not exists rc_lc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (11001, 11001)),
+subpartition p1sp2 values in ( (12001, 22002))
+),
+partition p2 values less than ( maxvalue, maxvalue ) (
+subpartition p2sp1 values in ( (21001, 21001)),
+subpartition p2sp2 values in ( (22001, 22002)),
+subpartition p2sp3 values in ( (23001, 23002))
+)
+);
+
+  ## rc_lc_ntp
+create table if not exists rc_lc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (1000, 2000)),
+subpartition p1sp2 values in ( (2000, 2000))
+),
+partition p2 values less than ( maxvalue, maxvalue ) (
+subpartition p2sp1 values in ( (1000, 2000)),
+subpartition p2sp2 values in ( (2000, 2000)),
+subpartition p2sp3 values in ( (3000, 2000))
+)
+);
+
+show create table lc_ntp;
+show create table lc_ntp2;
+show create table rc_lc_ntp;
+show create table rc_lc_ntp2;
+
+alter table lc_ntp modify partition p1 add values ((1001,2001),(1002,2002));
+alter table lc_ntp modify partition p1 drop values ((1001,2001),(1002,2002));
+
+## error_msg: $# only allow to be executed separately #$
+alter table lc_ntp modify partition p1 add values ((1101,2101),(1102,2102)), p2 add values ((2101,2101),(2102,2102));
+
+alter table rc_lc_ntp modify subpartition p1sp2 add values ((1001,2001),(1002,2002));
+alter table rc_lc_ntp modify subpartition p1sp2 drop values ((1001,2001),(1002,2002));
+
+## error_msg: $# only allow to be executed separately #$
+alter table rc_lc_ntp modify subpartition p1sp1 add values ((1101,2101),(1102,2102)), p2sp1 add values ((2101,2101),(2102,2102));
+
+## error_msg: $# definition of same constant in list partitioning #$
+alter table rc_lc_ntp modify subpartition p1sp2 add values ((11001,11001));
+
+## error_msg: $# duplicate values in the partition[p1sp1] of table[rc_lc_ntp] #$
+alter table rc_lc_ntp modify subpartition p1sp1 add values ((11001,11001));
+
+show create table lc_ntp;
+show create table lc_ntp2;
+show create table rc_lc_ntp;
+show create table rc_lc_ntp2;

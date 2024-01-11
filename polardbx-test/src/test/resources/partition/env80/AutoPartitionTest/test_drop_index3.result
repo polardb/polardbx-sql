@@ -1,0 +1,26 @@
+DROP TABLE IF EXISTS `t_1`;
+CREATE TABLE `t_1` (
+	`x` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	INDEX `idx@123`(order_id, seller_id)
+);
+SHOW CREATE TABLE t_1;
+Table,Create Table
+t_1,CREATE TABLE `t_1` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	INDEX `idx@123` (`order_id`, `seller_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+ALTER TABLE t_1
+	DROP INDEX `idx@123`;
+SHOW CREATE TABLE t_1;
+Table,Create Table
+t_1,CREATE TABLE `t_1` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

@@ -62,8 +62,7 @@ public class XPlanGetTest extends ReadBaseTestCase {
     }
 
     private void initDataXY() {
-        JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "delete from " + quoteSpecialName(TABLE_NAME) + " where 1=1");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "truncate table " + quoteSpecialName(TABLE_NAME));
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "insert into " + quoteSpecialName(TABLE_NAME)
                 + " (x,y,z) values (1,1,1),(1,2,1),(1,3,1),(1,4,1),(1,5,1),(1,6,1),(1,7,1),(1,8,1),(1,9,1)");
@@ -72,8 +71,7 @@ public class XPlanGetTest extends ReadBaseTestCase {
     }
 
     private void initDataXZ() {
-        JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "delete from " + quoteSpecialName(TABLE_NAME) + " where 1=1");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "truncate table " + quoteSpecialName(TABLE_NAME));
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "insert into " + quoteSpecialName(TABLE_NAME)
                 + " (x,z,y) values (1,1,1),(1,2,1),(1,3,1),(1,4,1),(1,5,1),(1,6,1),(1,7,1),(1,8,1),(1,9,1)");
@@ -84,16 +82,28 @@ public class XPlanGetTest extends ReadBaseTestCase {
     @Test
     public void testGetIndexSelection() {
         initDataXY();
-        Assert.assertTrue(JdbcUtil.resultsStr(JdbcUtil.executeQuery(
-                "explain /*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/ select * from " + quoteSpecialName(TABLE_NAME)
-                    + " where x=1 and y=1 and z=1", tddlConnection))
-            .contains("\"index_info\": {\"name\": {\"type\": \"V_STRING\",\"v_string\": {\"value\": \"i_xy\""));
+        String explain = JdbcUtil.resultsStr(JdbcUtil.executeQuery(
+            "explain statistics select * from " + quoteSpecialName(TABLE_NAME)
+                + " where x=1 and y=1 and z=1", tddlConnection));
+        System.out.println(explain);
+        explain = JdbcUtil.resultsStr(JdbcUtil.executeQuery(
+            "explain /*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/ select * from " + quoteSpecialName(TABLE_NAME)
+                + " where x=1 and y=1 and z=1", tddlConnection));
+        System.out.println(explain);
+        Assert.assertTrue(
+            explain.contains("\"index_info\": {\"name\": {\"type\": \"V_STRING\",\"v_string\": {\"value\": \"i_xy\""));
 
         initDataXZ();
-        Assert.assertTrue(JdbcUtil.resultsStr(JdbcUtil.executeQuery(
-                "explain /*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/ select * from " + quoteSpecialName(TABLE_NAME)
-                    + " where x=1 and y=1 and z=1", tddlConnection))
-            .contains("\"index_info\": {\"name\": {\"type\": \"V_STRING\",\"v_string\": {\"value\": \"i_xz\""));
+        explain = JdbcUtil.resultsStr(JdbcUtil.executeQuery(
+            "explain statistics select * from " + quoteSpecialName(TABLE_NAME)
+                + " where x=1 and y=1 and z=1", tddlConnection));
+        System.out.println(explain);
+        explain = JdbcUtil.resultsStr(JdbcUtil.executeQuery(
+            "explain /*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/ select * from " + quoteSpecialName(TABLE_NAME)
+                + " where x=1 and y=1 and z=1", tddlConnection));
+        System.out.println(explain);
+        Assert.assertTrue(
+            explain.contains("\"index_info\": {\"name\": {\"type\": \"V_STRING\",\"v_string\": {\"value\": \"i_xz\""));
     }
 
 }

@@ -1,0 +1,14 @@
+test_intra_group_autocommit2
+test_intra_group_xa_rc
+test_intra_group_xa_rc2
+test_intra_group_upsert
+test_intra_group_dml_push3
+test_intra_group_dml_push2
+test_intra_group_dml_push
+test_intra_group_bkajoin
+test_intra_group_autocommit
+test_intra_group_gsi2
+test_intra_group_gsi
+test_intra_group_insert
+test_intra_group_modify
+test_intra_group_sample

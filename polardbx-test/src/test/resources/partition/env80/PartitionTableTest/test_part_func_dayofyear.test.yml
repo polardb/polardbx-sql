@@ -1,0 +1,146 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+CREATE TABLE `y1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`d`))
+PARTITIONS 16;
+show create table y1;
+## prepare data
+insert into y1 values('2021-07-01'), ('2022-01-01'), ('2022-07-01'), ('2023-02-01');
+## check point select
+select * from y1 where d = '2021-07-01';
+select * from y1 where d = '2022-01-01';
+select * from y1 where d = '2022-07-01';
+select * from y1 where d = '2023-02-01';
+## explain
+explain select * from y1 where d = '2021-07-01';
+explain select * from y1 where d = '2022-01-01';
+explain select * from y1 where d = '2022-07-01';
+explain select * from y1 where d = '2023-02-01';
+## range select
+select * from y1 where (d > '2022-01-01' and d < '2023-02-01') or d between '2021-07-01' and '2022-01-01' order by d;
+## full scan
+select * from y1 where d > '2021-07-01' order by d;
+explain select * from y1 where d > '2021-07-01' order by d;
+select * from y1 where d > '2021-07-01' and d < '2022-07-01' order by d;
+explain select * from y1 where d > '2021-07-01' and d < '2022-07-01' order by d;
+## partition enumeration
+select * from y1 where d > '2022-06-29' and d < '2022-07-02' order by d;
+explain select * from y1 where d > '2022-06-29' and d < '2022-07-02' order by d;
+
+## test datetime
+CREATE TABLE `y2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFYEAR(`dt`))
+PARTITIONS 16;
+show create table y2;
+## prepare data
+insert into y2 values('2021-07-01 00:00:00'), ('2022-01-01 00:00:00'), ('2022-07-01 00:00:00'), ('2023-02-01 00:00:00');
+## check point select
+select * from y2 where dt = '2021-07-01 00:00:00';
+select * from y2 where dt = '2022-01-01 00:00:00';
+select * from y2 where dt = '2022-07-01 00:00:00';
+select * from y2 where dt = '2023-02-01 00:00:00';
+## explain
+explain select * from y2 where dt = '2021-07-01 00:00:00';
+explain select * from y2 where dt = '2022-01-01 00:00:00';
+explain select * from y2 where dt = '2022-07-01 00:00:00';
+explain select * from y2 where dt = '2023-02-01 00:00:00';
+## range select
+select * from y2 where (dt > '2022-01-01 00:00:00' and dt < '2023-02-01 00:00:00') or dt between '2021-07-01 00:00:00' and '2022-01-01 00:00:00' order by dt;
+## full scan
+select * from y2 where dt > '2021-07-01 00:00:00' order by dt;
+explain select * from y2 where dt > '2021-07-01 00:00:00' order by dt;
+select * from y2 where dt > '2021-07-01 00:00:00' and dt < '2022-07-01 00:00:00' order by dt;
+explain select * from y2 where dt > '2021-07-01 00:00:00' and dt < '2022-07-01 00:00:00' order by dt;
+## partition enumeration
+select * from y2 where dt > '2022-06-29 00:00:00' and dt < '2022-07-02 00:00:00' order by dt;
+explain select * from y2 where dt > '2022-06-29 00:00:00' and dt < '2022-07-02 00:00:00' order by dt;
+
+## test range
+CREATE TABLE `y3` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES LESS THAN(10),
+PARTITION p1 VALUES LESS THAN(20),
+PARTITION p2 VALUES LESS THAN(30),
+PARTITION p3 VALUES LESS THAN(MAXVALUE));
+show create table y3;
+## prepare data
+insert into y3 values('2022-01-01'), ('2021-01-10'),('2023-01-20'),('2020-01-30');
+## check point select
+select * from y3 where d = '2022-01-01';
+select * from y3 where d = '2021-01-10';
+select * from y3 where d = '2023-01-20';
+select * from y3 where d = '2020-01-30';
+## explain
+explain select * from y3 where d = '2022-01-01';
+explain select * from y3 where d = '2021-01-10';
+explain select * from y3 where d = '2023-01-20';
+explain select * from y3 where d = '2020-01-30';
+## range select
+select * from y3 where (d > '2021-01-10' and d < '2023-01-20') or d between '2021-01-10' and '2022-01-01' order by d;
+## full scan
+select * from y3 where d > '2020-01-30' order by d;
+explain select * from y3 where d > '2020-01-30' order by d;
+select * from y3 where d > '2020-01-30' and d < '2023-01-21' order by d;
+explain select * from y3 where d > '2020-01-30' and d < '2023-01-21' order by d;
+## partition enumeration
+select * from y3 where d > '2021-01-08' and d < '2021-01-21';
+explain select * from y3 where d > '2021-01-08' and d < '2021-01-21';
+
+## test list
+CREATE TABLE `y4` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(DAYOFYEAR(`d`))
+(PARTITION p0 VALUES IN(1,2,3,4,5),
+PARTITION p1 VALUES IN(6,7,8,9,10),
+PARTITION p2 VALUES IN(11,12,13,14,15),
+PARTITION pd VALUES IN(default));
+show create table y4;
+## prepare data
+insert into y4 values ('2021-01-01'),('2020-01-10'),('2022-01-15'),('2023-01-31');
+## check point select
+select * from y4 where d = '2021-01-01';
+select * from y4 where d = '2020-01-10';
+select * from y4 where d = '2022-01-15';
+select * from y4 where d = '2023-01-31';
+## explain
+explain select * from y4 where d = '2021-01-01';
+explain select * from y4 where d = '2020-01-10';
+explain select * from y4 where d = '2022-01-15';
+explain select * from y4 where d = '2023-01-31';
+## range select
+select * from y4 where (d > '2020-01-10' and d < '2022-01-15') or d between '2021-01-01' and '2022-01-15' order by d;
+## full scan 
+select * from y4 where d > '2021-01-01' order by d;
+explain select * from y4 where d > '2021-01-01' order by d;
+select * from y4 where d > '2020-01-10' and d < '2023-01-31' order by d;
+explain select * from y4 where d > '2020-01-10' and d < '2023-01-31' order by d;
+## partition enumeration
+select * from y4 where d > '2020-01-08' and d < '2020-01-21' order by d;
+explain select * from y4 where d > '2020-01-08' and d < '2020-01-21' order by d;
+
+## test leap year and spanning years
+create table `y5` (
+`d` date default null
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by hash(dayofyear(`d`)) partitions 366;
+#prepare data
+insert into y5 values('2020-02-28'),('2020-02-29'),('2020-03-01'),('2021-02-28'),('2021-03-01'),('2022-12-30'),('2022-12-31'),('2023-01-01');
+# range select on leap year
+select * from y5 where d >= '2020-02-28' and d < '2020-03-02' order by d;
+select * from y5 where d > '2020-02-28' and d < '2020-03-01' order by d;
+select * from y5 where d >= '2021-02-28' and d < '2021-03-02' order by d;
+# empty result
+select * from y5 where d >= '2021-02-28' and d < '2020-03-01' order by d;
+# span years
+select * from y5 where d >= '2022-12-30' and d < '2023-01-02' order by d;
+# partition enumeration
+explain select * from y5 where d >= '2020-02-28' and d < '2020-03-02' order by d;
+explain select * from y5 where d > '2020-02-28' and d < '2020-03-01' order by d;
+explain select * from y5 where d >= '2022-12-30' and d < '2023-01-02' order by d;

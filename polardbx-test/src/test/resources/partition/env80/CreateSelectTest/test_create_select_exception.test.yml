@@ -1,0 +1,37 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists test_drds;
+
+CREATE DATABASE IF NOT EXISTS test_drds
+DEFAULT CHARACTER SET = `utf8mb4`
+DEFAULT COLLATE = `utf8mb4_general_ci`
+mode='drds';
+
+use test_drds;
+
+CREATE TABLE single_tbl(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+);
+
+insert into single_tbl(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+
+create table t1 engine = InnoDB as select * from single_tbl;
+  
+## error_msg: $# engine = InnoDB #$
+create table t2 as select * from single_tbl engine = InnoDB;
+  
+## error_msg: $# alias #$
+create table t3 select count(*) from single_tbl;
+  
+## error_msg: $# for update #$
+create table t4 select * from single_tbl for update;
+  
+## error_msg: $# For update #$
+create table t5 select * from single_tbl lock in share mode;
+
+create table if not exists t4 select * from single_tbl;
+create table if not exists t6 select * from single_tbl;
+  
+## error_msg: $# OSS engine #$
+create table t7 engine = OSS select * from single_tbl;

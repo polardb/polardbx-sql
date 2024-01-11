@@ -1,0 +1,192 @@
+## DISABLE_FAST_SQL_PARSER
+
+##======= rc-lc =========
+## rc-lc-tp1
+drop table if exists rc_lc_tp1;
+create table if not exists rc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by list columns (a,b)
+(
+subpartition sp0 values in ((100,100), (200,200)),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_lc_tp1;
+
+  ## rc_lc_tp1
+drop table if exists rc_lc_ntp1;
+create table if not exists rc_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by list columns (a,b)
+(
+partition p0 values less than ('2020-01-01','abc',100) (
+subpartition sp0 values in ((100,100), (200,200)),
+subpartition sp1 values in (default)
+),
+partition p1 values less than ('2022-01-01', 'efg',100) (
+subpartition sp2 values in ((100,100), (200,200)),
+subpartition sp3 values in (default)
+),
+partition p2 values less than (maxvalue, maxvalue, maxvalue) (
+subpartition sp4 values in ((100,100), (200,200)),
+subpartition sp5 values in (default)
+)
+);
+show create table rc_lc_ntp1;
+
+
+##======= r-l =========
+
+  ## rc-lc-tp1
+drop table if exists rc_lc_tp1;
+create table if not exists rc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by list columns (a,b)
+(
+subpartition sp0 values in ((100,100), (200,200)),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_lc_tp1;
+
+  ## r_l_tp1
+drop table if exists rc_lc_ntp1;
+create table if not exists rc_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by list (year(c))
+(
+partition p0 values less than (2020) (
+subpartition sp0 values in (2020,2019,2018),
+subpartition sp1 values in (default)
+),
+partition p1 values less than (2025) (
+subpartition sp2 values in (2021,2022),
+subpartition sp3 values in (default)
+)
+);
+show create table rc_lc_ntp1;
+
+
+##======= rc-l =========
+  ## rc-l-tp1
+drop table if exists rc_l_tp1;
+create table if not exists rc_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by list (year(c))
+(
+subpartition sp0 values in (2020,2021),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_l_tp1;
+
+  ## rc_l_ntp1
+drop table if exists rc_l_ntp1;
+create table if not exists rc_l_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (a,b)
+subpartition by list (year(c))
+(
+partition p0 values less than (100,200) (
+subpartition sp0 values in (2020,2019,2018),
+subpartition sp1 values in (default)
+),
+partition p1 values less than (maxvalue,maxvalue) (
+subpartition sp2 values in (2021,2022),
+subpartition sp3 values in (default)
+)
+);
+show create table rc_l_ntp1;
+
+##======= r-lc =========
+
+  ## r_lc_tp1
+drop table if exists r_lc_tp1;
+create table if not exists r_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by list columns (a,b)
+(
+subpartition sp0 values in ((100,100),(200,200)),
+subpartition sp1 values in (default)
+)
+(
+partition p0 values less than (2035),
+partition p1 values less than (maxvalue)
+);
+show create table r_lc_tp1;
+
+  ## r_lc_ntp1
+drop table if exists r_lc_ntp1;
+create table if not exists r_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by list columns (a,b)
+(
+partition p0 values less than (2035) (
+subpartition sp0 values in ((100,100),(200,200)),
+subpartition sp1 values in (default)
+),
+partition p1 values less than (maxvalue) (
+subpartition sp2 values in ((100,100),(200,200)),
+subpartition sp3 values in (default)
+)
+);
+show create table r_lc_ntp1;

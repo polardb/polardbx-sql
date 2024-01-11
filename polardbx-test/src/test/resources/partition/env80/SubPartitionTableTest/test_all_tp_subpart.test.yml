@@ -1,0 +1,592 @@
+## DISABLE_FAST_SQL_PARSER
+
+  ## h_h_tp
+create table if not exists h_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+  ## h_k_tp
+create table if not exists h_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+  ## h_r_tp
+create table if not exists h_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range (to_days(c)) (
+  subpartition sp1 values less than ( to_days('2020-01-01') ),
+  subpartition sp2 values less than ( maxvalue )
+);
+
+  ## h_rc_tp
+create table if not exists h_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+  ## h_l_tp
+create table if not exists h_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+  ## h_lc_tp
+create table if not exists h_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+
+#########
+
+  ## k_h_tp
+create table if not exists k_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+  ## k_k_tp
+create table if not exists k_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+  ## k_r_tp
+create table if not exists k_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range (to_days(c)) (
+subpartition sp1 values less than ( to_days('2020-01-01') ),
+subpartition sp2 values less than ( maxvalue )
+);
+
+  ## k_rc_tp
+create table if not exists k_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+  ## k_l_tp
+create table if not exists k_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+  ## k_lc_tp
+create table if not exists k_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+#########
+
+  ## r_h_tp
+create table if not exists r_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+ partition p1 values less than ( to_days('2020-01-01') ),
+ partition p2 values less than ( maxvalue )
+);
+
+  ## r_k_tp
+create table if not exists r_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+  ## r_r_tp
+create table if not exists r_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range (a)
+(
+  subpartition sp1 values less than ( 1000),
+  subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+  ## r_rc_tp
+create table if not exists r_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+  ## r_l_tp
+create table if not exists r_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+  ## r_lc_tp
+create table if not exists r_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+#########
+
+  ## rc_h_tp
+create table if not exists rc_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+  ## rc_k_tp
+create table if not exists rc_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+  ## rc_r_tp
+create table if not exists rc_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+  ## rc_rc_tp
+create table if not exists rc_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 2000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+  ## rc_l_tp
+create table if not exists rc_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+  ## rc_lc_tp
+create table if not exists rc_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+#########
+
+  ## l_h_tp
+create table if not exists l_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+  ## l_k_tp
+create table if not exists l_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+  ## l_r_tp
+create table if not exists l_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+  ## l_rc_tp
+create table if not exists l_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+  ## l_l_tp
+create table if not exists l_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+  ## l_lc_tp
+create table if not exists l_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+#########
+
+  ## lc_h_tp
+create table if not exists lc_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+  ## lc_k_tp
+create table if not exists lc_k_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+  ## lc_r_tp
+create table if not exists lc_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+  ## lc_rc_tp
+create table if not exists lc_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+  ## lc_l_tp
+create table if not exists lc_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+  ## lc_lc_tp
+create table if not exists lc_lc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);

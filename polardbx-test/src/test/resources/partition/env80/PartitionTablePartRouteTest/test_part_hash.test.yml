@@ -1,0 +1,79 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists hash_1c_tbl;
+create table if not exists hash_1c_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by hash(c)
+partitions 16;
+insert into hash_1c_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists key_1c_tbl;
+create table if not exists key_1c_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by key(c)
+partitions 16;
+insert into key_1c_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists hash_tbl;
+create table if not exists hash_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by hash(a,b,c)
+partitions 16;
+insert into hash_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists key_tbl;
+create table if not exists key_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by key(a,b,c)
+partitions 16;
+insert into key_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists r_year_tbl;
+create table if not exists r_year_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by range(year(b))
+( partition p0 values less than (2000),
+partition p1 values less than (2020),
+partition p2 values less than (maxvalue)
+);
+insert into r_year_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists r_todays_tbl;
+create table if not exists r_todays_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by range(to_days(b))
+( partition p0 values less than (730485),
+partition p1 values less than (737790),
+partition p2 values less than (maxvalue)
+);
+insert into r_todays_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists rc_tbl;
+create table if not exists rc_tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by range columns(a,b,c)
+( partition p0 values less than (100,'2012-12-12 11:11:11','abc'),
+  partition p1 values less than (200,'2012-12-11 11:11:11','abc'),
+  partition p2 values less than (300,'2012-12-11 11:11:11','abc')
+);
+insert into rc_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+drop table if exists lc_tbl;
+create table if not exists lc_tbl (a bigint not null, b datetime not null, c varchar(128) not null)
+partition by list columns (a,b,c)
+( partition p0 values in ((100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A')),
+  partition p1 values in ((200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B') )
+);
+insert into lc_tbl values (100, '2012-12-12 11:11:11', 'A'),(101, '2012-12-12 11:11:11', 'A'),(102, '2012-12-12 11:11:11', 'A'),(200, '2014-12-12 11:11:11', 'B'),(201, '2014-12-12 11:11:11', 'B'),(202, '2014-12-12 11:11:11', 'B');
+
+select /*part_col:c*/part_hash('','key_1c_tbl', 'A'),/*part_col:c*/part_hash('','hash_1c_tbl', 'A');
+select /*part_col:a,b,c*/part_hash('','hash_tbl', 101, '2012-12-12 11:11:11', 'A');
+select /*part_col:a,b,c*/part_hash('','key_tbl', 101, '2012-12-12 11:11:11', 'A');
+
+select /*part_col:c*/part_hash('','hash_1c_tbl', c) from hash_1c_tbl order by c;
+select /*part_col:c*/part_hash('','key_1c_tbl', c) from key_1c_tbl order by c;
+select /*part_col:a,b,c*/part_hash('','hash_tbl',a,b,c) from hash_tbl order by a,b,c;
+select /*part_col:a,b,c*/part_hash('','key_tbl', a,b,c) from key_tbl order by a,b,c;
+
+select /*part_col:b*/part_hash('','r_year_tbl', '2012-12-12 11:11:11');
+select /*part_col:b*/part_hash('','r_todays_tbl', '2012-12-12 11:11:11');
+select /*part_col:a,b,c*/part_hash('','rc_tbl', 101, '2012-12-12 11:11:11', 'A');
+select /*part_col:a,b,c*/part_hash('','lc_tbl', 101, '2012-12-12 11:11:11', 'A');
+
+select /*part_col:b*/part_hash('','r_year_tbl', b) from r_year_tbl order by a,b,c;
+select /*part_col:b*/part_hash('','r_todays_tbl', b) from r_todays_tbl order by a,b,c;
+select /*part_col:a,b,c*/part_hash('','rc_tbl', a,b,c) from rc_tbl order by a,b,c;
+select /*part_col:a,b,c*/part_hash('','lc_tbl', a,b,c) from lc_tbl order by a,b,c;

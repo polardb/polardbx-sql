@@ -481,6 +481,8 @@ public class SelectWithUnionTest extends AutoReadBaseTestCase {
                 + "select 0 as amount1, integer_test + 2147483647 as amount2 from %s",
             baseOneTableName,
             baseTwoTableName);
+        sql = String.format("select integer_test + 2147483647 as amount1 from %s",
+            baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 

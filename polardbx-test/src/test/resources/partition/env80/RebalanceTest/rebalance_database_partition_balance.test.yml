@@ -1,0 +1,59 @@
+sqlTemplates:
+  - "CREATE TABLE IF NOT EXISTS `%s` (
+                             `c1` bigint NOT NULL,
+                             `c2` date NOT NULL,
+                             `c3` double NOT NULL
+       )
+           PARTITION BY HASH (c1, c2)
+       PARTITIONS 32;"
+  - "CREATE TABLE IF NOT EXISTS `%s` (
+                             `c1` bigint NOT NULL,
+                             `c2` date NOT NULL,
+                             `c3` double NOT NULL
+       )
+           PARTITION BY KEY (c1, c2)
+       PARTITIONS 32;"
+  - "CREATE TABLE IF NOT EXISTS `%s` (
+                              `c1` bigint(20) NOT NULL,
+                              `c2` bigint(20) NOT NULL,
+                              `c3` double NOT NULL
+       )
+           PARTITION BY RANGE COLUMNS(`c1`, `c2`)
+       (PARTITION `p1` VALUES LESS THAN (100000, 100000) ENGINE = InnoDB,
+        PARTITION `p2` VALUES LESS THAN (200000, 200000) ENGINE = InnoDB,
+        PARTITION `p3` VALUES LESS THAN (300000, 300000) ENGINE = InnoDB,
+        PARTITION `p4` VALUES LESS THAN (400000, 400000) ENGINE = InnoDB,
+        PARTITION `p5` VALUES LESS THAN (500000, 500000) ENGINE = InnoDB,
+        PARTITION `p6` VALUES LESS THAN (600000, 600000) ENGINE = InnoDB,
+        PARTITION `p7` VALUES LESS THAN (700000, 700000) ENGINE = InnoDB,
+        PARTITION `p8` VALUES LESS THAN (800000, 800000) ENGINE = InnoDB,
+        PARTITION `p9` VALUES LESS THAN (900000, 900000) ENGINE = InnoDB,
+        PARTITION `p10` VALUES LESS THAN (MAXVALUE, MAXVALUE) ENGINE = InnoDB);"
+  - "CREATE TABLE IF NOT EXISTS `%s` (
+                            `c1` datetime NOT NULL,
+                            `c2` double NOT NULL,
+                            `c3` double NOT NULL
+     )
+         PARTITION BY RANGE COLUMNS(`c1`)
+     (PARTITION `p1` VALUES LESS THAN  ('2012-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p2` VALUES LESS THAN  ('2013-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p3` VALUES LESS THAN  ('2014-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p4` VALUES LESS THAN  ('2015-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p5` VALUES LESS THAN  ('2016-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p6` VALUES LESS THAN  ('2017-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p7` VALUES LESS THAN  ('2018-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p8` VALUES LESS THAN  ('2019-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p9` VALUES LESS THAN  ('2020-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p10` VALUES LESS THAN ('2021-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p11` VALUES LESS THAN ('2022-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p12` VALUES LESS THAN ('2023-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p13` VALUES LESS THAN ('2024-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p14` VALUES LESS THAN ('2025-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p15` VALUES LESS THAN ('2026-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p16` VALUES LESS THAN ('2027-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p17` VALUES LESS THAN ('2028-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p18` VALUES LESS THAN ('2029-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p19` VALUES LESS THAN ('2030-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p20` VALUES LESS THAN ('2031-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p21` VALUES LESS THAN ('2032-01-01 00:00:00') ENGINE = InnoDB,
+      PARTITION `p22` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"

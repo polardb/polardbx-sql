@@ -1,0 +1,45 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop database if exists autodb_no_ds;
+drop database if exists drdsdb_no_ds;
+drop database if exists autodb_ds_on;
+drop database if exists autodb_ds_on2;
+drop database if exists autodb_ds_off;
+drop database if exists autodb_ds_off2;
+drop database if exists drdsdb_ds_off;
+drop database if exists drdsdb_ds_off2;
+
+create database autodb_no_ds mode='auto';
+create database drdsdb_no_ds mode='drds';
+
+show create database autodb_no_ds;
+show create database drdsdb_no_ds;
+
+create database autodb_ds_on2 mode='auto' DEFAULT_SINGLE='on';
+create database autodb_ds_off2 mode='auto' DEFAULT_SINGLE='off';
+
+set DATABASE_DEFAULT_SINGLE=true;
+create database autodb_ds_on mode='auto';
+create database drdsdb_ds_off mode='drds';
+
+set DATABASE_DEFAULT_SINGLE=false;
+create database autodb_ds_off mode='auto';
+create database drdsdb_ds_off2 mode='drds';
+
+show create database autodb_ds_on;
+show create database autodb_ds_off;
+show create database autodb_ds_on2;
+show create database autodb_ds_off2;
+show create database drdsdb_ds_off;
+show create database drdsdb_ds_off2;
+
+drop database if exists autodb_no_ds;
+drop database if exists drdsdb_no_ds;
+drop database if exists autodb_ds_on;
+drop database if exists autodb_ds_on2;
+drop database if exists autodb_ds_off;
+drop database if exists autodb_ds_off2;
+drop database if exists drdsdb_ds_off;
+drop database if exists drdsdb_ds_off2;
+
+

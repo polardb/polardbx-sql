@@ -1,0 +1,434 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+create global index idx_b on hash_tbl_bigint (`b`) PARTITION BY KEY(`b`) partitions 32;
+create global index idx_b on hash_tbl_bigint2 (`b`) PARTITION BY KEY(`b`) partitions 32;
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+insert into bro_tbl_bigint values (2,200),(10,100);
+insert into sig_tbl_bigint values (2,200),(10,100);
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into bro_tbl_bigint2 values (2,200),(10,100);
+insert into sig_tbl_bigint2 values (2,200),(10,100);
+insert into hash_tbl_bigint2 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+## update part,sig,bro with point update & range
+begin;
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,200,2,200
+5,500,5,500
+6,600,6,600
+9,900,9,900
+10,1000,10,1000
+replace into bro_tbl_bigint values (2,2),(10,10);
+replace into sig_tbl_bigint values (2,2),(10,10);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+a,b
+2,2
+5,5
+6,6
+9,9
+10,10
+select * from bro_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+update bro_tbl_bigint t1 set b=5 where a=2;
+update sig_tbl_bigint t1 set b=5 where a=2;
+update hash_tbl_bigint t1 set b=5 where a=2;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+2,5,2,5
+10,10,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+2,5,2,5
+10,10,10,10
+update bro_tbl_bigint t1 set b=11 where a<=5;
+update sig_tbl_bigint t1 set b=11 where a<=5;
+update hash_tbl_bigint t1 set b=11 where a<=5;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+2,11,2,11
+10,10,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+2,11,2,11
+10,10,10,10
+rollback;
+select * from sig_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+## delete part,sig,bro with point update & range
+begin;
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,200,2,200
+5,500,5,500
+6,600,6,600
+9,900,9,900
+10,1000,10,1000
+replace into bro_tbl_bigint values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+a,b
+2,2
+5,5
+6,6
+9,9
+10,10
+select * from bro_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from sig_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+delete from bro_tbl_bigint where a=2;
+delete from sig_tbl_bigint where a=2;
+delete from hash_tbl_bigint where a=2;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+6,6,6,6
+10,10,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+6,6,6,6
+10,10,10,10
+delete from  bro_tbl_bigint where a>=9;
+delete from  sig_tbl_bigint where a>=9;
+delete from  hash_tbl_bigint where a>=9;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+6,6,6,6
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a and t1.b=t2.b order by t1.a;
+a,b,a,b
+6,6,6,6
+rollback;
+select * from sig_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+## multi-table-update: tables are same type
+begin;
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,200,2,200
+5,500,5,500
+6,600,6,600
+9,900,9,900
+10,1000,10,1000
+replace into bro_tbl_bigint values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+replace into bro_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint2 values (2,2),(5,5),(6,6),(9,9),(10,10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+a,b
+2,2
+5,5
+6,6
+9,9
+10,10
+select * from bro_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from sig_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,2,2,2
+6,6,6,6
+10,10,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,2,2,2
+6,6,6,6
+10,10,10,10
+update hash_tbl_bigint,hash_tbl_bigint2 set hash_tbl_bigint.b=hash_tbl_bigint.b+1, hash_tbl_bigint2.b=hash_tbl_bigint2.b+1 where hash_tbl_bigint.a=hash_tbl_bigint2.a;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint2 t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+update bro_tbl_bigint,bro_tbl_bigint2 set bro_tbl_bigint.b=bro_tbl_bigint.b+1, bro_tbl_bigint2.b=bro_tbl_bigint2.b+1 where bro_tbl_bigint.a=bro_tbl_bigint2.a;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+select * from hash_tbl_bigint t1 join bro_tbl_bigint2 t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+select * from hash_tbl_bigint t1 join sig_tbl_bigint2 t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+update sig_tbl_bigint,sig_tbl_bigint2 set sig_tbl_bigint.b=sig_tbl_bigint.b+1, sig_tbl_bigint2.b=sig_tbl_bigint2.b+1 where sig_tbl_bigint.a=sig_tbl_bigint2.a;
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+select * from hash_tbl_bigint t1 join sig_tbl_bigint2 t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+rollback;
+## multi-table-update: tables are different type
+begin;
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,200,2,200
+5,500,5,500
+6,600,6,600
+9,900,9,900
+10,1000,10,1000
+replace into bro_tbl_bigint values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+replace into bro_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint2 values (2,2),(5,5),(6,6),(9,9),(10,10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+a,b
+2,2
+5,5
+6,6
+9,9
+10,10
+select * from bro_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from sig_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,2,2,2
+6,6,6,6
+10,10,10,10
+update hash_tbl_bigint,bro_tbl_bigint set hash_tbl_bigint.b=hash_tbl_bigint.b+1, bro_tbl_bigint.b=bro_tbl_bigint.b+1 where bro_tbl_bigint.a=bro_tbl_bigint.a;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,2
+6,7,6,6
+10,11,10,10
+update hash_tbl_bigint,sig_tbl_bigint set hash_tbl_bigint.b=hash_tbl_bigint.b+1, sig_tbl_bigint.b=sig_tbl_bigint.b+1 where hash_tbl_bigint.a=sig_tbl_bigint.a;
+select * from hash_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,4,2,3
+6,8,6,7
+10,12,10,11
+select * from bro_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,3,2,3
+6,7,6,7
+10,11,10,11
+update bro_tbl_bigint,sig_tbl_bigint set bro_tbl_bigint.b=bro_tbl_bigint.b+1, sig_tbl_bigint.b=sig_tbl_bigint.b+1 where bro_tbl_bigint.a=sig_tbl_bigint.a;
+select * from bro_tbl_bigint t1 join sig_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,4,2,4
+6,8,6,8
+10,12,10,12
+rollback;
+## multi-table-delete: tables are different type
+begin;
+select * from hash_tbl_bigint order by a;
+a,b
+2,200
+5,500
+6,600
+9,900
+10,1000
+select * from bro_tbl_bigint order by a;
+a,b
+2,200
+10,100
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,200,2,200
+5,500,5,500
+6,600,6,600
+9,900,9,900
+10,1000,10,1000
+replace into bro_tbl_bigint values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+replace into bro_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into sig_tbl_bigint2 values (2,2),(10,10),(6,6);
+replace into hash_tbl_bigint2 values (2,2),(5,5),(6,6),(9,9),(10,10);
+select * from hash_tbl_bigint where a in (2,5,6,9,10) order by a for update;
+a,b
+2,2
+5,5
+6,6
+9,9
+10,10
+select * from bro_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from sig_tbl_bigint where a in (2,10) order by a for update;
+a,b
+2,2
+10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+2,2,2,2
+6,6,6,6
+10,10,10,10
+delete hash_tbl_bigint,bro_tbl_bigint,sig_tbl_bigint from hash_tbl_bigint inner join hash_tbl_bigint2 inner join sig_tbl_bigint inner join bro_tbl_bigint where hash_tbl_bigint.a=hash_tbl_bigint2.a and hash_tbl_bigint.a=bro_tbl_bigint.a and hash_tbl_bigint.a=sig_tbl_bigint.a and bro_tbl_bigint.a<=2;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+6,6,6,6
+10,10,10,10
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+6,6,6,6
+10,10,10,10
+delete hash_tbl_bigint,bro_tbl_bigint from hash_tbl_bigint inner join hash_tbl_bigint2 inner join bro_tbl_bigint where hash_tbl_bigint.a=hash_tbl_bigint2.a and hash_tbl_bigint.a=bro_tbl_bigint.a and bro_tbl_bigint.a<=2;
+select * from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a order by t1.a;
+a,b,a,b
+6,6,6,6
+10,10,10,10
+rollback;

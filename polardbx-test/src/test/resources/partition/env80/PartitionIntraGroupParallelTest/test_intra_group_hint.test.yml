@@ -1,0 +1,104 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+create global index idx_b on hash_tbl_bigint (`b`) PARTITION BY KEY(`b`) partitions 32;
+create global index idx_b on hash_tbl_bigint2 (`b`) PARTITION BY KEY(`b`) partitions 32;
+
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+
+insert into bro_tbl_bigint values (2,200),(10,100);
+insert into sig_tbl_bigint values (2,200),(10,100);
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into bro_tbl_bigint2 values (2,200),(10,100);
+insert into sig_tbl_bigint2 values (2,200),(10,100);
+insert into hash_tbl_bigint2 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+
+## update part,sig,bro with point update & range
+begin;
+select * from hash_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint t1 join hash_tbl_bigint t2 on t1.a=t2.a;
+replace into bro_tbl_bigint values (2,2),(10,10);
+replace into sig_tbl_bigint values (2,2),(10,10);
+replace into hash_tbl_bigint values (2,2),(5,5),(6,6),(9,9),(10,10);
+
+set GROUP_PARALLELISM=2;
+
+delete from hash_tbl_bigint;
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+
+begin;
+
+select * from hash_tbl_bigint where a=10 for update;
+update hash_tbl_bigint set b=10 where a=10;
+
+select * from hash_tbl_bigint where a=2 for update;
+update hash_tbl_bigint set b=2 where a=2;
+
+select * from hash_tbl_bigint where a=5 for update;
+update hash_tbl_bigint set b=5 where a=5;
+select /*TDDL:scan('hash_tbl_bigint',  node='AUTODB_P00000_GROUP', real_table=("hash_tbl_bigint_AOG4_00010"))*/ * FROM hash_tbl_bigint where a=2 for update;
+
+## error_msg: $# not allowed #$
+update /*TDDL:node('AUTODB_P00000_GROUP')*/ bro_tbl_bigint_uLLn set b=5 where a=5;
+## error_msg: $# not allowed #$
+/*+TDDL({'type':'direct','dbid':'AUTODB_P00000_GROUP'})*/update bro_tbl_bigint_uLLn set b=2 where a=2;
+
+## error_msg: $# invalid group #$
+select /*TDDL:node('AUTODB_P00000_GROUP,AUTODB_P00001_GROUP')*/ * FROM hash_tbl_bigint_AOG4_00010 where a=2 for update;
+## error_msg: $# invalid group #$
+select /*TDDL:scan('hash_tbl_bigint',  node='AUTODB_P00001_GROUP,AUTODB_P00000_GROUP', real_table=("hash_tbl_bigint_AOG4_00010, hash_tbl_bigint_AOG4_00020,hash_tbl_bigint_AOG4_00007"))*/ * FROM hash_tbl_bigint where a>0 for update;
+
+## exec succ
+select /*TDDL:scan('bro_tbl_bigint', real_table=("bro_tbl_bigint_uLLn"))*/ * FROM bro_tbl_bigint where a=2 for update;
+select /*TDDL:scan('bro_tbl_bigint', node='AUTODB_P00000_GROUP',real_table=("bro_tbl_bigint_uLLn"))*/ * FROM bro_tbl_bigint where a=2 for update;
+select /*TDDL:scan('bro_tbl_bigint', node='AUTODB_P00000_GROUP,AUTODB_P00001_GROUP',real_table=("bro_tbl_bigint_uLLn"))*/ * FROM bro_tbl_bigint where a=2 for update;
+select /*TDDL:scan('hash_tbl_bigint',  node='AUTODB_P00000_GROUP', real_table=("hash_tbl_bigint_AOG4_00010","hash_tbl_bigint_AOG4_00020"))*/ * FROM hash_tbl_bigint where a=2 for update;
+
+## json hint : direct mode
+/*+TDDL({'type':'direct','vtab':'hash_tbl_bigint','dbid':'AUTODB_P00000_GROUP','realtabs':['hash_tbl_bigint_AOG4_00010','hash_tbl_bigint_AOG4_00020']})*/select * FROM hash_tbl_bigint where a=2 for update;
+
+
+SELECT /*+TDDL:scan()*/ COUNT(1) FROM hash_tbl_bigint
+SELECT /*+TDDL:scan(node='0,1,2')*/ COUNT(1) FROM t1
+SELECT /*+TDDL:scan('t1', condition='t1.id = 2')*/ COUNT(1) FROM t1
+SELECT /*+TDDL:scan('t1, t2', condition='t1.id = 2 and t2.id = 2')*/ * FROM t1 a JOIN t2 b ON a.id = b.id WHERE b.name = "test"
+SELECT /*+TDDL:scan('t1, t2', real_table=("t1_00,t2_00", "t1_01,t2_01"))*/ * FROM t1 a JOIN t2 b ON a.id = b.id WHERE b.name = "test";
+
+

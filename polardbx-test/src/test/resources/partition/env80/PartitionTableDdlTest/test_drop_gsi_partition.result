@@ -1,0 +1,28 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists tbl_list_with_gsi;
+create table if not exists tbl_list_with_gsi (a int not null,primary key (`a`),
+global index g1(a) partition by list(a)
+(partition p1 values in (10,11),
+partition p2 values in (100,101)))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201)
+);
+create tablegroup tbl_list_gsi_tg;
+alter table tbl_list_with_gsi.g1 set tablegroup=tbl_list_gsi_tg;
+## error_msg: $# ERR_GLOBAL_SECONDARY_DROP_PARTITION #$
+alter table tbl_list_with_gsi.g1 drop partition p1;
+ERR_GLOBAL_SECONDARY_DROP_PARTITION
+## error_msg: $# not support to drop #$
+alter table tbl_list_with_gsi drop partition p1;
+not support to drop
+## error_msg: $# ERR_GLOBAL_SECONDARY_DROP_PARTITION #$
+alter tablegroup tbl_list_gsi_tg drop partition p1;
+ERR_GLOBAL_SECONDARY_DROP_PARTITION
+## error_msg: $# ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE #$
+alter table tbl_list_with_gsi.g1 modify partition p1 drop values(10);
+ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE
+## error_msg: $# ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE #$
+alter tablegroup tbl_list_gsi_tg modify partition p1 drop values(10);
+ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE

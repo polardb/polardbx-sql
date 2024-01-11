@@ -1,0 +1,16 @@
+drop table if exists tb2;
+
+create table tb2(
+id varchar(20),
+name varchar(20),
+primary key(id),
+unique global index g1 (id) partition by hash(id)
+) partition by hash(id);
+
+insert into tb2 values('111', 'aaa'), ('222', 'bbb');
+
+alter table tb2 partition by hash(name, id);
+
+show create table tb2;
+
+show create table g1;

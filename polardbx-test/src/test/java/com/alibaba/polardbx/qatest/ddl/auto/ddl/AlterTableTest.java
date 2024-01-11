@@ -56,10 +56,54 @@ import static com.google.common.truth.Truth.assertThat;
 public class AlterTableTest extends DDLBaseNewDBTestCase {
 
     final static Log log = LogFactory.getLog(AlterTableTest.class);
-    private String tableName = "";
     private static final String createOption = " if not exists ";
     private static final String ALLOW_ALTER_GSI_INDIRECTLY_HINT =
         "/*+TDDL:cmd_extra(ALLOW_ALTER_GSI_INDIRECTLY=true)*/";
+    private static final String[][] TEST_PARAMS = new String[][] {
+        new String[] {
+            "1",
+            "add dept int, add company int",
+            "(1111,'aaa',1112,1113)",
+            "(2221,'bbb',2222,2223),(3331,'ccc',3332,3333),(4441,'ddd',4442,4443)",
+            "(3331,'ccc',3332,3333)", "name='ccc++'",
+            "(company,dept,name,id)"},
+        new String[] {
+            "2",
+            "modify dept bigint after id, change company corp varchar(64) after dept",
+            "(1111,1112,'aaaa','aaab')",
+            "(2221,2222,'bbba','bbbb'),(3331,3332,'ccca','cccb'),(4441,4442,'ddda','dddb')",
+            "(3331,3332,'ccca','cccb')", "name='ccc++', corp='ccc++'",
+            "(name,corp,dept,id)"},
+        new String[] {
+            "3",
+            "change name nickname varchar(64) after id, add boss int first",
+            "(1111,1112,'aaaa',1113,'aaab')",
+            "(2221,2222,'bbba',2223,'bbbb'),(3331,3332,'ccca',3333,'cccb'),(4441,4442,'ddda',4443,'dddb')",
+            "(3331,3332,'ccca',3333,'cccb')", "nickname='ccc++'",
+            "(corp,dept,nickname,id,boss)"},
+        new String[] {
+            "4",
+            "add age int after nickname",
+            "(1111,1112,'aaaa',1113,1114,'aaab')",
+            "(2221,2222,'bbba',2223,2224,'bbbb'),(3331,3332,'ccca',3333,3334,'cccb'),(4441,4442,'ddda',4443,4444,'dddb')",
+            "(3331,3332,'ccca',3333,3334,'cccb')", "corp='ccc++', nickname='ccc++'",
+            "(corp,dept,age,nickname,id,boss)"},
+        new String[] {
+            "5",
+            "drop boss, add leader char(1) after age",
+            "(1111,'aaaa',1112,'Y',1113,'aaab')",
+            "(2221,'bbba',2222,'N',2223,'bbbb'),(3331,'ccca',3332,'Y',3333,'cccb'),(4441,'ddda',4442,'N',4443,'dddb')",
+            "(3331,'ccca',3332,'Y',3333,'cccb')", "nickname='ccc+++'",
+            "(corp,dept,leader,age,nickname,id)"},
+        new String[] {
+            "6",
+            "add address varchar(256), drop corp, add years int after leader",
+            "(1111,'aaaa',1112,'n',1113,1114,'aaab')",
+            "(2221,'bbba',2222,'y',2223,2224,'bbbb'),(3331,'ccca',3332,'Y',3333,3334,'cccb'),(4441,'ddda',4442,'N',4443,4444,'dddb')",
+            "(3331,'ccca',3332,'n',3333,3334,'cccb')", "address='ccc++'",
+            "(address,dept,years,leader,age,nickname,id)"}
+    };
+    private String tableName = "";
 
     public AlterTableTest(boolean crossSchema) {
         this.crossSchema = crossSchema;
@@ -70,6 +114,24 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         return Arrays.asList(new Object[][] {
             {false}
         });
+    }
+
+    private static String reverseValues(String valueString) {
+        List<String> values = new ArrayList<>();
+        String regex = "\\((.*?)\\)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(valueString);
+        while (matcher.find()) {
+            values.add(matcher.group());
+        }
+
+        List<String> reversedValues = new ArrayList<>();
+        for (String value : values) {
+            String[] splitValue = value.substring(1, value.length() - 1).split(",");
+            Collections.reverse(Arrays.asList(splitValue));
+            reversedValues.add("(" + String.join(",", splitValue) + ")");
+        }
+        return String.join(",", reversedValues);
     }
 
     @Before
@@ -1176,69 +1238,6 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, String.format(sql, tableName), "Unknown column 'nodept'");
     }
 
-    private static String reverseValues(String valueString) {
-        List<String> values = new ArrayList<>();
-        String regex = "\\((.*?)\\)";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(valueString);
-        while (matcher.find()) {
-            values.add(matcher.group());
-        }
-
-        List<String> reversedValues = new ArrayList<>();
-        for (String value : values) {
-            String[] splitValue = value.substring(1, value.length() - 1).split(",");
-            Collections.reverse(Arrays.asList(splitValue));
-            reversedValues.add("(" + String.join(",", splitValue) + ")");
-        }
-        return String.join(",", reversedValues);
-    }
-
-    private static final String[][] TEST_PARAMS = new String[][] {
-        new String[] {
-            "1",
-            "add dept int, add company int",
-            "(1111,'aaa',1112,1113)",
-            "(2221,'bbb',2222,2223),(3331,'ccc',3332,3333),(4441,'ddd',4442,4443)",
-            "(3331,'ccc',3332,3333)", "name='ccc++'",
-            "(company,dept,name,id)"},
-        new String[] {
-            "2",
-            "modify dept bigint after id, change company corp varchar(64) after dept",
-            "(1111,1112,'aaaa','aaab')",
-            "(2221,2222,'bbba','bbbb'),(3331,3332,'ccca','cccb'),(4441,4442,'ddda','dddb')",
-            "(3331,3332,'ccca','cccb')", "name='ccc++', corp='ccc++'",
-            "(name,corp,dept,id)"},
-        new String[] {
-            "3",
-            "change name nickname varchar(64) after id, add boss int first",
-            "(1111,1112,'aaaa',1113,'aaab')",
-            "(2221,2222,'bbba',2223,'bbbb'),(3331,3332,'ccca',3333,'cccb'),(4441,4442,'ddda',4443,'dddb')",
-            "(3331,3332,'ccca',3333,'cccb')", "nickname='ccc++'",
-            "(corp,dept,nickname,id,boss)"},
-        new String[] {
-            "4",
-            "add age int after nickname",
-            "(1111,1112,'aaaa',1113,1114,'aaab')",
-            "(2221,2222,'bbba',2223,2224,'bbbb'),(3331,3332,'ccca',3333,3334,'cccb'),(4441,4442,'ddda',4443,4444,'dddb')",
-            "(3331,3332,'ccca',3333,3334,'cccb')", "corp='ccc++', nickname='ccc++'",
-            "(corp,dept,age,nickname,id,boss)"},
-        new String[] {
-            "5",
-            "drop boss, add leader char(1) after age",
-            "(1111,'aaaa',1112,'Y',1113,'aaab')",
-            "(2221,'bbba',2222,'N',2223,'bbbb'),(3331,'ccca',3332,'Y',3333,'cccb'),(4441,'ddda',4442,'N',4443,'dddb')",
-            "(3331,'ccca',3332,'Y',3333,'cccb')", "nickname='ccc+++'",
-            "(corp,dept,leader,age,nickname,id)"},
-        new String[] {
-            "6",
-            "add address varchar(256), drop corp, add years int after leader",
-            "(1111,'aaaa',1112,'n',1113,1114,'aaab')",
-            "(2221,'bbba',2222,'y',2223,2224,'bbbb'),(3331,'ccca',3332,'Y',3333,3334,'cccb'),(4441,'ddda',4442,'N',4443,4444,'dddb')",
-            "(3331,'ccca',3332,'n',3333,3334,'cccb')", "address='ccc++'",
-            "(address,dept,years,leader,age,nickname,id)"}
-    };
-
     @Test
     public void testSimpleInsertAfterInstantAddColumn() throws SQLException {
         setGlobalSupportInstantAddColumn(true);
@@ -2297,6 +2296,13 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
                 result = rs.getString(2);
             }
         }
+        if (isMySQL80() && null != result) {
+            result = result.replace("`pad` int DEFAULT NULL,", "`pad` int(11) DEFAULT NULL,");
+            result = result.replace("`id` int DEFAULT NULL,", "`id` int(11) DEFAULT NULL,");
+            result = result.replace("`pk` int NOT NULL AUTO_INCREMENT,", "`pk` int(11) NOT NULL AUTO_INCREMENT,");
+        }
+        System.out.println("result: \n" + result);
+        System.out.println("expected: \n" + expectedShow);
         Assert.assertTrue(compareShowCreateTable(result, expectedShow));
     }
 

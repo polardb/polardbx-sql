@@ -1,0 +1,8 @@
+test_hash
+test_range
+test_list
+test_add_drop_part_for_range
+test_add_drop_part_for_list
+test_add_drop_values_for_list
+test_udf
+test_java_udf

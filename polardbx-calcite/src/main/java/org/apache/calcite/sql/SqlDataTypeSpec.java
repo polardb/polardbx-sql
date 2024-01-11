@@ -493,7 +493,11 @@ public class SqlDataTypeSpec extends SqlNode {
         if (!this.typeName.equalsDeep(that.typeName, litmus, context)) {
             return litmus.fail(null);
         }
-        if (this.precision != that.precision) {
+        // fix for 8032
+        final boolean equalInt =
+            this.typeName != null && this.typeName.toString().toLowerCase().endsWith("int") &&
+                (this.precision != 0 && 0 == that.precision || 0 == this.precision && that.precision != 0);
+        if (!equalInt && this.precision != that.precision) {
             return litmus.fail("{} != {}", this, node);
         }
         if (this.scale != that.scale) {
@@ -502,7 +506,11 @@ public class SqlDataTypeSpec extends SqlNode {
         if (!Objects.equals(this.timeZone, that.timeZone)) {
             return litmus.fail("{} != {}", this, node);
         }
-        if (!Objects.equals(this.charSetName, that.charSetName)) {
+        // fix for 8032
+        final boolean implicitUtf8mb3 =
+            (null == this.charSetName && that.charSetName != null && that.charSetName.equalsIgnoreCase("utf8mb3")) ||
+                (this.charSetName != null && this.charSetName.equalsIgnoreCase("utf8mb3") && null == that.charSetName);
+        if (!implicitUtf8mb3 && !Objects.equals(this.charSetName, that.charSetName)) {
             return litmus.fail("{} != {}", this, node);
         }
         return litmus.succeed();

@@ -67,6 +67,8 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
         String showCreateTableInfo = showCreateTable(tddlConnection, primaryTableName);
         if (isMySQL80()) {
             showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
         }
         Assert.assertEquals(
             "CREATE TABLE `" + primaryTableName + "` (\n"
@@ -107,6 +109,8 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
         String showCreateTableInfo = showCreateTable(tddlConnection, primaryTableName);
         if (isMySQL80()) {
             showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
         }
         Assert.assertEquals(
             "CREATE TABLE `" + primaryTableName + "` (\n"
@@ -151,6 +155,8 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
         String showCreateTableInfo = showCreateTable(tddlConnection, newName);
         if (isMySQL80()) {
             showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
         }
         Assert.assertEquals(
             "CREATE TABLE `" + newName + "` (\n"

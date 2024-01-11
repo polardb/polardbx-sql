@@ -1,0 +1,22 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+create table r_k_tb1(a int , b int, c varchar(11), primary key(a)) partition by range (a)
+subpartition by hash(b)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show full create table r_k_tb1;
+
+create table r_k_tb2(a int , b int, c varchar(11), primary key(a)) partition by range (a)
+subpartition by hash(b)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show full create table r_k_tb2;

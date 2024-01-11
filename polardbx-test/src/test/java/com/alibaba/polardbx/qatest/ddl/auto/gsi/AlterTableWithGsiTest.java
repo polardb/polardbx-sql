@@ -43,9 +43,19 @@ public class AlterTableWithGsiTest extends BaseAutoPartitionNewPartition {
         sql = String.format("alter table %s convert to character set utf8 collate utf8_bin", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertTrue(showCreateTable(tddlConnection, primaryTable).contains("utf8"));
-        Assert.assertTrue(showCreateTable(tddlConnection, indexTable).contains("utf8_bin"));
+        String indexTable0 = showCreateTable(tddlConnection, indexTable);
+        if (isMySQL80()) {
+            indexTable0 = indexTable0.replace("utf8mb3_bin", "utf8_bin");
+        }
+        System.out.println(indexTable0);
+        Assert.assertTrue(indexTable0.contains("utf8_bin"));
         Assert.assertTrue(showCreateTable(tddlConnection, primaryTable).contains("utf8"));
-        Assert.assertTrue(showCreateTable(tddlConnection, indexTable).contains("utf8_bin"));
+        String indexTable1 = showCreateTable(tddlConnection, indexTable);
+        if (isMySQL80()) {
+            indexTable1 = indexTable1.replace("utf8mb3_bin", "utf8_bin");
+        }
+        System.out.println(indexTable1);
+        Assert.assertTrue(indexTable1.contains("utf8_bin"));
 
         sql = String.format("alter table %s convert to character set utf8 collate utf8_general_cixx", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "unknown collate name 'utf8_general_cixx'");

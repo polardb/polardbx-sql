@@ -1,0 +1,16 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+begin;
+insert into hash_tbl_bigint values (1,1);
+select * from hash_tbl_bigint where a=1;
+a,b
+1,1
+select * from hash_tbl_bigint where a=1 for update;
+a,b
+1,1
+rollback;

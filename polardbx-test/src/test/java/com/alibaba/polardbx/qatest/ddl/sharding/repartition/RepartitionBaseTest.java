@@ -460,7 +460,13 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
                 createTableString =
                     resultSet.getString("Create Table").replaceAll(" CHARACTER SET \\w+", "")
                         .replaceAll(" COLLATE \\w+", "")
-                        .replaceAll(" DEFAULT COLLATE = \\w+", "");
+                        .replaceAll(" DEFAULT COLLATE = \\w+", "")
+                        .replaceAll(" int ", " int(11) ")
+                        .replaceAll(" bigint ", " bigint(11) ")
+                        .replaceAll(" int,", " int(11),")
+                        .replaceAll(" bigint,", " bigint(11),")
+                        .replaceAll(" int\n", " int(11)\n")
+                        .replaceAll(" bigint\n", " bigint(11)\n");
             } else {
                 createTableString = resultSet.getString("Create Table");
             }

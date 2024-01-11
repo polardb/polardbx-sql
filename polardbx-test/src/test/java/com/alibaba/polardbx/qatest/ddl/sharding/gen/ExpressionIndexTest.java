@@ -14,10 +14,9 @@ import java.util.List;
 import java.util.Set;
 
 public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
-    private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
-
     private static final String ENABLE_CREATE_EXPRESSION_INDEX = "ENABLE_CREATE_EXPRESSION_INDEX=TRUE";
     private static final String ENABLE_UNIQUE_KEY_ON_GEN_COL = "ENABLE_UNIQUE_KEY_ON_GEN_COL=TRUE";
+    private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
 
     private static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -270,17 +269,26 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "show create table " + tableName);
         String showCreateTable = JdbcUtil.getAllStringResult(rs, false, null).get(0).get(1);
-        String trueCreateTable = isRDS80 ? "CREATE TABLE `expr_index_multi_alter_tbl` (\n"
-            + "\t`a` int(11) NOT NULL,\n"
-            + "\t`b` int(11) DEFAULT NULL,\n"
-            + "\t`c` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
-            + "\t`d` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
-            + "\t`i1$0` bigint(20) GENERATED ALWAYS AS (`a` + 1) VIRTUAL,\n"
-            + "\t`i2$0` varchar(20) COLLATE utf8mb4_general_ci GENERATED ALWAYS AS (substr(`c`, 2)) VIRTUAL,\n"
-            + "\tPRIMARY KEY (`a`),\n"
-            + "\tKEY `i1` (`i1$0`),\n"
-            + "\tKEY `i2` (`i2$0`)\n"
-            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci  dbpartition by hash(`a`)" :
+        if (isRDS80) {
+            showCreateTable = showCreateTable.replace("`a` int NOT NULL,", "`a` int(11) NOT NULL,");
+            showCreateTable = showCreateTable.replace("`b` int DEFAULT NULL,", "`b` int(11) DEFAULT NULL,");
+            showCreateTable = showCreateTable.replace("`i1$0` bigint GENERATED ALWAYS AS (`a` + 1) VIRTUAL,",
+                "`i1$0` bigint(20) GENERATED ALWAYS AS (`a` + 1) VIRTUAL,");
+        }
+        System.out.println("showCreateTable: \n" + showCreateTable);
+        String trueCreateTable = isRDS80 ?
+            "CREATE TABLE `expr_index_multi_alter_tbl` (\n"
+                + "\t`a` int(11) NOT NULL,\n"
+                + "\t`b` int(11) DEFAULT NULL,\n"
+                + "\t`c` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+                + "\t`d` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+                + "\t`i1$0` bigint(20) GENERATED ALWAYS AS (`a` + 1) VIRTUAL,\n"
+                + "\t`i2$0` varchar(20) COLLATE utf8mb4_general_ci GENERATED ALWAYS AS (substr(`c`, 2)) VIRTUAL,\n"
+                + "\tPRIMARY KEY (`a`),\n"
+                + "\tKEY `i1` (`i1$0`),\n"
+                + "\tKEY `i2` (`i2$0`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci  dbpartition by hash(`a`)"
+            :
             "CREATE TABLE `expr_index_multi_alter_tbl` (\n"
                 + "\t`a` int(11) NOT NULL,\n"
                 + "\t`b` int(11) DEFAULT NULL,\n"
@@ -296,6 +304,12 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
         rs = JdbcUtil.executeQuerySuccess(tddlConnection, "show index from " + tableName);
         List<List<String>> objects = JdbcUtil.getAllStringResult(rs, false, null);
+        for (List<String> object : objects) {
+            System.out.println("index: ");
+            for (String s : object) {
+                System.out.println(s);
+            }
+        }
         for (List<String> object : objects) {
             if (object.get(2).equalsIgnoreCase("i1")) {
                 Assert.assertTrue(object.get(4).equalsIgnoreCase("i1$0"));

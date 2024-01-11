@@ -1,0 +1,105 @@
+DROP TABLE IF EXISTS tbl_key_str;
+CREATE TABLE IF NOT EXISTS tbl_key_str (
+	a varchar(64) COLLATE utf8_general_ci NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+DROP TABLE IF EXISTS tbl_key_str2;
+CREATE TABLE IF NOT EXISTS tbl_key_str2 (
+	a varchar(64) COLLATE utf8_bin NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str2[p2]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str2[p6]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_key_str3;
+CREATE TABLE IF NOT EXISTS tbl_key_str3 (
+	a varchar(64) COLLATE utf8mb4_general_ci NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str2[p2]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str2[p6]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str3
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str3[p3]", sql="SELECT `a` FROM `tbl_key_str3` AS `tbl_key_str3` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_key_str3
+WHERE a = 'abc   ';
+Logical ExecutionPlan
+LogicalView(tables="tbl_key_str3[p3]", sql="SELECT `a` FROM `tbl_key_str3` AS `tbl_key_str3` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS tbl_rc_str;
+CREATE TABLE IF NOT EXISTS tbl_rc_str (
+	a varchar(64) COLLATE utf8_general_ci NOT NULL
+)
+PARTITION BY RANGE COLUMNS (a) (
+	PARTITION p0 VALUES LESS THAN ('abc'),
+	PARTITION p1 VALUES LESS THAN ('efg'),
+	PARTITION p2 VALUES LESS THAN ('ijc'),
+	PARTITION p3 VALUES LESS THAN ('opq')
+);
+DROP TABLE IF EXISTS tbl_rc_str2;
+CREATE TABLE IF NOT EXISTS tbl_rc_str2 (
+	a varchar(64) COLLATE utf8_bin NOT NULL
+)
+PARTITION BY RANGE COLUMNS (a) (
+	PARTITION p0 VALUES LESS THAN ('abc'),
+	PARTITION p1 VALUES LESS THAN ('efg'),
+	PARTITION p2 VALUES LESS THAN ('ijc'),
+	PARTITION p3 VALUES LESS THAN ('opq')
+);
+EXPLAIN SELECT *
+FROM tbl_rc_str
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rc_str[p1]", sql="SELECT `a` FROM `tbl_rc_str` AS `tbl_rc_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_rc_str
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rc_str[p1]", sql="SELECT `a` FROM `tbl_rc_str` AS `tbl_rc_str` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_rc_str2
+WHERE a = 'abc';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rc_str2[p1]", sql="SELECT `a` FROM `tbl_rc_str2` AS `tbl_rc_str2` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl_rc_str2
+WHERE a = 'ABC';
+Logical ExecutionPlan
+LogicalView(tables="tbl_rc_str2[p0]", sql="SELECT `a` FROM `tbl_rc_str2` AS `tbl_rc_str2` WHERE (`a` = ?)")
